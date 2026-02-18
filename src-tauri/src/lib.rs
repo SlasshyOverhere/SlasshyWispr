@@ -10,6 +10,8 @@ use std::fs;
 use std::io;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -55,6 +57,8 @@ const TRAY_MENU_QUIT_ID: &str = "quit";
 const STARTUP_ARG_START_IN_TRAY: &str = "--start-in-tray";
 #[cfg(target_os = "windows")]
 const STARTUP_RUN_VALUE_NAME: &str = "SlasshyWispr";
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[cfg(target_os = "windows")]
 const PIPER_ARCHIVE_URL: &str =
@@ -761,6 +765,8 @@ fn run_powershell_script(script: &str, stdin_text: Option<&str>) -> Result<std::
         .args([
             "-NoProfile",
             "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
             "-ExecutionPolicy",
             "Bypass",
             "-Command",
@@ -768,6 +774,7 @@ fn run_powershell_script(script: &str, stdin_text: Option<&str>) -> Result<std::
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    command.creation_flags(CREATE_NO_WINDOW);
 
     if stdin_text.is_some() {
         command.stdin(Stdio::piped());
