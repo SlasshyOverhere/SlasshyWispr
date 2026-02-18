@@ -4,14 +4,23 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-windows-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   release:
     name: Build and Release (Windows)
     runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+      CI: "true"
 
     steps:
       - name: Checkout
@@ -64,5 +73,6 @@ jobs:
           body: Automated release for ${{ github.ref_name }}.
           draft: false
           prerelease: false
+          fail_on_unmatched_files: true
           files: |
             src-tauri/target/release/bundle/nsis/*.exe
