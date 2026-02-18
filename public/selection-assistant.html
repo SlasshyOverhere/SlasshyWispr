@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Selection Assistant</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: transparent;
+        overflow: hidden;
+        font-family: "Consolas", "Fira Code", "JetBrains Mono", monospace;
+        color: #f4f6fb;
+      }
+
+      .surface {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border-radius: 12px;
+        background:
+          radial-gradient(circle at 14% 10%, rgba(112, 149, 255, 0.18), transparent 42%),
+          linear-gradient(152deg, rgba(7, 16, 33, 0.96), rgba(3, 9, 22, 0.98));
+        border: 1px solid rgba(188, 207, 255, 0.22);
+        box-shadow:
+          0 18px 40px rgba(0, 0, 0, 0.44),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+      }
+
+      #resultText {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        padding: 16px 16px 66px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.58;
+        font-size: 14px;
+        letter-spacing: 0.01em;
+        color: #f5f8ff;
+        text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+      }
+
+      .actions {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        display: flex;
+        gap: 8px;
+      }
+
+      button {
+        border: 1px solid rgba(199, 214, 255, 0.24);
+        border-radius: 9px;
+        background: linear-gradient(160deg, rgba(26, 36, 58, 0.9), rgba(13, 21, 40, 0.94));
+        color: #eef3ff;
+        padding: 8px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      button:hover {
+        border-color: rgba(210, 224, 255, 0.44);
+        background: linear-gradient(160deg, rgba(34, 47, 73, 0.94), rgba(18, 28, 48, 0.98));
+      }
+
+      button:active {
+        transform: translateY(1px);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="surface" data-tauri-drag-region>
+      <pre id="resultText"></pre>
+      <div class="actions">
+        <button type="button" id="copyBtn">Copy</button>
+        <button type="button" id="replaceBtn" hidden>Replace</button>
+        <button type="button" id="closeBtn">Close</button>
+      </div>
+    </main>
+
+    <script>
+      const resultText = document.getElementById("resultText");
+      const copyBtn = document.getElementById("copyBtn");
+      const replaceBtn = document.getElementById("replaceBtn");
+      const closeBtn = document.getElementById("closeBtn");
+      const channel = new BroadcastChannel("slasshywispr-selection-popup");
+
+      let latestToken = 0;
+      let activeVoice = null;
+
+      async function playVoice(base64) {
+        if (!base64) return;
+        try {
+          if (activeVoice) {
+            activeVoice.pause();
+          }
+          const next = new Audio(`data:audio/wav;base64,${base64}`);
+          activeVoice = next;
+          await next.play();
+        } catch {
+          // Ignore autoplay errors.
+        }
+      }
+
+      function render(payload) {
+        if (!payload) return;
+        const token = Number(payload.token || 0);
+        if (token && token < latestToken) return;
+        if (token) latestToken = token;
+
+        resultText.textContent = payload.text || "";
+        replaceBtn.hidden = payload.mode !== "rewrite";
+        if (payload.audioBase64) {
+          void playVoice(payload.audioBase64);
+        }
+      }
+
+      copyBtn.addEventListener("click", () => {
+        channel.postMessage({ kind: "action", action: "copy-result" });
+      });
+
+      replaceBtn.addEventListener("click", () => {
+        channel.postMessage({ kind: "action", action: "replace-selection" });
+      });
+
+      closeBtn.addEventListener("click", () => {
+        channel.postMessage({ kind: "action", action: "close-popup" });
+      });
+
+      channel.onmessage = (event) => {
+        const data = event.data;
+        if (!data || data.kind !== "payload") return;
+        render(data.payload);
+      };
+
+      channel.postMessage({ kind: "action", action: "request-state" });
+
+      window.addEventListener("beforeunload", () => {
+        if (activeVoice) {
+          activeVoice.pause();
+          activeVoice = null;
+        }
+        channel.close();
+      });
+    </script>
+  </body>
+</html>
