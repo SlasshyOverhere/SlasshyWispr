@@ -1,68 +1,43 @@
-# SlasshyWispr (Tauri)
+# SlasshyWispr
 
-A desktop voice assistant pipeline:
+SlasshyWispr is a desktop voice dictation and AI assistant app.
 
-`STT (Whisper) -> AI (Llama) -> TTS (Piper or Coqui)`
+Speak, transcribe, get AI responses, and hear replies back with built-in text-to-speech.
 
-## Stack
+## What The App Does
 
-- Desktop framework: Tauri + Vite + TypeScript
-- STT endpoint: `https://ai.slasshy.online/v1/audio/transcriptions`
-  - model: `whisper-large-v3-turbo`
-- AI endpoint: `https://ai.slasshy.online/v1/chat/completions`
-  - model: `llama-3.1-8b-instant`
-- TTS engines:
-  - Piper (`en_US-hfc_female-medium`)
-  - Coqui TTS (configurable model, voice cloning, quality/speed/emotion controls)
+- Voice dictation with hotkeys (push-to-talk or single-tap)
+- Wake-name based assistant mode (for example: "Hey Lily ...")
+- Transcript refinement controls:
+  - backtrack corrections
+  - filler word cleanup
+  - auto punctuation
+  - auto numbered lists
+- Floating dock with live recording state
+- Pipeline status view with STT/AI/TTS latency
+- Text-to-speech playback with Piper and Coqui profiles
+- Coqui voice cloning and preview tools
+- Tray behavior:
+  - close-to-tray
+  - startup-to-tray (when launch at login is enabled)
+  - tray actions for opening dashboard and copying last transcript/response
+- Foreground game input blocking to avoid accidental activation while gaming
 
-## What is implemented
+## Tech Stack
 
-- Microphone capture from the desktop app (start/stop recording).
-- Rust backend command pipeline for performance:
-  - reuses a shared HTTP client
-  - sends recorded audio to STT
-  - sends transcript to LLM
-  - synthesizes response with Piper
-- In-app runtime setup:
-  - one-click download + extraction of Piper (`piper_windows_amd64.zip`) from GitHub releases
-  - one-click download of ONNX + JSON voice files from Hugging Face
-  - stores runtime under app data directory
-  - auto-detects installed `piper.exe`
-- Additional in-app controls:
-  - API key input
-  - microphone selection (for multi-mic setups)
-  - configurable push-to-talk hotkey
-  - optional Piper path override
-  - dedicated TTS settings pane with engine switcher
-  - profile-based TTS UI (separate Piper and Coqui profiles)
-  - single bootstrap setup button when runtime is incomplete
-  - live setup status + logs while downloading/installing runtimes
-  - Coqui runtime setup/validation
-  - Coqui model catalog refresh and manual model selection
-  - Coqui voice cloning from uploaded reference sample (up to 10 seconds)
-  - Coqui quality/speed/emotion tuning
-  - Piper validation button
-  - voice-only download button
-  - system prompt, temperature, max tokens
-  - latency stats (STT/AI/TTS/total)
-  - transcript + response + turn history
-  - playback of generated WAV
+- Tauri (Rust backend)
+- Vite + TypeScript (frontend)
 
-## Prerequisites
+## Requirements
 
 - Node.js + npm
 - Rust + Cargo
 - Tauri prerequisites for your OS
 
-## Install
+## Run In Development
 
 ```bash
 npm install
-```
-
-## Run (dev)
-
-```bash
 npm run tauri:dev
 ```
 
@@ -72,18 +47,21 @@ npm run tauri:dev
 npm run tauri:build
 ```
 
-## First-run usage
+## First-Time Setup
 
-1. Open the app.
-2. Paste your API key into `API Key`.
-3. Click `Auto Setup Runtime` (downloads Piper + voice model from inside the app).
-4. Optionally click `Validate Piper`.
-5. Choose your microphone and hotkey in Configuration.
-6. Click `Start Recording` (or press the hotkey), speak, then stop.
+1. Open **Settings > System**.
+2. Enter your provider API key, API base URL, STT model, and AI model.
+3. Open **Settings > TTS** and complete runtime setup.
+4. Open **Settings > General** and confirm microphone + hotkeys.
+5. Start dictating.
 
-## Notes
+## Release Workflow
 
-- API base URL and models are hardcoded to your requested values in `src-tauri/src/lib.rs`.
-- API key is provided manually in UI. If "Remember API key" is unchecked, it is not persisted in local storage.
-- TTS is generated as WAV and played in-app.
-- Auto Piper download in this build is implemented for Windows (`piper_windows_amd64.zip`).
+This repo includes a GitHub Actions workflow that creates a Windows `.exe` release when you push a version tag like:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow validates that the tag version matches `src-tauri/tauri.conf.json` before publishing.
