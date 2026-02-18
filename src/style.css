@@ -2834,3 +2834,171 @@ body.sidebar-collapsed .secondary-link:hover {
     padding: 14px 14px 14px 15px;
   }
 }
+
+/* Custom frame + updater */
+.app-frame {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app-titlebar {
+  height: 38px;
+  border-bottom: 1px solid var(--line-soft);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-sidebar) 86%, #000 14%),
+    color-mix(in srgb, var(--bg-app) 84%, #000 16%)
+  );
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px 0 12px;
+  user-select: none;
+}
+
+.app-titlebar-drag {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-titlebar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-soft) 78%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--text-soft) 8%, transparent);
+}
+
+.app-titlebar-name {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-titlebar-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.titlebar-action {
+  width: 34px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-soft);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.titlebar-action:hover {
+  background: var(--bg-hover);
+  border-color: var(--line-soft);
+}
+
+.titlebar-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.titlebar-close:hover {
+  background: #bf2b20;
+  border-color: #bf2b20;
+  color: #fff;
+}
+
+.flow-shell {
+  flex: 1;
+}
+
+.updater-card {
+  display: grid;
+  gap: 10px;
+}
+
+.updater-grid p {
+  min-width: 0;
+}
+
+.updater-grid p strong {
+  display: block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 700px) {
+  .app-titlebar {
+    height: 36px;
+    padding-inline: 8px 4px;
+  }
+
+  .titlebar-action {
+    width: 30px;
+    height: 22px;
+  }
+
+  .app-titlebar-name {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+  }
+}
+
+/* Sidebar settings button polish */
+#openSettingsBtn.secondary-link {
+  width: 100%;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--bg-card) 90%, transparent);
+  color: var(--text-main);
+  font-weight: 650;
+}
+
+#openSettingsBtn.secondary-link:hover {
+  border-color: var(--line-strong);
+  background: var(--bg-hover);
+}
+
+#openSettingsBtn .secondary-glyph {
+  font-size: 12px;
+  width: 14px;
+  color: var(--text-soft);
+}
+
+body.sidebar-collapsed #openSettingsBtn.secondary-link {
+  width: 36px;
+  min-height: 36px;
+  justify-content: center;
+  padding: 0;
+}
+
+/* Keep content scaled under custom titlebar */
+.app-frame > .flow-shell {
+  height: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.app-frame > .flow-shell .flow-sidebar {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}

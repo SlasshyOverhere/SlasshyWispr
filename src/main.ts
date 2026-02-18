@@ -2,7 +2,13 @@
 import "./style.css";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { LogicalSize, availableMonitors, currentMonitor, type Monitor } from "@tauri-apps/api/window";
+import {
+  LogicalSize,
+  availableMonitors,
+  currentMonitor,
+  getCurrentWindow,
+  type Monitor,
+} from "@tauri-apps/api/window";
 import {
   register as registerGlobalShortcut,
   unregisterAll as unregisterAllGlobalShortcuts,
@@ -14,7 +20,7 @@ type CaptureMode = "single-tap" | "push-to-talk";
 type ThemeMode = "system" | "light" | "dark";
 type StyleProfile = "adaptive" | "professional" | "casual" | "concise" | "developer";
 type MainPage = "home" | "dictionary" | "snippets" | "notes";
-type SettingsPane = "general" | "system" | "tts" | "pipeline";
+type SettingsPane = "general" | "system" | "update-security" | "tts" | "pipeline";
 type TtsEngine = "piper" | "coqui";
 type PiperQuality = "fast" | "balanced" | "high";
 type PiperEmotion = "neutral" | "calm" | "happy" | "excited" | "serious" | "sad";
@@ -119,6 +125,24 @@ interface AssistantPipelineResponse {
   aiLatencyMs: number;
   ttsLatencyMs: number;
   totalLatencyMs: number;
+}
+
+interface AppUpdateCheckResponse {
+  currentVersion: string;
+  latestVersion: string;
+  available: boolean;
+  releaseName: string;
+  releaseNotes: string;
+  publishedAt: string;
+  releaseUrl: string;
+  installerDownloadUrl: string;
+  installerAssetName: string;
+}
+
+interface InstallAppUpdateRequest {
+  downloadUrl: string;
+  assetName?: string;
+  silent?: boolean;
 }
 
 interface PersistedSettings {
@@ -263,7 +287,7 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = "slasshy-wispr-sidebar-collapsed-v1";
 const EMPTY_HISTORY_HINT = "No turns yet. Start dictating to see your recent activity.";
 const LEGACY_DEFAULT_SYSTEM_PROMPT =
   "You are SlasshyWispr, a helpful desktop voice assistant. Keep replies concise and easy to speak aloud.";
-const DEFAULT_SYSTEM_PROMPT = "";
+const DEFAULT_SYSTEM_PROMPT = LEGACY_DEFAULT_SYSTEM_PROMPT;
 const DEFAULT_TEMPERATURE = 0.35;
 const DEFAULT_MAX_TOKENS = 320;
 const DEFAULT_API_BASE_URL = "";
@@ -313,7 +337,22 @@ if (!appRoot) {
 }
 
 appRoot.innerHTML = `
-  <div class="flow-shell">
+  <div class="app-frame">
+    <header class="app-titlebar">
+      <div id="appTitlebarDrag" class="app-titlebar-drag" data-tauri-drag-region>
+        <span class="app-titlebar-dot" aria-hidden="true"></span>
+        <span class="app-titlebar-name">SlasshyWispr</span>
+      </div>
+      <div class="app-titlebar-actions">
+        <button id="windowMinimizeBtn" class="titlebar-action" type="button" aria-label="Minimize">−</button>
+        <button id="windowMaximizeBtn" class="titlebar-action" type="button" aria-label="Maximize">
+          <span id="windowMaximizeGlyph">□</span>
+        </button>
+        <button id="windowCloseBtn" class="titlebar-action titlebar-close" type="button" aria-label="Close">×</button>
+      </div>
+    </header>
+
+    <div class="flow-shell">
     <aside class="flow-sidebar">
       <div class="window-controls">
         <button id="toggleSidebarBtn" class="chrome-icon" type="button" aria-label="Toggle sidebar">
@@ -471,11 +510,12 @@ appRoot.innerHTML = `
         <nav class="settings-nav" aria-label="Settings sections">
           <button class="settings-nav-item is-active" data-settings-pane-nav="general" type="button">General</button>
           <button class="settings-nav-item" data-settings-pane-nav="system" type="button">System</button>
+          <button class="settings-nav-item" data-settings-pane-nav="update-security" type="button">Update and Security</button>
           <button class="settings-nav-item" data-settings-pane-nav="tts" type="button">TTS</button>
           <button class="settings-nav-item" data-settings-pane-nav="pipeline" type="button">Pipeline</button>
         </nav>
 
-        <p class="settings-version">SlasshyWispr v0.1.0</p>
+        <p class="settings-version">SlasshyWispr v0.1.1</p>
       </aside>
 
       <section class="settings-main">
@@ -651,6 +691,34 @@ appRoot.innerHTML = `
             <label class="switch-row"><span>Remove filler words</span><input id="removeFillersToggle" class="switch-input" type="checkbox" /></label>
             <label class="switch-row"><span>Auto punctuation</span><input id="autoPunctuationToggle" class="switch-input" type="checkbox" /></label>
             <label class="switch-row"><span>Auto numbered lists</span><input id="numberedListsToggle" class="switch-input" type="checkbox" /></label>
+          </div>
+        </section>
+
+        <section class="settings-pane" data-settings-pane="update-security" hidden>
+          <h3 class="settings-section-title">Updates</h3>
+          <div class="settings-card updater-card">
+            <div class="pipeline-status-row">
+              <div id="updateStatusPill" class="status-pill" data-stage="idle">Idle</div>
+              <p id="updateStatusText" class="status-detail">Check to see if a new version is available.</p>
+            </div>
+            <div class="latency-grid updater-grid" aria-live="polite">
+              <p><span>Current</span><strong id="updateCurrentVersion">-</strong></p>
+              <p><span>Latest</span><strong id="updateLatestVersion">-</strong></p>
+              <p><span>Published</span><strong id="updatePublishedAt">-</strong></p>
+              <p><span>Channel</span><strong>Stable</strong></p>
+            </div>
+            <div class="button-row">
+              <button id="checkUpdatesBtn" class="ghost-action" type="button">Check for updates</button>
+              <button id="installUpdateBtn" class="dark-action" type="button" disabled>Download & install</button>
+            </div>
+          </div>
+
+          <h3 class="settings-section-title">Security</h3>
+          <div class="settings-card">
+            <p class="notice">
+              Updates are fetched only from your configured GitHub releases and installed locally.
+              Review release notes before installing any new build.
+            </p>
           </div>
         </section>
 
@@ -916,6 +984,11 @@ const ttsProfilePiperTab = requiredElement<HTMLButtonElement>("#ttsProfilePiperT
 const ttsProfileCoquiTab = requiredElement<HTMLButtonElement>("#ttsProfileCoquiTab");
 const ttsProfilePiperPanel = requiredElement<HTMLDivElement>("#ttsProfilePiperPanel");
 const ttsProfileCoquiPanel = requiredElement<HTMLDivElement>("#ttsProfileCoquiPanel");
+const appTitlebarDrag = requiredElement<HTMLDivElement>("#appTitlebarDrag");
+const windowMinimizeBtn = requiredElement<HTMLButtonElement>("#windowMinimizeBtn");
+const windowMaximizeBtn = requiredElement<HTMLButtonElement>("#windowMaximizeBtn");
+const windowMaximizeGlyph = requiredElement<HTMLElement>("#windowMaximizeGlyph");
+const windowCloseBtn = requiredElement<HTMLButtonElement>("#windowCloseBtn");
 
 const pageNavButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-page-nav]"));
 const pagePanels = Array.from(document.querySelectorAll<HTMLElement>("[data-page]"));
@@ -1015,6 +1088,13 @@ const backtrackToggle = requiredElement<HTMLInputElement>("#backtrackToggle");
 const removeFillersToggle = requiredElement<HTMLInputElement>("#removeFillersToggle");
 const autoPunctuationToggle = requiredElement<HTMLInputElement>("#autoPunctuationToggle");
 const numberedListsToggle = requiredElement<HTMLInputElement>("#numberedListsToggle");
+const updateStatusPill = requiredElement<HTMLDivElement>("#updateStatusPill");
+const updateStatusText = requiredElement<HTMLParagraphElement>("#updateStatusText");
+const updateCurrentVersion = requiredElement<HTMLElement>("#updateCurrentVersion");
+const updateLatestVersion = requiredElement<HTMLElement>("#updateLatestVersion");
+const updatePublishedAt = requiredElement<HTMLElement>("#updatePublishedAt");
+const checkUpdatesBtn = requiredElement<HTMLButtonElement>("#checkUpdatesBtn");
+const installUpdateBtn = requiredElement<HTMLButtonElement>("#installUpdateBtn");
 
 const baseUrlValue = requiredElement<HTMLElement>("#baseUrlValue");
 const sttModelValue = requiredElement<HTMLElement>("#sttModelValue");
@@ -1134,6 +1214,8 @@ let externalMediaMutedForDictation = false;
 let externalMediaControlInFlight: Promise<void> | null = null;
 let externalMediaControlErrorShown = false;
 let launchAtLoginSyncNonce = 0;
+let updateCheckInFlight = false;
+let cachedUpdateResult: AppUpdateCheckResponse | null = null;
 let foregroundBlockStatusCache: ForegroundInputBlockStatus = {
   blocked: false,
   processName: "",
@@ -1262,6 +1344,8 @@ updateUsageMetrics();
 renderHomeHistory();
 refreshRecordButton();
 syncActionAvailability();
+initializeUpdaterPanel();
+setupCustomWindowControls();
 hotkeyInput.readOnly = true;
 commandHotkeyInput.readOnly = true;
 requestGlobalShortcutSync(true);
@@ -1320,6 +1404,14 @@ openProfileBtn.addEventListener("click", () => {
 
 openSettingsBtn.addEventListener("click", () => {
   openSettings();
+});
+
+checkUpdatesBtn.addEventListener("click", () => {
+  void handleCheckForUpdates();
+});
+
+installUpdateBtn.addEventListener("click", () => {
+  void handleInstallUpdate();
 });
 
 if (homeSetupBanner && homeSetupCloseBtn) {
@@ -1721,6 +1813,7 @@ navigator.mediaDevices?.addEventListener?.("devicechange", () => {
 });
 
 async function bootstrap(): Promise<void> {
+  await hydrateSettingsFromNativeStorage();
   setStage("idle", "Loading assistant metadata...");
 
   try {
@@ -1766,7 +1859,13 @@ function asMainPage(value: string | undefined): MainPage | null {
 }
 
 function asSettingsPane(value: string | undefined): SettingsPane | null {
-  if (value === "general" || value === "system" || value === "tts" || value === "pipeline") {
+  if (
+    value === "general" ||
+    value === "system" ||
+    value === "update-security" ||
+    value === "tts" ||
+    value === "pipeline"
+  ) {
     return value;
   }
 
@@ -1792,6 +1891,7 @@ function setActiveSettingsPane(next: SettingsPane): void {
   const titleMap: Record<SettingsPane, string> = {
     general: "General",
     system: "System",
+    "update-security": "Update and Security",
     tts: "TTS",
     pipeline: "Pipeline",
   };
@@ -1919,7 +2019,8 @@ function loadSettings(): PersistedSettings {
       commandHotkey: String(parsed.commandHotkey ?? defaults.commandHotkey),
       dictationLanguage: String(parsed.dictationLanguage ?? defaults.dictationLanguage),
       styleProfile: asStyleProfile(parsed.styleProfile),
-      systemPrompt: String(parsed.systemPrompt ?? defaults.systemPrompt),
+      systemPrompt:
+        String(parsed.systemPrompt ?? defaults.systemPrompt).trim() || defaults.systemPrompt,
       temperature: coerceNumber(parsed.temperature, defaults.temperature, 0, 1.2),
       maxTokens: coerceInteger(parsed.maxTokens, defaults.maxTokens, 64, 1024),
       launchAtLogin: coerceBoolean(parsed.launchAtLogin, defaults.launchAtLogin),
@@ -1973,7 +2074,42 @@ function persistSettings(next: PersistedSettings): void {
     apiKey: next.rememberApiKey ? next.apiKey : "",
   };
 
-  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(payload));
+  const serialized = JSON.stringify(payload);
+  localStorage.setItem(SETTINGS_STORAGE_KEY, serialized);
+
+  if (!isTauriEnvironment()) {
+    return;
+  }
+
+  void invoke("save_persisted_local_settings", { payload: serialized }).catch((error) => {
+    console.warn(`[settings] failed to persist local settings: ${asErrorMessage(error)}`);
+  });
+}
+
+async function hydrateSettingsFromNativeStorage(): Promise<void> {
+  if (!isTauriEnvironment()) {
+    return;
+  }
+
+  try {
+    const raw = await invoke<string>("load_persisted_local_settings");
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return;
+    }
+
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(parsed));
+    const hydrated = loadSettings();
+    applySettingsToForm(hydrated);
+    handleSettingsChange();
+  } catch (error) {
+    console.warn(`[settings] failed to hydrate local settings: ${asErrorMessage(error)}`);
+  }
 }
 
 function readSettingsFromForm(): PersistedSettings {
@@ -2300,6 +2436,185 @@ async function syncGlobalShortcuts(force = false): Promise<void> {
 
 function isTauriEnvironment(): boolean {
   return "__TAURI_INTERNALS__" in window || "__TAURI__" in window;
+}
+
+function initializeUpdaterPanel(): void {
+  updateCurrentVersion.textContent = "-";
+  updateLatestVersion.textContent = "-";
+  updatePublishedAt.textContent = "-";
+  setUpdaterStatus("idle", "Check to see if a new version is available.");
+
+  if (!isTauriEnvironment()) {
+    checkUpdatesBtn.disabled = true;
+    installUpdateBtn.disabled = true;
+    setUpdaterStatus("error", "Updater works only inside the desktop app build.");
+  }
+}
+
+function setupCustomWindowControls(): void {
+  if (!isTauriEnvironment()) {
+    windowMinimizeBtn.disabled = true;
+    windowMaximizeBtn.disabled = true;
+    windowCloseBtn.disabled = true;
+    return;
+  }
+
+  const appWindow = getCurrentWindow();
+  void syncTitlebarMaximizeState(appWindow);
+
+  windowMinimizeBtn.addEventListener("click", () => {
+    void appWindow.minimize().catch((error) => {
+      setNotice(`Minimize failed: ${asErrorMessage(error)}`, true);
+    });
+  });
+
+  windowMaximizeBtn.addEventListener("click", () => {
+    void toggleWindowMaximize(appWindow);
+  });
+
+  windowCloseBtn.addEventListener("click", () => {
+    void appWindow.close().catch((error) => {
+      setNotice(`Close failed: ${asErrorMessage(error)}`, true);
+    });
+  });
+
+  appTitlebarDrag.addEventListener("dblclick", () => {
+    void toggleWindowMaximize(appWindow);
+  });
+
+  window.addEventListener("resize", () => {
+    void syncTitlebarMaximizeState(appWindow);
+  });
+}
+
+async function toggleWindowMaximize(appWindow = getCurrentWindow()): Promise<void> {
+  try {
+    const maximized = await appWindow.isMaximized();
+    if (maximized) {
+      await appWindow.unmaximize();
+    } else {
+      await appWindow.maximize();
+    }
+    await syncTitlebarMaximizeState(appWindow);
+  } catch (error) {
+    setNotice(`Window maximize toggle failed: ${asErrorMessage(error)}`, true);
+  }
+}
+
+async function syncTitlebarMaximizeState(appWindow = getCurrentWindow()): Promise<void> {
+  if (!isTauriEnvironment()) {
+    windowMaximizeGlyph.textContent = "□";
+    return;
+  }
+
+  try {
+    const maximized = await appWindow.isMaximized();
+    windowMaximizeGlyph.textContent = maximized ? "❐" : "□";
+    windowMaximizeBtn.setAttribute("aria-label", maximized ? "Restore" : "Maximize");
+  } catch {
+    windowMaximizeGlyph.textContent = "□";
+  }
+}
+
+function setUpdaterStatus(stage: "idle" | "processing" | "speaking" | "error", message: string): void {
+  updateStatusPill.dataset.stage = stage;
+  if (stage === "idle") {
+    updateStatusPill.textContent = "Idle";
+  } else if (stage === "processing") {
+    updateStatusPill.textContent = "Checking";
+  } else if (stage === "speaking") {
+    updateStatusPill.textContent = "Update";
+  } else {
+    updateStatusPill.textContent = "Error";
+  }
+  updateStatusText.textContent = message;
+}
+
+function formatPublishedDate(raw: string): string {
+  const cleaned = raw.trim();
+  if (!cleaned) {
+    return "-";
+  }
+
+  const parsed = new Date(cleaned);
+  if (Number.isNaN(parsed.getTime())) {
+    return cleaned;
+  }
+  return parsed.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
+
+async function handleCheckForUpdates(): Promise<void> {
+  if (!isTauriEnvironment() || updateCheckInFlight) {
+    return;
+  }
+
+  updateCheckInFlight = true;
+  cachedUpdateResult = null;
+  checkUpdatesBtn.disabled = true;
+  installUpdateBtn.disabled = true;
+  setUpdaterStatus("processing", "Checking GitHub release channel...");
+
+  try {
+    const result = await invoke<AppUpdateCheckResponse>("check_for_app_update");
+    cachedUpdateResult = result;
+
+    updateCurrentVersion.textContent = result.currentVersion || "-";
+    updateLatestVersion.textContent = result.latestVersion || "-";
+    updatePublishedAt.textContent = formatPublishedDate(result.publishedAt);
+
+    if (result.available && result.installerDownloadUrl) {
+      installUpdateBtn.disabled = false;
+      setUpdaterStatus(
+        "speaking",
+        `Update ${result.latestVersion} is available. Click "Download & install".`,
+      );
+      return;
+    }
+
+    if (result.latestVersion && result.latestVersion !== result.currentVersion) {
+      setUpdaterStatus(
+        "error",
+        "A newer release exists, but no Windows installer package was detected for auto-update.",
+      );
+      return;
+    }
+
+    setUpdaterStatus("idle", "You are already on the latest version.");
+  } catch (error) {
+    setUpdaterStatus("error", `Update check failed: ${asErrorMessage(error)}`);
+  } finally {
+    updateCheckInFlight = false;
+    checkUpdatesBtn.disabled = !isTauriEnvironment();
+  }
+}
+
+async function handleInstallUpdate(): Promise<void> {
+  if (!isTauriEnvironment()) {
+    return;
+  }
+
+  if (!cachedUpdateResult || !cachedUpdateResult.available || !cachedUpdateResult.installerDownloadUrl) {
+    setUpdaterStatus("error", "No update package is ready. Run check first.");
+    return;
+  }
+
+  const request: InstallAppUpdateRequest = {
+    downloadUrl: cachedUpdateResult.installerDownloadUrl,
+    assetName: cachedUpdateResult.installerAssetName || undefined,
+    silent: true,
+  };
+
+  installUpdateBtn.disabled = true;
+  checkUpdatesBtn.disabled = true;
+  setUpdaterStatus("processing", "Downloading update installer...");
+
+  try {
+    await invoke("download_and_install_app_update", { request });
+    setUpdaterStatus("processing", "Installer started. The app will close now.");
+  } catch (error) {
+    setUpdaterStatus("error", `Installer launch failed: ${asErrorMessage(error)}`);
+    checkUpdatesBtn.disabled = false;
+  }
 }
 
 function requestLaunchAtLoginSync(enabled: boolean): void {

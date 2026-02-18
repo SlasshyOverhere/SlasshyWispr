@@ -1,7 +1,7 @@
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use log::{error, info, warn};
-use reqwest::{multipart, Client};
+use reqwest::{header::USER_AGENT, multipart, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap};
@@ -9,11 +9,13 @@ use std::fs;
 #[cfg(target_os = "windows")]
 use std::io;
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
+#[cfg(target_os = "windows")]
+use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -26,8 +28,7 @@ use zip::ZipArchive;
 const DEFAULT_BASE_URL: &str = "";
 const DEFAULT_STT_MODEL: &str = "";
 const DEFAULT_AI_MODEL: &str = "";
-const DEFAULT_SYSTEM_PROMPT: &str =
-    "You are SlasshyWispr, an assistant in a speech-to-text app.
+const DEFAULT_SYSTEM_PROMPT: &str = "You are SlasshyWispr, an assistant in a speech-to-text app.
 Default mode is cleanup of spoken text while preserving intent and tone.
 Agent mode activates when directly addressed with a request.
 If selected text context is provided, use it as primary context.
@@ -59,6 +60,11 @@ const STARTUP_ARG_START_IN_TRAY: &str = "--start-in-tray";
 const STARTUP_RUN_VALUE_NAME: &str = "SlasshyWispr";
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+const UPDATE_REPOSITORY_OWNER: &str = "SlasshyOverhere";
+const UPDATE_REPOSITORY_NAME: &str = "SlasshyWispr";
+const UPDATE_HTTP_USER_AGENT: &str = "SlasshyWispr-Updater";
+const PERSISTED_SETTINGS_DIR_NAME: &str = "SlasshyWisprData";
+const PERSISTED_SETTINGS_FILE_NAME: &str = "settings.json";
 
 #[cfg(target_os = "windows")]
 const PIPER_ARCHIVE_URL: &str =
@@ -118,7 +124,9 @@ impl AppState {
     ) -> bool {
         let expired = slot
             .as_ref()
-            .map(|item| item.created_at.elapsed() >= Duration::from_secs(PENDING_SELECTION_REWRITE_TTL_SECS))
+            .map(|item| {
+                item.created_at.elapsed() >= Duration::from_secs(PENDING_SELECTION_REWRITE_TTL_SECS)
+            })
             .unwrap_or(false);
         if expired {
             *slot = None;
@@ -154,9 +162,7 @@ impl AppState {
         Ok(slot.take().map(|item| item.rewrite_text))
     }
 
-    fn cleanup_expired_recent_selection_context(
-        slot: &mut Option<RecentSelectionContext>,
-    ) -> bool {
+    fn cleanup_expired_recent_selection_context(slot: &mut Option<RecentSelectionContext>) -> bool {
         let expired = slot
             .as_ref()
             .map(|item| {
@@ -205,7 +211,10 @@ impl AppState {
         Ok(())
     }
 
-    fn set_last_assistant_response(&self, assistant_response: impl Into<String>) -> Result<(), String> {
+    fn set_last_assistant_response(
+        &self,
+        assistant_response: impl Into<String>,
+    ) -> Result<(), String> {
         let assistant_response = assistant_response.into();
         let mut response_slot = self
             .last_assistant_response
@@ -538,6 +547,46 @@ struct CoquiModelsResponse {
     models: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppUpdateCheckResponse {
+    current_version: String,
+    latest_version: String,
+    available: bool,
+    release_name: String,
+    release_notes: String,
+    published_at: String,
+    release_url: String,
+    installer_download_url: String,
+    installer_asset_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallAppUpdateRequest {
+    download_url: String,
+    asset_name: Option<String>,
+    silent: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubReleaseAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubLatestReleaseResponse {
+    tag_name: String,
+    name: Option<String>,
+    body: Option<String>,
+    draft: bool,
+    prerelease: bool,
+    published_at: Option<String>,
+    html_url: Option<String>,
+    assets: Vec<GithubReleaseAsset>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TtsSetupStartRequest {
@@ -675,11 +724,198 @@ async fn log_client_event(message: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn check_for_app_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<AppUpdateCheckResponse, String> {
+    let current_version = app.package_info().version.to_string();
+    let request_url = format!(
+        "https://api.github.com/repos/{UPDATE_REPOSITORY_OWNER}/{UPDATE_REPOSITORY_NAME}/releases/latest"
+    );
+    let response = state
+        .http
+        .get(&request_url)
+        .header(USER_AGENT, UPDATE_HTTP_USER_AGENT)
+        .send()
+        .await
+        .map_err(|error| format!("Failed to check for updates: {error}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "Update check failed with status {}: {}",
+            status,
+            clip_text(&single_line(&body), 280)
+        ));
+    }
+
+    let release: GithubLatestReleaseResponse = response
+        .json()
+        .await
+        .map_err(|error| format!("Failed to parse update response: {error}"))?;
+    let latest_version = normalize_release_version(&release.tag_name);
+
+    let (installer_download_url, installer_asset_name) = select_windows_installer_asset(&release)
+        .map(|asset| (asset.browser_download_url.clone(), asset.name.clone()))
+        .unwrap_or_else(|| (String::new(), String::new()));
+
+    let available = !release.draft
+        && !release.prerelease
+        && !installer_download_url.is_empty()
+        && is_newer_version(&current_version, &latest_version);
+
+    info!(
+        "[updater] checked current={} latest={} available={} asset={}",
+        current_version, latest_version, available, installer_asset_name
+    );
+
+    Ok(AppUpdateCheckResponse {
+        current_version,
+        latest_version,
+        available,
+        release_name: release.name.unwrap_or_default(),
+        release_notes: release.body.unwrap_or_default(),
+        published_at: release.published_at.unwrap_or_default(),
+        release_url: release.html_url.unwrap_or_default(),
+        installer_download_url,
+        installer_asset_name,
+    })
+}
+
+#[tauri::command]
+async fn download_and_install_app_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request: InstallAppUpdateRequest,
+) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let download_url = request.download_url.trim();
+        if download_url.is_empty() {
+            return Err("Update download URL is empty.".to_string());
+        }
+
+        let response = state
+            .http
+            .get(download_url)
+            .header(USER_AGENT, UPDATE_HTTP_USER_AGENT)
+            .send()
+            .await
+            .map_err(|error| format!("Failed to download update installer: {error}"))?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!(
+                "Installer download failed with status {}: {}",
+                status,
+                clip_text(&single_line(&body), 280)
+            ));
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|error| format!("Failed to read installer bytes: {error}"))?;
+        if bytes.is_empty() {
+            return Err("Installer download returned an empty file.".to_string());
+        }
+
+        let updates_dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|error| format!("Failed to resolve app data directory: {error}"))?
+            .join("updates");
+        fs::create_dir_all(&updates_dir)
+            .map_err(|error| format!("Failed to create updates directory: {error}"))?;
+
+        let installer_name = resolve_installer_file_name(
+            request.asset_name.as_deref(),
+            download_url,
+            app.package_info().version.to_string().as_str(),
+        );
+        let installer_path = updates_dir.join(installer_name);
+        fs::write(&installer_path, &bytes)
+            .map_err(|error| format!("Failed to write installer file: {error}"))?;
+
+        let mut command = Command::new(&installer_path);
+        apply_no_window(&mut command);
+        if request.silent.unwrap_or(true) {
+            command.arg("/S");
+        }
+        command.spawn().map_err(|error| {
+            format!(
+                "Failed to launch installer '{}': {error}",
+                installer_path.display()
+            )
+        })?;
+
+        info!(
+            "[updater] installer launched path={} silent={}",
+            installer_path.display(),
+            request.silent.unwrap_or(true)
+        );
+
+        let app_for_exit = app.clone();
+        thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(220));
+            app_for_exit.exit(0);
+        });
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, state, request);
+        Err("Auto-update installer is currently implemented for Windows only.".to_string())
+    }
+}
+
+#[tauri::command]
+async fn load_persisted_local_settings(app: AppHandle) -> Result<String, String> {
+    let settings_path = persisted_settings_path(&app)?;
+    if !settings_path.exists() {
+        return Ok(String::new());
+    }
+
+    fs::read_to_string(&settings_path).map_err(|error| {
+        format!(
+            "Failed to read persisted settings '{}': {error}",
+            settings_path.display()
+        )
+    })
+}
+
+#[tauri::command]
+async fn save_persisted_local_settings(app: AppHandle, payload: String) -> Result<(), String> {
+    let trimmed = payload.trim();
+    if trimmed.is_empty() {
+        return Err("Settings payload is empty.".to_string());
+    }
+
+    let parsed = serde_json::from_str::<Value>(trimmed)
+        .map_err(|error| format!("Settings payload is not valid JSON: {error}"))?;
+    if !parsed.is_object() {
+        return Err("Settings payload must be a JSON object.".to_string());
+    }
+
+    let settings_path = persisted_settings_path(&app)?;
+    fs::write(&settings_path, trimmed.as_bytes()).map_err(|error| {
+        format!(
+            "Failed to write persisted settings '{}': {error}",
+            settings_path.display()
+        )
+    })?;
+    Ok(())
+}
+
+#[tauri::command]
 async fn capture_selected_text() -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
         let text = capture_selected_text_windows()?;
-        info!("[client] captured selected text chars={}", text.chars().count());
+        info!(
+            "[client] captured selected text chars={}",
+            text.chars().count()
+        );
         return Ok(text);
     }
 
@@ -750,16 +986,17 @@ fn capture_selected_text_windows() -> Result<String, String> {
             clip_text(&single_line(&merged), 280)
         ));
     }
-    Ok(
-        String::from_utf8_lossy(&output.stdout)
-            .replace("\r\n", "\n")
-            .trim_end_matches(['\r', '\n'])
-            .to_string(),
-    )
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .replace("\r\n", "\n")
+        .trim_end_matches(['\r', '\n'])
+        .to_string())
 }
 
 #[cfg(target_os = "windows")]
-fn run_powershell_script(script: &str, stdin_text: Option<&str>) -> Result<std::process::Output, String> {
+fn run_powershell_script(
+    script: &str,
+    stdin_text: Option<&str>,
+) -> Result<std::process::Output, String> {
     let mut command = Command::new("powershell");
     command
         .args([
@@ -800,6 +1037,14 @@ fn run_powershell_script(script: &str, stdin_text: Option<&str>) -> Result<std::
         .wait_with_output()
         .map_err(|error| format!("Failed waiting for PowerShell helper: {error}"))
 }
+
+#[cfg(target_os = "windows")]
+fn apply_no_window(command: &mut Command) {
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_no_window(_command: &mut Command) {}
 
 #[cfg(target_os = "windows")]
 fn set_clipboard_text_windows(text: &str) -> Result<(), String> {
@@ -1178,7 +1423,9 @@ fn is_blocked_game_process_name(process_name: &str) -> bool {
         "rustclient",
     ];
 
-    BLOCKED_PREFIXES.iter().any(|prefix| base.starts_with(prefix))
+    BLOCKED_PREFIXES
+        .iter()
+        .any(|prefix| base.starts_with(prefix))
 }
 
 #[tauri::command]
@@ -1373,10 +1620,13 @@ async fn validate_piper(
     let piper_path = resolve_piper_path(&app, request.piper_path.as_deref())?;
 
     let output = tauri::async_runtime::spawn_blocking(move || {
-        Command::new(&piper_path)
+        let mut command = Command::new(&piper_path);
+        apply_no_window(&mut command);
+        command
             .arg("--help")
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        command
             .output()
             .map_err(|error| format!("Failed to execute Piper at '{piper_path}': {error}"))
     })
@@ -1458,7 +1708,10 @@ async fn get_coqui_status(
             voices.len()
         );
     } else if !error.trim().is_empty() {
-        warn!("[coqui.status] unavailable error={}", clip_text(&single_line(&error), 420));
+        warn!(
+            "[coqui.status] unavailable error={}",
+            clip_text(&single_line(&error), 420)
+        );
     } else {
         warn!("[coqui.status] unavailable without explicit error");
     }
@@ -1584,11 +1837,7 @@ async fn clone_coqui_voice(
     request: CoquiVoiceCloneRequest,
 ) -> Result<CoquiVoiceCloneResponse, String> {
     let speaker_id = sanitize_coqui_speaker_id(&request.speaker_id)?;
-    let requested_file = request
-        .file_name
-        .as_deref()
-        .unwrap_or_default()
-        .to_string();
+    let requested_file = request.file_name.as_deref().unwrap_or_default().to_string();
     info!(
         "[coqui.clone] request speaker={} model_hint={} file={} gpu={}",
         speaker_id,
@@ -1601,7 +1850,10 @@ async fn clone_coqui_voice(
         .map_err(|error| format!("Failed to decode uploaded voice sample: {error}"))?;
 
     if audio_bytes.is_empty() {
-        warn!("[coqui.clone] rejected empty sample for speaker={}", speaker_id);
+        warn!(
+            "[coqui.clone] rejected empty sample for speaker={}",
+            speaker_id
+        );
         return Err("Uploaded voice sample is empty".to_string());
     }
 
@@ -1630,8 +1882,8 @@ async fn clone_coqui_voice(
         .duration_since(UNIX_EPOCH)
         .map_err(|error| format!("Failed to compute timestamp: {error}"))?
         .as_millis();
-    let extension = extension_from_file_name(request.file_name.as_deref())
-        .unwrap_or_else(|| "wav".to_string());
+    let extension =
+        extension_from_file_name(request.file_name.as_deref()).unwrap_or_else(|| "wav".to_string());
     let upload_path = uploads_dir.join(format!("sample-{stamp}.{extension}"));
     let preview_path = previews_dir.join(format!("preview-{speaker_id}-{stamp}.wav"));
 
@@ -1762,10 +2014,7 @@ async fn preview_coqui_voice(
     info!(
         "[coqui.preview] start speaker={} model={}",
         speaker_id,
-        coqui
-            .model_name
-            .as_deref()
-            .unwrap_or(COQUI_DEFAULT_MODEL)
+        coqui.model_name.as_deref().unwrap_or(COQUI_DEFAULT_MODEL)
     );
     let wav_bytes = synthesize_with_coqui(&app, &coqui, text.clone()).await?;
     info!(
@@ -1963,9 +2212,9 @@ fn skip_non_alphanumeric(input: &str, mut index: usize) -> usize {
 }
 
 fn consume_ascii_token(input: &str, index: usize, token: &str) -> Option<usize> {
-  if token.is_empty() {
-      return Some(index);
-  }
+    if token.is_empty() {
+        return Some(index);
+    }
 
     let mut cursor = skip_non_alphanumeric(input, index);
     for expected in token.chars() {
@@ -1988,7 +2237,7 @@ fn consume_ascii_token(input: &str, index: usize, token: &str) -> Option<usize> 
         }
     }
 
-  Some(cursor)
+    Some(cursor)
 }
 
 fn consume_next_ascii_token(input: &str, index: usize) -> Option<(String, usize)> {
@@ -2095,14 +2344,7 @@ fn extract_wake_command(transcript: &str, assistant_name: &str) -> Option<String
     if name_tokens.is_empty() {
         name_tokens.push("lily".to_string());
     }
-    let wake_prefixes: [&[&str]; 6] = [
-        &["hey"],
-        &["hi"],
-        &["hello"],
-        &["ok"],
-        &["okay"],
-        &[],
-    ];
+    let wake_prefixes: [&[&str]; 6] = [&["hey"], &["hi"], &["hello"], &["ok"], &["okay"], &[]];
 
     let trimmed = transcript.trim_start();
     let start_cursor = transcript.len().saturating_sub(trimmed.len());
@@ -2299,9 +2541,7 @@ async fn run_assistant_pipeline(
     } else {
         "none"
     };
-    if !wake_only
-        && selected_text.is_none()
-    {
+    if !wake_only && selected_text.is_none() {
         #[cfg(target_os = "windows")]
         {
             match capture_selected_text_windows() {
@@ -2336,8 +2576,11 @@ async fn run_assistant_pipeline(
         state.set_recent_selection_context(selected.clone())?;
     }
     let selected_context_available = selected_text.is_some();
-    let selection_control_mode =
-        selected_context_available || command_mode || selection_edit_intent || selection_context_query_intent || pending_rewrite_present;
+    let selection_control_mode = selected_context_available
+        || command_mode
+        || selection_edit_intent
+        || selection_context_query_intent
+        || pending_rewrite_present;
     let selection_context_used = selected_context_available || pending_rewrite_present;
     let selected_chars = selected_text
         .as_ref()
@@ -2417,8 +2660,8 @@ async fn run_assistant_pipeline(
                         let rewrite = decision.rewrite_text;
                         state.set_recent_selection_context(rewrite.clone())?;
                         selection_rewrite = true;
-                        selection_context_cleared = state.clear_pending_selection_rewrite()?
-                            || selection_context_cleared;
+                        selection_context_cleared =
+                            state.clear_pending_selection_rewrite()? || selection_context_cleared;
                         skip_tts = true;
                         rewrite
                     }
@@ -2445,8 +2688,8 @@ async fn run_assistant_pipeline(
                         }
                     }
                     SelectionEditAction::NoEdit => {
-                        selection_context_cleared = state.clear_pending_selection_rewrite()?
-                            || selection_context_cleared;
+                        selection_context_cleared =
+                            state.clear_pending_selection_rewrite()? || selection_context_cleared;
                         if decision.message.trim().is_empty()
                             || looks_like_missing_selection_prompt(&decision.message)
                         {
@@ -2481,9 +2724,7 @@ async fn run_assistant_pipeline(
                     info!("[pipeline] pending rewrite canceled by user");
                     "Pending rewrite canceled.".to_string()
                 } else if is_affirmative_selection_confirmation(&command_for_ai) {
-                    let rewrite = state
-                        .take_pending_selection_rewrite()?
-                        .unwrap_or(pending);
+                    let rewrite = state.take_pending_selection_rewrite()?.unwrap_or(pending);
                     state.set_recent_selection_context(rewrite.clone())?;
                     selection_rewrite = true;
                     selection_context_cleared = true;
@@ -2623,7 +2864,10 @@ async fn run_assistant_pipeline(
 
     if skip_tts {
         let total_latency_ms = elapsed_ms(overall_start);
-        info!("[pipeline] complete (tts skipped) total_latency_ms={}", total_latency_ms);
+        info!(
+            "[pipeline] complete (tts skipped) total_latency_ms={}",
+            total_latency_ms
+        );
         state.set_last_pipeline_output(&transcript, &assistant_response)?;
         return Ok(AssistantPipelineResponse {
             mode: "assistant".to_string(),
@@ -3064,16 +3308,7 @@ fn is_negative_selection_confirmation(command: &str) -> bool {
     }
 
     [
-        "no",
-        "nope",
-        "cancel",
-        "stop",
-        "discard",
-        "skip",
-        "not now",
-        "leave it",
-        "do not",
-        "don t",
+        "no", "nope", "cancel", "stop", "discard", "skip", "not now", "leave it", "do not", "don t",
     ]
     .iter()
     .any(|phrase| contains_phrase(&normalized, phrase))
@@ -3223,21 +3458,8 @@ fn looks_like_direct_question(input: &str) -> bool {
     let normalized = normalize_text_for_echo_check(input);
     raw.contains('?')
         || [
-            "what ",
-            "who ",
-            "when ",
-            "where ",
-            "why ",
-            "how ",
-            "is ",
-            "are ",
-            "do ",
-            "does ",
-            "did ",
-            "can ",
-            "could ",
-            "would ",
-            "tell me ",
+            "what ", "who ", "when ", "where ", "why ", "how ", "is ", "are ", "do ", "does ",
+            "did ", "can ", "could ", "would ", "tell me ",
         ]
         .iter()
         .any(|prefix| normalized.starts_with(prefix))
@@ -3260,7 +3482,9 @@ fn looks_like_question_echo(command: &str, response: &str) -> bool {
     {
         return true;
     }
-    if response_stripped.ends_with(&command_stripped) || command_stripped.ends_with(&response_stripped) {
+    if response_stripped.ends_with(&command_stripped)
+        || command_stripped.ends_with(&response_stripped)
+    {
         return true;
     }
     false
@@ -3355,13 +3579,7 @@ fn remove_filler_words(input: &str) -> String {
         current = replace_case_insensitive_ascii(&current, phrase, " ");
     }
 
-    let single_fillers = [
-        "um",
-        "uh",
-        "erm",
-        "hmm",
-        "basically",
-    ];
+    let single_fillers = ["um", "uh", "erm", "hmm", "basically"];
 
     let mut kept = Vec::new();
     for token in current.split_whitespace() {
@@ -3487,16 +3705,7 @@ fn piper_digit_word(digit: char) -> Option<&'static str> {
 
 fn piper_hundreds_to_words(value: u16) -> String {
     let units = [
-        "zero",
-        "one",
-        "two",
-        "three",
-        "four",
-        "five",
-        "six",
-        "seven",
-        "eight",
-        "nine",
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
     ];
     let teens = [
         "ten",
@@ -3511,16 +3720,7 @@ fn piper_hundreds_to_words(value: u16) -> String {
         "nineteen",
     ];
     let tens = [
-        "",
-        "",
-        "twenty",
-        "thirty",
-        "forty",
-        "fifty",
-        "sixty",
-        "seventy",
-        "eighty",
-        "ninety",
+        "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
     ];
 
     let mut parts = Vec::new();
@@ -3798,7 +3998,9 @@ async fn synthesize_with_piper(
     if clean_text.is_empty() {
         return Err("No text provided for TTS".to_string());
     }
-    let numeric_stability_mode = clean_text.chars().any(|character| character.is_ascii_digit());
+    let numeric_stability_mode = clean_text
+        .chars()
+        .any(|character| character.is_ascii_digit());
     let normalized_text = normalize_piper_text_for_tts(&clean_text);
     if normalized_text.is_empty() {
         return Err("No text provided for Piper TTS after normalization".to_string());
@@ -3826,7 +4028,8 @@ async fn synthesize_with_piper(
         "high" => (0.88_f32, 0.94_f32),
         _ => (0.74_f32, 0.82_f32),
     };
-    let (emotion_speed_factor, emotion_noise_delta, emotion_noise_w_delta) = match emotion.as_str() {
+    let (emotion_speed_factor, emotion_noise_delta, emotion_noise_w_delta) = match emotion.as_str()
+    {
         "calm" => (0.92_f32, -0.08_f32, -0.08_f32),
         "happy" => (1.06_f32, 0.04_f32, 0.05_f32),
         "excited" => (1.14_f32, 0.10_f32, 0.11_f32),
@@ -3882,6 +4085,7 @@ async fn synthesize_with_piper(
 
         let run_once = |with_tuning: bool| -> Result<std::process::Output, String> {
             let mut command = Command::new(&piper_path);
+            apply_no_window(&mut command);
             command
                 .arg("--model")
                 .arg(&model_path)
@@ -4079,14 +4283,13 @@ async fn synthesize_with_coqui(
             .unwrap_or(false);
         info!(
             "[coqui.synthesize] bridge done device={} model_cached={}",
-            device,
-            model_cached
+            device, model_cached
         );
         result
     })?;
 
-    let wav_bytes =
-        fs::read(&output_path).map_err(|error| format!("Failed to read Coqui output WAV: {error}"))?;
+    let wav_bytes = fs::read(&output_path)
+        .map_err(|error| format!("Failed to read Coqui output WAV: {error}"))?;
     let _ = fs::remove_file(&output_path);
 
     info!(
@@ -4185,6 +4388,45 @@ fn resolve_piper_path(app: &AppHandle, requested_path: Option<&str>) -> Result<S
     }
 
     Err("Piper is not configured. Click 'Auto Setup Runtime' inside the app first.".to_string())
+}
+
+fn persisted_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let mut candidate_dirs: Vec<PathBuf> = Vec::new();
+
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(install_dir) = exe_path.parent() {
+            if let Some(install_parent) = install_dir.parent() {
+                candidate_dirs.push(install_parent.join(PERSISTED_SETTINGS_DIR_NAME));
+            }
+        }
+    }
+
+    if let Ok(app_data_dir) = app.path().app_data_dir() {
+        candidate_dirs.push(app_data_dir.join("persistent"));
+    }
+
+    if candidate_dirs.is_empty() {
+        return Err("Unable to resolve a writable settings directory.".to_string());
+    }
+
+    let mut last_error: Option<String> = None;
+    for candidate_dir in candidate_dirs {
+        match fs::create_dir_all(&candidate_dir) {
+            Ok(_) => {
+                return Ok(candidate_dir.join(PERSISTED_SETTINGS_FILE_NAME));
+            }
+            Err(error) => {
+                let message = format!(
+                    "Failed to create settings directory '{}': {error}",
+                    candidate_dir.display()
+                );
+                warn!("[settings] {}", message);
+                last_error = Some(message);
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| "Unable to create settings directory.".to_string()))
 }
 
 fn discover_installed_piper_path(app: &AppHandle) -> Result<Option<PathBuf>, String> {
@@ -4295,7 +4537,10 @@ fn ensure_coqui_bridge_script(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(script_path)
 }
 
-fn resolve_coqui_python_path(app: &AppHandle, requested_path: Option<&str>) -> Result<String, String> {
+fn resolve_coqui_python_path(
+    app: &AppHandle,
+    requested_path: Option<&str>,
+) -> Result<String, String> {
     if let Some(path) = requested_path
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -4312,11 +4557,15 @@ fn resolve_coqui_python_path(app: &AppHandle, requested_path: Option<&str>) -> R
 }
 
 fn detect_nvidia_gpu() -> bool {
-    let output = Command::new("nvidia-smi")
-        .arg("-L")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output();
+    let output = {
+        let mut command = Command::new("nvidia-smi");
+        apply_no_window(&mut command);
+        command
+            .arg("-L")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+    };
     let Ok(output) = output else {
         return false;
     };
@@ -4347,8 +4596,7 @@ fn setup_coqui_runtime_blocking(
             details.push("GPU runtime preference: enabled by user.".to_string());
         } else {
             details.push(
-                "GPU runtime preference: auto-enabled because NVIDIA GPU was detected."
-                    .to_string(),
+                "GPU runtime preference: auto-enabled because NVIDIA GPU was detected.".to_string(),
             );
         }
     } else {
@@ -4357,6 +4605,7 @@ fn setup_coqui_runtime_blocking(
 
     if !file_exists_with_content(&venv_python_path) {
         let mut create_venv = Command::new(bootstrap_python);
+        apply_no_window(&mut create_venv);
         create_venv
             .arg("-m")
             .arg("venv")
@@ -4373,7 +4622,10 @@ fn setup_coqui_runtime_blocking(
                 clip_text(merged.trim(), 420)
             ));
         }
-        details.push(format!("Created virtualenv at {}.", venv_dir.to_string_lossy()));
+        details.push(format!(
+            "Created virtualenv at {}.",
+            venv_dir.to_string_lossy()
+        ));
     }
 
     let venv_python = venv_python_path.to_string_lossy().to_string();
@@ -4567,12 +4819,9 @@ fn setup_coqui_runtime_blocking(
     Ok((venv_python, details.join(" ")))
 }
 
-fn run_python_command(
-    python_path: &str,
-    args: &[&str],
-    tts_home: &Path,
-) -> Result<String, String> {
+fn run_python_command(python_path: &str, args: &[&str], tts_home: &Path) -> Result<String, String> {
     let mut command = Command::new(python_path);
+    apply_no_window(&mut command);
     command.args(args);
     command
         .env("TTS_HOME", tts_home)
@@ -4610,14 +4859,17 @@ fn spawn_coqui_bridge_daemon(
     script_path: &Path,
     cache_dir: &Path,
 ) -> Result<CoquiBridgeDaemon, String> {
-    let mut child = Command::new(python_path)
+    let mut command = Command::new(python_path);
+    apply_no_window(&mut command);
+    command
         .arg(script_path)
         .arg("--daemon")
         .env("TTS_HOME", cache_dir)
         .env("COQUI_TOS_AGREED", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command
         .spawn()
         .map_err(|error| format!("Failed to start Coqui bridge daemon: {error}"))?;
 
@@ -4863,7 +5115,10 @@ fn parse_coqui_bridge_response(
             action,
             clip_text(&single_line(&merged), 420)
         );
-        return Err(format!("Coqui bridge failed: {}", clip_text(merged.trim(), 420)));
+        return Err(format!(
+            "Coqui bridge failed: {}",
+            clip_text(merged.trim(), 420)
+        ));
     }
 
     Ok(parsed.get("result").cloned().unwrap_or(Value::Null))
@@ -4907,14 +5162,17 @@ fn run_coqui_bridge(app: &AppHandle, python_path: &str, payload: Value) -> Resul
     fs::write(&request_path, request_json)
         .map_err(|error| format!("Failed to write Coqui request file: {error}"))?;
 
-    let output = Command::new(python_path)
+    let mut command = Command::new(python_path);
+    apply_no_window(&mut command);
+    command
         .arg(&script_path)
         .arg("--request")
         .arg(&request_path)
         .env("TTS_HOME", &cache_dir)
         .env("COQUI_TOS_AGREED", "1")
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    let output = command
         .output()
         .map_err(|error| format!("Failed to execute Coqui bridge: {error}"))?;
     let _ = fs::remove_file(&request_path);
@@ -4929,14 +5187,116 @@ fn run_coqui_bridge(app: &AppHandle, python_path: &str, payload: Value) -> Resul
             clip_text(&single_line(&stderr_text), 420)
         );
     }
-    let result = parse_coqui_bridge_response(
-        &action,
-        output.status.success(),
-        &stdout_text,
-        &stderr_text,
-    )?;
+    let result =
+        parse_coqui_bridge_response(&action, output.status.success(), &stdout_text, &stderr_text)?;
     info!("[coqui.bridge] success action={}", action);
     Ok(result)
+}
+
+fn normalize_release_version(tag: &str) -> String {
+    tag.trim().trim_start_matches('v').trim().to_string()
+}
+
+fn is_windows_installer_asset(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.ends_with(".exe") && !lower.ends_with(".exe.sig")
+}
+
+fn windows_installer_score(name: &str) -> u8 {
+    let lower = name.to_ascii_lowercase();
+    let mut score = 0_u8;
+    if lower.contains("setup") {
+        score += 6;
+    }
+    if lower.contains("installer") {
+        score += 4;
+    }
+    if lower.contains("nsis") {
+        score += 3;
+    }
+    if lower.contains("x64") || lower.contains("amd64") {
+        score += 1;
+    }
+    score
+}
+
+fn select_windows_installer_asset<'a>(
+    release: &'a GithubLatestReleaseResponse,
+) -> Option<&'a GithubReleaseAsset> {
+    release
+        .assets
+        .iter()
+        .filter(|asset| is_windows_installer_asset(&asset.name))
+        .max_by_key(|asset| (windows_installer_score(&asset.name), asset.name.len()))
+}
+
+fn parse_version_triplet(version: &str) -> Option<(u64, u64, u64)> {
+    let normalized = normalize_release_version(version);
+    let core = normalized
+        .split(['-', '+'])
+        .next()
+        .unwrap_or_default()
+        .trim();
+    let mut parts = core.split('.');
+    let major = parts.next()?.trim().parse::<u64>().ok()?;
+    let minor = parts.next()?.trim().parse::<u64>().ok()?;
+    let patch = parts.next()?.trim().parse::<u64>().ok()?;
+    Some((major, minor, patch))
+}
+
+fn is_newer_version(current: &str, latest: &str) -> bool {
+    match (
+        parse_version_triplet(current),
+        parse_version_triplet(latest),
+    ) {
+        (Some(current_parts), Some(latest_parts)) => latest_parts > current_parts,
+        _ => normalize_release_version(latest) != normalize_release_version(current),
+    }
+}
+
+fn sanitize_installer_file_name(name: &str) -> Option<String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut sanitized = String::with_capacity(trimmed.len() + 4);
+    for character in trimmed.chars() {
+        if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+            sanitized.push(character);
+        } else {
+            sanitized.push('_');
+        }
+    }
+
+    if sanitized.is_empty() {
+        return None;
+    }
+
+    if !sanitized.to_ascii_lowercase().ends_with(".exe") {
+        sanitized.push_str(".exe");
+    }
+
+    Some(sanitized)
+}
+
+fn resolve_installer_file_name(
+    asset_name: Option<&str>,
+    download_url: &str,
+    current_version: &str,
+) -> String {
+    if let Some(from_asset) = asset_name.and_then(sanitize_installer_file_name) {
+        return from_asset;
+    }
+
+    if let Some(last_segment) = download_url.rsplit('/').next() {
+        if let Some(from_url) = sanitize_installer_file_name(last_segment) {
+            return from_url;
+        }
+    }
+
+    let normalized_version = normalize_release_version(current_version);
+    format!("SlasshyWispr-{normalized_version}-update.exe")
 }
 
 fn merge_process_output(stdout: &[u8], stderr: &[u8]) -> String {
@@ -5338,14 +5698,19 @@ mod tests {
     fn transcript_refinement_auto_punctuation_toggle() {
         let disabled = refinement_request(false, false, false, false);
         let enabled = refinement_request(false, false, true, false);
-        assert_eq!(refine_transcript("please send update", &disabled), "please send update");
-        assert_eq!(refine_transcript("please send update", &enabled), "please send update.");
+        assert_eq!(
+            refine_transcript("please send update", &disabled),
+            "please send update"
+        );
+        assert_eq!(
+            refine_transcript("please send update", &enabled),
+            "please send update."
+        );
     }
 
     #[test]
     fn detects_wake_phrase_and_extracts_command() {
-        let command =
-            extract_wake_command("Hey Lily, send this to AI", "Lily").unwrap_or_default();
+        let command = extract_wake_command("Hey Lily, send this to AI", "Lily").unwrap_or_default();
         assert_eq!(command, "send this to AI");
     }
 
@@ -5374,7 +5739,8 @@ mod tests {
 
     #[test]
     fn tolerates_single_edit_short_name_variant() {
-        let command = extract_wake_command("Hi Lili improve this sentence", "Lily").unwrap_or_default();
+        let command =
+            extract_wake_command("Hi Lili improve this sentence", "Lily").unwrap_or_default();
         assert_eq!(command, "improve this sentence");
     }
 
@@ -5392,9 +5758,8 @@ mod tests {
 
     #[test]
     fn accepts_ok_prefix_and_multiple_name_tokens() {
-        let command =
-            extract_wake_command("Ok   Slasshy Wispr improve this", "Slasshy Wispr")
-                .unwrap_or_default();
+        let command = extract_wake_command("Ok   Slasshy Wispr improve this", "Slasshy Wispr")
+            .unwrap_or_default();
         assert_eq!(command, "improve this");
     }
 
@@ -5421,7 +5786,11 @@ mod tests {
     fn flags_suspicious_short_rewrite_for_confirmation() {
         let selected = "This is a fairly detailed paragraph that should not be replaced with a tiny generic output because it would lose meaning for the user.";
         let suspicious = "Looks good.";
-        assert!(is_rewrite_suspicious("make this better", selected, suspicious));
+        assert!(is_rewrite_suspicious(
+            "make this better",
+            selected,
+            suspicious
+        ));
         assert!(!is_rewrite_suspicious(
             "summarize this",
             selected,
@@ -5431,9 +5800,13 @@ mod tests {
 
     #[test]
     fn detects_edit_intent_for_selection_guard() {
-        assert!(seems_like_selection_edit_instruction("make this review better"));
+        assert!(seems_like_selection_edit_instruction(
+            "make this review better"
+        ));
         assert!(seems_like_selection_edit_instruction("rewrite this"));
-        assert!(!seems_like_selection_edit_instruction("what is the weather"));
+        assert!(!seems_like_selection_edit_instruction(
+            "what is the weather"
+        ));
     }
 }
 
@@ -5470,7 +5843,10 @@ fn copy_last_transcript_to_clipboard(app: &AppHandle) {
     let transcript = match state.last_transcript_snapshot() {
         Ok(value) => value,
         Err(error) => {
-            error!("[tray] failed to read last transcript: {}", single_line(&error));
+            error!(
+                "[tray] failed to read last transcript: {}",
+                single_line(&error)
+            );
             return;
         }
     };
@@ -5557,13 +5933,8 @@ fn build_tray_icon(app: &AppHandle) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
-    let dashboard = MenuItem::with_id(
-        app,
-        TRAY_MENU_DASHBOARD_ID,
-        "Dashboard",
-        true,
-        None::<&str>,
-    )?;
+    let dashboard =
+        MenuItem::with_id(app, TRAY_MENU_DASHBOARD_ID, "Dashboard", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, TRAY_MENU_QUIT_ID, "Quit", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
@@ -5623,7 +5994,8 @@ fn build_tray_icon(app: &AppHandle) -> tauri::Result<()> {
 pub fn run() {
     let app_state = AppState::new().expect("failed to initialize app state");
     let tts_setup_state = TtsSetupState::default();
-    let start_in_tray = std::env::args().any(|arg| arg.eq_ignore_ascii_case(STARTUP_ARG_START_IN_TRAY));
+    let start_in_tray =
+        std::env::args().any(|arg| arg.eq_ignore_ascii_case(STARTUP_ARG_START_IN_TRAY));
 
     tauri::Builder::default()
         .manage(app_state)
@@ -5631,9 +6003,8 @@ pub fn run() {
         .setup(move |app| {
             #[cfg(desktop)]
             {
-                app.handle().plugin(
-                    tauri_plugin_global_shortcut::Builder::new().build(),
-                )?;
+                app.handle()
+                    .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
             }
 
             app.handle().plugin(
@@ -5664,6 +6035,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             log_client_event,
+            check_for_app_update,
+            download_and_install_app_update,
+            load_persisted_local_settings,
+            save_persisted_local_settings,
             capture_selected_text,
             set_clipboard_text,
             configure_launch_at_login,
