@@ -65,7 +65,7 @@ git push origin v0.1.0
 ```
 
 The workflow validates that the tag version matches `src-tauri/tauri.conf.json` before publishing.
-Release notes are generated automatically from GitHub commit/PR history for each tag and attached to the release body.
+Release notes are generated automatically from commits between the previous tag and the new tag, grouped by type (features, fixes, CI, etc.), and attached to the release body.
 
 Updater source defaults:
 

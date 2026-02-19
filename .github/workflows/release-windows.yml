@@ -114,17 +114,119 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const tag = process.env.TAG_NAME;
-
-            const notesResponse = await github.rest.repos.generateReleaseNotes({
+            const releaseList = await github.paginate(github.rest.repos.listReleases, {
               owner,
               repo,
-              tag_name: tag,
+              per_page: 100,
             });
 
-            const notesBody = (notesResponse.data.body || "").trim();
-            const fallbackBody = `## Changes\n\nRelease ${tag}.`;
-            const finalBody = `${notesBody || fallbackBody}\n`;
-            fs.writeFileSync("release-assets/release-notes.md", finalBody, { encoding: "utf8" });
+            const previousRelease = releaseList.find(
+              (release) => !release.draft && !release.prerelease && release.tag_name !== tag,
+            );
+            const previousTag = previousRelease?.tag_name || null;
+
+            let commits = [];
+            if (previousTag) {
+              const compare = await github.rest.repos.compareCommitsWithBasehead({
+                owner,
+                repo,
+                basehead: `${previousTag}...${tag}`,
+              });
+              commits = compare.data.commits || [];
+            } else {
+              const currentCommit = await github.rest.repos.getCommit({
+                owner,
+                repo,
+                ref: tag,
+              });
+              commits = [currentCommit.data];
+            }
+
+            const categories = [
+              { key: "feat", title: "Features" },
+              { key: "fix", title: "Fixes" },
+              { key: "perf", title: "Performance" },
+              { key: "refactor", title: "Refactors" },
+              { key: "docs", title: "Documentation" },
+              { key: "test", title: "Tests" },
+              { key: "ci", title: "CI" },
+              { key: "build", title: "Build" },
+              { key: "chore", title: "Chores" },
+            ];
+            const grouped = new Map();
+            for (const category of categories) {
+              grouped.set(category.title, []);
+            }
+            grouped.set("Other", []);
+
+            const conventionalCommitRegex = /^([a-zA-Z]+)(?:\([^)]+\))?!?:\s*(.+)$/;
+            const hiddenPrefixes = ["chore(release): ship", "chore(release): bump"];
+
+            for (const commit of commits) {
+              const sha = commit.sha?.slice(0, 7) || "unknown";
+              const rawTitle = (commit.commit?.message || "").split("\n")[0].trim();
+              if (!rawTitle) {
+                continue;
+              }
+
+              const normalizedTitle = rawTitle.toLowerCase();
+              if (hiddenPrefixes.some((prefix) => normalizedTitle.startsWith(prefix))) {
+                continue;
+              }
+
+              const author = commit.author?.login ? ` by @${commit.author.login}` : "";
+              const link = commit.html_url || `https://github.com/${owner}/${repo}/commit/${commit.sha}`;
+              const line = `- ${rawTitle} ([\`${sha}\`](${link}))${author}`;
+
+              const match = rawTitle.match(conventionalCommitRegex);
+              if (!match) {
+                grouped.get("Other").push(line);
+                continue;
+              }
+
+              const typeKey = match[1].toLowerCase();
+              const category = categories.find((entry) => entry.key === typeKey);
+              if (category) {
+                grouped.get(category.title).push(line);
+              } else {
+                grouped.get("Other").push(line);
+              }
+            }
+
+            const output = [];
+            output.push("## What's Changed");
+            output.push("");
+
+            let hasEntries = false;
+            for (const category of [...categories.map((entry) => entry.title), "Other"]) {
+              const lines = grouped.get(category);
+              if (!lines || lines.length === 0) {
+                continue;
+              }
+              hasEntries = true;
+              output.push(`### ${category}`);
+              output.push(...lines);
+              output.push("");
+            }
+
+            if (!hasEntries) {
+              output.push(`- Release ${tag}`);
+              output.push("");
+            }
+
+            if (previousTag) {
+              output.push(
+                `**Full Changelog**: https://github.com/${owner}/${repo}/compare/${previousTag}...${tag}`,
+              );
+            } else {
+              output.push(
+                `**Full Changelog**: https://github.com/${owner}/${repo}/commits/${tag}`,
+              );
+            }
+
+            fs.writeFileSync("release-assets/release-notes.md", `${output.join("\n").trim()}\n`, {
+              encoding: "utf8",
+            });
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
