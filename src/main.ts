@@ -1529,6 +1529,7 @@ let activeTtsPlayback: ActiveTtsPlayback | null = null;
 let voiceIndicatorWindow: WebviewWindow | null = null;
 let selectionAssistantWindow: WebviewWindow | null = null;
 let latestSelectionPopupPayload: SelectionPopupPayload | null = null;
+let selectionPopupTokenCounter = 0;
 let dockLayout = loadDockLayout();
 let hotkeyCaptureActive = false;
 const hotkeyCaptureModifiers = {
@@ -1667,6 +1668,10 @@ selectionPopupChannel.onmessage = (event: MessageEvent<unknown>) => {
       selectionPopupChannel.postMessage({
         kind: "payload",
         payload: latestSelectionPopupPayload,
+      });
+    } else {
+      selectionPopupChannel.postMessage({
+        kind: "clear",
       });
     }
     return;
@@ -6965,8 +6970,15 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       if (selectionAssistantWindow) {
         try {
           await selectionAssistantWindow.hide();
-        } catch {
-          // Ignore hide failures.
+        } catch (hideError) {
+          logClientEvent(`selection.popup hide failed: ${asErrorMessage(hideError)}`);
+          try {
+            await selectionAssistantWindow.close();
+          } catch (closeError) {
+            logClientEvent(`selection.popup close fallback failed: ${asErrorMessage(closeError)}`);
+          } finally {
+            selectionAssistantWindow = null;
+          }
         }
       }
     }
@@ -7545,12 +7557,119 @@ async function applySelectionPopupSize(win: WebviewWindow, payload: SelectionPop
   await win.setSize(new LogicalSize(SELECTION_POPUP_WIDTH, nextHeight));
 }
 
+function nextSelectionPopupToken(): number {
+  selectionPopupTokenCounter += 1;
+  return selectionPopupTokenCounter;
+}
+
+function normalizeIntentText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function includesAnyIntentPhrase(text: string, phrases: readonly string[]): boolean {
+  return phrases.some((phrase) => text.includes(phrase));
+}
+
+function looksLikeDraftingRequest(transcript: string): boolean {
+  const normalized = normalizeIntentText(transcript);
+  if (!normalized) {
+    return false;
+  }
+
+  const composeVerbs = [
+    "write",
+    "draft",
+    "compose",
+    "create",
+    "generate",
+    "make",
+    "prepare",
+  ];
+  const composeTargets = [
+    "email",
+    "mail",
+    "message",
+    "reply",
+    "letter",
+    "review",
+    "proposal",
+    "summary",
+    "description",
+    "caption",
+    "post",
+    "bio",
+    "application",
+  ];
+
+  const hasComposeVerb = includesAnyIntentPhrase(normalized, composeVerbs);
+  const hasComposeTarget = includesAnyIntentPhrase(normalized, composeTargets);
+  if (hasComposeVerb && hasComposeTarget) {
+    return true;
+  }
+
+  if (
+    /\b(make|rewrite|edit|improve|polish|refine|fix)\b/.test(normalized) &&
+    /\b(this|it|text|review|email|message|paragraph|sentence)\b/.test(normalized)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function looksLikeDraftResponse(assistantResponse: string): boolean {
+  const trimmed = assistantResponse.trim();
+  if (trimmed.length < 24) {
+    return false;
+  }
+
+  if (/^(subject:|dear\s|hello\s|hi\s|to:)/i.test(trimmed)) {
+    return true;
+  }
+
+  const lines = trimmed.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length >= 3) {
+    return true;
+  }
+
+  return trimmed.length >= 120;
+}
+
+function inferAnswerPopupTitle(transcript: string): string {
+  const normalized = normalizeIntentText(transcript);
+  if (normalized.includes("email") || normalized.includes("mail")) {
+    return "Email Draft Ready";
+  }
+  if (normalized.includes("review")) {
+    return "Review Draft Ready";
+  }
+  return "Draft Ready";
+}
+
+function shouldOpenAnswerPopup(response: AssistantPipelineResponse): boolean {
+  if (response.mode !== "assistant") {
+    return false;
+  }
+  if (response.selectionRewrite || response.selectionPending || response.selectionContextUsed) {
+    return false;
+  }
+  if (!response.assistantResponse.trim()) {
+    return false;
+  }
+
+  return looksLikeDraftingRequest(response.transcript) && looksLikeDraftResponse(response.assistantResponse);
+}
+
 function buildSelectionPopupPayload(response: AssistantPipelineResponse): SelectionPopupPayload | null {
-  if (!response.selectionRewrite && !response.selectionPending) {
+  if (!response.selectionRewrite && !response.selectionPending && !shouldOpenAnswerPopup(response)) {
     return null;
   }
 
-  const token = Date.now();
+  const token = nextSelectionPopupToken();
 
   if (response.selectionPending) {
     return {
@@ -7567,6 +7686,16 @@ function buildSelectionPopupPayload(response: AssistantPipelineResponse): Select
       token,
       mode: "rewrite",
       title: "Rewrite Result",
+      text: response.assistantResponse,
+      audioBase64: "",
+    };
+  }
+
+  if (shouldOpenAnswerPopup(response)) {
+    return {
+      token,
+      mode: "answer",
+      title: inferAnswerPopupTitle(response.transcript),
       text: response.assistantResponse,
       audioBase64: "",
     };

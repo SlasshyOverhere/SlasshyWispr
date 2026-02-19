@@ -130,6 +130,16 @@
         }
       }
 
+      function clearRender() {
+        latestToken = 0;
+        resultText.textContent = "";
+        replaceBtn.hidden = true;
+        if (activeVoice) {
+          activeVoice.pause();
+          activeVoice = null;
+        }
+      }
+
       copyBtn.addEventListener("click", () => {
         channel.postMessage({ kind: "action", action: "copy-result" });
       });
@@ -144,7 +154,12 @@
 
       channel.onmessage = (event) => {
         const data = event.data;
-        if (!data || data.kind !== "payload") return;
+        if (!data) return;
+        if (data.kind === "clear") {
+          clearRender();
+          return;
+        }
+        if (data.kind !== "payload") return;
         render(data.payload);
       };
 

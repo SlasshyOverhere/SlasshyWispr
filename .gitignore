@@ -13,6 +13,7 @@ dist/
 dist-ssr/
 src-tauri/target/
 tmp-voices/
+prompts/
 *.local
 
 # Environment and secrets

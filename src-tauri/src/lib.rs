@@ -3838,35 +3838,6 @@ fn skip_non_alphanumeric(input: &str, mut index: usize) -> usize {
     index
 }
 
-fn consume_ascii_token(input: &str, index: usize, token: &str) -> Option<usize> {
-    if token.is_empty() {
-        return Some(index);
-    }
-
-    let mut cursor = skip_non_alphanumeric(input, index);
-    for expected in token.chars() {
-        if cursor >= input.len() {
-            return None;
-        }
-        let mut iterator = input[cursor..].chars();
-        let current = iterator.next()?;
-        if !current.eq_ignore_ascii_case(&expected) {
-            return None;
-        }
-        cursor += current.len_utf8();
-    }
-
-    if cursor < input.len() {
-        if let Some(next) = input[cursor..].chars().next() {
-            if next.is_ascii_alphanumeric() {
-                return None;
-            }
-        }
-    }
-
-    Some(cursor)
-}
-
 fn consume_next_ascii_token(input: &str, index: usize) -> Option<(String, usize)> {
     let mut cursor = skip_non_alphanumeric(input, index);
     if cursor >= input.len() {
@@ -4056,6 +4027,35 @@ fn consume_assistant_name_token(input: &str, index: usize, expected: &str) -> Op
     }
 }
 
+fn wake_prefix_token_matches(expected: &str, actual: &str) -> bool {
+    if expected.eq_ignore_ascii_case(actual) {
+        return true;
+    }
+
+    let expected_normalized = expected.to_ascii_lowercase();
+    let actual_normalized = actual.to_ascii_lowercase();
+    if (expected_normalized == "ok" && actual_normalized == "okay")
+        || (expected_normalized == "okay" && actual_normalized == "ok")
+    {
+        return true;
+    }
+
+    if expected_normalized.len() >= 3
+        && within_one_edit_ascii(&expected_normalized, &actual_normalized)
+    {
+        return true;
+    }
+
+    false
+}
+
+fn is_optional_wake_leading_filler(token: &str) -> bool {
+    matches!(
+        token,
+        "um" | "uh" | "umm" | "hmm" | "hm" | "ah" | "so" | "well" | "please"
+    )
+}
+
 fn extract_wake_command(transcript: &str, assistant_name: &str) -> Option<String> {
     let mut name_tokens = wake_name_tokens(assistant_name);
     if name_tokens.is_empty() {
@@ -4065,42 +4065,62 @@ fn extract_wake_command(transcript: &str, assistant_name: &str) -> Option<String
 
     let trimmed = transcript.trim_start();
     let start_cursor = transcript.len().saturating_sub(trimmed.len());
+    let mut candidate_cursors = vec![start_cursor];
+    let mut filler_cursor = start_cursor;
+    for _ in 0..3 {
+        let Some((token, next_cursor)) = consume_next_ascii_token(transcript, filler_cursor) else {
+            break;
+        };
+        if !is_optional_wake_leading_filler(&token) {
+            break;
+        }
+        candidate_cursors.push(next_cursor);
+        filler_cursor = next_cursor;
+    }
 
     for prefix in wake_prefixes {
-        let mut cursor = start_cursor;
-        let mut matched = true;
+        for prefix_start in &candidate_cursors {
+            let mut cursor = *prefix_start;
+            let mut matched = true;
 
-        for token in prefix {
-            let Some(next_cursor) = consume_ascii_token(transcript, cursor, token) else {
-                matched = false;
-                break;
-            };
-            cursor = next_cursor;
+            for token in prefix {
+                let Some((actual, next_cursor)) = consume_next_ascii_token(transcript, cursor)
+                else {
+                    matched = false;
+                    break;
+                };
+                if !wake_prefix_token_matches(token, &actual) {
+                    matched = false;
+                    break;
+                }
+                cursor = next_cursor;
+            }
+
+            if !matched {
+                continue;
+            }
+
+            for token in &name_tokens {
+                let Some(next_cursor) = consume_assistant_name_token(transcript, cursor, token)
+                else {
+                    matched = false;
+                    break;
+                };
+                cursor = next_cursor;
+            }
+
+            if !matched {
+                continue;
+            }
+
+            let remainder = transcript[cursor..]
+                .trim_start_matches(|character: char| {
+                    character.is_whitespace() || matches!(character, ',' | ':' | ';' | '-' | '.')
+                })
+                .trim()
+                .to_string();
+            return Some(remainder);
         }
-
-        if !matched {
-            continue;
-        }
-
-        for token in &name_tokens {
-            let Some(next_cursor) = consume_assistant_name_token(transcript, cursor, token) else {
-                matched = false;
-                break;
-            };
-            cursor = next_cursor;
-        }
-
-        if !matched {
-            continue;
-        }
-
-        let remainder = transcript[cursor..]
-            .trim_start_matches(|character: char| {
-                character.is_whitespace() || matches!(character, ',' | ':' | ';' | '-' | '.')
-            })
-            .trim()
-            .to_string();
-        return Some(remainder);
     }
 
     None
@@ -4718,6 +4738,47 @@ async fn run_assistant_pipeline(
         }
     }
 
+    if !wake_only
+        && !selection_context_used
+        && !selection_rewrite
+        && !selection_pending
+        && seems_like_draft_generation_instruction(&command_for_ai)
+        && looks_like_incomplete_draft_output(&assistant_response)
+    {
+        warn!(
+            "[pipeline] detected incomplete draft output; retrying with strict compose fallback command={}",
+            clip_text(&command_for_ai, 220)
+        );
+        match generate_compose_draft_fallback(
+            &state.http,
+            &pipeline_mode.ai,
+            &command_for_ai,
+            temperature,
+            max_tokens,
+        )
+        .await
+        {
+            Ok(recovered) if !recovered.trim().is_empty() => {
+                assistant_response = recovered;
+                ai_latency_ms = elapsed_ms(ai_start);
+                info!(
+                    "[pipeline] compose fallback success latency_ms={} response_chars={}",
+                    ai_latency_ms,
+                    assistant_response.chars().count()
+                );
+            }
+            Ok(_) => {
+                warn!("[pipeline] compose fallback returned empty response");
+            }
+            Err(error) => {
+                warn!(
+                    "[pipeline] compose fallback failed: {}",
+                    clip_text(&single_line(&error), 320)
+                );
+            }
+        }
+    }
+
     if assistant_response.trim().is_empty() {
         return Err("AI model returned an empty response".to_string());
     }
@@ -5215,34 +5276,107 @@ async fn generate_assistant_response_online(
       ]
     });
 
-    let response = client
-        .post(format!("{api_base_url}/chat/completions"))
-        .bearer_auth(api_key)
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|error| format!("Failed to call AI endpoint: {error}"))?;
+    let mut last_error = String::new();
+    for attempt in 0..2 {
+        let response = match client
+            .post(format!("{api_base_url}/chat/completions"))
+            .bearer_auth(api_key)
+            .json(&payload)
+            .timeout(Duration::from_secs(35))
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                last_error = format!("Failed to call AI endpoint: {error}");
+                if attempt == 0 {
+                    warn!(
+                        "[pipeline] online ai transport error; retrying: {}",
+                        clip_text(&single_line(&last_error), 280)
+                    );
+                    std::thread::sleep(Duration::from_millis(350));
+                    continue;
+                }
+                warn!(
+                    "[pipeline] online ai request failed after retry: {}",
+                    clip_text(&single_line(&last_error), 320)
+                );
+                return Err(last_error);
+            }
+        };
 
-    let status = response.status();
-    let body = response
-        .text()
-        .await
-        .map_err(|error| format!("Failed to parse AI response body: {error}"))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|error| format!("Failed to parse AI response body: {error}"))?;
 
-    if !status.is_success() {
-        return Err(format!(
-            "AI request failed ({status}): {}",
-            clip_text(&single_line(&body), 420)
-        ));
+        if !status.is_success() {
+            let message = format!(
+                "AI request failed ({status}): {}",
+                clip_text(&single_line(&body), 420)
+            );
+            if attempt == 0 && matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) {
+                warn!(
+                    "[pipeline] online ai temporary failure; retrying status={} body={}",
+                    status,
+                    clip_text(&single_line(&body), 220)
+                );
+                last_error = message;
+                std::thread::sleep(Duration::from_millis(450));
+                continue;
+            }
+            warn!(
+                "[pipeline] online ai request failed status={} body={}",
+                status,
+                clip_text(&single_line(&body), 320)
+            );
+            return Err(message);
+        }
+
+        let payload: Value = serde_json::from_str(&body)
+            .map_err(|error| format!("Invalid AI JSON response: {error}"))?;
+        let content = extract_chat_content(&payload)
+            .map(|text| text.trim().to_string())
+            .filter(|text| !text.is_empty());
+        if let Some(value) = content {
+            return Ok(value);
+        }
+        let missing_content_error = "AI response is missing usable text content.".to_string();
+        let top_level_keys = payload
+            .as_object()
+            .map(|object| object.keys().cloned().collect::<Vec<_>>().join(","))
+            .unwrap_or_else(|| "<non-object>".to_string());
+        let message_keys = payload
+            .pointer("/choices/0/message")
+            .and_then(Value::as_object)
+            .map(|object| object.keys().cloned().collect::<Vec<_>>().join(","))
+            .unwrap_or_else(|| "<none>".to_string());
+        if attempt == 0 {
+            warn!(
+                "[pipeline] online ai missing text content; retrying top_keys={} message_keys={} body_preview={}",
+                top_level_keys,
+                message_keys,
+                clip_text(&single_line(&body), 360)
+            );
+            last_error = missing_content_error;
+            std::thread::sleep(Duration::from_millis(350));
+            continue;
+        }
+        warn!(
+            "[pipeline] online ai response missing message content top_keys={} message_keys={} body_preview={}",
+            top_level_keys,
+            message_keys,
+            clip_text(&single_line(&body), 360)
+        );
+        return Err(missing_content_error);
     }
 
-    let payload: Value = serde_json::from_str(&body)
-        .map_err(|error| format!("Invalid AI JSON response: {error}"))?;
-
-    extract_chat_content(&payload)
-        .map(|text| text.trim().to_string())
-        .filter(|text| !text.is_empty())
-        .ok_or_else(|| "AI response is missing choices[0].message.content".to_string())
+    if last_error.is_empty() {
+        Err("AI request failed unexpectedly.".to_string())
+    } else {
+        Err(last_error)
+    }
 }
 
 async fn generate_assistant_response_ollama(
@@ -5364,6 +5498,33 @@ async fn generate_direct_answer_fallback(
         strict_prompt,
         temperature.clamp(0.0, 0.35),
         max_tokens.clamp(64, 320),
+    )
+    .await
+}
+
+async fn generate_compose_draft_fallback(
+    client: &Client,
+    ai_mode: &AiModeConfig,
+    request: &str,
+    temperature: f32,
+    max_tokens: u32,
+) -> Result<String, String> {
+    let strict_prompt = "You are a professional writing assistant for email and document drafting.
+- Return a complete, ready-to-send draft.
+- Never output bracket placeholders such as [Name], [Boss's Name], [Date], or [Your Name].
+- If a specific recipient name is unknown, use a neutral salutation like 'Dear Manager,'.
+- Finish every sentence; do not stop mid-sentence.
+- For email requests, include a clear Subject line, concise body, and closing.
+- Return only the final draft text.";
+
+    let draft_max_tokens = std::cmp::max(max_tokens, 420).clamp(180, 900);
+    generate_assistant_response(
+        client,
+        ai_mode,
+        request,
+        strict_prompt,
+        temperature.clamp(0.0, 0.5),
+        draft_max_tokens,
     )
     .await
 }
@@ -5673,6 +5834,107 @@ fn seems_like_selection_edit_instruction(command: &str) -> bool {
         if asks_make || has_edit_verb {
             return true;
         }
+    }
+
+    false
+}
+
+fn seems_like_draft_generation_instruction(command: &str) -> bool {
+    let normalized = normalize_ascii_words(command);
+    if normalized.is_empty() {
+        return false;
+    }
+
+    let draft_verbs = [
+        "write", "draft", "compose", "create", "generate", "make", "prepare", "send",
+    ];
+    let draft_targets = [
+        "email",
+        "mail",
+        "letter",
+        "message",
+        "application",
+        "review",
+        "proposal",
+        "summary",
+        "description",
+        "cover letter",
+        "follow up",
+    ];
+
+    let has_verb = draft_verbs
+        .iter()
+        .any(|phrase| contains_phrase(&normalized, phrase));
+    let has_target = draft_targets
+        .iter()
+        .any(|phrase| contains_phrase(&normalized, phrase));
+    if has_verb && has_target {
+        return true;
+    }
+
+    if contains_phrase(&normalized, "make this")
+        && [
+            "better",
+            "professional",
+            "formal",
+            "longer",
+            "shorter",
+            "clearer",
+            "improve",
+        ]
+        .iter()
+        .any(|phrase| contains_phrase(&normalized, phrase))
+    {
+        return true;
+    }
+
+    false
+}
+
+fn looks_like_incomplete_draft_output(response: &str) -> bool {
+    let trimmed = response.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+
+    let normalized = normalize_ascii_words(trimmed);
+    if normalized.is_empty() {
+        return true;
+    }
+
+    if trimmed.contains('[') && trimmed.contains(']') {
+        return true;
+    }
+
+    if [
+        "boss s name",
+        "your name",
+        "recipient name",
+        "insert name",
+        "insert date",
+        "date here",
+    ]
+    .iter()
+    .any(|phrase| contains_phrase(&normalized, phrase))
+    {
+        return true;
+    }
+
+    let lower_trimmed = trimmed.to_ascii_lowercase();
+    if lower_trimmed.ends_with(" i am")
+        || lower_trimmed.ends_with(" i will")
+        || lower_trimmed.ends_with(" i have")
+        || lower_trimmed.ends_with(" thanks")
+    {
+        return true;
+    }
+
+    let non_empty_lines = trimmed
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count();
+    if contains_phrase(&normalized, "subject") && non_empty_lines < 4 {
+        return true;
     }
 
     false
@@ -6610,29 +6872,61 @@ async fn synthesize_with_coqui(
     Ok(wav_bytes)
 }
 
-fn extract_chat_content(payload: &Value) -> Option<String> {
-    let content = payload.pointer("/choices/0/message/content")?;
-
-    if let Some(as_text) = content.as_str() {
-        return Some(as_text.to_string());
-    }
-
-    if let Some(parts) = content.as_array() {
-        let mut combined = Vec::new();
-
-        for part in parts {
-            if let Some(text_part) = part.as_str() {
-                combined.push(text_part.to_string());
-                continue;
-            }
-
-            if let Some(text_part) = part.get("text").and_then(Value::as_str) {
-                combined.push(text_part.to_string());
+fn extract_text_from_chat_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
             }
         }
+        Value::Array(items) => {
+            let mut combined = Vec::new();
+            for item in items {
+                if let Some(text) = extract_text_from_chat_value(item) {
+                    if !text.trim().is_empty() {
+                        combined.push(text);
+                    }
+                }
+            }
+            if combined.is_empty() {
+                None
+            } else {
+                Some(combined.join("\n"))
+            }
+        }
+        Value::Object(object) => {
+            for key in ["text", "content", "output_text", "value", "refusal", "message", "delta"] {
+                if let Some(candidate) = object.get(key) {
+                    if let Some(text) = extract_text_from_chat_value(candidate) {
+                        return Some(text);
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
 
-        if !combined.is_empty() {
-            return Some(combined.join("\n"));
+fn extract_chat_content(payload: &Value) -> Option<String> {
+    let candidate_paths = [
+        "/choices/0/message/content",
+        "/choices/0/message",
+        "/choices/0/text",
+        "/choices/0/delta/content",
+        "/output_text",
+        "/output/0/content",
+        "/response/output_text",
+    ];
+
+    for path in candidate_paths {
+        if let Some(candidate) = payload.pointer(path) {
+            if let Some(text) = extract_text_from_chat_value(candidate) {
+                return Some(text);
+            }
         }
     }
 
@@ -11588,6 +11882,20 @@ mod tests {
     }
 
     #[test]
+    fn tolerates_leading_filler_before_wake_phrase() {
+        let command =
+            extract_wake_command("Um hey Lily create an email for me", "Lily").unwrap_or_default();
+        assert_eq!(command, "create an email for me");
+    }
+
+    #[test]
+    fn tolerates_small_wake_prefix_misspelling() {
+        let command = extract_wake_command("He Lily draft a follow up email", "Lily")
+            .unwrap_or_default();
+        assert_eq!(command, "draft a follow up email");
+    }
+
+    #[test]
     fn parses_selection_edit_decision_json() {
         let raw =
             r#"{"action":"replace_now","rewrite":"Improved sentence.","message":"Applying edit."}"#;
@@ -11634,6 +11942,79 @@ mod tests {
         assert!(!seems_like_selection_edit_instruction(
             "what is the weather"
         ));
+    }
+
+    #[test]
+    fn detects_draft_generation_instruction_for_compose_guard() {
+        assert!(seems_like_draft_generation_instruction(
+            "create an email for sick leave"
+        ));
+        assert!(seems_like_draft_generation_instruction(
+            "write a follow up letter"
+        ));
+        assert!(!seems_like_draft_generation_instruction(
+            "what is email marketing"
+        ));
+    }
+
+    #[test]
+    fn flags_incomplete_draft_outputs() {
+        let incomplete = "Subject: Sick Leave - Unable to Attend Work Tomorrow\n\nDear [Boss's Name],\n\nI am";
+        assert!(looks_like_incomplete_draft_output(incomplete));
+
+        let complete = "Subject: Sick Leave Request for Tomorrow\n\nDear Manager,\n\nI am feeling unwell and will not be able to attend work tomorrow. I will monitor urgent messages and hand over critical items before the day starts.\n\nBest regards,\nSuman";
+        assert!(!looks_like_incomplete_draft_output(complete));
+    }
+
+    #[test]
+    fn extract_chat_content_supports_nested_text_value_parts() {
+        let payload = serde_json::json!({
+            "choices": [
+                {
+                    "message": {
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": { "value": "Draft complete." }
+                            }
+                        ]
+                    }
+                }
+            ]
+        });
+        assert_eq!(extract_chat_content(&payload).as_deref(), Some("Draft complete."));
+    }
+
+    #[test]
+    fn extract_chat_content_supports_legacy_choices_text() {
+        let payload = serde_json::json!({
+            "choices": [
+                {
+                    "text": "Legacy completion output"
+                }
+            ]
+        });
+        assert_eq!(
+            extract_chat_content(&payload).as_deref(),
+            Some("Legacy completion output")
+        );
+    }
+
+    #[test]
+    fn extract_chat_content_supports_refusal_field() {
+        let payload = serde_json::json!({
+            "choices": [
+                {
+                    "message": {
+                        "refusal": "I cannot help with that request."
+                    }
+                }
+            ]
+        });
+        assert_eq!(
+            extract_chat_content(&payload).as_deref(),
+            Some("I cannot help with that request.")
+        );
     }
 
     #[test]
