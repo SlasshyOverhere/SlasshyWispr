@@ -15,7 +15,9 @@ Speak naturally, get clean transcription, generate AI responses, and hear replie
 
 ## Demo Video
 
-- Local file in this repo: [`slasshywispr_demo.mp4`](./slasshywispr_demo.mp4)
+<video src="https://github.com/SlasshyOverhere/SlasshyWispr/raw/main/slasshywispr_demo.mp4" controls preload="metadata" width="920"></video>
+
+If the embedded player does not render in your client, open it directly: [`slasshywispr_demo.mp4`](./slasshywispr_demo.mp4)
 
 ## Key Features
 
