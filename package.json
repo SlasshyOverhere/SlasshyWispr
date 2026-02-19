@@ -1,12 +1,13 @@
 {
   "name": "slasshy-desktop-assistant",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "pretauri:dev": "node scripts/ensure-valid-dev-exe.mjs",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
   },

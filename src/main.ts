@@ -20,8 +20,17 @@ type CaptureMode = "single-tap" | "push-to-talk";
 type ThemeMode = "system" | "light" | "dark";
 type StyleProfile = "adaptive" | "professional" | "casual" | "concise" | "developer";
 type MainPage = "home" | "dictionary" | "snippets" | "notes";
-type SettingsPane = "general" | "system" | "update-security" | "tts" | "pipeline";
+type SettingsPane =
+  | "general"
+  | "models"
+  | "online"
+  | "offline"
+  | "hybrid"
+  | "update-security"
+  | "pipeline";
 type TtsEngine = "piper" | "coqui";
+type RuntimeMode = "online" | "local";
+type DictationLanguageMode = "single" | "multiple";
 type PiperQuality = "fast" | "balanced" | "high";
 type PiperEmotion = "neutral" | "calm" | "happy" | "excited" | "serious" | "sad";
 type CoquiQuality = "fast" | "balanced" | "high";
@@ -29,6 +38,7 @@ type CoquiEmotion = "neutral" | "calm" | "happy" | "excited" | "serious" | "sad"
 type TtsProfilePane = "piper" | "coqui";
 type HoldSource = "notes-button" | "hotkey";
 type TeamScope = "personal" | "shared";
+type LocalSttHardwareAdvisorChoice = "suggestion" | "selected" | "cancel";
 
 interface AssistantInfoResponse {
   baseUrl: string;
@@ -91,6 +101,97 @@ interface ProviderModelsResponse {
   models: string[];
 }
 
+interface OllamaPullResponse {
+  baseUrl: string;
+  model: string;
+  ok: boolean;
+  status: string;
+}
+
+interface OllamaStatusResponse {
+  installed: boolean;
+  running: boolean;
+  version: string;
+  details: string;
+}
+
+interface LocalSttDownloadResponse {
+  model: string;
+  provider: string;
+  method: string;
+  localPath: string;
+  details: string;
+}
+
+interface LocalSttDeleteResponse {
+  model: string;
+  repoId: string;
+  removed: boolean;
+  localPath: string;
+  details: string;
+}
+
+interface LocalSttOpenPathResponse {
+  model: string;
+  repoId: string;
+  localPath: string;
+  opened: boolean;
+  details: string;
+}
+
+interface LocalSttWarmupResponse {
+  model: string;
+  provider: string;
+  warmed: boolean;
+  details: string;
+}
+
+interface LocalSttDeactivateResponse {
+  model: string;
+  provider: string;
+  deactivated: boolean;
+  details: string;
+}
+
+interface LocalSttRuntimeStateResponse {
+  loaded: boolean;
+  daemonCount: number;
+  loadedDaemonCount: number;
+  details: string;
+}
+
+interface LocalSttHardwareAdviceResponse {
+  cpuName: string;
+  logicalCores: number;
+  totalRamGb: number;
+  nvidiaGpuDetected: boolean;
+  gpuName: string;
+  gpuVramGb: number;
+  performanceTier: string;
+  slasshySuggestionModel: string;
+  suggestedModels: string[];
+  cautionModels: string[];
+  selectedModelWarning: string;
+  details: string;
+}
+
+interface LocalSttDownloadStatusResponse {
+  active: boolean;
+  completed: boolean;
+  success: boolean;
+  model: string;
+  repoId: string;
+  stage: string;
+  message: string;
+  currentFile: string;
+  downloadedBytes: number;
+  totalBytes: number;
+  filesCompleted: number;
+  filesTotal: number;
+  progressPercent: number;
+  updatedAtMs: number;
+}
+
 interface CoquiVoiceCloneResponse {
   speakerId: string;
   durationSeconds: number;
@@ -150,6 +251,12 @@ interface PersistedSettings {
   apiBaseUrl: string;
   sttModelName: string;
   aiModelName: string;
+  runtimeMode: RuntimeMode;
+  sttRuntimeMode: RuntimeMode;
+  aiRuntimeMode: RuntimeMode;
+  localOllamaBaseUrl: string;
+  localOllamaModel: string;
+  localSttModel: string;
   rememberApiKey: boolean;
   captureMode: CaptureMode;
   piperPath: string;
@@ -157,6 +264,8 @@ interface PersistedSettings {
   pushToTalkHotkey: string;
   commandHotkey: string;
   dictationLanguage: string;
+  dictationLanguageMode: DictationLanguageMode;
+  dictationLanguageAllowList: string[];
   styleProfile: StyleProfile;
   systemPrompt: string;
   temperature: number;
@@ -284,6 +393,7 @@ const USAGE_STORAGE_KEY = "slasshy-wispr-usage-v1";
 const DOCK_LAYOUT_STORAGE_KEY = "slasshy-wispr-dock-layout-v2";
 const HOME_HISTORY_STORAGE_KEY = "slasshy-wispr-home-history-v1";
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "slasshy-wispr-sidebar-collapsed-v1";
+const LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY = "slasshy-wispr-local-stt-hardware-advisor-v1";
 const EMPTY_HISTORY_HINT = "No turns yet. Start dictating to see your recent activity.";
 const LEGACY_DEFAULT_SYSTEM_PROMPT =
   "You are SlasshyWispr, a helpful desktop voice assistant. Keep replies concise and easy to speak aloud.";
@@ -293,20 +403,55 @@ const DEFAULT_MAX_TOKENS = 320;
 const DEFAULT_API_BASE_URL = "";
 const DEFAULT_STT_MODEL_NAME = "";
 const DEFAULT_AI_MODEL_NAME = "";
+const DEFAULT_RUNTIME_MODE: RuntimeMode = "online";
+const DEFAULT_LOCAL_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 const DEFAULT_HOTKEY = "Ctrl+Space";
 const DEFAULT_COMMAND_HOTKEY = "Ctrl+Shift+Space";
 const DEFAULT_CAPTURE_MODE: CaptureMode = "push-to-talk";
 const DEFAULT_STYLE_PROFILE: StyleProfile = "adaptive";
 const DEFAULT_TTS_ENGINE: TtsEngine = "piper";
 const DEFAULT_ASSISTANT_NAME = "Lily";
-const DEFAULT_PIPER_SPEED = 1.0;
-const DEFAULT_PIPER_QUALITY: PiperQuality = "balanced";
+const DEFAULT_PIPER_SPEED = 1.08;
+const DEFAULT_PIPER_QUALITY: PiperQuality = "fast";
 const DEFAULT_PIPER_EMOTION: PiperEmotion = "neutral";
 const DEFAULT_COQUI_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2";
 const DEFAULT_COQUI_LANGUAGE = "en";
 const DEFAULT_COQUI_SPEED = 1.0;
 const DEFAULT_COQUI_QUALITY: CoquiQuality = "balanced";
 const DEFAULT_COQUI_EMOTION: CoquiEmotion = "neutral";
+const ZERO_PYTHON_MODE = true;
+const ZERO_PYTHON_TTS_NOTICE = "Coqui is disabled in zero-Python mode. Piper is active.";
+const DEFAULT_DICTATION_LANGUAGE_MODE: DictationLanguageMode = "single";
+const DICTATION_LANGUAGE_OPTIONS: Array<{ code: string; label: string }> = [
+  { code: "en", label: "English" },
+  { code: "es", label: "Spanish" },
+  { code: "fr", label: "French" },
+  { code: "de", label: "German" },
+  { code: "it", label: "Italian" },
+  { code: "pt", label: "Portuguese" },
+  { code: "hi", label: "Hindi" },
+  { code: "bn", label: "Bengali" },
+  { code: "ja", label: "Japanese" },
+  { code: "ko", label: "Korean" },
+  { code: "zh", label: "Chinese" },
+  { code: "ar", label: "Arabic" },
+  { code: "ru", label: "Russian" },
+];
+const DICTATION_LANGUAGE_LABELS: Record<string, string> = Object.fromEntries(
+  DICTATION_LANGUAGE_OPTIONS.map((item) => [item.code, item.label]),
+);
+const LOCAL_STT_MODEL_SIZE_LABELS: Record<string, string> = {
+  "nvidia/parakeet-tdt-0.6b-v3": "Parakeet v3 (478 MB)",
+  "nvidia/parakeet-tdt_ctc-110m": "Parakeet v2 (473 MB)",
+  // Backward compatibility label for older persisted settings.
+  "openai/whisper-large-v3": "Whisper Large (1.1 GB)",
+  "openai/whisper-medium": "Whisper Medium (492 MB)",
+  "openai/whisper-small": "Whisper Small (487 MB)",
+  "UsefulSensors/moonshine-base": "Moonshine Base (58.0 MB)",
+  "openai/whisper-large-v3-turbo": "Whisper Turbo (1.6 GB)",
+  "nvidia/parakeet-tdt-0.6b-v2": "Parakeet v2 (473 MB)",
+  "FunAudioLLM/SenseVoiceSmall": "SenseVoice (160 MB)",
+};
 const MAX_COQUI_REFERENCE_SECONDS = 30;
 const MAX_RECORDING_MS = 45_000;
 const MAX_HISTORY_ITEMS = 12;
@@ -336,6 +481,10 @@ if (!appRoot) {
   throw new Error("Missing #app root element");
 }
 
+document.body.classList.add("shadcn-ui");
+document.body.classList.add("mono-ui");
+document.body.classList.add("overhaul-v3");
+
 appRoot.innerHTML = `
   <div class="app-frame">
     <header class="app-titlebar">
@@ -355,11 +504,8 @@ appRoot.innerHTML = `
     <div class="flow-shell">
     <aside class="flow-sidebar">
       <div class="window-controls">
-        <button id="toggleSidebarBtn" class="chrome-icon" type="button" aria-label="Toggle sidebar">
+        <button id="toggleSidebarBtn" class="chrome-icon" type="button" data-label="Collapse sidebar" aria-label="Collapse sidebar">
           <span class="ico-grid"></span>
-        </button>
-        <button id="openProfileBtn" class="chrome-icon" type="button" aria-label="Open settings">
-          <span class="ico-user"></span>
         </button>
       </div>
 
@@ -370,12 +516,15 @@ appRoot.innerHTML = `
       </div>
 
       <nav class="nav-main" aria-label="Main navigation">
-        <button class="nav-item is-active" data-page-nav="home" type="button"><span class="nav-glyph">⌂</span>Home</button>
-        <button class="nav-item" data-page-nav="dictionary" type="button"><span class="nav-glyph">◱</span>Dictionary</button>
+        <button class="nav-item is-active" data-page-nav="home" data-label="Home" aria-label="Home" type="button"><span class="nav-glyph">⌂</span>Home</button>
+        <button class="nav-item" data-page-nav="dictionary" data-label="Dictionary" aria-label="Dictionary" type="button"><span class="nav-glyph">◱</span>Dictionary</button>
+        <button class="nav-item" data-page-nav="snippets" data-label="Snippets" aria-label="Snippets" type="button"><span class="nav-glyph">⌘</span>Snippets</button>
+        <button class="nav-item" data-page-nav="notes" data-label="Notes" aria-label="Notes" type="button"><span class="nav-glyph">✎</span>Notes</button>
       </nav>
 
       <nav class="nav-secondary" aria-label="Secondary navigation">
-        <button id="openSettingsBtn" class="secondary-link" type="button"><span class="secondary-glyph">⚙</span>Settings</button>
+        <button id="sidebarToggleLocalSttBtn" class="secondary-link" data-label="Load local STT model" aria-label="Load local STT model" type="button"><span id="sidebarToggleLocalSttGlyph" class="secondary-glyph">▶</span><span id="sidebarToggleLocalSttLabel">Load STT</span></button>
+        <button id="openSettingsBtn" class="secondary-link" data-label="Settings" aria-label="Settings" type="button"><span class="secondary-glyph">⚙</span>Settings</button>
       </nav>
     </aside>
 
@@ -383,27 +532,11 @@ appRoot.innerHTML = `
       <section class="flow-page is-active" data-page="home">
         <div class="flow-page-inner home-page">
           <div class="welcome-row">
-            <h1>Welcome back, Suman</h1>
             <div class="metric-pills" aria-label="Activity metrics">
               <span id="metricWords">0 words</span>
               <span id="metricWpm">0 WPM</span>
             </div>
           </div>
-
-          <article class="focus-card home-setup-banner">
-            <button class="home-setup-close" type="button" aria-label="Dismiss setup guidance">×</button>
-            <div class="home-setup-copy">
-              <h2>Using SlasshyWispr around other people?</h2>
-              <p>Set up your hardware to dictate anywhere</p>
-              <button class="dark-action" type="button">Improve my set up</button>
-            </div>
-            <div class="home-setup-art" aria-hidden="true">
-              <span class="setup-art-bubble"></span>
-              <span class="setup-art-bubble"></span>
-              <span class="setup-art-card"></span>
-              <span class="setup-art-card"></span>
-            </div>
-          </article>
 
           <section class="home-output">
             <article class="home-output-card">
@@ -421,7 +554,12 @@ appRoot.innerHTML = `
               <h3 id="activityDate">February 18, 2026</h3>
               <button id="clearHistoryBtn" class="inline-link" type="button">Clear</button>
             </div>
-            <div id="conversationLog" class="conversation-log">
+            <div class="log-head" aria-hidden="true">
+              <span>Time</span>
+              <span>Source</span>
+              <span>Content</span>
+            </div>
+            <div id="conversationLog" class="conversation-log" role="log" aria-live="polite">
               <p class="empty-hint">No turns yet. Start dictating to see your recent activity.</p>
             </div>
           </section>
@@ -503,19 +641,46 @@ appRoot.innerHTML = `
     </main>
   </div>
 
+  <div id="sttLoadOverlay" class="stt-load-overlay" hidden>
+    <div class="stt-load-dialog" role="dialog" aria-modal="true" aria-labelledby="sttLoadTitle">
+      <span class="stt-load-spinner" aria-hidden="true"></span>
+      <h3 id="sttLoadTitle">Loading Local STT Model</h3>
+      <p id="sttLoadModel" class="stt-load-model">Model: -</p>
+      <p id="sttLoadDetail" class="stt-load-detail">
+        Preparing runtime. Load time depends on your CPU/GPU, RAM, and model size.
+      </p>
+    </div>
+  </div>
+
+  <div id="sttHardwareAdvisorOverlay" class="stt-advisor-overlay" hidden>
+    <div class="stt-advisor-dialog" role="dialog" aria-modal="true" aria-labelledby="sttHardwareAdvisorTitle">
+      <h3 id="sttHardwareAdvisorTitle">Local STT Hardware Recommendation</h3>
+      <p id="sttHardwareAdvisorHardware" class="stt-advisor-hardware">Checking your hardware profile...</p>
+      <p id="sttHardwareAdvisorSuggestion" class="stt-advisor-suggestion">SlasshyWispr Suggestion: -</p>
+      <p id="sttHardwareAdvisorWarning" class="stt-advisor-warning">
+        Warning: Higher models can be system-hungry and can feel slow on basic hardware.
+      </p>
+      <p id="sttHardwareAdvisorList" class="stt-advisor-list">Recommended models: -</p>
+      <div class="stt-advisor-actions">
+        <button id="sttHardwareAdvisorUseSuggestionBtn" class="dark-action" type="button">Use suggestion</button>
+        <button id="sttHardwareAdvisorContinueBtn" class="ghost-action" type="button">Continue selected</button>
+        <button id="sttHardwareAdvisorCancelBtn" class="ghost-action" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <div id="settingsOverlay" class="settings-overlay" hidden>
     <div class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsPaneTitle">
       <aside class="settings-sidebar">
         <p class="settings-kicker">Settings</p>
         <nav class="settings-nav" aria-label="Settings sections">
           <button class="settings-nav-item is-active" data-settings-pane-nav="general" type="button">General</button>
-          <button class="settings-nav-item" data-settings-pane-nav="system" type="button">System</button>
+          <button class="settings-nav-item" data-settings-pane-nav="models" type="button">Models</button>
           <button class="settings-nav-item" data-settings-pane-nav="update-security" type="button">Update and Security</button>
-          <button class="settings-nav-item" data-settings-pane-nav="tts" type="button">TTS</button>
           <button class="settings-nav-item" data-settings-pane-nav="pipeline" type="button">Pipeline</button>
         </nav>
 
-        <p class="settings-version">SlasshyWispr v0.1.1</p>
+        <p class="settings-version">SlasshyWispr v0.1.2</p>
       </aside>
 
       <section class="settings-main">
@@ -553,8 +718,23 @@ appRoot.innerHTML = `
                     <span>Microphone Device</span>
                     <select id="microphoneSelect"></select>
                   </label>
+                  <button id="refreshMicsBtn" class="ghost-action mini" type="button">Refresh</button>
+                </div>
+              </div>
+              <button id="toggleMicEditorBtn" class="ghost-action" type="button">Change</button>
+            </div>
+
+            <div class="settings-row">
+              <div>
+                <h3>Dictation languages</h3>
+                <p id="dictationLanguageSummary">Whisper language mode: Auto-detect.</p>
+                <div class="inline-editor">
+                  <div class="capture-mode-pills">
+                    <label><input id="dictationLanguageModeSingle" name="dictationLanguageMode" type="radio" value="single" />Single language</label>
+                    <label><input id="dictationLanguageModeMultiple" name="dictationLanguageMode" type="radio" value="multiple" />Multiple languages</label>
+                  </div>
                   <label class="field">
-                    <span>Dictation language</span>
+                    <span>Primary language</span>
                     <select id="dictationLanguageSelect">
                       <option value="">Auto-detect</option>
                       <option value="en">English</option>
@@ -572,10 +752,27 @@ appRoot.innerHTML = `
                       <option value="ru">Russian</option>
                     </select>
                   </label>
-                  <button id="refreshMicsBtn" class="ghost-action mini" type="button">Refresh</button>
+                  <div id="dictationLanguageMultiWrap" class="dictation-language-multi" hidden>
+                    <p class="dictation-language-multi-label">Allowed languages (Whisper will stay inside these)</p>
+                    <div class="dictation-language-grid">
+                      <label><input type="checkbox" value="en" data-dictation-lang-option />English</label>
+                      <label><input type="checkbox" value="es" data-dictation-lang-option />Spanish</label>
+                      <label><input type="checkbox" value="fr" data-dictation-lang-option />French</label>
+                      <label><input type="checkbox" value="de" data-dictation-lang-option />German</label>
+                      <label><input type="checkbox" value="it" data-dictation-lang-option />Italian</label>
+                      <label><input type="checkbox" value="pt" data-dictation-lang-option />Portuguese</label>
+                      <label><input type="checkbox" value="hi" data-dictation-lang-option />Hindi</label>
+                      <label><input type="checkbox" value="bn" data-dictation-lang-option />Bengali</label>
+                      <label><input type="checkbox" value="ja" data-dictation-lang-option />Japanese</label>
+                      <label><input type="checkbox" value="ko" data-dictation-lang-option />Korean</label>
+                      <label><input type="checkbox" value="zh" data-dictation-lang-option />Chinese</label>
+                      <label><input type="checkbox" value="ar" data-dictation-lang-option />Arabic</label>
+                      <label><input type="checkbox" value="ru" data-dictation-lang-option />Russian</label>
+                    </div>
+                    <p class="notice">Online and Offline Whisper will decode only the selected languages.</p>
+                  </div>
                 </div>
               </div>
-              <button id="toggleMicEditorBtn" class="ghost-action" type="button">Change</button>
             </div>
 
             <div class="settings-row">
@@ -609,7 +806,7 @@ appRoot.innerHTML = `
           </div>
         </section>
 
-        <section class="settings-pane" data-settings-pane="system" hidden>
+        <section class="settings-pane" data-settings-pane="general" hidden>
           <h3 class="settings-section-title">App settings</h3>
           <div class="settings-card">
             <label class="switch-row"><span>Launch app at login</span><input id="launchAtLoginToggle" class="switch-input" type="checkbox" /></label>
@@ -634,49 +831,6 @@ appRoot.innerHTML = `
                 <option value="dark">Dark</option>
               </select>
             </label>
-          </div>
-
-          <h3 class="settings-section-title">Provider models</h3>
-          <div class="settings-card">
-            <div class="settings-row">
-              <div class="full-row">
-                <h3>Provider models</h3>
-                <div class="compact-grid">
-                  <label class="field">
-                    <span>API Base URL</span>
-                    <input id="apiBaseUrlInput" type="text" placeholder="Use default provider URL" autocomplete="off" />
-                  </label>
-                  <label class="field">
-                    <span>STT model</span>
-                    <input id="sttModelInput" type="text" placeholder="Use default STT model" autocomplete="off" />
-                  </label>
-                </div>
-                <label class="field">
-                  <span>Provider API Key</span>
-                  <input id="apiKeyInput" type="password" placeholder="Paste your API key" autocomplete="off" />
-                </label>
-                <label class="checkbox-field">
-                  <input id="rememberApiKeyInput" type="checkbox" />
-                  <span>Remember API key locally on this machine</span>
-                </label>
-                <label class="field">
-                  <span>AI model</span>
-                  <input id="aiModelInput" type="text" placeholder="Use default AI model" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span>Model catalog</span>
-                  <select id="providerModelCatalogSelect">
-                    <option value="">Fetch models to load catalog...</option>
-                  </select>
-                </label>
-                <div class="button-row">
-                  <button id="fetchProviderModelsBtn" class="ghost-action" type="button">Fetch models</button>
-                  <button id="applyModelToAiBtn" class="ghost-action" type="button">Use for AI</button>
-                  <button id="applyModelToSttBtn" class="ghost-action" type="button">Use for STT</button>
-                </div>
-                <p class="notice">Set API base URL, STT model, and AI model to run the pipeline.</p>
-              </div>
-            </div>
           </div>
 
           <h3 class="settings-section-title">Sound</h3>
@@ -722,17 +876,146 @@ appRoot.innerHTML = `
           </div>
         </section>
 
-        <section class="settings-pane" data-settings-pane="tts" hidden>
+        <section class="settings-pane" data-settings-pane="models" hidden>
+          <h3 class="settings-section-title">Models</h3>
+          <div class="settings-card">
+            <div class="settings-row">
+              <div class="full-row">
+                <h3>Runtime routing</h3>
+                <p>Choose STT and AI runtime independently.</p>
+                <div class="capture-mode-pills runtime-mode-pills">
+                  <span>STT:</span>
+                  <label><input id="sttRuntimeModeOnline" name="sttRuntimeModeProfile" type="radio" value="online" />Online</label>
+                  <label><input id="sttRuntimeModeOffline" name="sttRuntimeModeProfile" type="radio" value="offline" />Offline</label>
+                </div>
+                <div class="capture-mode-pills runtime-mode-pills">
+                  <span>AI:</span>
+                  <label><input id="aiRuntimeModeOnline" name="aiRuntimeModeProfile" type="radio" value="online" />Online</label>
+                  <label><input id="aiRuntimeModeOffline" name="aiRuntimeModeProfile" type="radio" value="offline" />Offline</label>
+                </div>
+                <p id="runtimeModeNotice" class="notice">
+                  Online mode is active. API base URL + API key will be used for STT and AI.
+                </p>
+              </div>
+            </div>
+
+            <div id="onlineProviderSection" class="settings-row">
+              <div class="full-row">
+                <h3>Online provider models</h3>
+                <div class="compact-grid">
+                  <label class="field" data-online-field="base-url">
+                    <span>API Base URL</span>
+                    <input id="apiBaseUrlInput" type="text" placeholder="Use default provider URL" autocomplete="off" />
+                  </label>
+                  <label class="field" data-online-field="stt-model">
+                    <span>STT model</span>
+                    <input id="sttModelInput" type="text" placeholder="Use default STT model" autocomplete="off" />
+                  </label>
+                </div>
+                <label class="field">
+                  <span>Provider API Key</span>
+                  <input id="apiKeyInput" type="password" placeholder="Paste your API key" autocomplete="off" />
+                </label>
+                <label class="checkbox-field">
+                  <input id="rememberApiKeyInput" type="checkbox" />
+                  <span>Remember API key locally on this machine</span>
+                </label>
+                <label class="field" data-online-field="ai-model">
+                  <span>AI model</span>
+                  <input id="aiModelInput" type="text" placeholder="Use default AI model" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>Model catalog</span>
+                  <select id="providerModelCatalogSelect">
+                    <option value="">Fetch models to load catalog...</option>
+                  </select>
+                </label>
+                <div class="button-row">
+                  <button id="fetchProviderModelsBtn" class="ghost-action" type="button">Fetch models</button>
+                  <button id="applyModelToAiBtn" class="ghost-action" type="button">Use for AI</button>
+                  <button id="applyModelToSttBtn" class="ghost-action" type="button">Use for STT</button>
+                </div>
+                <p id="onlineProviderModeNotice" class="notice">Used only in online mode.</p>
+              </div>
+            </div>
+
+            <div id="offlineOllamaSection" class="settings-row">
+              <div class="full-row">
+                <h3>Ollama (local AI / offline LLM)</h3>
+                <div class="compact-grid">
+                  <label class="field">
+                    <span>Ollama Base URL</span>
+                    <input id="localOllamaBaseUrlInput" type="text" placeholder="${DEFAULT_LOCAL_OLLAMA_BASE_URL}" autocomplete="off" />
+                  </label>
+                  <label class="field">
+                    <span>Ollama model</span>
+                    <input id="localOllamaModelInput" type="text" placeholder="llama3.1:8b, qwen2.5:7b, etc." autocomplete="off" />
+                  </label>
+                </div>
+                <label class="field">
+                  <span>Ollama model catalog</span>
+                  <select id="localOllamaModelCatalogSelect">
+                    <option value="">Fetch models to load catalog...</option>
+                  </select>
+                </label>
+                <p id="ollamaStatusNotice" class="notice">Ollama status has not been checked yet.</p>
+                <div class="button-row">
+                  <button id="checkOllamaStatusBtn" class="ghost-action" type="button">Check Ollama status</button>
+                  <button id="installOllamaBtn" class="ghost-action" type="button">Install Ollama</button>
+                  <button id="fetchOllamaModelsBtn" class="ghost-action" type="button">Fetch Ollama models</button>
+                  <button id="useOllamaModelBtn" class="ghost-action" type="button">Use selected model</button>
+                  <button id="pullOllamaModelBtn" class="ghost-action" type="button">Pull/download model</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="offlineSttSection" class="settings-row">
+              <div class="full-row">
+                <h3>Local STT (Native Parakeet)</h3>
+                <label class="field">
+                  <span>Selected local STT model</span>
+                  <input id="localSttModelInput" type="text" placeholder="Select a model from catalog below" autocomplete="off" readonly />
+                </label>
+                <label class="field">
+                  <span>Model catalog (NVIDIA Parakeet)</span>
+                  <select id="localSttModelCatalogSelect">
+                    <option value="">Loading built-in model catalog...</option>
+                  </select>
+                </label>
+                <div class="button-row">
+                  <button id="downloadLocalSttModelBtn" class="ghost-action" type="button">Download & install selected model</button>
+                  <button id="deleteLocalSttModelBtn" class="ghost-action" type="button">Delete selected model</button>
+                  <button id="openLocalSttModelPathBtn" class="ghost-action" type="button">Open selected model folder</button>
+                </div>
+                <div class="stt-download-status" aria-live="polite">
+                  <div class="stt-download-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+                    <span id="localSttDownloadProgressBar" class="stt-download-fill"></span>
+                  </div>
+                  <p id="localSttDownloadProgressText" class="notice">No local STT download in progress.</p>
+                </div>
+                <p id="localSttDownloadNotice" class="notice" style="display: none;">
+                  Pick a model from catalog and install it directly from inside the app.
+                </p>
+                <p class="notice">
+                  Available models: Parakeet v3 (478 MB), Parakeet v2 (473 MB).
+                </p>
+              </div>
+            </div>
+            <p id="offlineRuntimeModeNotice" class="notice">
+              In local mode, pipeline uses Ollama for AI and your selected local STT model for transcription.
+            </p>
+          </div>
+
           <h3 class="settings-section-title">Setup</h3>
           <div id="ttsBootstrapCard" class="settings-card tts-bootstrap-card">
             <div class="tts-bootstrap-head">
               <div>
                 <h3>TTS Runtime Bootstrap</h3>
                 <p>
-                  Use one button to install and configure Piper (main) + Coqui (beta) runtime dependencies with live progress logs.
+                  Use one button to install and configure Piper runtime dependencies with live progress logs.
                 </p>
               </div>
-              <button id="setupAllTtsBtn" class="dark-action" type="button">Setup all TTS runtimes</button>
+              <button id="setupAllTtsBtn" class="dark-action" type="button">Setup TTS runtime</button>
             </div>
             <p id="ttsSetupStatus" class="notice">Waiting for setup.</p>
             <div id="ttsSetupLogs" class="setup-log-list" aria-live="polite">
@@ -747,7 +1030,7 @@ appRoot.innerHTML = `
                 <span>Active engine profile</span>
                 <select id="ttsEngineSelect">
                   <option value="piper">Piper (Main)</option>
-                  <option value="coqui">Coqui (Beta)</option>
+                  <option value="coqui">Coqui (Disabled)</option>
                 </select>
               </label>
 
@@ -965,16 +1248,35 @@ function requiredElement<T extends Element>(selector: string): T {
 function applySidebarCollapsed(collapsed: boolean): void {
   document.body.classList.toggle("sidebar-collapsed", collapsed);
   toggleSidebarBtn.setAttribute("aria-pressed", collapsed ? "true" : "false");
+  const sidebarActionLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  toggleSidebarBtn.setAttribute("aria-label", sidebarActionLabel);
+  toggleSidebarBtn.dataset.label = sidebarActionLabel;
+  syncSidebarHoverTitles(collapsed);
 }
 
 const settingsOverlay = requiredElement<HTMLDivElement>("#settingsOverlay");
 const toggleSidebarBtn = requiredElement<HTMLButtonElement>("#toggleSidebarBtn");
-const openProfileBtn = requiredElement<HTMLButtonElement>("#openProfileBtn");
 const openSettingsBtn = requiredElement<HTMLButtonElement>("#openSettingsBtn");
+const sidebarToggleLocalSttBtn = requiredElement<HTMLButtonElement>("#sidebarToggleLocalSttBtn");
+const sidebarToggleLocalSttGlyph = requiredElement<HTMLSpanElement>("#sidebarToggleLocalSttGlyph");
+const sidebarToggleLocalSttLabel = requiredElement<HTMLSpanElement>("#sidebarToggleLocalSttLabel");
+const sttLoadOverlay = requiredElement<HTMLDivElement>("#sttLoadOverlay");
+const sttLoadModel = requiredElement<HTMLParagraphElement>("#sttLoadModel");
+const sttLoadDetail = requiredElement<HTMLParagraphElement>("#sttLoadDetail");
+const sttHardwareAdvisorOverlay = requiredElement<HTMLDivElement>("#sttHardwareAdvisorOverlay");
+const sttHardwareAdvisorHardware = requiredElement<HTMLParagraphElement>("#sttHardwareAdvisorHardware");
+const sttHardwareAdvisorSuggestion = requiredElement<HTMLParagraphElement>("#sttHardwareAdvisorSuggestion");
+const sttHardwareAdvisorWarning = requiredElement<HTMLParagraphElement>("#sttHardwareAdvisorWarning");
+const sttHardwareAdvisorList = requiredElement<HTMLParagraphElement>("#sttHardwareAdvisorList");
+const sttHardwareAdvisorUseSuggestionBtn = requiredElement<HTMLButtonElement>(
+  "#sttHardwareAdvisorUseSuggestionBtn",
+);
+const sttHardwareAdvisorContinueBtn = requiredElement<HTMLButtonElement>(
+  "#sttHardwareAdvisorContinueBtn",
+);
+const sttHardwareAdvisorCancelBtn = requiredElement<HTMLButtonElement>("#sttHardwareAdvisorCancelBtn");
 const closeSettingsBtn = requiredElement<HTMLButtonElement>("#closeSettingsBtn");
 const settingsPaneTitle = requiredElement<HTMLElement>("#settingsPaneTitle");
-const homeSetupBanner = document.querySelector<HTMLElement>(".home-setup-banner");
-const homeSetupCloseBtn = document.querySelector<HTMLButtonElement>(".home-setup-close");
 const ttsBootstrapCard = requiredElement<HTMLDivElement>("#ttsBootstrapCard");
 const ttsProfilesArea = requiredElement<HTMLDivElement>("#ttsProfilesArea");
 const ttsSetupStatus = requiredElement<HTMLParagraphElement>("#ttsSetupStatus");
@@ -996,6 +1298,9 @@ const settingsNavButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>("[data-settings-pane-nav]"),
 );
 const settingsPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-settings-pane]"));
+const sidebarLabeledButtons = Array.from(
+  document.querySelectorAll<HTMLElement>(".flow-sidebar [data-label]"),
+);
 
 const statusPill = requiredElement<HTMLDivElement>("#statusPill");
 const statusDetail = requiredElement<HTMLParagraphElement>("#statusDetail");
@@ -1005,6 +1310,22 @@ const noticeText = requiredElement<HTMLParagraphElement>("#noticeText");
 const activityDate = requiredElement<HTMLElement>("#activityDate");
 const metricWords = requiredElement<HTMLElement>("#metricWords");
 const metricWpm = requiredElement<HTMLElement>("#metricWpm");
+
+function syncSidebarHoverTitles(collapsed: boolean): void {
+  for (const target of sidebarLabeledButtons) {
+    const label = target.dataset.label?.trim();
+    if (!label) {
+      continue;
+    }
+
+    if (collapsed) {
+      target.setAttribute("title", label);
+      continue;
+    }
+
+    target.removeAttribute("title");
+  }
+}
 
 const dictionaryList = requiredElement<HTMLDivElement>("#dictionaryList");
 const dictionaryForm = requiredElement<HTMLFormElement>("#dictionaryForm");
@@ -1034,7 +1355,21 @@ const apiKeyInput = requiredElement<HTMLInputElement>("#apiKeyInput");
 const apiBaseUrlInput = requiredElement<HTMLInputElement>("#apiBaseUrlInput");
 const sttModelInput = requiredElement<HTMLInputElement>("#sttModelInput");
 const aiModelInput = requiredElement<HTMLInputElement>("#aiModelInput");
+const onlineProviderSection = requiredElement<HTMLDivElement>("#onlineProviderSection");
+const onlineProviderModeNotice = requiredElement<HTMLParagraphElement>("#onlineProviderModeNotice");
+const onlineSttModelField = requiredElement<HTMLElement>('[data-online-field="stt-model"]');
+const onlineAiModelField = requiredElement<HTMLElement>('[data-online-field="ai-model"]');
 const providerModelCatalogSelect = requiredElement<HTMLSelectElement>("#providerModelCatalogSelect");
+const localOllamaBaseUrlInput = requiredElement<HTMLInputElement>("#localOllamaBaseUrlInput");
+const localOllamaModelInput = requiredElement<HTMLInputElement>("#localOllamaModelInput");
+const offlineOllamaSection = requiredElement<HTMLDivElement>("#offlineOllamaSection");
+const offlineSttSection = requiredElement<HTMLDivElement>("#offlineSttSection");
+const offlineRuntimeModeNotice = requiredElement<HTMLParagraphElement>("#offlineRuntimeModeNotice");
+const localOllamaModelCatalogSelect = requiredElement<HTMLSelectElement>(
+  "#localOllamaModelCatalogSelect",
+);
+const localSttModelInput = requiredElement<HTMLInputElement>("#localSttModelInput");
+const localSttModelCatalogSelect = requiredElement<HTMLSelectElement>("#localSttModelCatalogSelect");
 const rememberApiKeyInput = requiredElement<HTMLInputElement>("#rememberApiKeyInput");
 const captureModeSingleInput = requiredElement<HTMLInputElement>("#captureModeSingle");
 const captureModePushToTalkInput = requiredElement<HTMLInputElement>("#captureModePushToTalk");
@@ -1043,6 +1378,17 @@ const microphoneSummary = requiredElement<HTMLElement>("#microphoneSummary");
 const hotkeyInput = requiredElement<HTMLInputElement>("#hotkeyInput");
 const commandHotkeyInput = requiredElement<HTMLInputElement>("#commandHotkeyInput");
 const dictationLanguageSelect = requiredElement<HTMLSelectElement>("#dictationLanguageSelect");
+const dictationLanguageModeSingleInput = requiredElement<HTMLInputElement>(
+  "#dictationLanguageModeSingle",
+);
+const dictationLanguageModeMultipleInput = requiredElement<HTMLInputElement>(
+  "#dictationLanguageModeMultiple",
+);
+const dictationLanguageSummary = requiredElement<HTMLParagraphElement>("#dictationLanguageSummary");
+const dictationLanguageMultiWrap = requiredElement<HTMLDivElement>("#dictationLanguageMultiWrap");
+const dictationLanguageOptionInputs = Array.from(
+  document.querySelectorAll<HTMLInputElement>("[data-dictation-lang-option]"),
+);
 const styleProfileSelect = requiredElement<HTMLSelectElement>("#styleProfileSelect");
 const ttsEngineSelect = requiredElement<HTMLSelectElement>("#ttsEngineSelect");
 const piperPathInput = requiredElement<HTMLInputElement>("#piperPathInput");
@@ -1075,6 +1421,15 @@ const commandModeToggle = requiredElement<HTMLInputElement>("#commandModeToggle"
 const wakeWordEnabledToggle = requiredElement<HTMLInputElement>("#wakeWordEnabledToggle");
 const assistantNameInput = requiredElement<HTMLInputElement>("#assistantNameInput");
 const wakePhrasePreview = requiredElement<HTMLParagraphElement>("#wakePhrasePreview");
+const sttRuntimeModeOnlineInput = requiredElement<HTMLInputElement>("#sttRuntimeModeOnline");
+const sttRuntimeModeOfflineInput = requiredElement<HTMLInputElement>("#sttRuntimeModeOffline");
+const aiRuntimeModeOnlineInput = requiredElement<HTMLInputElement>("#aiRuntimeModeOnline");
+const aiRuntimeModeOfflineInput = requiredElement<HTMLInputElement>("#aiRuntimeModeOffline");
+const runtimeModeNotice = requiredElement<HTMLParagraphElement>("#runtimeModeNotice");
+const ollamaStatusNotice = requiredElement<HTMLParagraphElement>("#ollamaStatusNotice");
+const localSttDownloadNotice = requiredElement<HTMLParagraphElement>("#localSttDownloadNotice");
+const localSttDownloadProgressBar = requiredElement<HTMLSpanElement>("#localSttDownloadProgressBar");
+const localSttDownloadProgressText = requiredElement<HTMLParagraphElement>("#localSttDownloadProgressText");
 const contextAwarenessToggle = requiredElement<HTMLInputElement>("#contextAwarenessToggle");
 const copyToClipboardToggle = requiredElement<HTMLInputElement>("#copyToClipboardToggle");
 const autoPasteDictationToggle = requiredElement<HTMLInputElement>("#autoPasteDictationToggle");
@@ -1114,6 +1469,14 @@ const setupRuntimeBtn = requiredElement<HTMLButtonElement>("#setupRuntimeBtn");
 const fetchProviderModelsBtn = requiredElement<HTMLButtonElement>("#fetchProviderModelsBtn");
 const applyModelToAiBtn = requiredElement<HTMLButtonElement>("#applyModelToAiBtn");
 const applyModelToSttBtn = requiredElement<HTMLButtonElement>("#applyModelToSttBtn");
+const checkOllamaStatusBtn = requiredElement<HTMLButtonElement>("#checkOllamaStatusBtn");
+const installOllamaBtn = requiredElement<HTMLButtonElement>("#installOllamaBtn");
+const fetchOllamaModelsBtn = requiredElement<HTMLButtonElement>("#fetchOllamaModelsBtn");
+const useOllamaModelBtn = requiredElement<HTMLButtonElement>("#useOllamaModelBtn");
+const pullOllamaModelBtn = requiredElement<HTMLButtonElement>("#pullOllamaModelBtn");
+const downloadLocalSttModelBtn = requiredElement<HTMLButtonElement>("#downloadLocalSttModelBtn");
+const deleteLocalSttModelBtn = requiredElement<HTMLButtonElement>("#deleteLocalSttModelBtn");
+const openLocalSttModelPathBtn = requiredElement<HTMLButtonElement>("#openLocalSttModelPathBtn");
 const validatePiperBtn = requiredElement<HTMLButtonElement>("#validatePiperBtn");
 const downloadVoiceBtn = requiredElement<HTMLButtonElement>("#downloadVoiceBtn");
 const setupCoquiBtn = requiredElement<HTMLButtonElement>("#setupCoquiBtn");
@@ -1202,10 +1565,34 @@ let shortcutSyncQueued = false;
 let dockRuntimeErrorShown = false;
 let coquiModelCatalog: string[] = [];
 let providerModelCatalog: string[] = [];
+let localOllamaModelCatalog: string[] = [];
+let localSttModelCatalog: string[] = [];
 let latestAssistantInfoDefaults: AssistantInfoResponse | null = null;
 let piperRuntimeReady = false;
 let coquiRuntimeInstalled = false;
 let coquiCloneInProgress = false;
+let ollamaStatusInFlight = false;
+let ollamaInstallInFlight = false;
+let ollamaPullInFlight = false;
+let localSttDownloadInFlight = false;
+let localSttDeleteInFlight = false;
+let localSttDeactivateInFlight = false;
+let localSttDownloadActive = false;
+let localSttDownloadStatusPollingId: number | null = null;
+let localSttDownloadStatusPollInFlight = false;
+let localSttWarmupInFlight = false;
+let lastWarmedLocalSttModel = "";
+let localSttRuntimeLoaded = false;
+let localSttRuntimeStateInFlight = false;
+let runtimeModeSyncInFlight = false;
+let pendingRuntimeModeSyncTarget: RuntimeMode | null = null;
+let pendingRuntimeModeSyncShowLoadOverlay = false;
+let localSttLoadOverlayTickerId: number | null = null;
+let localSttLoadOverlayStartedAt = 0;
+let localSttHardwareAdvisorOpen = false;
+let localSttHardwareAdvisorSelectedModel = "";
+let localSttHardwareAdvisorSuggestionModel = "";
+let localSttHardwareAdvisorResolver: ((choice: LocalSttHardwareAdvisorChoice) => void) | null = null;
 let ttsSetupPollingId: number | null = null;
 let ttsSetupRunning = false;
 let ttsSetupPollInFlight = false;
@@ -1232,9 +1619,11 @@ const systemThemeMediaQuery =
   typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: light)")
     : null;
+renderSidebarLocalSttToggle();
+enforceZeroPythonUi();
 
 let settings = loadSettings();
-if (settings.ttsEngine === "coqui") {
+if (ZERO_PYTHON_MODE && settings.ttsEngine === "coqui") {
   settings.ttsEngine = "piper";
 }
 const initialHotkey = parseHotkey(settings.pushToTalkHotkey) ?? parseHotkey(DEFAULT_HOTKEY);
@@ -1245,6 +1634,8 @@ settings.commandHotkey = initialCommandHotkey?.label ?? DEFAULT_COMMAND_HOTKEY;
 applySettingsToForm(settings);
 renderCoquiModelCatalog([], settings.coquiModelName);
 renderProviderModelCatalog([], settings.aiModelName || settings.sttModelName);
+renderLocalOllamaModelCatalog([], settings.localOllamaModel);
+renderLocalSttModelCatalog([], settings.localSttModel);
 renderCoquiVoiceOptions([], settings.coquiVoiceId);
 setActiveTtsProfile("piper");
 updateTtsSetupGate();
@@ -1384,6 +1775,10 @@ ttsProfilePiperTab.addEventListener("click", () => {
 });
 
 ttsProfileCoquiTab.addEventListener("click", () => {
+  if (ZERO_PYTHON_MODE) {
+    setNotice(ZERO_PYTHON_TTS_NOTICE, true);
+    return;
+  }
   if (ttsEngineSelect.value !== "coqui") {
     ttsEngineSelect.value = "coqui";
     handleSettingsChange();
@@ -1398,12 +1793,30 @@ toggleSidebarBtn.addEventListener("click", () => {
   localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, collapsed ? "1" : "0");
 });
 
-openProfileBtn.addEventListener("click", () => {
+openSettingsBtn.addEventListener("click", () => {
   openSettings();
 });
 
-openSettingsBtn.addEventListener("click", () => {
-  openSettings();
+sidebarToggleLocalSttBtn.addEventListener("click", () => {
+  void (async () => {
+    const activeSettings = readSettingsFromForm();
+    if (activeSettings.sttRuntimeMode !== "local") {
+      await syncLocalSttRuntimeForMode("online");
+      const onlineSttModel = activeSettings.sttModelName.trim() || "the configured online STT model";
+      setNotice(
+        `STT runtime is Online. Using ${onlineSttModel}. Switch STT to Offline in Settings > Models to load a local STT model.`,
+      );
+      return;
+    }
+
+    await refreshLocalSttRuntimeState({ quiet: true });
+    if (isSelectedLocalSttModelLoaded()) {
+      await deactivateLocalSttModel();
+    } else {
+      await activateSelectedLocalSttModel();
+    }
+    await refreshLocalSttRuntimeState({ quiet: true });
+  })();
 });
 
 checkUpdatesBtn.addEventListener("click", () => {
@@ -1413,12 +1826,6 @@ checkUpdatesBtn.addEventListener("click", () => {
 installUpdateBtn.addEventListener("click", () => {
   void handleInstallUpdate();
 });
-
-if (homeSetupBanner && homeSetupCloseBtn) {
-  homeSetupCloseBtn.addEventListener("click", () => {
-    homeSetupBanner.remove();
-  });
-}
 
 closeSettingsBtn.addEventListener("click", () => {
   closeSettings();
@@ -1430,6 +1837,24 @@ settingsOverlay.addEventListener("click", (event) => {
   }
 });
 
+sttHardwareAdvisorOverlay.addEventListener("click", (event) => {
+  if (event.target === sttHardwareAdvisorOverlay) {
+    resolveLocalSttHardwareAdvisorChoice("cancel");
+  }
+});
+
+sttHardwareAdvisorUseSuggestionBtn.addEventListener("click", () => {
+  resolveLocalSttHardwareAdvisorChoice("suggestion");
+});
+
+sttHardwareAdvisorContinueBtn.addEventListener("click", () => {
+  resolveLocalSttHardwareAdvisorChoice("selected");
+});
+
+sttHardwareAdvisorCancelBtn.addEventListener("click", () => {
+  resolveLocalSttHardwareAdvisorChoice("cancel");
+});
+
 document.addEventListener("keydown", (event) => {
   if (hotkeyCaptureActive) {
     handleHotkeyCaptureKeydown(event);
@@ -1437,6 +1862,11 @@ document.addEventListener("keydown", (event) => {
   }
   if (commandHotkeyCaptureActive) {
     handleCommandHotkeyCaptureKeydown(event);
+    return;
+  }
+
+  if (event.key === "Escape" && localSttHardwareAdvisorOpen) {
+    resolveLocalSttHardwareAdvisorChoice("cancel");
     return;
   }
 
@@ -1545,6 +1975,7 @@ window.addEventListener("focus", () => {
 
 window.addEventListener("beforeunload", () => {
   stopTtsSetupPolling();
+  stopLocalSttDownloadStatusPolling();
   if (dockHideTimerId !== null) {
     window.clearTimeout(dockHideTimerId);
     dockHideTimerId = null;
@@ -1581,6 +2012,9 @@ apiKeyInput.addEventListener("input", handleSettingsChange);
 apiBaseUrlInput.addEventListener("input", handleSettingsChange);
 sttModelInput.addEventListener("input", handleSettingsChange);
 aiModelInput.addEventListener("input", handleSettingsChange);
+localOllamaBaseUrlInput.addEventListener("input", handleSettingsChange);
+localOllamaModelInput.addEventListener("input", handleSettingsChange);
+localSttModelInput.addEventListener("input", handleSettingsChange);
 rememberApiKeyInput.addEventListener("change", handleSettingsChange);
 piperPathInput.addEventListener("input", handleSettingsChange);
 piperQualitySelect.addEventListener("change", handleSettingsChange);
@@ -1601,6 +2035,11 @@ temperatureInput.addEventListener("input", handleSettingsChange);
 maxTokensInput.addEventListener("input", handleSettingsChange);
 microphoneSelect.addEventListener("change", handleSettingsChange);
 dictationLanguageSelect.addEventListener("change", handleSettingsChange);
+dictationLanguageModeSingleInput.addEventListener("change", handleSettingsChange);
+dictationLanguageModeMultipleInput.addEventListener("change", handleSettingsChange);
+for (const option of dictationLanguageOptionInputs) {
+  option.addEventListener("change", handleSettingsChange);
+}
 styleProfileSelect.addEventListener("change", handleSettingsChange);
 captureModeSingleInput.addEventListener("change", handleSettingsChange);
 captureModePushToTalkInput.addEventListener("change", handleSettingsChange);
@@ -1610,6 +2049,10 @@ showAppInDockToggle.addEventListener("change", handleSettingsChange);
 commandModeToggle.addEventListener("change", handleSettingsChange);
 wakeWordEnabledToggle.addEventListener("change", handleSettingsChange);
 assistantNameInput.addEventListener("input", handleSettingsChange);
+sttRuntimeModeOnlineInput.addEventListener("change", handleSettingsChange);
+sttRuntimeModeOfflineInput.addEventListener("change", handleSettingsChange);
+aiRuntimeModeOnlineInput.addEventListener("change", handleSettingsChange);
+aiRuntimeModeOfflineInput.addEventListener("change", handleSettingsChange);
 contextAwarenessToggle.addEventListener("change", handleSettingsChange);
 copyToClipboardToggle.addEventListener("change", handleSettingsChange);
 autoPasteDictationToggle.addEventListener("change", handleSettingsChange);
@@ -1633,6 +2076,24 @@ providerModelCatalogSelect.addEventListener("change", () => {
     return;
   }
   aiModelInput.value = selected;
+  handleSettingsChange();
+});
+
+localOllamaModelCatalogSelect.addEventListener("change", () => {
+  const selected = localOllamaModelCatalogSelect.value.trim();
+  if (!selected) {
+    return;
+  }
+  localOllamaModelInput.value = selected;
+  handleSettingsChange();
+});
+
+localSttModelCatalogSelect.addEventListener("change", () => {
+  const selected = localSttModelCatalogSelect.value.trim();
+  if (!selected) {
+    return;
+  }
+  localSttModelInput.value = selected;
   handleSettingsChange();
 });
 
@@ -1779,6 +2240,45 @@ fetchProviderModelsBtn.addEventListener("click", () => {
   void fetchProviderModels();
 });
 
+checkOllamaStatusBtn.addEventListener("click", () => {
+  void refreshOllamaStatus();
+});
+
+installOllamaBtn.addEventListener("click", () => {
+  void installOllama();
+});
+
+fetchOllamaModelsBtn.addEventListener("click", () => {
+  void fetchOllamaModels();
+});
+
+useOllamaModelBtn.addEventListener("click", () => {
+  const selected = localOllamaModelCatalogSelect.value.trim();
+  if (!selected) {
+    setNotice("Select an Ollama model from catalog first.", true);
+    return;
+  }
+  localOllamaModelInput.value = selected;
+  handleSettingsChange();
+  setNotice(`Local Ollama model set to "${selected}".`);
+});
+
+pullOllamaModelBtn.addEventListener("click", () => {
+  void pullOllamaModel();
+});
+
+downloadLocalSttModelBtn.addEventListener("click", () => {
+  void downloadLocalSttModel();
+});
+
+deleteLocalSttModelBtn.addEventListener("click", () => {
+  void deleteLocalSttModel();
+});
+
+openLocalSttModelPathBtn.addEventListener("click", () => {
+  void openLocalSttModelPath();
+});
+
 applyModelToAiBtn.addEventListener("click", () => {
   const selected = providerModelCatalogSelect.value.trim();
   if (!selected) {
@@ -1822,13 +2322,15 @@ async function bootstrap(): Promise<void> {
 
     if (info.piperInstalled && info.voiceInstalled) {
       setNotice(
-        info.coquiInstalled
+        ZERO_PYTHON_MODE
+          ? "Runtime is ready (Piper only, zero-Python mode)."
+          : info.coquiInstalled
           ? "Runtime is ready (Piper main, Coqui beta available)."
           : "Piper runtime is ready. Coqui beta is optional.",
       );
       setStage("idle", "Ready for voice input.");
     } else {
-      setNotice("Piper runtime incomplete. Open Settings > TTS and complete runtime setup.");
+      setNotice("Piper runtime incomplete. Open Settings > Models and complete runtime setup.");
       setStage("idle", "Setup required.");
     }
   } catch (error) {
@@ -1837,11 +2339,16 @@ async function bootstrap(): Promise<void> {
     setStage("error", "Metadata load failed.");
   }
 
-  if (settings.ttsEngine === "coqui") {
+  if (!ZERO_PYTHON_MODE && settings.ttsEngine === "coqui") {
     await refreshCoquiStatusSafely();
     await refreshCoquiVoices();
   }
   await refreshMicrophones(false);
+  await refreshOllamaStatus({ quiet: true });
+  await fetchOllamaModels({ quiet: true, autoSelect: true });
+  await fetchLocalSttModels({ quiet: true });
+  await pollLocalSttDownloadStatusOnce({ quiet: true });
+  await syncLocalSttRuntimeForMode(settings.sttRuntimeMode);
   try {
     await pollTtsSetupStatusOnce();
   } catch {
@@ -1861,9 +2368,11 @@ function asMainPage(value: string | undefined): MainPage | null {
 function asSettingsPane(value: string | undefined): SettingsPane | null {
   if (
     value === "general" ||
-    value === "system" ||
+    value === "models" ||
+    value === "online" ||
+    value === "offline" ||
+    value === "hybrid" ||
     value === "update-security" ||
-    value === "tts" ||
     value === "pipeline"
   ) {
     return value;
@@ -1888,31 +2397,61 @@ function setActivePage(next: MainPage): void {
 }
 
 function setActiveSettingsPane(next: SettingsPane): void {
+  let resolved = next;
+  if (resolved === "online" || resolved === "offline" || resolved === "hybrid") {
+    resolved = "models";
+  }
+
   const titleMap: Record<SettingsPane, string> = {
     general: "General",
-    system: "System",
+    models: "Models",
+    online: "Models",
+    offline: "Models",
+    hybrid: "Models",
     "update-security": "Update and Security",
-    tts: "TTS",
     pipeline: "Pipeline",
   };
 
-  settingsPaneTitle.textContent = titleMap[next];
+  settingsPaneTitle.textContent = titleMap[resolved];
 
   for (const navButton of settingsNavButtons) {
-    const current = navButton.dataset.settingsPaneNav === next;
+    const current = navButton.dataset.settingsPaneNav === resolved;
     navButton.classList.toggle("is-active", current);
     navButton.setAttribute("aria-current", current ? "page" : "false");
   }
 
   for (const panel of settingsPanels) {
-    const current = panel.dataset.settingsPane === next;
+    const current = panel.dataset.settingsPane === resolved;
     panel.classList.toggle("is-active", current);
     panel.hidden = !current;
   }
 }
 
+function enforceZeroPythonUi(): void {
+  if (!ZERO_PYTHON_MODE) {
+    return;
+  }
+
+  const coquiOption = ttsEngineSelect.querySelector('option[value="coqui"]');
+  if (coquiOption instanceof HTMLOptionElement) {
+    coquiOption.disabled = true;
+    coquiOption.hidden = true;
+  }
+
+  if (ttsEngineSelect.value === "coqui") {
+    ttsEngineSelect.value = "piper";
+  }
+  ttsProfileCoquiTab.hidden = true;
+  ttsProfileCoquiTab.disabled = true;
+  coquiStatusValue.textContent = "Disabled";
+  coquiPythonValue.textContent = "-";
+  coquiVersionValue.textContent = "-";
+  coquiCudaValue.textContent = "-";
+  setCoquiCloneStatus(ZERO_PYTHON_TTS_NOTICE);
+}
+
 function setActiveTtsProfile(next: TtsProfilePane): void {
-  const piperActive = next === "piper";
+  const piperActive = ZERO_PYTHON_MODE ? true : next === "piper";
   ttsProfilePiperTab.classList.toggle("is-active", piperActive);
   ttsProfileCoquiTab.classList.toggle("is-active", !piperActive);
   ttsProfilePiperTab.setAttribute("aria-selected", piperActive ? "true" : "false");
@@ -1923,12 +2462,14 @@ function setActiveTtsProfile(next: TtsProfilePane): void {
 
 function updateTtsSetupGate(): void {
   const piperReady = piperRuntimeReady;
-  const coquiReady = coquiRuntimeInstalled;
+  const coquiReady = ZERO_PYTHON_MODE ? false : coquiRuntimeInstalled;
   const showBootstrap = !piperReady || ttsSetupRunning;
   ttsBootstrapCard.hidden = !showBootstrap;
   ttsProfilesArea.hidden = !piperReady;
 
-  if (piperReady && !coquiReady && !ttsSetupRunning && !ttsSetupStatus.textContent?.trim()) {
+  if (ZERO_PYTHON_MODE && piperReady && !ttsSetupRunning && !ttsSetupStatus.textContent?.trim()) {
+    ttsSetupStatus.textContent = "Piper is ready. Coqui is disabled in zero-Python mode.";
+  } else if (piperReady && !coquiReady && !ttsSetupRunning && !ttsSetupStatus.textContent?.trim()) {
     ttsSetupStatus.textContent = "Piper is ready. Coqui beta is optional and loads only when selected.";
   } else if (piperReady && coquiReady && !ttsSetupRunning && !ttsSetupStatus.textContent?.trim()) {
     ttsSetupStatus.textContent = "Piper and Coqui runtimes are ready.";
@@ -1951,6 +2492,12 @@ function loadSettings(): PersistedSettings {
     apiBaseUrl: DEFAULT_API_BASE_URL,
     sttModelName: DEFAULT_STT_MODEL_NAME,
     aiModelName: DEFAULT_AI_MODEL_NAME,
+    runtimeMode: DEFAULT_RUNTIME_MODE,
+    sttRuntimeMode: DEFAULT_RUNTIME_MODE,
+    aiRuntimeMode: DEFAULT_RUNTIME_MODE,
+    localOllamaBaseUrl: DEFAULT_LOCAL_OLLAMA_BASE_URL,
+    localOllamaModel: "",
+    localSttModel: "",
     rememberApiKey: false,
     captureMode: DEFAULT_CAPTURE_MODE,
     piperPath: "",
@@ -1958,6 +2505,8 @@ function loadSettings(): PersistedSettings {
     pushToTalkHotkey: DEFAULT_HOTKEY,
     commandHotkey: DEFAULT_COMMAND_HOTKEY,
     dictationLanguage: "",
+    dictationLanguageMode: DEFAULT_DICTATION_LANGUAGE_MODE,
+    dictationLanguageAllowList: [],
     styleProfile: DEFAULT_STYLE_PROFILE,
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     temperature: DEFAULT_TEMPERATURE,
@@ -2003,21 +2552,55 @@ function loadSettings(): PersistedSettings {
   }
 
   try {
-    const parsed = JSON.parse(raw) as Partial<PersistedSettings>;
+    const parsed = JSON.parse(raw) as Partial<PersistedSettings> & { localMode?: boolean };
     const rememberApiKey = parsed.rememberApiKey === true;
+    const dictationLanguage = normalizeDictationLanguageCode(
+      String(parsed.dictationLanguage ?? defaults.dictationLanguage),
+    );
+    const parsedLanguageAllowList = normalizeDictationLanguageAllowList(
+      parsed.dictationLanguageAllowList,
+    );
+    let dictationLanguageMode = asDictationLanguageMode(parsed.dictationLanguageMode);
+    if (parsedLanguageAllowList.length > 1) {
+      dictationLanguageMode = "multiple";
+    }
+    const dictationLanguageAllowList =
+      dictationLanguageMode === "multiple"
+        ? parsedLanguageAllowList.length > 0
+          ? parsedLanguageAllowList
+          : dictationLanguage
+            ? [dictationLanguage]
+            : []
+        : [];
+
+    const legacyRuntimeMode = asRuntimeMode(
+      parsed.runtimeMode ?? (parsed.localMode === true ? "local" : defaults.runtimeMode),
+    );
+    const sttRuntimeMode = asRuntimeMode(parsed.sttRuntimeMode ?? legacyRuntimeMode);
+    const aiRuntimeMode = asRuntimeMode(parsed.aiRuntimeMode ?? legacyRuntimeMode);
+    const runtimeMode =
+      sttRuntimeMode === "local" && aiRuntimeMode === "local" ? "local" : "online";
 
     return {
       apiKey: rememberApiKey ? String(parsed.apiKey ?? "") : "",
       apiBaseUrl: String(parsed.apiBaseUrl ?? defaults.apiBaseUrl),
       sttModelName: String(parsed.sttModelName ?? defaults.sttModelName),
       aiModelName: String(parsed.aiModelName ?? defaults.aiModelName),
+      runtimeMode,
+      sttRuntimeMode,
+      aiRuntimeMode,
+      localOllamaBaseUrl: String(parsed.localOllamaBaseUrl ?? defaults.localOllamaBaseUrl),
+      localOllamaModel: String(parsed.localOllamaModel ?? defaults.localOllamaModel),
+      localSttModel: String(parsed.localSttModel ?? defaults.localSttModel),
       rememberApiKey,
       captureMode: parsed.captureMode === "single-tap" ? "single-tap" : "push-to-talk",
       piperPath: String(parsed.piperPath ?? defaults.piperPath),
       microphoneDeviceId: String(parsed.microphoneDeviceId ?? defaults.microphoneDeviceId),
       pushToTalkHotkey: String(parsed.pushToTalkHotkey ?? defaults.pushToTalkHotkey),
       commandHotkey: String(parsed.commandHotkey ?? defaults.commandHotkey),
-      dictationLanguage: String(parsed.dictationLanguage ?? defaults.dictationLanguage),
+      dictationLanguage,
+      dictationLanguageMode,
+      dictationLanguageAllowList,
       styleProfile: asStyleProfile(parsed.styleProfile),
       systemPrompt:
         String(parsed.systemPrompt ?? defaults.systemPrompt).trim() || defaults.systemPrompt,
@@ -2113,15 +2696,49 @@ async function hydrateSettingsFromNativeStorage(): Promise<void> {
 }
 
 function readSettingsFromForm(): PersistedSettings {
+  const dictationLanguageMode: DictationLanguageMode = dictationLanguageModeMultipleInput.checked
+    ? "multiple"
+    : "single";
+  const primaryDictationLanguage = normalizeDictationLanguageCode(dictationLanguageSelect.value);
+  let dictationLanguageAllowList =
+    dictationLanguageMode === "multiple"
+      ? normalizeDictationLanguageAllowList(
+          dictationLanguageOptionInputs
+            .filter((option) => option.checked)
+            .map((option) => option.value),
+        )
+      : [];
+
+  if (
+    dictationLanguageMode === "multiple" &&
+    primaryDictationLanguage &&
+    !dictationLanguageAllowList.includes(primaryDictationLanguage)
+  ) {
+    dictationLanguageAllowList = [primaryDictationLanguage, ...dictationLanguageAllowList];
+  }
+
+  const dictationLanguage =
+    dictationLanguageMode === "multiple"
+      ? primaryDictationLanguage || dictationLanguageAllowList[0] || ""
+      : primaryDictationLanguage;
+  const resolvedTtsEngine: TtsEngine = ZERO_PYTHON_MODE ? "piper" : asTtsEngine(ttsEngineSelect.value);
+
   return {
     apiKey: apiKeyInput.value.trim(),
     apiBaseUrl: apiBaseUrlInput.value.trim(),
     sttModelName: sttModelInput.value.trim(),
     aiModelName: aiModelInput.value.trim(),
+    runtimeMode:
+      sttRuntimeModeOfflineInput.checked && aiRuntimeModeOfflineInput.checked ? "local" : "online",
+    sttRuntimeMode: sttRuntimeModeOfflineInput.checked ? "local" : "online",
+    aiRuntimeMode: aiRuntimeModeOfflineInput.checked ? "local" : "online",
+    localOllamaBaseUrl: localOllamaBaseUrlInput.value.trim() || DEFAULT_LOCAL_OLLAMA_BASE_URL,
+    localOllamaModel: localOllamaModelInput.value.trim(),
+    localSttModel: localSttModelInput.value.trim(),
     rememberApiKey: rememberApiKeyInput.checked,
     captureMode: captureModeSingleInput.checked ? "single-tap" : "push-to-talk",
     piperPath: piperPathInput.value.trim(),
-    ttsEngine: asTtsEngine(ttsEngineSelect.value),
+    ttsEngine: resolvedTtsEngine,
     piperSpeed: coerceNumber(Number(piperSpeedInput.value), DEFAULT_PIPER_SPEED, 0.5, 2),
     piperQuality: asPiperQuality(piperQualitySelect.value),
     piperEmotion: asPiperEmotion(piperEmotionSelect.value),
@@ -2141,7 +2758,9 @@ function readSettingsFromForm(): PersistedSettings {
     commandHotkey: commandHotkeyCaptureActive
       ? settings.commandHotkey
       : commandHotkeyInput.value.trim() || DEFAULT_COMMAND_HOTKEY,
-    dictationLanguage: dictationLanguageSelect.value,
+    dictationLanguage,
+    dictationLanguageMode,
+    dictationLanguageAllowList,
     styleProfile: asStyleProfile(styleProfileSelect.value),
     systemPrompt: systemPromptInput.value.trim() || DEFAULT_SYSTEM_PROMPT,
     temperature: coerceNumber(Number(temperatureInput.value), DEFAULT_TEMPERATURE, 0, 1.2),
@@ -2167,13 +2786,21 @@ function readSettingsFromForm(): PersistedSettings {
 }
 
 function applySettingsToForm(next: PersistedSettings): void {
+  const effectiveTtsEngine: TtsEngine = ZERO_PYTHON_MODE ? "piper" : next.ttsEngine;
   apiKeyInput.value = next.apiKey;
   apiBaseUrlInput.value = next.apiBaseUrl;
   sttModelInput.value = next.sttModelName;
   aiModelInput.value = next.aiModelName;
+  sttRuntimeModeOnlineInput.checked = next.sttRuntimeMode !== "local";
+  sttRuntimeModeOfflineInput.checked = next.sttRuntimeMode === "local";
+  aiRuntimeModeOnlineInput.checked = next.aiRuntimeMode !== "local";
+  aiRuntimeModeOfflineInput.checked = next.aiRuntimeMode === "local";
+  localOllamaBaseUrlInput.value = next.localOllamaBaseUrl || DEFAULT_LOCAL_OLLAMA_BASE_URL;
+  localOllamaModelInput.value = next.localOllamaModel;
+  localSttModelInput.value = next.localSttModel;
   rememberApiKeyInput.checked = next.rememberApiKey;
   piperPathInput.value = next.piperPath;
-  ttsEngineSelect.value = next.ttsEngine;
+  ttsEngineSelect.value = effectiveTtsEngine;
   piperSpeedInput.value = next.piperSpeed.toFixed(2);
   piperSpeedValue.textContent = `${next.piperSpeed.toFixed(2)}x`;
   piperQualitySelect.value = next.piperQuality;
@@ -2190,7 +2817,7 @@ function applySettingsToForm(next: PersistedSettings): void {
   coquiSplitSentencesToggle.checked = next.coquiSplitSentences;
   hotkeyInput.value = next.pushToTalkHotkey;
   commandHotkeyInput.value = next.commandHotkey;
-  dictationLanguageSelect.value = next.dictationLanguage;
+  applyDictationLanguageSettingsToForm(next);
   styleProfileSelect.value = next.styleProfile;
   systemPromptInput.value = next.systemPrompt;
   temperatureInput.value = next.temperature.toFixed(2);
@@ -2221,12 +2848,17 @@ function applySettingsToForm(next: PersistedSettings): void {
   hotkeyHint.textContent = displayHotkey;
   captureModeHint.textContent = captureModeLabel(next.captureMode);
   applyTheme(next.themeMode);
+  updateRuntimeModeNotice(next.sttRuntimeMode, next.aiRuntimeMode);
+  syncRuntimeModePaneVisibility(next.sttRuntimeMode, next.aiRuntimeMode);
+  syncHybridRuntimeFieldVisibility(next.sttRuntimeMode, next.aiRuntimeMode);
 }
 
 function handleSettingsChange(): void {
   const previousMode = settings.captureMode;
   const previousIncognito = settings.incognitoMode;
   const previousTtsEngine = settings.ttsEngine;
+  const previousSttRuntimeMode = settings.sttRuntimeMode;
+  const previousAiRuntimeMode = settings.aiRuntimeMode;
   const previousMuteMusicWhileDictating = settings.muteMusicWhileDictating;
   const previousLaunchAtLogin = settings.launchAtLogin;
   const previousShortcutSignature = buildShortcutSyncSignature(settings);
@@ -2244,7 +2876,13 @@ function handleSettingsChange(): void {
     commandHotkeyInput.value = commandParsed.label;
   }
 
+  if (ZERO_PYTHON_MODE && next.ttsEngine === "coqui") {
+    next.ttsEngine = "piper";
+    ttsEngineSelect.value = "piper";
+  }
+
   settings = next;
+  applyDictationLanguageSettingsToForm(settings);
   temperatureValue.textContent = settings.temperature.toFixed(2);
   piperSpeedValue.textContent = `${settings.piperSpeed.toFixed(2)}x`;
   coquiSpeedValue.textContent = `${settings.coquiSpeed.toFixed(2)}x`;
@@ -2252,6 +2890,9 @@ function handleSettingsChange(): void {
   hotkeyHint.textContent = formatHotkeyForDisplay(settings.pushToTalkHotkey);
   captureModeHint.textContent = captureModeLabel(settings.captureMode);
   applyTheme(settings.themeMode);
+  updateRuntimeModeNotice(settings.sttRuntimeMode, settings.aiRuntimeMode);
+  syncRuntimeModePaneVisibility(settings.sttRuntimeMode, settings.aiRuntimeMode);
+  syncHybridRuntimeFieldVisibility(settings.sttRuntimeMode, settings.aiRuntimeMode);
   setActiveTtsProfile(settings.ttsEngine === "coqui" ? "coqui" : "piper");
   if (coquiModelCatalog.includes(settings.coquiModelName)) {
     coquiModelCatalogSelect.value = settings.coquiModelName;
@@ -2265,6 +2906,16 @@ function handleSettingsChange(): void {
   } else if (providerModelCatalog.length > 0) {
     providerModelCatalogSelect.value = "";
   }
+  if (localOllamaModelCatalog.includes(settings.localOllamaModel)) {
+    localOllamaModelCatalogSelect.value = settings.localOllamaModel;
+  } else if (localOllamaModelCatalog.length > 0) {
+    localOllamaModelCatalogSelect.value = "";
+  }
+  if (localSttModelCatalog.includes(settings.localSttModel)) {
+    localSttModelCatalogSelect.value = settings.localSttModel;
+  } else if (localSttModelCatalog.length > 0) {
+    localSttModelCatalogSelect.value = "";
+  }
   if (settings.coquiVoiceId) {
     coquiVoiceSelect.value = settings.coquiVoiceId;
   }
@@ -2276,9 +2927,7 @@ function handleSettingsChange(): void {
     clearPushToTalkHolds();
   }
 
-  if (!previousIncognito && settings.incognitoMode) {
-    conversationLog.innerHTML = '<p class="empty-hint">Incognito mode enabled. History is hidden.</p>';
-  } else if (previousIncognito && !settings.incognitoMode) {
+  if (previousIncognito !== settings.incognitoMode) {
     renderHomeHistory();
   }
 
@@ -2289,6 +2938,7 @@ function handleSettingsChange(): void {
   }
 
   persistSettings(settings);
+  renderSidebarLocalSttToggle();
   refreshRecordButton();
   syncActionAvailability();
   updateMicrophoneSummary();
@@ -2303,7 +2953,27 @@ function handleSettingsChange(): void {
   if (previousTtsEngine !== settings.ttsEngine) {
     interruptTtsPlaybackForCaptureIntent();
   }
-  if (settings.ttsEngine === "coqui" && previousTtsEngine !== "coqui") {
+  const sttRuntimeModeChanged = previousSttRuntimeMode !== settings.sttRuntimeMode;
+  const aiRuntimeModeChanged = previousAiRuntimeMode !== settings.aiRuntimeMode;
+  if (sttRuntimeModeChanged || aiRuntimeModeChanged) {
+    if (settings.sttRuntimeMode === settings.aiRuntimeMode) {
+      setNotice(
+        settings.sttRuntimeMode === "local"
+          ? "Offline mode enabled for both STT and AI."
+          : "Online mode enabled for both STT and AI.",
+      );
+    } else {
+      setNotice(
+        `Hybrid mode enabled (STT: ${settings.sttRuntimeMode}, AI: ${settings.aiRuntimeMode}).`,
+      );
+    }
+  }
+  if (sttRuntimeModeChanged) {
+    requestLocalSttRuntimeSyncForMode(settings.sttRuntimeMode, {
+      showLoadOverlay: settings.sttRuntimeMode === "local",
+    });
+  }
+  if (!ZERO_PYTHON_MODE && settings.ttsEngine === "coqui" && previousTtsEngine !== "coqui") {
     void refreshCoquiStatusSafely();
     void refreshCoquiVoices();
     void refreshCoquiModels({ quiet: true });
@@ -2315,6 +2985,241 @@ function handleSettingsChange(): void {
 
 function captureModeLabel(mode: CaptureMode): string {
   return mode === "push-to-talk" ? "Push-To-Talk" : "Single Tap";
+}
+
+function updateRuntimeModeNotice(sttMode: RuntimeMode, aiMode: RuntimeMode): void {
+  if (sttMode === "local" && aiMode === "local") {
+    runtimeModeNotice.textContent =
+      "Offline mode is active for both STT and AI (local Parakeet + local Ollama).";
+    return;
+  }
+  if (sttMode === "online" && aiMode === "online") {
+    runtimeModeNotice.textContent =
+      "Online mode is active for both STT and AI (provider API base URL + API key).";
+    return;
+  }
+  runtimeModeNotice.textContent = `Hybrid mode: STT is ${sttMode}, AI is ${aiMode}.`;
+}
+
+function syncHybridRuntimeFieldVisibility(sttMode: RuntimeMode, aiMode: RuntimeMode): void {
+  const sttOnline = sttMode === "online";
+  const aiOnline = aiMode === "online";
+  const sttLocal = sttMode === "local";
+  const aiLocal = aiMode === "local";
+  const anyOnline = sttOnline || aiOnline;
+  const anyLocal = sttLocal || aiLocal;
+
+  onlineProviderSection.hidden = !anyOnline;
+  onlineSttModelField.hidden = !sttOnline;
+  onlineAiModelField.hidden = !aiOnline;
+  offlineOllamaSection.hidden = !aiLocal;
+  offlineSttSection.hidden = !sttLocal;
+  onlineProviderModeNotice.hidden = !anyOnline;
+  offlineRuntimeModeNotice.hidden = !anyLocal;
+
+  if (sttOnline && aiOnline) {
+    onlineProviderModeNotice.textContent =
+      "Online routing active for STT + AI. Configure API base URL, key, and provider models.";
+  } else if (sttOnline) {
+    onlineProviderModeNotice.textContent =
+      "Online routing active for STT. Configure API base URL, key, and online STT model.";
+  } else if (aiOnline) {
+    onlineProviderModeNotice.textContent =
+      "Online routing active for AI. Configure API base URL, key, and online AI model.";
+  }
+
+  if (!anyLocal) {
+    return;
+  }
+
+  if (sttLocal && aiLocal) {
+    offlineRuntimeModeNotice.textContent =
+      "Offline routing active for STT + AI. Configure local STT model and local Ollama model.";
+  } else if (aiLocal) {
+    offlineRuntimeModeNotice.textContent =
+      "Offline routing active for AI. Configure local Ollama model. STT stays online.";
+  } else {
+    offlineRuntimeModeNotice.textContent =
+      "Offline routing active for STT. Configure local STT model download/load. AI stays online.";
+  }
+}
+
+function syncRuntimeModePaneVisibility(_sttMode: RuntimeMode, _aiMode: RuntimeMode): void {
+  const activePane = settingsPanels.find((panel) => panel.classList.contains("is-active"));
+  const activePaneId = activePane?.dataset.settingsPane;
+  if (activePaneId === "online" || activePaneId === "offline" || activePaneId === "hybrid") {
+    setActiveSettingsPane("models");
+  }
+}
+
+function pickDefaultLocalSttModelFromCatalog(): string {
+  if (localSttModelCatalog.length === 0) {
+    return "";
+  }
+  const preferredOrder = ["nvidia/parakeet-tdt_ctc-110m", "nvidia/parakeet-tdt-0.6b-v3"];
+  for (const candidate of preferredOrder) {
+    if (localSttModelCatalog.includes(candidate)) {
+      return candidate;
+    }
+  }
+  return localSttModelCatalog[0] ?? "";
+}
+
+function looksLikeEmbeddingOnlyOllamaModel(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  const embeddingMarkers = [
+    "embed",
+    "embedding",
+    "nomic-embed",
+    "bge-",
+    "e5-",
+    "minilm",
+  ];
+  return embeddingMarkers.some((marker) => normalized.includes(marker));
+}
+
+function pickDefaultLocalOllamaModelFromCatalog(): string {
+  if (localOllamaModelCatalog.length === 0) {
+    return "";
+  }
+  const preferredChatFamilies = [
+    "llama",
+    "qwen",
+    "mistral",
+    "gemma",
+    "phi",
+    "deepseek",
+    "command-r",
+  ];
+  for (const model of localOllamaModelCatalog) {
+    const normalized = model.toLowerCase();
+    if (looksLikeEmbeddingOnlyOllamaModel(model)) {
+      continue;
+    }
+    if (preferredChatFamilies.some((family) => normalized.includes(family))) {
+      return model;
+    }
+  }
+  for (const model of localOllamaModelCatalog) {
+    if (!looksLikeEmbeddingOnlyOllamaModel(model)) {
+      return model;
+    }
+  }
+  return localOllamaModelCatalog[0] ?? "";
+}
+
+function requestLocalSttRuntimeSyncForMode(
+  targetMode: RuntimeMode,
+  options: { showLoadOverlay?: boolean } = {},
+): void {
+  pendingRuntimeModeSyncTarget = targetMode;
+  if (targetMode === "local" && options.showLoadOverlay === true) {
+    pendingRuntimeModeSyncShowLoadOverlay = true;
+  }
+  if (runtimeModeSyncInFlight) {
+    return;
+  }
+
+  runtimeModeSyncInFlight = true;
+  void (async () => {
+    while (pendingRuntimeModeSyncTarget) {
+      const nextTarget = pendingRuntimeModeSyncTarget;
+      const nextShowLoadOverlay =
+        nextTarget === "local" && pendingRuntimeModeSyncShowLoadOverlay;
+      pendingRuntimeModeSyncTarget = null;
+      pendingRuntimeModeSyncShowLoadOverlay = false;
+      await syncLocalSttRuntimeForMode(nextTarget, { showLoadOverlay: nextShowLoadOverlay });
+    }
+    runtimeModeSyncInFlight = false;
+  })();
+}
+
+async function syncLocalSttRuntimeForMode(
+  mode: RuntimeMode,
+  options: { showLoadOverlay?: boolean } = {},
+): Promise<void> {
+  if (mode === "local") {
+    let model = readSettingsFromForm().localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+    if (!model) {
+      const fallbackModel = pickDefaultLocalSttModelFromCatalog();
+      if (fallbackModel) {
+        localSttModelInput.value = fallbackModel;
+        if (localSttModelCatalog.includes(fallbackModel)) {
+          localSttModelCatalogSelect.value = fallbackModel;
+        }
+        handleSettingsChange();
+        model = fallbackModel;
+      }
+    }
+
+    const showLoadOverlay = options.showLoadOverlay === true && Boolean(model);
+    if (showLoadOverlay) {
+      showLocalSttLoadOverlay(model);
+      localSttDownloadNotice.textContent = `Loading local STT model "${model}"...`;
+      setNotice(`Loading local STT model "${model}"...`);
+    }
+
+    try {
+      await refreshLocalSttRuntimeState({ quiet: true });
+      if (isSelectedLocalSttModelLoaded()) {
+        return;
+      }
+
+      await warmupActiveLocalSttModel({ quiet: true, force: true, explicit: true });
+      await refreshLocalSttRuntimeState({ quiet: true });
+      if (isSelectedLocalSttModelLoaded()) {
+        return;
+      }
+
+      const activeSettings = readSettingsFromForm();
+      const selectedModel =
+        activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+      if (!selectedModel) {
+        setNotice(
+          "Local STT runtime is active but no local STT model is selected. Open Settings > Models and select a model, then click Load STT.",
+          true,
+        );
+      } else {
+        setNotice(
+          `Local STT runtime is active but local STT model "${selectedModel}" could not be loaded. Open Settings > Models and click Load STT.`,
+          true,
+        );
+      }
+      setActiveSettingsPane("offline");
+      return;
+    } finally {
+      if (showLoadOverlay) {
+        hideLocalSttLoadOverlay();
+      }
+    }
+  }
+
+  await refreshLocalSttRuntimeState({ quiet: true });
+  if (!localSttRuntimeLoaded) {
+    return;
+  }
+
+  const activeSettings = readSettingsFromForm();
+  const modelToUnload =
+    activeSettings.localSttModel.trim() ||
+    localSttModelCatalogSelect.value.trim() ||
+    lastWarmedLocalSttModel.trim();
+  try {
+    const response = await invoke<LocalSttDeactivateResponse>("deactivate_local_stt_model", {
+      request: { model: modelToUnload || null },
+    });
+    localSttDownloadNotice.textContent = response.details;
+    if (response.deactivated) {
+      lastWarmedLocalSttModel = "";
+    }
+  } catch (error) {
+    setNotice(`Unable to unload local STT runtime: ${asErrorMessage(error)}`, true);
+  } finally {
+    await refreshLocalSttRuntimeState({ quiet: true });
+  }
 }
 
 function buildShortcutSyncSignature(source: PersistedSettings): string {
@@ -2675,84 +3580,140 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
   }
 }
 
+function normalizeHotkeyModifierToken(token: string): "ctrl" | "shift" | "alt" | "meta" | "" {
+  const normalized = token.trim().toLowerCase();
+  if (
+    normalized === "commandorcontrol" ||
+    normalized === "commandorctrl" ||
+    normalized === "ctrl" ||
+    normalized === "control"
+  ) {
+    return "ctrl";
+  }
+  if (normalized === "shift") {
+    return "shift";
+  }
+  if (normalized === "alt" || normalized === "option" || normalized === "altgraph") {
+    return "alt";
+  }
+  if (
+    normalized === "super" ||
+    normalized === "meta" ||
+    normalized === "cmd" ||
+    normalized === "command" ||
+    normalized === "win" ||
+    normalized === "os"
+  ) {
+    return "meta";
+  }
+  return "";
+}
+
+function toGlobalShortcutKeyToken(key: string): string {
+  const map: Record<string, string> = {
+    space: "Space",
+    enter: "Enter",
+    tab: "Tab",
+    escape: "Escape",
+    backspace: "Backspace",
+    delete: "Delete",
+    insert: "Insert",
+    home: "Home",
+    end: "End",
+    pageup: "PageUp",
+    pagedown: "PageDown",
+    up: "Up",
+    down: "Down",
+    left: "Left",
+    right: "Right",
+    capslock: "CapsLock",
+    numlock: "NumLock",
+    scrolllock: "ScrollLock",
+    printscreen: "PrintScreen",
+    pause: "Pause",
+    plus: "Plus",
+    ",": "Comma",
+    ".": "Period",
+    "/": "Slash",
+    "\\": "Backslash",
+    ";": "Semicolon",
+    "'": "Quote",
+    "`": "Backquote",
+    "-": "Minus",
+    "=": "Equal",
+    "[": "BracketLeft",
+    "]": "BracketRight",
+    numpadadd: "NumpadAdd",
+    numpadsubtract: "NumpadSubtract",
+    numpadmultiply: "NumpadMultiply",
+    numpaddivide: "NumpadDivide",
+    numpaddecimal: "NumpadDecimal",
+    numpadenter: "NumpadEnter",
+  };
+
+  if (/^f([1-9]|1[0-9]|2[0-4])$/.test(key)) {
+    return key.toUpperCase();
+  }
+  if (/^numpad[0-9]$/.test(key)) {
+    return `Numpad${key.slice(-1)}`;
+  }
+  if (key.length === 1 && /[a-z0-9]/.test(key)) {
+    return key.toUpperCase();
+  }
+  return map[key] ?? key;
+}
+
 function toGlobalShortcutString(hotkey: HotkeySpec): string {
   const parts: string[] = [];
   if (hotkey.ctrl) parts.push("CommandOrControl");
   if (hotkey.shift) parts.push("Shift");
   if (hotkey.alt) parts.push("Alt");
   if (hotkey.meta) parts.push("Super");
-
-  if (hotkey.key === "space") {
-    parts.push("Space");
-  } else if (hotkey.key === "enter") {
-    parts.push("Enter");
-  } else if (hotkey.key === "tab") {
-    parts.push("Tab");
-  } else if (hotkey.key === "escape") {
-    parts.push("Escape");
-  } else if (hotkey.key === "backspace") {
-    parts.push("Backspace");
-  } else if (hotkey.key.startsWith("f")) {
-    parts.push(hotkey.key.toUpperCase());
-  } else if (hotkey.key.length === 1) {
-    parts.push(hotkey.key.toUpperCase());
-  } else {
-    parts.push(hotkey.key);
-  }
-
+  parts.push(toGlobalShortcutKeyToken(hotkey.key));
   return parts.join("+");
 }
 
 function normalizeShortcutToken(value: string): string {
   const rawTokens = value
     .split("+")
-    .map((part) => part.trim().toLowerCase())
+    .map((part) => part.trim())
     .filter(Boolean);
 
   if (rawTokens.length === 0) {
     return "";
   }
 
-  const normalized = rawTokens.map((token) => {
-    if (token === "commandorcontrol" || token === "commandorctrl" || token === "ctrl" || token === "control") {
-      return "ctrl";
-    }
-    if (token === "shift") {
-      return "shift";
-    }
-    if (token === "alt" || token === "option" || token === "altgraph") {
-      return "alt";
-    }
-    if (token === "super" || token === "meta" || token === "cmd" || token === "command" || token === "win" || token === "os") {
-      return "meta";
-    }
-    if (token === "spacebar" || token === "space") {
-      return "space";
-    }
-    if (token === "return" || token === "enter") {
-      return "enter";
-    }
-    if (token === "esc" || token === "escape") {
-      return "escape";
-    }
-    return token;
-  });
+  let ctrl = false;
+  let shift = false;
+  let alt = false;
+  let meta = false;
+  let key = "";
 
-  const modifiersOrder = ["ctrl", "shift", "alt", "meta"];
+  for (const token of rawTokens) {
+    const modifier = normalizeHotkeyModifierToken(token);
+    if (modifier) {
+      if (modifier === "ctrl") ctrl = true;
+      if (modifier === "shift") shift = true;
+      if (modifier === "alt") alt = true;
+      if (modifier === "meta") meta = true;
+      continue;
+    }
+
+    if (!key) {
+      key = normalizeHotkeyKeyToken(token) || token.trim().toLowerCase();
+    }
+  }
+
+  if (!key) {
+    return "";
+  }
+
   const ordered: string[] = [];
-
-  for (const modifier of modifiersOrder) {
-    if (normalized.includes(modifier)) {
-      ordered.push(modifier);
-    }
-  }
-
-  for (const token of normalized) {
-    if (!modifiersOrder.includes(token)) {
-      ordered.push(token);
-    }
-  }
-
+  if (ctrl) ordered.push("ctrl");
+  if (shift) ordered.push("shift");
+  if (alt) ordered.push("alt");
+  if (meta) ordered.push("meta");
+  ordered.push(key);
   return ordered.join("+");
 }
 
@@ -2771,7 +3732,7 @@ function beginHotkeyCapture(): void {
   hotkeyCaptureModifiers.meta = false;
   hotkeyInput.classList.add("is-capturing-hotkey");
   hotkeyInput.value = "Press shortcut...";
-  setNotice("Hotkey capture enabled. Use 2-3 keys total (1-2 modifiers + 1 main key).");
+  setNotice("Hotkey capture enabled. Press your shortcut combination now.");
 }
 
 function cancelHotkeyCapture(): void {
@@ -2793,16 +3754,21 @@ function handleHotkeyCaptureKeydown(event: KeyboardEvent): void {
   event.stopPropagation();
 
   const normalizedKey = normalizeEventKey(event.key);
-  if (normalizedKey === "escape") {
-    cancelHotkeyCapture();
-    setNotice("Hotkey capture canceled.");
-    return;
-  }
-
   hotkeyCaptureModifiers.ctrl = event.ctrlKey;
   hotkeyCaptureModifiers.shift = event.shiftKey;
   hotkeyCaptureModifiers.alt = event.altKey;
   hotkeyCaptureModifiers.meta = event.metaKey;
+  if (
+    normalizedKey === "escape" &&
+    !hotkeyCaptureModifiers.ctrl &&
+    !hotkeyCaptureModifiers.shift &&
+    !hotkeyCaptureModifiers.alt &&
+    !hotkeyCaptureModifiers.meta
+  ) {
+    cancelHotkeyCapture();
+    setNotice("Hotkey capture canceled.");
+    return;
+  }
 
   if (isModifierKey(normalizedKey)) {
     hotkeyInput.value = formatHotkeyCapturePreview();
@@ -2815,27 +3781,12 @@ function handleHotkeyCaptureKeydown(event: KeyboardEvent): void {
   if (hotkeyCaptureModifiers.alt) candidateTokens.push("alt");
   if (hotkeyCaptureModifiers.meta) candidateTokens.push("meta");
 
-  if (candidateTokens.length === 0) {
-    hotkeyInput.value = "Press shortcut...";
-    setNotice("Hotkey must use 2-3 keys total (1-2 modifiers + 1 main key).", true);
-    return;
-  }
-
-  if (candidateTokens.length > 2) {
-    hotkeyInput.value = formatHotkeyCapturePreview();
-    setNotice("Hotkey can use at most 3 keys total (max 2 modifiers + 1 main key).", true);
-    return;
-  }
-
   candidateTokens.push(normalizedKey);
 
   const parsed = parseHotkey(candidateTokens.join("+"));
   if (!parsed) {
     hotkeyInput.value = formatHotkeyCapturePreview();
-    setNotice(
-      "Unsupported hotkey key. Use letters, numbers, F1-F12, Space, Enter, Tab, Esc, or Backspace.",
-      true,
-    );
+    setNotice("Unsupported hotkey key. Try another combination.", true);
     return;
   }
 
@@ -2898,7 +3849,7 @@ function beginCommandHotkeyCapture(): void {
   commandHotkeyCaptureModifiers.meta = false;
   commandHotkeyInput.classList.add("is-capturing-hotkey");
   commandHotkeyInput.value = "Press shortcut...";
-  setNotice("Command hotkey capture enabled. Use 2-3 keys total (1-2 modifiers + 1 main key).");
+  setNotice("Command hotkey capture enabled. Press your shortcut combination now.");
 }
 
 function cancelCommandHotkeyCapture(): void {
@@ -2920,16 +3871,21 @@ function handleCommandHotkeyCaptureKeydown(event: KeyboardEvent): void {
   event.stopPropagation();
 
   const normalizedKey = normalizeEventKey(event.key);
-  if (normalizedKey === "escape") {
-    cancelCommandHotkeyCapture();
-    setNotice("Command hotkey capture canceled.");
-    return;
-  }
-
   commandHotkeyCaptureModifiers.ctrl = event.ctrlKey;
   commandHotkeyCaptureModifiers.shift = event.shiftKey;
   commandHotkeyCaptureModifiers.alt = event.altKey;
   commandHotkeyCaptureModifiers.meta = event.metaKey;
+  if (
+    normalizedKey === "escape" &&
+    !commandHotkeyCaptureModifiers.ctrl &&
+    !commandHotkeyCaptureModifiers.shift &&
+    !commandHotkeyCaptureModifiers.alt &&
+    !commandHotkeyCaptureModifiers.meta
+  ) {
+    cancelCommandHotkeyCapture();
+    setNotice("Command hotkey capture canceled.");
+    return;
+  }
 
   if (isModifierKey(normalizedKey)) {
     commandHotkeyInput.value = formatModifierPreview(commandHotkeyCaptureModifiers);
@@ -2941,12 +3897,6 @@ function handleCommandHotkeyCaptureKeydown(event: KeyboardEvent): void {
   if (commandHotkeyCaptureModifiers.shift) candidateTokens.push("shift");
   if (commandHotkeyCaptureModifiers.alt) candidateTokens.push("alt");
   if (commandHotkeyCaptureModifiers.meta) candidateTokens.push("meta");
-
-  if (candidateTokens.length === 0 || candidateTokens.length > 2) {
-    commandHotkeyInput.value = formatModifierPreview(commandHotkeyCaptureModifiers);
-    setNotice("Command hotkey must use 2-3 keys total (1-2 modifiers + 1 main key).", true);
-    return;
-  }
 
   candidateTokens.push(normalizedKey);
   const parsed = parseHotkey(candidateTokens.join("+"));
@@ -3019,7 +3969,118 @@ function asThemeMode(value: unknown): ThemeMode {
 }
 
 function asTtsEngine(value: unknown): TtsEngine {
+  if (ZERO_PYTHON_MODE) {
+    return "piper";
+  }
   return value === "coqui" ? "coqui" : "piper";
+}
+
+function asRuntimeMode(value: unknown): RuntimeMode {
+  return value === "local" ? "local" : "online";
+}
+
+function asDictationLanguageMode(value: unknown): DictationLanguageMode {
+  return value === "multiple" ? "multiple" : "single";
+}
+
+function normalizeDictationLanguageCode(value: unknown): string {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", "-");
+  if (!raw) {
+    return "";
+  }
+
+  const [base] = raw.split("-", 1);
+  return DICTATION_LANGUAGE_LABELS[base] ? base : "";
+}
+
+function normalizeDictationLanguageAllowList(value: unknown): string[] {
+  const rawValues: unknown[] = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
+      : [];
+
+  const next: string[] = [];
+  for (const item of rawValues) {
+    const normalized = normalizeDictationLanguageCode(item);
+    if (!normalized || next.includes(normalized)) {
+      continue;
+    }
+    next.push(normalized);
+  }
+  return next;
+}
+
+function formatDictationLanguageLabel(languageCode: string): string {
+  return DICTATION_LANGUAGE_LABELS[languageCode] ?? languageCode;
+}
+
+function applyDictationLanguageSettingsToForm(next: PersistedSettings): void {
+  const primaryLanguage = normalizeDictationLanguageCode(next.dictationLanguage);
+  let mode = asDictationLanguageMode(next.dictationLanguageMode);
+  let allowList = normalizeDictationLanguageAllowList(next.dictationLanguageAllowList);
+  if (mode === "multiple" && allowList.length === 0 && primaryLanguage) {
+    allowList = [primaryLanguage];
+  }
+  if (allowList.length > 1) {
+    mode = "multiple";
+  }
+
+  dictationLanguageSelect.value = primaryLanguage;
+  dictationLanguageModeSingleInput.checked = mode === "single";
+  dictationLanguageModeMultipleInput.checked = mode === "multiple";
+  dictationLanguageMultiWrap.hidden = mode !== "multiple";
+
+  for (const option of dictationLanguageOptionInputs) {
+    option.checked = mode === "multiple" && allowList.includes(option.value);
+  }
+
+  if (mode === "multiple") {
+    if (allowList.length === 0) {
+      dictationLanguageSummary.textContent = "Whisper language mode: Multiple (choose at least one language).";
+    } else {
+      const labels = allowList.map((code) => formatDictationLanguageLabel(code)).join(", ");
+      dictationLanguageSummary.textContent = `Whisper language mode: Multiple (${labels}).`;
+    }
+  } else if (primaryLanguage) {
+    dictationLanguageSummary.textContent = `Whisper language mode: Single (${formatDictationLanguageLabel(primaryLanguage)}).`;
+  } else {
+    dictationLanguageSummary.textContent = "Whisper language mode: Auto-detect.";
+  }
+}
+
+function resolveSttLanguageConfig(next: PersistedSettings): {
+  language: string | null;
+  allowedLanguages: string[] | null;
+} {
+  const primaryLanguage = normalizeDictationLanguageCode(next.dictationLanguage);
+  const mode = asDictationLanguageMode(next.dictationLanguageMode);
+  let allowedLanguages =
+    mode === "multiple"
+      ? normalizeDictationLanguageAllowList(next.dictationLanguageAllowList)
+      : primaryLanguage
+        ? [primaryLanguage]
+        : [];
+
+  if (mode === "multiple" && primaryLanguage && !allowedLanguages.includes(primaryLanguage)) {
+    allowedLanguages = [primaryLanguage, ...allowedLanguages];
+  }
+
+  const language =
+    mode === "multiple"
+      ? primaryLanguage || allowedLanguages[0] || null
+      : primaryLanguage || null;
+
+  return {
+    language,
+    allowedLanguages: allowedLanguages.length > 0 ? allowedLanguages : null,
+  };
 }
 
 function asPiperQuality(value: unknown): PiperQuality {
@@ -3229,8 +4290,9 @@ function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
   const row = document.createElement("article");
   row.className = `entry entry-${entry.tone}`;
   row.innerHTML = `
-    <time>${formatConversationTime(entry.timestamp)}</time>
-    <p><strong>${escapeHtml(entry.speaker)}</strong> ${escapeHtml(entry.content)}</p>
+    <time class="entry-time">${formatConversationTime(entry.timestamp)}</time>
+    <p class="entry-speaker">${escapeHtml(entry.speaker)}</p>
+    <p class="entry-content">${escapeHtml(entry.content)}</p>
   `;
   return row;
 }
@@ -3430,11 +4492,11 @@ function renderDictionaryList(): void {
   dictionaryList.innerHTML = "";
   for (const term of filtered) {
     const row = document.createElement("div");
-    row.className = "managed-row";
+    row.className = "managed-row managed-row-grid";
     row.innerHTML = `
-      <p><strong>${escapeHtml(term.source)}</strong> → ${escapeHtml(term.target)}</p>
+      <p class="managed-row-main"><strong>${escapeHtml(term.source)}</strong><span>${escapeHtml(term.target)}</span></p>
+      <span class="managed-row-meta">${term.scope === "shared" ? "Shared" : "Personal"}</span>
       <div class="managed-row-actions">
-        <span>${term.scope === "shared" ? "Shared" : "Personal"}</span>
         <button type="button" class="inline-link" data-dictionary-delete="${term.id}">Delete</button>
       </div>
     `;
@@ -3494,11 +4556,13 @@ function renderSnippetsList(): void {
   snippetsList.innerHTML = "";
   for (const snippet of filtered) {
     const row = document.createElement("div");
-    row.className = "managed-row";
+    row.className = "managed-row managed-row-grid";
     row.innerHTML = `
-      <p><strong>${escapeHtml(snippet.trigger)}</strong> → ${escapeHtml(snippet.expansion)}</p>
+      <p class="managed-row-main"><strong>${escapeHtml(snippet.trigger)}</strong><span>${escapeHtml(
+        snippet.expansion,
+      )}</span></p>
+      <span class="managed-row-meta">${snippet.scope === "shared" ? "Shared" : "Personal"}</span>
       <div class="managed-row-actions">
-        <span>${snippet.scope === "shared" ? "Shared" : "Personal"}</span>
         <button type="button" class="inline-link" data-snippet-delete="${snippet.id}">Delete</button>
       </div>
     `;
@@ -3566,7 +4630,7 @@ function renderNotesList(): void {
   notesList.innerHTML = "";
   for (const note of quickNotes) {
     const row = document.createElement("article");
-    row.className = "managed-row";
+    row.className = "managed-row managed-row-grid managed-row-note";
     const time = new Date(note.createdAt).toLocaleString([], {
       month: "short",
       day: "numeric",
@@ -3574,9 +4638,9 @@ function renderNotesList(): void {
       minute: "2-digit",
     });
     row.innerHTML = `
-      <p>${escapeHtml(note.text)}</p>
+      <p class="managed-row-main"><strong>Quick note</strong><span>${escapeHtml(note.text)}</span></p>
+      <span class="managed-row-meta">${time}</span>
       <div class="managed-row-actions">
-        <span>${time}</span>
         <button type="button" class="inline-link" data-note-delete="${note.id}">Delete</button>
       </div>
     `;
@@ -3806,6 +4870,8 @@ async function refreshAssistantInfo(): Promise<void> {
   const info = await invoke<AssistantInfoResponse>("get_assistant_info");
   renderAssistantInfo(info);
   renderProviderModelCatalog(providerModelCatalog, settings.aiModelName || settings.sttModelName);
+  renderLocalOllamaModelCatalog(localOllamaModelCatalog, settings.localOllamaModel);
+  renderLocalSttModelCatalog(localSttModelCatalog, settings.localSttModel);
 
   if (!piperPathInput.value.trim() && info.piperPath) {
     piperPathInput.value = info.piperPath;
@@ -3921,12 +4987,12 @@ function applyTtsSetupStatus(status: TtsSetupStatusResponse): void {
 
   if (!status.running && status.completed) {
     if (status.success) {
-      setNotice("All TTS runtimes are ready.");
+      setNotice(ZERO_PYTHON_MODE ? "Piper runtime is ready." : "All TTS runtimes are ready.");
       if (stage !== "recording") {
         setStage("idle", "TTS setup complete.");
       }
     } else {
-      setNotice("TTS setup failed. Review logs in Settings > TTS.", true);
+      setNotice("TTS setup failed. Review logs in Settings > Models.", true);
       setStage("error", "TTS setup failed.");
     }
   }
@@ -3951,7 +5017,7 @@ async function pollTtsSetupStatusOnce(): Promise<void> {
     if (!status.running) {
       stopTtsSetupPolling();
       await refreshAssistantInfoSafely();
-      if (status.completed || settings.ttsEngine === "coqui") {
+      if (!ZERO_PYTHON_MODE && (status.completed || settings.ttsEngine === "coqui")) {
         await refreshCoquiStatusSafely();
         await refreshCoquiVoices();
         if (settings.ttsEngine === "coqui") {
@@ -3985,7 +5051,7 @@ async function handleSetupAllTts(): Promise<void> {
     return;
   }
 
-  setStage("processing", "Setting up Piper and Coqui runtimes...");
+  setStage("processing", ZERO_PYTHON_MODE ? "Setting up Piper runtime..." : "Setting up Piper and Coqui runtimes...");
   setupAllTtsBtn.disabled = true;
   ttsSetupStatus.textContent = "Starting setup...";
   syncActionAvailability();
@@ -4102,14 +5168,76 @@ function renderProviderModelCatalog(models: string[], selectedModel = ""): void 
   providerModelCatalogSelect.value = selected;
 }
 
+function renderLocalOllamaModelCatalog(models: string[], selectedModel = ""): void {
+  const normalized = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean))).sort();
+  const fallbackModel =
+    selectedModel.trim() || localOllamaModelInput.value.trim() || settings.localOllamaModel.trim();
+  const finalModels =
+    normalized.length > 0
+      ? normalized
+      : fallbackModel
+        ? [fallbackModel]
+        : [];
+  localOllamaModelCatalog = finalModels;
+
+  if (finalModels.length === 0) {
+    localOllamaModelCatalogSelect.innerHTML = '<option value="">No models available</option>';
+    return;
+  }
+
+  const selected = finalModels.includes(selectedModel)
+    ? selectedModel
+    : finalModels.includes(fallbackModel)
+      ? fallbackModel
+      : "";
+  const options = ['<option value="">Select a model...</option>'];
+  for (const model of finalModels) {
+    const active = model === selected ? " selected" : "";
+    options.push(`<option value="${escapeHtml(model)}"${active}>${escapeHtml(model)}</option>`);
+  }
+  localOllamaModelCatalogSelect.innerHTML = options.join("");
+  localOllamaModelCatalogSelect.value = selected;
+}
+
+function renderLocalSttModelCatalog(models: string[], selectedModel = ""): void {
+  const normalized = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean)));
+  localSttModelCatalog = normalized;
+
+  if (normalized.length === 0) {
+    localSttModelCatalogSelect.innerHTML = '<option value="">No models available</option>';
+    return;
+  }
+
+  const selected = normalized.includes(selectedModel.trim()) ? selectedModel.trim() : "";
+  const currentInputModel = localSttModelInput.value.trim();
+  const selectedOrCurrent = selected || (normalized.includes(currentInputModel) ? currentInputModel : "");
+  if (currentInputModel && !normalized.includes(currentInputModel)) {
+    localSttModelInput.value = "";
+  }
+  const options = ['<option value="">Select a model...</option>'];
+  for (const model of normalized) {
+    const active = model === selectedOrCurrent ? " selected" : "";
+    const label = LOCAL_STT_MODEL_SIZE_LABELS[model] || model;
+    options.push(`<option value="${escapeHtml(model)}"${active}>${escapeHtml(label)}</option>`);
+  }
+  localSttModelCatalogSelect.innerHTML = options.join("");
+  localSttModelCatalogSelect.value = selectedOrCurrent;
+}
+
 async function fetchProviderModels(): Promise<void> {
   if (pipelineRunning || stage === "recording") {
     return;
   }
   const activeSettings = readSettingsFromForm();
+  const anyOnlineRuntime =
+    activeSettings.sttRuntimeMode === "online" || activeSettings.aiRuntimeMode === "online";
+  if (!anyOnlineRuntime) {
+    setNotice("Enable online STT or online AI mode to fetch provider models.", true);
+    return;
+  }
   if (!activeSettings.apiKey) {
     setNotice("API key is required to fetch model catalog.", true);
-    setActiveSettingsPane("system");
+    setActiveSettingsPane("online");
     return;
   }
 
@@ -4131,13 +5259,867 @@ async function fetchProviderModels(): Promise<void> {
   }
 }
 
+function renderOllamaStatus(status: OllamaStatusResponse): void {
+  const versionSuffix = status.version ? ` (${status.version})` : "";
+  if (status.installed && status.running) {
+    ollamaStatusNotice.textContent = `Ollama is ready${versionSuffix}. ${status.details || ""}`.trim();
+    return;
+  }
+  if (status.installed) {
+    ollamaStatusNotice.textContent =
+      `Ollama is installed${versionSuffix} but the local service is not reachable. ` +
+      (status.details || "Start Ollama to enable local AI models.");
+    return;
+  }
+  ollamaStatusNotice.textContent = status.details || "Ollama is not installed.";
+}
+
+async function refreshOllamaStatus(options: { quiet?: boolean } = {}): Promise<void> {
+  if (ollamaStatusInFlight || ollamaInstallInFlight) {
+    return;
+  }
+  if (pipelineRunning || stage === "recording") {
+    return;
+  }
+
+  const quiet = options.quiet === true;
+  const activeSettings = readSettingsFromForm();
+  ollamaStatusInFlight = true;
+  syncActionAvailability();
+  if (!quiet) {
+    setStage("processing", "Checking Ollama status...");
+  }
+
+  try {
+    const request = {
+      baseUrl: activeSettings.localOllamaBaseUrl || null,
+    };
+    const status = await invoke<OllamaStatusResponse>("get_ollama_status", { request });
+    renderOllamaStatus(status);
+    if (!quiet) {
+      setNotice(status.details || "Ollama status updated.");
+      setStage("idle", "Ollama status checked.");
+    }
+  } catch (error) {
+    const message = asErrorMessage(error);
+    ollamaStatusNotice.textContent = `Unable to determine Ollama status: ${message}`;
+    if (!quiet) {
+      setNotice(`Unable to determine Ollama status: ${message}`, true);
+      setStage("idle", "Ollama status unavailable.");
+    }
+  } finally {
+    ollamaStatusInFlight = false;
+    syncActionAvailability();
+  }
+}
+
+async function installOllama(): Promise<void> {
+  if (ollamaInstallInFlight || pipelineRunning || stage === "recording") {
+    return;
+  }
+
+  ollamaInstallInFlight = true;
+  syncActionAvailability();
+  setStage("processing", "Installing Ollama...");
+
+  try {
+    const status = await invoke<OllamaStatusResponse>("install_ollama");
+    renderOllamaStatus(status);
+    if (status.running) {
+      setNotice("Ollama installation completed and service is reachable.");
+      setStage("idle", "Ollama installed.");
+      await fetchOllamaModels();
+    } else if (status.installed) {
+      setNotice(
+        "Ollama installer finished. Start Ollama once to bring up the local service endpoint.",
+      );
+      setStage("idle", "Ollama install finished.");
+    } else {
+      setNotice(status.details || "Ollama install did not complete yet.", true);
+      setStage("idle", "Ollama install needs attention.");
+    }
+  } catch (error) {
+    setNotice(`Unable to install Ollama from app: ${asErrorMessage(error)}`, true);
+    setStage("idle", "Ollama install failed.");
+  } finally {
+    ollamaInstallInFlight = false;
+    syncActionAvailability();
+  }
+}
+
+async function fetchOllamaModels(
+  options: { quiet?: boolean; autoSelect?: boolean } = {},
+): Promise<void> {
+  if (pipelineRunning || stage === "recording") {
+    return;
+  }
+  const quiet = options.quiet === true;
+  const autoSelect = options.autoSelect === true;
+  const activeSettings = readSettingsFromForm();
+  if (!quiet) {
+    setStage("processing", "Loading Ollama model catalog...");
+  }
+  try {
+    const request = {
+      baseUrl: activeSettings.localOllamaBaseUrl || null,
+    };
+    const response = await invoke<ProviderModelsResponse>("fetch_ollama_models", { request });
+    renderLocalOllamaModelCatalog(response.models, activeSettings.localOllamaModel);
+    if (
+      autoSelect &&
+      !activeSettings.localOllamaModel.trim() &&
+      response.models.length > 0
+    ) {
+      const fallback = pickDefaultLocalOllamaModelFromCatalog();
+      if (fallback) {
+        localOllamaModelInput.value = fallback;
+        if (localOllamaModelCatalog.includes(fallback)) {
+          localOllamaModelCatalogSelect.value = fallback;
+        }
+        handleSettingsChange();
+        if (!quiet) {
+          setNotice(`Auto-selected local Ollama model "${fallback}".`);
+        }
+      }
+    } else if (!quiet) {
+      setNotice(`Loaded ${response.models.length} Ollama models.`);
+    }
+    if (!quiet) {
+      setStage("idle", "Ollama model list loaded.");
+    }
+  } catch (error) {
+    if (!quiet) {
+      setNotice(`Unable to load Ollama model catalog: ${asErrorMessage(error)}`, true);
+      setStage("idle", "Ollama model list unavailable.");
+    }
+  } finally {
+    syncActionAvailability();
+  }
+}
+
+async function ensureLocalOllamaModelSelected(options: { quiet?: boolean } = {}): Promise<string> {
+  const quiet = options.quiet === true;
+  const activeSettings = readSettingsFromForm();
+  let selected = activeSettings.localOllamaModel.trim() || localOllamaModelCatalogSelect.value.trim();
+  if (selected && !looksLikeEmbeddingOnlyOllamaModel(selected)) {
+    return selected;
+  }
+
+  await fetchOllamaModels({ quiet: true, autoSelect: true });
+  const refreshed = readSettingsFromForm();
+  selected = refreshed.localOllamaModel.trim() || localOllamaModelCatalogSelect.value.trim();
+  if (selected && looksLikeEmbeddingOnlyOllamaModel(selected)) {
+    const fallback = pickDefaultLocalOllamaModelFromCatalog();
+    if (fallback && fallback !== selected) {
+      localOllamaModelInput.value = fallback;
+      if (localOllamaModelCatalog.includes(fallback)) {
+        localOllamaModelCatalogSelect.value = fallback;
+      }
+      handleSettingsChange();
+      selected = fallback;
+    }
+  }
+  if (selected && looksLikeEmbeddingOnlyOllamaModel(selected) && !quiet) {
+    setNotice(
+      `Selected Ollama model "${selected}" appears embedding-only. Choose a chat model (for example llama, qwen, mistral, gemma).`,
+      true,
+    );
+    setActiveSettingsPane("offline");
+  }
+  if (!selected && !quiet) {
+    setNotice(
+      "No local Ollama model is selected. Open Settings > Models and pull/download a model.",
+      true,
+    );
+    setActiveSettingsPane("offline");
+  }
+  return selected;
+}
+
+async function pullOllamaModel(): Promise<void> {
+  if (pipelineRunning || stage === "recording" || ollamaPullInFlight) {
+    return;
+  }
+  const activeSettings = readSettingsFromForm();
+  const model = activeSettings.localOllamaModel.trim() || localOllamaModelCatalogSelect.value.trim();
+  if (!model) {
+    setNotice("Enter or select an Ollama model to pull/download.", true);
+    setActiveSettingsPane("offline");
+    return;
+  }
+
+  setStage("processing", `Pulling Ollama model "${model}"...`);
+  ollamaPullInFlight = true;
+  syncActionAvailability();
+
+  try {
+    const request = {
+      baseUrl: activeSettings.localOllamaBaseUrl || null,
+      model,
+    };
+    const response = await invoke<OllamaPullResponse>("pull_ollama_model", { request });
+    localOllamaModelInput.value = response.model;
+    handleSettingsChange();
+    setNotice(`Ollama pull complete: ${response.status || response.model}.`);
+    await fetchOllamaModels();
+  } catch (error) {
+    setNotice(`Unable to pull Ollama model: ${asErrorMessage(error)}`, true);
+    setStage("idle", "Ollama pull failed.");
+  } finally {
+    ollamaPullInFlight = false;
+    syncActionAvailability();
+  }
+}
+
+async function fetchLocalSttModels(options: { quiet?: boolean } = {}): Promise<void> {
+  if (pipelineRunning || stage === "recording") {
+    return;
+  }
+  const activeSettings = readSettingsFromForm();
+  const quiet = options.quiet === true;
+
+  if (!quiet) {
+    setStage("processing", "Loading local STT model catalog...");
+  }
+  try {
+    const response = await invoke<ProviderModelsResponse>("fetch_local_stt_models");
+    renderLocalSttModelCatalog(response.models, activeSettings.localSttModel);
+    if (!quiet) {
+      setNotice(`Loaded ${response.models.length} local STT models.`);
+      setStage("idle", "Local STT model list loaded.");
+    }
+  } catch (error) {
+    if (!quiet) {
+      setNotice(`Unable to load local STT model catalog: ${asErrorMessage(error)}`, true);
+      setStage("idle", "Local STT model list unavailable.");
+    }
+  } finally {
+    syncActionAvailability();
+  }
+}
+
+function renderSidebarLocalSttToggle(): void {
+  const activeSettings = readSettingsFromForm();
+  if (activeSettings.sttRuntimeMode !== "local") {
+    sidebarToggleLocalSttBtn.hidden = true;
+    return;
+  }
+
+  sidebarToggleLocalSttBtn.hidden = false;
+  const loaded = isSelectedLocalSttModelLoaded();
+  sidebarToggleLocalSttGlyph.textContent = loaded ? "⏻" : "▶";
+  sidebarToggleLocalSttLabel.textContent = loaded ? "Unload STT" : "Load STT";
+  const actionText = loaded ? "Unload local STT model" : "Load local STT model";
+  sidebarToggleLocalSttBtn.setAttribute("data-label", actionText);
+  sidebarToggleLocalSttBtn.setAttribute("aria-label", actionText);
+}
+
+function getSelectedLocalSttModel(): string {
+  const activeSettings = readSettingsFromForm();
+  return activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+}
+
+function isSelectedLocalSttModelLoaded(): boolean {
+  const selectedModel = getSelectedLocalSttModel();
+  if (!selectedModel || !localSttRuntimeLoaded) {
+    return false;
+  }
+  return lastWarmedLocalSttModel.trim() === selectedModel;
+}
+
+function localSttModelLabel(model: string): string {
+  const normalized = model.trim();
+  if (!normalized) {
+    return "-";
+  }
+  return LOCAL_STT_MODEL_SIZE_LABELS[normalized] || normalized;
+}
+
+function localSttPerformanceTierLabel(tier: string): string {
+  const normalized = tier.trim().toLowerCase();
+  if (normalized === "performance") {
+    return "Performance";
+  }
+  if (normalized === "balanced") {
+    return "Balanced";
+  }
+  return "Basic";
+}
+
+function hasShownLocalSttHardwareAdvisor(): boolean {
+  return localStorage.getItem(LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY) === "1";
+}
+
+function markLocalSttHardwareAdvisorShown(): void {
+  localStorage.setItem(LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY, "1");
+}
+
+function resolveLocalSttHardwareAdvisorChoice(choice: LocalSttHardwareAdvisorChoice): void {
+  if (localSttHardwareAdvisorResolver) {
+    const resolver = localSttHardwareAdvisorResolver;
+    localSttHardwareAdvisorResolver = null;
+    localSttHardwareAdvisorOpen = false;
+    sttHardwareAdvisorOverlay.hidden = true;
+    syncActionAvailability();
+    resolver(choice);
+    return;
+  }
+  localSttHardwareAdvisorOpen = false;
+  sttHardwareAdvisorOverlay.hidden = true;
+  syncActionAvailability();
+}
+
+async function suggestLocalSttModelForHardwareIfNeeded(selectedModel: string): Promise<string | null> {
+  if (hasShownLocalSttHardwareAdvisor()) {
+    return selectedModel;
+  }
+
+  let advice: LocalSttHardwareAdviceResponse;
+  try {
+    advice = await invoke<LocalSttHardwareAdviceResponse>("get_local_stt_hardware_advice", {
+      request: { selectedModel },
+    });
+  } catch (error) {
+    markLocalSttHardwareAdvisorShown();
+    setNotice(
+      `Hardware recommendation check failed. Continuing with selected model: ${asErrorMessage(error)}`,
+      true,
+    );
+    return selectedModel;
+  }
+
+  const suggestionModel = advice.slasshySuggestionModel?.trim() || selectedModel;
+  localSttHardwareAdvisorSelectedModel = selectedModel;
+  localSttHardwareAdvisorSuggestionModel = suggestionModel;
+
+  const cpuLabel = advice.cpuName?.trim() || "Unknown CPU";
+  const ramLabel =
+    advice.totalRamGb > 0 ? `${advice.totalRamGb.toFixed(1)} GB RAM` : "Unknown RAM capacity";
+  const coreLabel =
+    advice.logicalCores > 0 ? `${advice.logicalCores} logical cores` : "Unknown core count";
+  const gpuLabel = advice.nvidiaGpuDetected
+    ? advice.gpuVramGb > 0
+      ? `${advice.gpuName || "NVIDIA GPU"} (${advice.gpuVramGb.toFixed(1)} GB VRAM)`
+      : advice.gpuName || "NVIDIA GPU"
+    : "No NVIDIA GPU detected";
+
+  sttHardwareAdvisorHardware.textContent =
+    `Detected hardware: ${cpuLabel} • ${coreLabel} • ${ramLabel} • ${gpuLabel}. ` +
+    `Tier: ${localSttPerformanceTierLabel(advice.performanceTier)}.`;
+  sttHardwareAdvisorSuggestion.textContent =
+    `SlasshyWispr Suggestion: ${localSttModelLabel(suggestionModel)}`;
+
+  const suggestedLabels = advice.suggestedModels
+    .map((model) => localSttModelLabel(model))
+    .filter((label) => label !== "-");
+  sttHardwareAdvisorList.textContent =
+    suggestedLabels.length > 0
+      ? `Recommended for your hardware: ${suggestedLabels.join(", ")}.`
+      : "Recommended for your hardware: start with smaller models first.";
+
+  const cautionLabels = advice.cautionModels
+    .map((model) => localSttModelLabel(model))
+    .filter((label) => label !== "-");
+  const warningLead =
+    advice.selectedModelWarning?.trim() ||
+    "Warning: Higher models can be system-hungry and can feel slow on basic hardware.";
+  sttHardwareAdvisorWarning.textContent =
+    cautionLabels.length > 0
+      ? `${warningLead} Heavy options on this hardware: ${cautionLabels.join(", ")}.`
+      : warningLead;
+
+  sttHardwareAdvisorUseSuggestionBtn.textContent =
+    `Use suggestion (${localSttModelLabel(suggestionModel)})`;
+  sttHardwareAdvisorContinueBtn.textContent =
+    `Continue selected (${localSttModelLabel(selectedModel)})`;
+
+  localSttHardwareAdvisorOpen = true;
+  sttHardwareAdvisorOverlay.hidden = false;
+  syncActionAvailability();
+
+  const choice = await new Promise<LocalSttHardwareAdvisorChoice>((resolve) => {
+    localSttHardwareAdvisorResolver = resolve;
+  });
+  markLocalSttHardwareAdvisorShown();
+
+  if (choice === "cancel") {
+    localSttDownloadNotice.textContent = "Local STT model download canceled.";
+    setNotice("Local STT model download canceled.");
+    return null;
+  }
+  if (choice === "suggestion") {
+    return localSttHardwareAdvisorSuggestionModel || selectedModel;
+  }
+  return localSttHardwareAdvisorSelectedModel || selectedModel;
+}
+
+function updateLocalSttLoadOverlayDetail(): void {
+  if (sttLoadOverlay.hidden) {
+    return;
+  }
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - localSttLoadOverlayStartedAt) / 1000));
+  let phase = "Starting local STT runtime...";
+  if (elapsedSeconds >= 8 && elapsedSeconds < 24) {
+    phase = "Loading model into memory...";
+  } else if (elapsedSeconds >= 24) {
+    phase = "Still loading. Larger models and slower hardware take longer.";
+  }
+  sttLoadDetail.textContent = `${phase} (${elapsedSeconds}s elapsed). Time depends on your CPU/GPU, RAM, and selected model size.`;
+}
+
+function showLocalSttLoadOverlay(model: string): void {
+  localSttLoadOverlayStartedAt = Date.now();
+  sttLoadModel.textContent = `Model: ${model}`;
+  sttLoadOverlay.hidden = false;
+  updateLocalSttLoadOverlayDetail();
+  if (localSttLoadOverlayTickerId !== null) {
+    window.clearInterval(localSttLoadOverlayTickerId);
+  }
+  localSttLoadOverlayTickerId = window.setInterval(() => {
+    updateLocalSttLoadOverlayDetail();
+  }, 350);
+}
+
+function hideLocalSttLoadOverlay(): void {
+  if (localSttLoadOverlayTickerId !== null) {
+    window.clearInterval(localSttLoadOverlayTickerId);
+    localSttLoadOverlayTickerId = null;
+  }
+  sttLoadOverlay.hidden = true;
+}
+
+async function refreshLocalSttRuntimeState(options: { quiet?: boolean } = {}): Promise<void> {
+  if (localSttRuntimeStateInFlight) {
+    return;
+  }
+  localSttRuntimeStateInFlight = true;
+  syncActionAvailability();
+  try {
+    const response = await invoke<LocalSttRuntimeStateResponse>("get_local_stt_runtime_state");
+    localSttRuntimeLoaded = response.loaded;
+    if (!response.loaded) {
+      lastWarmedLocalSttModel = "";
+    }
+    renderSidebarLocalSttToggle();
+  } catch (error) {
+    if (!options.quiet) {
+      setNotice(`Unable to check local STT runtime state: ${asErrorMessage(error)}`, true);
+    }
+  } finally {
+    localSttRuntimeStateInFlight = false;
+    syncActionAvailability();
+  }
+}
+
+async function activateSelectedLocalSttModel(): Promise<void> {
+  if (
+    pipelineRunning ||
+    stage === "recording" ||
+    localSttDownloadInFlight ||
+    localSttDeleteInFlight ||
+    localSttDeactivateInFlight ||
+    localSttWarmupInFlight ||
+    localSttRuntimeStateInFlight ||
+    localSttDownloadActive
+  ) {
+    return;
+  }
+
+  const activeSettings = readSettingsFromForm();
+  const model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  if (!model) {
+    setNotice("Select a local STT model from catalog first.", true);
+    return;
+  }
+  localSttModelInput.value = model;
+  if (localSttModelCatalog.includes(model)) {
+    localSttModelCatalogSelect.value = model;
+  }
+  handleSettingsChange();
+  localSttDownloadNotice.textContent = "Loading model...";
+  setNotice("Loading model...");
+  showLocalSttLoadOverlay(model);
+  syncActionAvailability();
+  try {
+    await warmupActiveLocalSttModel({ quiet: true, force: true, explicit: true });
+    await refreshLocalSttRuntimeState({ quiet: true });
+    const selectedModelLoaded = isSelectedLocalSttModelLoaded();
+    if (selectedModelLoaded) {
+      localSttDownloadNotice.textContent = "Model loaded.";
+      setNotice("Model loaded.");
+    } else {
+      localSttDownloadNotice.textContent = "Unable to load model.";
+      setNotice("Unable to load model.", true);
+    }
+  } catch (error) {
+    const message = asErrorMessage(error);
+    localSttDownloadNotice.textContent = `Load failed: ${message}`;
+    setNotice(`Unable to load local STT model: ${message}`, true);
+  } finally {
+    hideLocalSttLoadOverlay();
+    syncActionAvailability();
+  }
+}
+
+async function warmupActiveLocalSttModel(
+  options: { quiet?: boolean; force?: boolean; explicit?: boolean } = {},
+): Promise<void> {
+  if (localSttWarmupInFlight) {
+    return;
+  }
+
+  const activeSettings = readSettingsFromForm();
+  const explicit = options.explicit === true;
+  if (!explicit && activeSettings.sttRuntimeMode !== "local") {
+    return;
+  }
+
+  const model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  if (!model) {
+    return;
+  }
+
+  const force = options.force === true;
+  if (!force && localSttRuntimeLoaded && lastWarmedLocalSttModel === model) {
+    return;
+  }
+
+  localSttWarmupInFlight = true;
+  syncActionAvailability();
+  const quiet = options.quiet === true;
+  try {
+    const response = await invoke<LocalSttWarmupResponse>("warmup_local_stt_model", {
+      request: { model },
+    });
+    if (response.warmed) {
+      lastWarmedLocalSttModel = response.model;
+      localSttRuntimeLoaded = true;
+      renderSidebarLocalSttToggle();
+      if (!quiet) {
+        setNotice(response.details || `Local STT model warmed: ${response.model}.`);
+      }
+    } else if (!quiet) {
+      setNotice(response.details || `Local STT model warmup skipped: ${response.model}.`, true);
+    }
+  } catch (error) {
+    if (!quiet) {
+      setNotice(`Local STT warmup failed: ${asErrorMessage(error)}`, true);
+    }
+  } finally {
+    localSttWarmupInFlight = false;
+    void refreshLocalSttRuntimeState({ quiet: true });
+    syncActionAvailability();
+  }
+}
+
+async function deactivateLocalSttModel(): Promise<void> {
+  if (
+    pipelineRunning ||
+    stage === "recording" ||
+    localSttDownloadInFlight ||
+    localSttDeleteInFlight ||
+    localSttDeactivateInFlight ||
+    localSttDownloadActive
+  ) {
+    return;
+  }
+
+  const activeSettings = readSettingsFromForm();
+  const model =
+    activeSettings.localSttModel.trim() ||
+    localSttModelCatalogSelect.value.trim() ||
+    lastWarmedLocalSttModel.trim();
+
+  localSttDeactivateInFlight = true;
+  syncActionAvailability();
+  try {
+    const request = { model: model || null };
+    const response = await invoke<LocalSttDeactivateResponse>("deactivate_local_stt_model", {
+      request,
+    });
+    if (response.deactivated) {
+      lastWarmedLocalSttModel = "";
+      localSttRuntimeLoaded = false;
+      renderSidebarLocalSttToggle();
+      localSttDownloadNotice.textContent = response.details;
+      setNotice(response.details);
+    } else {
+      localSttDownloadNotice.textContent = response.details;
+      setNotice(response.details, true);
+    }
+  } catch (error) {
+    const message = asErrorMessage(error);
+    setNotice(`Unable to deactivate local STT model: ${message}`, true);
+  } finally {
+    localSttDeactivateInFlight = false;
+    void refreshLocalSttRuntimeState({ quiet: true });
+    syncActionAvailability();
+  }
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const precision = unitIndex <= 1 ? 0 : 1;
+  return `${size.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function applyLocalSttDownloadStatus(status: LocalSttDownloadStatusResponse): void {
+  const rawPercent = Number.isFinite(status.progressPercent) ? status.progressPercent : 0;
+  const boundedPercent = Math.max(
+    0,
+    Math.min(100, status.completed && status.success ? 100 : rawPercent),
+  );
+  localSttDownloadActive = status.active;
+  localSttDownloadProgressBar.style.width = `${boundedPercent}%`;
+  const progressTrack = localSttDownloadProgressBar.parentElement;
+  progressTrack?.setAttribute("aria-valuenow", boundedPercent.toFixed(1));
+
+  const filesSegment =
+    status.filesTotal > 0 ? `${status.filesCompleted}/${status.filesTotal} files` : "Preparing";
+  const bytesSegment =
+    status.totalBytes > 0
+      ? `${formatBytes(status.downloadedBytes)} / ${formatBytes(status.totalBytes)}`
+      : `${formatBytes(status.downloadedBytes)}`;
+
+  if (status.active) {
+    localSttDownloadProgressText.textContent =
+      `${status.stage || "Downloading..."} ${boundedPercent.toFixed(1)}% • ${filesSegment} • ${bytesSegment}`;
+    return;
+  }
+
+  if (status.completed) {
+    localSttDownloadProgressText.textContent = status.success
+      ? "Model loaded."
+      : status.message || status.stage || "Download finished.";
+    return;
+  }
+
+  localSttDownloadProgressText.textContent =
+    status.message || "No local STT download in progress.";
+}
+
+function stopLocalSttDownloadStatusPolling(): void {
+  if (localSttDownloadStatusPollingId !== null) {
+    window.clearInterval(localSttDownloadStatusPollingId);
+    localSttDownloadStatusPollingId = null;
+  }
+}
+
+function startLocalSttDownloadStatusPolling(): void {
+  if (localSttDownloadStatusPollingId !== null) {
+    return;
+  }
+  localSttDownloadStatusPollingId = window.setInterval(() => {
+    void pollLocalSttDownloadStatusOnce({ quiet: true });
+  }, 240);
+}
+
+async function pollLocalSttDownloadStatusOnce(options: { quiet?: boolean } = {}): Promise<void> {
+  if (localSttDownloadStatusPollInFlight) {
+    return;
+  }
+  localSttDownloadStatusPollInFlight = true;
+  const wasActive = localSttDownloadActive;
+
+  try {
+    const status = await invoke<LocalSttDownloadStatusResponse>("get_local_stt_download_status");
+    applyLocalSttDownloadStatus(status);
+    if (status.active) {
+      startLocalSttDownloadStatusPolling();
+    } else {
+      stopLocalSttDownloadStatusPolling();
+    }
+
+    const justFinished = status.completed && !status.active && (wasActive || localSttDownloadInFlight);
+    if (justFinished) {
+      const completionMessage =
+        status.success ? "Model loaded." : status.message || "Local STT model download failed.";
+      localSttDownloadNotice.textContent = completionMessage;
+      if (status.success) {
+        if (status.model.trim()) {
+          lastWarmedLocalSttModel = status.model.trim();
+        }
+        setNotice(completionMessage);
+        await fetchLocalSttModels({ quiet: true });
+      } else {
+        setNotice(completionMessage, true);
+      }
+    }
+  } catch (error) {
+    stopLocalSttDownloadStatusPolling();
+    if (!options.quiet) {
+      setNotice(`Unable to poll local STT download status: ${asErrorMessage(error)}`, true);
+    }
+  } finally {
+    localSttDownloadStatusPollInFlight = false;
+    syncActionAvailability();
+  }
+}
+
+async function downloadLocalSttModel(): Promise<void> {
+  if (
+    pipelineRunning ||
+    stage === "recording" ||
+    localSttDownloadInFlight ||
+    localSttDeleteInFlight ||
+    localSttDeactivateInFlight ||
+    localSttDownloadActive ||
+    localSttHardwareAdvisorOpen
+  ) {
+    return;
+  }
+  const activeSettings = readSettingsFromForm();
+  let model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  if (!model) {
+    setNotice("Enter or select a local STT model to download.", true);
+    setActiveSettingsPane("offline");
+    return;
+  }
+
+  const advisedModel = await suggestLocalSttModelForHardwareIfNeeded(model);
+  if (!advisedModel) {
+    return;
+  }
+  model = advisedModel.trim();
+  if (!model) {
+    setNotice("Select a local STT model from catalog first.", true);
+    return;
+  }
+  if (localSttModelInput.value.trim() !== model) {
+    localSttModelInput.value = model;
+  }
+  if (localSttModelCatalog.includes(model)) {
+    localSttModelCatalogSelect.value = model;
+  }
+  handleSettingsChange();
+
+  localSttDownloadInFlight = true;
+  syncActionAvailability();
+
+  try {
+    const request = {
+      model,
+    };
+    const response = await invoke<LocalSttDownloadResponse>("download_local_stt_model", { request });
+    localSttModelInput.value = response.model;
+    handleSettingsChange();
+    localSttDownloadNotice.textContent = "Downloading model...";
+    setNotice("Downloading model...");
+    startLocalSttDownloadStatusPolling();
+    await pollLocalSttDownloadStatusOnce({ quiet: true });
+  } catch (error) {
+    const message = asErrorMessage(error);
+    setNotice(`Unable to download local STT model: ${message}`, true);
+    localSttDownloadNotice.textContent = `Download failed: ${message}`;
+  } finally {
+    localSttDownloadInFlight = false;
+    syncActionAvailability();
+  }
+}
+
+async function deleteLocalSttModel(): Promise<void> {
+  if (
+    pipelineRunning ||
+    stage === "recording" ||
+    localSttDownloadInFlight ||
+    localSttDeleteInFlight ||
+    localSttDeactivateInFlight ||
+    localSttDownloadActive
+  ) {
+    return;
+  }
+
+  const activeSettings = readSettingsFromForm();
+  const model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  if (!model) {
+    setNotice("Select a local STT model first.", true);
+    setActiveSettingsPane("offline");
+    return;
+  }
+
+  localSttDeleteInFlight = true;
+  syncActionAvailability();
+
+  try {
+    const request = { model };
+    const response = await invoke<LocalSttDeleteResponse>("delete_local_stt_model", { request });
+    localSttDownloadNotice.textContent = response.details;
+    if (response.removed) {
+      if (lastWarmedLocalSttModel === response.model) {
+        lastWarmedLocalSttModel = "";
+      }
+      if (localSttModelInput.value.trim() === model) {
+        localSttModelInput.value = "";
+        localSttModelCatalogSelect.value = "";
+        handleSettingsChange();
+      }
+      setNotice(`Deleted local STT model "${response.model}".`);
+      await fetchLocalSttModels({ quiet: true });
+    } else {
+      setNotice(response.details, true);
+    }
+  } catch (error) {
+    const message = asErrorMessage(error);
+    setNotice(`Unable to delete local STT model: ${message}`, true);
+  } finally {
+    localSttDeleteInFlight = false;
+    syncActionAvailability();
+  }
+}
+
+async function openLocalSttModelPath(): Promise<void> {
+  if (
+    pipelineRunning ||
+    stage === "recording" ||
+    localSttDownloadInFlight ||
+    localSttDeleteInFlight ||
+    localSttDeactivateInFlight ||
+    localSttDownloadActive
+  ) {
+    return;
+  }
+
+  const activeSettings = readSettingsFromForm();
+  const model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  if (!model) {
+    setNotice("Select a local STT model first.", true);
+    setActiveSettingsPane("offline");
+    return;
+  }
+
+  try {
+    const request = { model };
+    const response = await invoke<LocalSttOpenPathResponse>("open_local_stt_model_path", { request });
+    localSttDownloadNotice.textContent = `${response.details} Path: ${response.localPath}`;
+    if (response.opened) {
+      setNotice(`Opened local STT model folder: ${response.localPath}`);
+    } else {
+      setNotice(`${response.details} (${response.localPath})`, true);
+    }
+  } catch (error) {
+    const message = asErrorMessage(error);
+    setNotice(`Unable to open local STT model folder: ${message}`, true);
+  }
+}
+
 function renderCoquiStatus(status: CoquiStatusResponse): void {
-  coquiStatusValue.textContent = status.available ? "Ready" : "Unavailable";
+  coquiStatusValue.textContent = ZERO_PYTHON_MODE ? "Disabled" : status.available ? "Ready" : "Unavailable";
   coquiPythonValue.textContent = status.pythonPath || "-";
   coquiVersionValue.textContent = status.ttsVersion || "-";
   coquiCudaValue.textContent = status.cudaAvailable ? "Available" : "Not available";
   coquiVoiceDirValue.textContent = status.voiceDir || "-";
-  coquiRuntimeInstalled =
+  coquiRuntimeInstalled = ZERO_PYTHON_MODE
+    ? false
+    :
     coquiRuntimeInstalled ||
     Boolean(status.pythonPath && status.pythonPath.trim().length > 0);
 
@@ -4151,6 +6133,9 @@ function renderCoquiStatus(status: CoquiStatusResponse): void {
 }
 
 async function refreshCoquiStatus(): Promise<void> {
+  if (ZERO_PYTHON_MODE) {
+    return;
+  }
   if (coquiCloneInProgress) {
     return;
   }
@@ -4162,6 +6147,9 @@ async function refreshCoquiStatus(): Promise<void> {
 }
 
 async function refreshCoquiVoices(): Promise<void> {
+  if (ZERO_PYTHON_MODE) {
+    return;
+  }
   if (coquiCloneInProgress) {
     return;
   }
@@ -4185,6 +6173,9 @@ async function refreshCoquiVoices(): Promise<void> {
 }
 
 async function refreshCoquiModels(options: { quiet?: boolean } = {}): Promise<void> {
+  if (ZERO_PYTHON_MODE) {
+    return;
+  }
   if (coquiCloneInProgress) {
     return;
   }
@@ -4220,6 +6211,10 @@ async function refreshCoquiModels(options: { quiet?: boolean } = {}): Promise<vo
 }
 
 async function handleSetupCoquiRuntime(): Promise<void> {
+  if (ZERO_PYTHON_MODE) {
+    setNotice(ZERO_PYTHON_TTS_NOTICE, true);
+    return;
+  }
   if (pipelineRunning || stage === "recording") {
     return;
   }
@@ -4249,6 +6244,10 @@ async function handleSetupCoquiRuntime(): Promise<void> {
 }
 
 async function handleValidateCoqui(): Promise<void> {
+  if (ZERO_PYTHON_MODE) {
+    setNotice(ZERO_PYTHON_TTS_NOTICE, true);
+    return;
+  }
   if (pipelineRunning || stage === "recording") {
     return;
   }
@@ -4430,6 +6429,11 @@ async function prepareCoquiReferenceSample(file: File): Promise<{
 }
 
 async function handleCloneCoquiVoice(): Promise<void> {
+  if (ZERO_PYTHON_MODE) {
+    setCoquiCloneStatus(ZERO_PYTHON_TTS_NOTICE, true);
+    setNotice(ZERO_PYTHON_TTS_NOTICE, true);
+    return;
+  }
   if (pipelineRunning || stage === "recording") {
     setCoquiCloneStatus("Clone blocked while pipeline is busy.", true);
     logClientEvent("coqui.clone blocked: pipeline busy");
@@ -4531,6 +6535,11 @@ async function handleCloneCoquiVoice(): Promise<void> {
 }
 
 async function handleTestCoquiVoice(): Promise<void> {
+  if (ZERO_PYTHON_MODE) {
+    setCoquiCloneStatus(ZERO_PYTHON_TTS_NOTICE, true);
+    setNotice(ZERO_PYTHON_TTS_NOTICE, true);
+    return;
+  }
   if (pipelineRunning || stage === "recording" || coquiCloneInProgress) {
     setCoquiCloneStatus("Voice test is blocked while another task is running.", true);
     return;
@@ -4660,11 +6669,13 @@ async function startRecording(): Promise<void> {
   if (commandModeArmed) {
     void primeSelectionSnapshotForCommandMode();
   }
-  if (!activeSettings.apiKey) {
+  const anyOnlineRuntime =
+    activeSettings.sttRuntimeMode === "online" || activeSettings.aiRuntimeMode === "online";
+  if (anyOnlineRuntime && !activeSettings.apiKey) {
     clearPushToTalkHolds();
     setNotice("API key is required before recording.", true);
     openSettings();
-    setActiveSettingsPane("system");
+    setActiveSettingsPane("online");
     return;
   }
 
@@ -4789,9 +6800,22 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
   setStage("processing", "Transcribing...");
 
   try {
-    const audioBase64 = await blobToBase64(audioBlob);
+    let pipelineAudioBlob = audioBlob;
+    let pipelineAudioMimeType = audioMimeType;
+    if (activeSettings.sttRuntimeMode === "local") {
+      try {
+        const decoded = await decodeAudioSample(audioBlob);
+        pipelineAudioBlob = audioBufferToWavBlob(decoded);
+        pipelineAudioMimeType = "audio/wav";
+      } catch (error) {
+        logClientEvent(`local.stt wav conversion skipped: ${asErrorMessage(error)}`);
+      }
+    }
+
+    const audioBase64 = await blobToBase64(pipelineAudioBlob);
     const systemPrompt = buildEffectiveSystemPrompt(activeSettings, commandModeArmed);
     const coquiVoiceId = activeSettings.coquiVoiceId || coquiVoiceSelect.value || "";
+    const pipelineTtsEngine: TtsEngine = ZERO_PYTHON_MODE ? "piper" : activeSettings.ttsEngine;
     let selectedTextForRewrite: string | null = null;
     if (commandModeArmed) {
       const primedSelected = (commandSelectionSnapshot ?? "").trim();
@@ -4811,16 +6835,83 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       `pipeline.selection commandMode=${commandModeArmed} selectedChars=${selectedTextForRewrite ? selectedTextForRewrite.length : 0}`,
     );
 
+    let resolvedLocalOllamaModel = activeSettings.localOllamaModel.trim();
+    if (activeSettings.sttRuntimeMode === "local") {
+      let selectedLocalSttModel = activeSettings.localSttModel.trim();
+      if (!selectedLocalSttModel) {
+        const fallbackLocalSttModel = pickDefaultLocalSttModelFromCatalog();
+        if (fallbackLocalSttModel) {
+          localSttModelInput.value = fallbackLocalSttModel;
+          if (localSttModelCatalog.includes(fallbackLocalSttModel)) {
+            localSttModelCatalogSelect.value = fallbackLocalSttModel;
+          }
+          handleSettingsChange();
+          selectedLocalSttModel = fallbackLocalSttModel;
+        }
+      }
+      if (!selectedLocalSttModel) {
+        logClientEvent("pipeline.blocked reason=missing-local-stt-model");
+        setNotice(
+          "Local STT mode needs a local STT model (Parakeet). Open Settings > Models and select one.",
+          true,
+        );
+        setActiveSettingsPane("offline");
+        setStage("idle", "Local setup required.");
+        return;
+      }
+
+      await refreshLocalSttRuntimeState({ quiet: true });
+      const needsWarmup =
+        !localSttRuntimeLoaded ||
+        !selectedLocalSttModel ||
+        lastWarmedLocalSttModel.trim() !== selectedLocalSttModel;
+      if (needsWarmup) {
+        await warmupActiveLocalSttModel({ quiet: true, explicit: true });
+        await refreshLocalSttRuntimeState({ quiet: true });
+      } else if (selectedLocalSttModel) {
+        lastWarmedLocalSttModel = selectedLocalSttModel;
+      }
+      if (!isSelectedLocalSttModelLoaded()) {
+        logClientEvent("pipeline.blocked reason=local-stt-not-loaded");
+        setNotice("Local STT is not loaded. Click Load STT in the left sidebar.", true);
+        setStage("idle", "Local setup required.");
+        return;
+      }
+    }
+    if (activeSettings.aiRuntimeMode === "local") {
+      resolvedLocalOllamaModel = await ensureLocalOllamaModelSelected({ quiet: true });
+      if (!resolvedLocalOllamaModel) {
+        logClientEvent("pipeline.blocked reason=missing-local-ollama-model");
+        setNotice(
+          "Local AI mode needs a local Ollama model. Open Settings > Models and pull/download one.",
+          true,
+        );
+        setActiveSettingsPane("offline");
+        setStage("idle", "Local setup required.");
+        return;
+      }
+    }
+
+    const sttLanguageConfig = resolveSttLanguageConfig(activeSettings);
+
     const response = await invoke<AssistantPipelineResponse>("run_assistant_pipeline", {
       request: {
         apiKey: activeSettings.apiKey,
         apiBaseUrl: activeSettings.apiBaseUrl || null,
         sttModel: activeSettings.sttModelName || null,
         aiModel: activeSettings.aiModelName || null,
+        localMode:
+          activeSettings.sttRuntimeMode === "local" && activeSettings.aiRuntimeMode === "local",
+        sttLocalMode: activeSettings.sttRuntimeMode === "local",
+        aiLocalMode: activeSettings.aiRuntimeMode === "local",
+        localOllamaBaseUrl: activeSettings.localOllamaBaseUrl || null,
+        localOllamaModel: resolvedLocalOllamaModel || null,
+        localSttModel: activeSettings.localSttModel || null,
         piperPath: activeSettings.piperPath || null,
         audioBase64,
-        audioMimeType,
-        language: activeSettings.dictationLanguage || null,
+        audioMimeType: pipelineAudioMimeType,
+        language: sttLanguageConfig.language,
+        allowedLanguages: sttLanguageConfig.allowedLanguages,
         systemPrompt,
         temperature: activeSettings.temperature,
         maxTokens: activeSettings.maxTokens,
@@ -4840,9 +6931,9 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
         wakeWordEnabled: activeSettings.wakeWordEnabled,
         assistantName: activeSettings.assistantName || DEFAULT_ASSISTANT_NAME,
         selectedText: selectedTextForRewrite,
-        ttsEngine: activeSettings.ttsEngine,
+        ttsEngine: pipelineTtsEngine,
         piper:
-          activeSettings.ttsEngine === "piper"
+          pipelineTtsEngine === "piper"
             ? {
                 speed: activeSettings.piperSpeed,
                 quality: activeSettings.piperQuality,
@@ -4850,7 +6941,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
               }
             : null,
         coqui:
-          activeSettings.ttsEngine === "coqui"
+          pipelineTtsEngine === "coqui"
             ? {
                 pythonPath: activeSettings.coquiPythonPath || null,
                 modelName: activeSettings.coquiModelName,
@@ -4884,7 +6975,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       : false;
 
     if (!selectionPopupOpened && response.mode === "assistant" && response.audioBase64.trim()) {
-      playbackCompleted = await playGeneratedAudio(response.audioBase64, activeSettings.ttsEngine);
+      playbackCompleted = await playGeneratedAudio(response.audioBase64, pipelineTtsEngine);
     }
 
     let dictationPasted = false;
@@ -5050,9 +7141,14 @@ async function playGeneratedAudio(audioBase64: string, engine: TtsEngine): Promi
 
 function renderAssistantInfo(info: AssistantInfoResponse): void {
   latestAssistantInfoDefaults = info;
-  const configuredBaseUrl = settings.apiBaseUrl.trim();
-  const configuredSttModel = settings.sttModelName.trim();
-  const configuredAiModel = settings.aiModelName.trim();
+  const sttLocalMode = settings.sttRuntimeMode === "local";
+  const aiLocalMode = settings.aiRuntimeMode === "local";
+  const configuredBaseUrl =
+    sttLocalMode && aiLocalMode
+      ? settings.localOllamaBaseUrl.trim() || DEFAULT_LOCAL_OLLAMA_BASE_URL
+      : settings.apiBaseUrl.trim();
+  const configuredSttModel = sttLocalMode ? settings.localSttModel.trim() : settings.sttModelName.trim();
+  const configuredAiModel = aiLocalMode ? settings.localOllamaModel.trim() : settings.aiModelName.trim();
 
   baseUrlValue.textContent = configuredBaseUrl || info.baseUrl || "Not set";
   sttModelValue.textContent = configuredSttModel || info.sttModel || "Not set";
@@ -5060,12 +7156,14 @@ function renderAssistantInfo(info: AssistantInfoResponse): void {
   apiBaseUrlInput.placeholder = info.baseUrl || "Enter provider URL (example: https://api.example.com/v1)";
   sttModelInput.placeholder = info.sttModel || "Enter STT model id";
   aiModelInput.placeholder = info.aiModel || "Enter AI model id";
+  localOllamaBaseUrlInput.placeholder = DEFAULT_LOCAL_OLLAMA_BASE_URL;
+  updateRuntimeModeNotice(settings.sttRuntimeMode, settings.aiRuntimeMode);
   piperStatusValue.textContent = info.piperInstalled ? "Installed" : "Missing";
   piperPathValue.textContent = info.piperPath || "-";
   voiceStatusValue.textContent = info.voiceInstalled ? "Installed" : "Missing";
   voicePathValue.textContent = info.voiceModelPath;
   piperRuntimeReady = Boolean(info.piperInstalled && info.voiceInstalled);
-  coquiRuntimeInstalled = Boolean(info.coquiInstalled);
+  coquiRuntimeInstalled = ZERO_PYTHON_MODE ? false : Boolean(info.coquiInstalled);
   if (!coquiPythonValue.textContent || coquiPythonValue.textContent === "-") {
     coquiPythonValue.textContent = info.coquiPythonPath || "-";
   }
@@ -5171,7 +7269,7 @@ async function fetchForegroundInputBlockStatus(force = false): Promise<Foregroun
 function formatBlockedProcessLabel(processName: string): string {
   const normalized = processName.trim().toLowerCase();
   if (!normalized) {
-    return "a blocked game";
+    return "a blocked app";
   }
 
   const base = normalized.endsWith(".exe") ? normalized.slice(0, -4) : normalized;
@@ -5745,7 +7843,21 @@ async function syncFloatingIndicatorWindow(): Promise<void> {
 }
 
 function syncActionAvailability(): void {
-  const busy = pipelineRunning || stage === "recording" || ttsSetupRunning;
+  const busy =
+    pipelineRunning ||
+    stage === "recording" ||
+    ttsSetupRunning ||
+    ollamaStatusInFlight ||
+    ollamaInstallInFlight ||
+    ollamaPullInFlight ||
+    localSttDownloadInFlight ||
+    localSttDeleteInFlight ||
+    localSttDeactivateInFlight ||
+    localSttWarmupInFlight ||
+    localSttRuntimeStateInFlight ||
+    localSttHardwareAdvisorOpen;
+  const localSttBusy = busy || localSttDownloadActive;
+  const sttRuntimeIsLocal = settings.sttRuntimeMode === "local";
   refreshMicsBtn.disabled = busy;
   setupRuntimeBtn.disabled = busy;
   validatePiperBtn.disabled = busy;
@@ -5763,13 +7875,38 @@ function syncActionAvailability(): void {
   fetchProviderModelsBtn.disabled = busy;
   applyModelToAiBtn.disabled = busy;
   applyModelToSttBtn.disabled = busy;
+  checkOllamaStatusBtn.disabled = busy;
+  installOllamaBtn.disabled = busy;
+  fetchOllamaModelsBtn.disabled = busy;
+  useOllamaModelBtn.disabled = busy;
+  pullOllamaModelBtn.disabled = busy;
+  sidebarToggleLocalSttBtn.disabled = localSttBusy || !sttRuntimeIsLocal;
+  downloadLocalSttModelBtn.disabled = localSttBusy;
+  deleteLocalSttModelBtn.disabled = localSttBusy;
+  openLocalSttModelPathBtn.disabled = localSttBusy;
+  sttRuntimeModeOnlineInput.disabled = busy;
+  sttRuntimeModeOfflineInput.disabled = busy;
+  aiRuntimeModeOnlineInput.disabled = busy;
+  aiRuntimeModeOfflineInput.disabled = busy;
   microphoneSelect.disabled = busy;
   dictationLanguageSelect.disabled = busy;
+  dictationLanguageModeSingleInput.disabled = busy;
+  dictationLanguageModeMultipleInput.disabled = busy;
+  for (const option of dictationLanguageOptionInputs) {
+    option.disabled = busy;
+  }
   styleProfileSelect.disabled = busy;
+  apiKeyInput.disabled = busy;
+  rememberApiKeyInput.disabled = busy;
   apiBaseUrlInput.disabled = busy;
   sttModelInput.disabled = busy;
   aiModelInput.disabled = busy;
   providerModelCatalogSelect.disabled = busy;
+  localOllamaBaseUrlInput.disabled = busy;
+  localOllamaModelInput.disabled = busy;
+  localOllamaModelCatalogSelect.disabled = busy;
+  localSttModelInput.disabled = localSttBusy;
+  localSttModelCatalogSelect.disabled = localSttBusy;
   ttsEngineSelect.disabled = busy;
   piperPathInput.disabled = busy;
   piperQualitySelect.disabled = busy;
@@ -5812,6 +7949,16 @@ function syncActionAvailability(): void {
 
   const piperSelected = settings.ttsEngine === "piper";
   const coquiSelected = settings.ttsEngine === "coqui";
+  const allRuntimeLocal = settings.sttRuntimeMode === "local" && settings.aiRuntimeMode === "local";
+  fetchProviderModelsBtn.disabled = fetchProviderModelsBtn.disabled || allRuntimeLocal;
+  applyModelToAiBtn.disabled = applyModelToAiBtn.disabled || allRuntimeLocal;
+  applyModelToSttBtn.disabled = applyModelToSttBtn.disabled || allRuntimeLocal;
+  apiKeyInput.disabled = apiKeyInput.disabled || allRuntimeLocal;
+  rememberApiKeyInput.disabled = rememberApiKeyInput.disabled || allRuntimeLocal;
+  apiBaseUrlInput.disabled = apiBaseUrlInput.disabled || allRuntimeLocal;
+  sttModelInput.disabled = sttModelInput.disabled || allRuntimeLocal;
+  aiModelInput.disabled = aiModelInput.disabled || allRuntimeLocal;
+  providerModelCatalogSelect.disabled = providerModelCatalogSelect.disabled || allRuntimeLocal;
   setupRuntimeBtn.disabled = setupRuntimeBtn.disabled || !piperSelected;
   validatePiperBtn.disabled = validatePiperBtn.disabled || !piperSelected;
   downloadVoiceBtn.disabled = downloadVoiceBtn.disabled || !piperSelected;
@@ -6124,20 +8271,12 @@ function parseHotkey(raw: string): HotkeySpec | null {
   let key = "";
 
   for (const token of tokens) {
-    if (token === "ctrl" || token === "control") {
-      ctrl = true;
-      continue;
-    }
-    if (token === "shift") {
-      shift = true;
-      continue;
-    }
-    if (token === "alt" || token === "option") {
-      alt = true;
-      continue;
-    }
-    if (token === "meta" || token === "cmd" || token === "command" || token === "win") {
-      meta = true;
+    const modifier = normalizeHotkeyModifierToken(token);
+    if (modifier) {
+      if (modifier === "ctrl") ctrl = true;
+      if (modifier === "shift") shift = true;
+      if (modifier === "alt") alt = true;
+      if (modifier === "meta") meta = true;
       continue;
     }
 
@@ -6148,12 +8287,6 @@ function parseHotkey(raw: string): HotkeySpec | null {
   }
 
   if (!key) return null;
-
-  const modifierCount = Number(ctrl) + Number(shift) + Number(alt) + Number(meta);
-  const comboSize = modifierCount + 1;
-  if (comboSize < 2 || comboSize > 3) {
-    return null;
-  }
 
   const parts: string[] = [];
   if (ctrl) parts.push("Ctrl");
@@ -6173,8 +8306,42 @@ function parseHotkey(raw: string): HotkeySpec | null {
 }
 
 function normalizeHotkeyKeyToken(token: string): string {
-  if (token.length === 1 && /[a-z0-9]/.test(token)) return token;
-  if (/^f([1-9]|1[0-2])$/.test(token)) return token;
+  const normalized = token.trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized.length === 1) {
+    if (/[a-z0-9]/.test(normalized)) return normalized;
+    const shiftedAliases: Record<string, string> = {
+      "!": "1",
+      "@": "2",
+      "#": "3",
+      $: "4",
+      "%": "5",
+      "^": "6",
+      "&": "7",
+      "*": "8",
+      "(": "9",
+      ")": "0",
+      _: "-",
+      "+": "plus",
+      "{": "[",
+      "}": "]",
+      "|": "\\",
+      ":": ";",
+      '"': "'",
+      "<": ",",
+      ">": ".",
+      "?": "/",
+      "~": "`",
+    };
+    if (shiftedAliases[normalized]) {
+      return shiftedAliases[normalized];
+    }
+    if ([",", ".", "/", "\\", ";", "'", "`", "-", "=", "[", "]"].includes(normalized)) {
+      return normalized;
+    }
+  }
+  if (/^f([1-9]|1[0-9]|2[0-4])$/.test(normalized)) return normalized;
+  if (/^numpad[0-9]$/.test(normalized)) return normalized;
 
   const map: Record<string, string> = {
     space: "space",
@@ -6185,14 +8352,99 @@ function normalizeHotkeyKeyToken(token: string): string {
     esc: "escape",
     escape: "escape",
     backspace: "backspace",
+    delete: "delete",
+    del: "delete",
+    insert: "insert",
+    ins: "insert",
+    home: "home",
+    end: "end",
+    pageup: "pageup",
+    pgup: "pageup",
+    pagedown: "pagedown",
+    pgdown: "pagedown",
+    arrowup: "up",
+    up: "up",
+    arrowdown: "down",
+    down: "down",
+    arrowleft: "left",
+    left: "left",
+    arrowright: "right",
+    right: "right",
+    capslock: "capslock",
+    numlock: "numlock",
+    scrolllock: "scrolllock",
+    printscreen: "printscreen",
+    prtsc: "printscreen",
+    pause: "pause",
+    break: "pause",
+    comma: ",",
+    period: ".",
+    dot: ".",
+    slash: "/",
+    forwardslash: "/",
+    backslash: "\\",
+    semicolon: ";",
+    quote: "'",
+    apostrophe: "'",
+    backquote: "`",
+    grave: "`",
+    graveaccent: "`",
+    minus: "-",
+    dash: "-",
+    hyphen: "-",
+    equal: "=",
+    equals: "=",
+    plus: "plus",
+    leftbracket: "[",
+    bracketleft: "[",
+    lbracket: "[",
+    rightbracket: "]",
+    bracketright: "]",
+    rbracket: "]",
+    numpadadd: "numpadadd",
+    add: "numpadadd",
+    numpadsubtract: "numpadsubtract",
+    subtract: "numpadsubtract",
+    numpadmultiply: "numpadmultiply",
+    multiply: "numpadmultiply",
+    numpaddivide: "numpaddivide",
+    divide: "numpaddivide",
+    numpaddecimal: "numpaddecimal",
+    decimal: "numpaddecimal",
+    numpadenter: "numpadenter",
   };
 
-  return map[token] ?? "";
+  return map[normalized] ?? "";
 }
 
 function displayHotkeyKey(key: string): string {
-  if (key.length === 1) return key.toUpperCase();
+  if (key.length === 1) {
+    return /[a-z]/.test(key) ? key.toUpperCase() : key;
+  }
+  if (key === "plus") return "Plus";
   if (key === "space") return "Space";
+  if (key === "delete") return "Delete";
+  if (key === "insert") return "Insert";
+  if (key === "home") return "Home";
+  if (key === "end") return "End";
+  if (key === "pageup") return "PageUp";
+  if (key === "pagedown") return "PageDown";
+  if (key === "up") return "Up";
+  if (key === "down") return "Down";
+  if (key === "left") return "Left";
+  if (key === "right") return "Right";
+  if (key === "capslock") return "CapsLock";
+  if (key === "numlock") return "NumLock";
+  if (key === "scrolllock") return "ScrollLock";
+  if (key === "printscreen") return "PrintScreen";
+  if (key === "pause") return "Pause";
+  if (key.startsWith("numpad")) {
+    if (key.length === 7 && /[0-9]/.test(key.slice(-1))) {
+      return `Numpad${key.slice(-1)}`;
+    }
+    const suffix = key.slice("numpad".length);
+    return `Numpad${suffix.slice(0, 1).toUpperCase()}${suffix.slice(1)}`;
+  }
   if (key.startsWith("f")) return key.toUpperCase();
   if (key === "escape") return "Esc";
   return key.slice(0, 1).toUpperCase() + key.slice(1);
@@ -6209,11 +8461,13 @@ function matchesHotkey(event: KeyboardEvent, hotkey: HotkeySpec): boolean {
 }
 
 function normalizeEventKey(value: string): string {
+  const normalized = normalizeHotkeyKeyToken(value);
+  if (normalized) {
+    return normalized;
+  }
+
   const lower = value.toLowerCase();
   if (lower === " ") return "space";
-  if (lower === "spacebar") return "space";
-  if (lower === "return") return "enter";
-  if (lower === "esc") return "escape";
   if (lower === "control" || lower === "ctrl") return "control";
   if (lower === "altgraph") return "alt";
   if (lower === "os" || lower === "command" || lower === "win") return "meta";
@@ -6277,6 +8531,9 @@ async function refreshAssistantInfoSafely(): Promise<void> {
 }
 
 async function refreshCoquiStatusSafely(): Promise<void> {
+  if (ZERO_PYTHON_MODE) {
+    return;
+  }
   try {
     await refreshCoquiStatus();
   } catch (error) {

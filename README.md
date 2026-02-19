@@ -65,3 +65,15 @@ git push origin v0.1.0
 ```
 
 The workflow validates that the tag version matches `src-tauri/tauri.conf.json` before publishing.
+Release notes are generated automatically from GitHub commit/PR history for each tag and attached to the release body.
+
+Updater source defaults:
+
+- Repository owner: `SlasshyOverhere`
+- Repository name: `SlasshyWispr`
+
+Optional environment overrides for packaged/dev app runtime:
+
+- `SLASSHY_UPDATE_REPOSITORY_OWNER`
+- `SLASSHY_UPDATE_REPOSITORY_NAME`
+- `SLASSHY_UPDATE_GITHUB_TOKEN` (required if releases are private)
