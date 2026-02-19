@@ -15,9 +15,10 @@ Speak naturally, get clean transcription, generate AI responses, and hear replie
 
 ## Demo Video
 
-<video src="https://github.com/SlasshyOverhere/SlasshyWispr/raw/main/slasshywispr_demo.mp4" controls preload="metadata" width="920"></video>
+GitHub README rendering can strip inline `<video>` tags, so use the direct link:
 
-If the embedded player does not render in your client, open it directly: [`slasshywispr_demo.mp4`](./slasshywispr_demo.mp4)
+- [Play demo video (MP4)](https://github.com/SlasshyOverhere/SlasshyWispr/raw/main/slasshywispr_demo.mp4)
+- Repo file: [`slasshywispr_demo.mp4`](./slasshywispr_demo.mp4)
 
 ## Key Features
 
