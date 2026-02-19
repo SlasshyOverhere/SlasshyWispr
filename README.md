@@ -2,78 +2,40 @@
 
 SlasshyWispr is a desktop voice dictation and AI assistant app.
 
-Speak, transcribe, get AI responses, and hear replies back with built-in text-to-speech.
+Speak naturally, get clean transcription, generate AI responses, and hear replies with built-in TTS.
 
-## What The App Does
+## Key Features
 
-- Voice dictation with hotkeys (push-to-talk or single-tap)
-- Wake-name based assistant mode (for example: "Hey Lily ...")
-- Transcript refinement controls:
-  - backtrack corrections
-  - filler word cleanup
-  - auto punctuation
-  - auto numbered lists
-- Floating dock with live recording state
-- Pipeline status view with STT/AI/TTS latency
-- Text-to-speech playback with Piper and Coqui profiles
-- Coqui voice cloning and preview tools
-- Tray behavior:
-  - close-to-tray
-  - startup-to-tray (when launch at login is enabled)
-  - tray actions for opening dashboard and copying last transcript/response
-- Foreground game input blocking to avoid accidental activation while gaming
+- Fast voice dictation with hotkeys
+- Wake phrase assistant mode (for example: "Hey Lily...")
+- Online, Offline, or Hybrid model routing
+- Local STT support (Parakeet models)
+- Local AI support (Ollama models)
+- Clipboard/paste-friendly dictation workflow
+- TTS playback for assistant responses
+- Live pipeline status with STT/AI/TTS timings
 
-## Tech Stack
+## Download
 
-- Tauri (Rust backend)
-- Vite + TypeScript (frontend)
+Get the latest Windows installer from Releases:
 
-## Requirements
+- https://github.com/SlasshyOverhere/SlasshyWispr/releases/latest
 
-- Node.js + npm
-- Rust + Cargo
-- Tauri prerequisites for your OS
+## Quick Setup
 
-## Run In Development
+1. Open **Settings > Models**.
+2. Choose STT runtime mode (`Online` or `Offline`).
+3. Choose AI runtime mode (`Online` or `Offline`).
+4. If online is enabled, add your API Base URL, API key, and model names.
+5. If offline STT is enabled, download/select a local STT model.
+6. If offline AI is enabled, select/pull a local Ollama model.
+7. Open **Settings > General** and confirm microphone + hotkey.
 
-```bash
-npm install
-npm run tauri:dev
-```
+## Updates
 
-## Build
+- In-app: **Settings > Update and Security**
+- Manual: download from the Releases page
 
-```bash
-npm run tauri:build
-```
+## Support
 
-## First-Time Setup
-
-1. Open **Settings > System**.
-2. Enter your provider API key, API base URL, STT model, and AI model.
-3. Open **Settings > TTS** and complete runtime setup.
-4. Open **Settings > General** and confirm microphone + hotkeys.
-5. Start dictating.
-
-## Release Workflow
-
-This repo includes a GitHub Actions workflow that creates a Windows `.exe` release when you push a version tag like:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The workflow validates that the tag version matches `src-tauri/tauri.conf.json` before publishing.
-Release notes are generated automatically from commits between the previous tag and the new tag, grouped by type (features, fixes, CI, etc.), and attached to the release body.
-
-Updater source defaults:
-
-- Repository owner: `SlasshyOverhere`
-- Repository name: `SlasshyWispr`
-
-Optional environment overrides for packaged/dev app runtime:
-
-- `SLASSHY_UPDATE_REPOSITORY_OWNER`
-- `SLASSHY_UPDATE_REPOSITORY_NAME`
-- `SLASSHY_UPDATE_GITHUB_TOKEN` (required if releases are private)
+- Issues: https://github.com/SlasshyOverhere/SlasshyWispr/issues
