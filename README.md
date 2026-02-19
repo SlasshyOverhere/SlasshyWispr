@@ -15,9 +15,12 @@ Speak naturally, get clean transcription, generate AI responses, and hear replie
 
 ## Demo Video
 
-GitHub README rendering can strip inline `<video>` tags, so use the direct link:
+Click the GIF preview to play the full demo video:
+
+[![SlasshyWispr demo preview](./slasshywispr_demo_preview.gif)](https://github.com/SlasshyOverhere/SlasshyWispr/raw/main/slasshywispr_demo.mp4)
 
 - [Play demo video (MP4)](https://github.com/SlasshyOverhere/SlasshyWispr/raw/main/slasshywispr_demo.mp4)
+- GIF preview file: [`slasshywispr_demo_preview.gif`](./slasshywispr_demo_preview.gif)
 - Repo file: [`slasshywispr_demo.mp4`](./slasshywispr_demo.mp4)
 
 ## Key Features
