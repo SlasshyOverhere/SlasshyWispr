@@ -6356,13 +6356,41 @@ function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
     channels.push(audioBuffer.getChannelData(channel));
   }
 
-  let offset = 44;
-  for (let frame = 0; frame < frameCount; frame += 1) {
-    for (let channel = 0; channel < numChannels; channel += 1) {
-      const sample = Math.max(-1, Math.min(1, channels[channel]?.[frame] ?? 0));
-      const pcmValue = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff);
-      view.setInt16(offset, pcmValue, true);
-      offset += bytesPerSample;
+  // Optimization: use Int16Array view on the same buffer for faster PCM writing
+  // Offset 44 is where the data chunk starts.
+  const pcmData = new Int16Array(wavBuffer, 44, dataSize / 2);
+
+  let pcmIndex = 0;
+  if (numChannels === 2) {
+    const left = channels[0];
+    const right = channels[1];
+    for (let frame = 0; frame < frameCount; frame += 1) {
+      let sL = left[frame];
+      if (sL > 1) sL = 1;
+      else if (sL < -1) sL = -1;
+      pcmData[pcmIndex++] = sL < 0 ? Math.round(sL * 0x8000) : Math.round(sL * 0x7fff);
+
+      let sR = right[frame];
+      if (sR > 1) sR = 1;
+      else if (sR < -1) sR = -1;
+      pcmData[pcmIndex++] = sR < 0 ? Math.round(sR * 0x8000) : Math.round(sR * 0x7fff);
+    }
+  } else if (numChannels === 1) {
+    const channelData = channels[0];
+    for (let frame = 0; frame < frameCount; frame += 1) {
+      let sample = channelData[frame];
+      if (sample > 1) sample = 1;
+      else if (sample < -1) sample = -1;
+      pcmData[frame] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff);
+    }
+  } else {
+    for (let frame = 0; frame < frameCount; frame += 1) {
+      for (let channel = 0; channel < numChannels; channel += 1) {
+        let sample = channels[channel]?.[frame] ?? 0;
+        if (sample > 1) sample = 1;
+        else if (sample < -1) sample = -1;
+        pcmData[pcmIndex++] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff);
+      }
     }
   }
 
