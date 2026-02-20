@@ -1,6 +1,7 @@
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use flate2::read::GzDecoder;
+use keyring::Entry;
 use log::{error, info, warn};
 use reqwest::{
     header::{ACCEPT_RANGES, RANGE, USER_AGENT},
@@ -1307,6 +1308,67 @@ async fn download_and_install_app_update(
     }
 }
 
+const KEYRING_SERVICE: &str = "SlasshyWispr";
+const KEYRING_USER: &str = "api_key";
+
+fn secure_settings_payload(payload: &str) -> Result<String, String> {
+    let mut parsed: Value = serde_json::from_str(payload)
+        .map_err(|error| format!("Failed to parse settings JSON: {error}"))?;
+
+    if let Some(obj) = parsed.as_object_mut() {
+        if let Some(api_key_val) = obj.get("apiKey") {
+            if let Some(api_key) = api_key_val.as_str() {
+                if !api_key.is_empty() {
+                    match Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+                        Ok(entry) => match entry.set_password(api_key) {
+                            Ok(()) => {
+                                obj.insert("apiKey".to_string(), Value::String(String::new()));
+                            }
+                            Err(error) => {
+                                warn!(
+                                    "[settings] keyring save failed; keeping api key in file as fallback: {}",
+                                    error
+                                );
+                            }
+                        },
+                        Err(error) => {
+                            warn!(
+                                "[settings] keyring unavailable; keeping api key in file as fallback: {}",
+                                error
+                            );
+                        }
+                    }
+                } else {
+                    if let Ok(entry) = Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+                        let _ = entry.delete_credential();
+                    }
+                }
+            }
+        }
+    }
+
+    serde_json::to_string(&parsed)
+        .map_err(|error| format!("Failed to serialize secure settings: {error}"))
+}
+
+fn restore_settings_payload(payload: &str) -> Result<String, String> {
+    let mut parsed: Value = serde_json::from_str(payload)
+        .map_err(|error| format!("Failed to parse settings JSON: {error}"))?;
+
+    if let Some(obj) = parsed.as_object_mut() {
+        if let Ok(entry) = Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+            if let Ok(api_key) = entry.get_password() {
+                if !api_key.is_empty() {
+                    obj.insert("apiKey".to_string(), Value::String(api_key));
+                }
+            }
+        }
+    }
+
+    serde_json::to_string(&parsed)
+        .map_err(|error| format!("Failed to serialize restored settings: {error}"))
+}
+
 #[tauri::command]
 async fn load_persisted_local_settings(app: AppHandle) -> Result<String, String> {
     let settings_path = persisted_settings_path(&app)?;
@@ -1314,12 +1376,14 @@ async fn load_persisted_local_settings(app: AppHandle) -> Result<String, String>
         return Ok(String::new());
     }
 
-    fs::read_to_string(&settings_path).map_err(|error| {
+    let raw = fs::read_to_string(&settings_path).map_err(|error| {
         format!(
             "Failed to read persisted settings '{}': {error}",
             settings_path.display()
         )
-    })
+    })?;
+
+    restore_settings_payload(&raw)
 }
 
 #[tauri::command]
@@ -1335,8 +1399,10 @@ async fn save_persisted_local_settings(app: AppHandle, payload: String) -> Resul
         return Err("Settings payload must be a JSON object.".to_string());
     }
 
+    let secured_payload = secure_settings_payload(trimmed)?;
+
     let settings_path = persisted_settings_path(&app)?;
-    fs::write(&settings_path, trimmed.as_bytes()).map_err(|error| {
+    fs::write(&settings_path, secured_payload.as_bytes()).map_err(|error| {
         format!(
             "Failed to write persisted settings '{}': {error}",
             settings_path.display()
