@@ -14,7 +14,7 @@ import {
   unregisterAll as unregisterAllGlobalShortcuts,
   type ShortcutEvent,
 } from "@tauri-apps/plugin-global-shortcut";
-import { type CaptureMode, captureModeLabel } from "./utils";
+import { captureModeLabel } from "./utils";
 
 import {
   SELECTION_POPUP_WIDTH,
