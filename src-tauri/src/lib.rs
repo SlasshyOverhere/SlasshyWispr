@@ -1,6 +1,7 @@
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use flate2::read::GzDecoder;
+use keyring::Entry;
 use log::{error, info, warn};
 use reqwest::{
     header::{ACCEPT_RANGES, RANGE, USER_AGENT},
@@ -39,92 +40,8 @@ use transcribe_rs::{
 #[cfg(target_os = "windows")]
 use zip::ZipArchive;
 
-const DEFAULT_BASE_URL: &str = "";
-const DEFAULT_STT_MODEL: &str = "";
-const DEFAULT_AI_MODEL: &str = "";
-const DEFAULT_LOCAL_OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434";
-const DEFAULT_LOCAL_STT_PROVIDER: &str = "parakeet";
-const DEFAULT_SYSTEM_PROMPT: &str = "You are SlasshyWispr, an assistant in a speech-to-text app.
-Default mode is cleanup of spoken text while preserving intent and tone.
-Agent mode activates when directly addressed with a request.
-If selected text context is provided, use it as primary context.
-Output only final content with no meta-commentary or preamble.";
-
-const VOICE_MODEL_URL: &str = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx";
-const VOICE_CONFIG_URL: &str = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx.json";
-const VOICE_MODEL_FILE: &str = "en_US-hfc_female-medium.onnx";
-const VOICE_CONFIG_FILE: &str = "en_US-hfc_female-medium.onnx.json";
-const PIPER_DEFAULT_SPEED: f32 = 1.08;
-const PIPER_DEFAULT_QUALITY: &str = "fast";
-const PIPER_DEFAULT_EMOTION: &str = "neutral";
-const COQUI_DEFAULT_MODEL: &str = "tts_models/multilingual/multi-dataset/xtts_v2";
-const COQUI_DEFAULT_LANGUAGE: &str = "en";
-const COQUI_DEFAULT_QUALITY: &str = "balanced";
-const COQUI_DEFAULT_EMOTION: &str = "neutral";
-const COQUI_MAX_REFERENCE_SECONDS: f32 = 30.0;
-const PENDING_SELECTION_REWRITE_TTL_SECS: u64 = 90;
-const RECENT_SELECTION_CONTEXT_TTL_SECS: u64 = 240;
-const COQUI_BRIDGE_SCRIPT: &str = include_str!("../coqui_bridge.py");
-const LOCAL_STT_BRIDGE_SCRIPT: &str = include_str!("../local_stt_bridge.py");
-const MAIN_WINDOW_LABEL: &str = "main";
-const TRAY_ID: &str = "slasshywispr-tray";
-const TRAY_MENU_COPY_LAST_TRANSCRIPTION_ID: &str = "copy-last-transcription";
-const TRAY_MENU_COPY_LAST_RESPONSE_ID: &str = "copy-last-response";
-const TRAY_MENU_DASHBOARD_ID: &str = "dashboard";
-const TRAY_MENU_QUIT_ID: &str = "quit";
-const STARTUP_ARG_START_IN_TRAY: &str = "--start-in-tray";
-const LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS: u64 = 90;
-const LOCAL_STT_DAEMON_IDLE_TIMEOUT_SECS: u64 = 15 * 60;
-const LOCAL_STT_DAEMON_SWEEP_INTERVAL_SECS: u64 = 15;
-const LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_ENV: &str =
-    "SLASSHY_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS";
-const LOCAL_STT_DAEMON_IDLE_TIMEOUT_ENV: &str = "SLASSHY_STT_DAEMON_IDLE_TIMEOUT_SECS";
-const LOCAL_STT_DAEMON_SWEEP_INTERVAL_ENV: &str = "SLASSHY_STT_DAEMON_SWEEP_INTERVAL_SECS";
-const LOCAL_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE_ENV: &str =
-    "SLASSHY_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE";
-const LOCAL_STT_PARAKEET_CPU_INT8_ENV: &str = "SLASSHY_STT_PARAKEET_CPU_INT8";
-const LOCAL_STT_PARAKEET_FORCE_CPU_ENV: &str = "SLASSHY_STT_PARAKEET_FORCE_CPU";
-const LOCAL_STT_RUNTIME_READY_MARKER_FILE: &str = "runtime.ready.v2";
-const LOCAL_STT_RUNTIME_READY_MARKER_CONTENT: &str = "nemo+faster-whisper+torch";
-const ZERO_PYTHON_MODE_ENV: &str = "SLASSHY_ZERO_PYTHON_MODE";
-const ZERO_PYTHON_STT_NOTICE: &str =
-    "Zero-Python mode is enabled. Only native Parakeet local STT models are supported.";
-const ZERO_PYTHON_COQUI_NOTICE: &str =
-    "Coqui TTS is disabled in zero-Python mode. Use Piper TTS.";
-#[cfg(target_os = "windows")]
-const STARTUP_RUN_VALUE_NAME: &str = "SlasshyWispr";
-#[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-const UPDATE_REPOSITORY_OWNER: &str = "SlasshyOverhere";
-const UPDATE_REPOSITORY_NAME: &str = "SlasshyWispr";
-const UPDATE_REPOSITORY_OWNER_ENV: &str = "SLASSHY_UPDATE_REPOSITORY_OWNER";
-const UPDATE_REPOSITORY_NAME_ENV: &str = "SLASSHY_UPDATE_REPOSITORY_NAME";
-const UPDATE_GITHUB_TOKEN_ENV: &str = "SLASSHY_UPDATE_GITHUB_TOKEN";
-const UPDATE_HTTP_USER_AGENT: &str = "SlasshyWispr-Updater";
-const PERSISTED_SETTINGS_DIR_NAME: &str = "SlasshyWisprData";
-const PERSISTED_SETTINGS_FILE_NAME: &str = "settings.json";
-const PARAKEET_V2_INT8_ARCHIVE_URL: &str = "https://github.com/SlasshyOverhere/parakeet-int8-mirror/releases/download/models-parakeet-int8-v1/parakeet-v2-int8.tar.gz";
-const PARAKEET_V3_INT8_ARCHIVE_URL: &str = "https://github.com/SlasshyOverhere/parakeet-int8-mirror/releases/download/models-parakeet-int8-v1/parakeet-v3-int8.tar.gz";
-const PARAKEET_V2_INT8_ROOT_DIR: &str = "parakeet-tdt-0.6b-v2-int8";
-const PARAKEET_V3_INT8_ROOT_DIR: &str = "parakeet-tdt-0.6b-v3-int8";
-const LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_DEFAULT: usize = 4;
-const LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_MAX: usize = 8;
-const LOCAL_STT_ARCHIVE_MIN_BYTES_PER_CHUNK: u64 = 24 * 1024 * 1024;
-const LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_ENV: &str = "SLASSHY_STT_ARCHIVE_PARALLEL_CHUNKS";
-
-#[cfg(target_os = "windows")]
-const PIPER_ARCHIVE_URL: &str =
-    "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip";
-#[cfg(target_os = "windows")]
-const PIPER_ARCHIVE_FILE: &str = "piper_windows_amd64.zip";
-#[cfg(target_os = "windows")]
-const PIPER_BINARY_NAME: &str = "piper.exe";
-#[cfg(not(target_os = "windows"))]
-const PIPER_BINARY_NAME: &str = "piper";
-#[cfg(target_os = "windows")]
-const OLLAMA_WINDOWS_INSTALLER_URL: &str = "https://ollama.com/download/OllamaSetup.exe";
-#[cfg(target_os = "windows")]
-const OLLAMA_WINDOWS_INSTALLER_FILE: &str = "OllamaSetup.exe";
+pub mod constants;
+use constants::*;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1307,6 +1224,67 @@ async fn download_and_install_app_update(
     }
 }
 
+const KEYRING_SERVICE: &str = "SlasshyWispr";
+const KEYRING_USER: &str = "api_key";
+
+fn secure_settings_payload(payload: &str) -> Result<String, String> {
+    let mut parsed: Value = serde_json::from_str(payload)
+        .map_err(|error| format!("Failed to parse settings JSON: {error}"))?;
+
+    if let Some(obj) = parsed.as_object_mut() {
+        if let Some(api_key_val) = obj.get("apiKey") {
+            if let Some(api_key) = api_key_val.as_str() {
+                if !api_key.is_empty() {
+                    match Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+                        Ok(entry) => match entry.set_password(api_key) {
+                            Ok(()) => {
+                                obj.insert("apiKey".to_string(), Value::String(String::new()));
+                            }
+                            Err(error) => {
+                                warn!(
+                                    "[settings] keyring save failed; keeping api key in file as fallback: {}",
+                                    error
+                                );
+                            }
+                        },
+                        Err(error) => {
+                            warn!(
+                                "[settings] keyring unavailable; keeping api key in file as fallback: {}",
+                                error
+                            );
+                        }
+                    }
+                } else {
+                    if let Ok(entry) = Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+                        let _ = entry.delete_credential();
+                    }
+                }
+            }
+        }
+    }
+
+    serde_json::to_string(&parsed)
+        .map_err(|error| format!("Failed to serialize secure settings: {error}"))
+}
+
+fn restore_settings_payload(payload: &str) -> Result<String, String> {
+    let mut parsed: Value = serde_json::from_str(payload)
+        .map_err(|error| format!("Failed to parse settings JSON: {error}"))?;
+
+    if let Some(obj) = parsed.as_object_mut() {
+        if let Ok(entry) = Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+            if let Ok(api_key) = entry.get_password() {
+                if !api_key.is_empty() {
+                    obj.insert("apiKey".to_string(), Value::String(api_key));
+                }
+            }
+        }
+    }
+
+    serde_json::to_string(&parsed)
+        .map_err(|error| format!("Failed to serialize restored settings: {error}"))
+}
+
 #[tauri::command]
 async fn load_persisted_local_settings(app: AppHandle) -> Result<String, String> {
     let settings_path = persisted_settings_path(&app)?;
@@ -1314,12 +1292,14 @@ async fn load_persisted_local_settings(app: AppHandle) -> Result<String, String>
         return Ok(String::new());
     }
 
-    fs::read_to_string(&settings_path).map_err(|error| {
+    let raw = fs::read_to_string(&settings_path).map_err(|error| {
         format!(
             "Failed to read persisted settings '{}': {error}",
             settings_path.display()
         )
-    })
+    })?;
+
+    restore_settings_payload(&raw)
 }
 
 #[tauri::command]
@@ -1335,8 +1315,10 @@ async fn save_persisted_local_settings(app: AppHandle, payload: String) -> Resul
         return Err("Settings payload must be a JSON object.".to_string());
     }
 
+    let secured_payload = secure_settings_payload(trimmed)?;
+
     let settings_path = persisted_settings_path(&app)?;
-    fs::write(&settings_path, trimmed.as_bytes()).map_err(|error| {
+    fs::write(&settings_path, secured_payload.as_bytes()).map_err(|error| {
         format!(
             "Failed to write persisted settings '{}': {error}",
             settings_path.display()

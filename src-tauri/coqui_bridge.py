@@ -56,10 +56,10 @@ def read_audio_duration_seconds(audio_path: Path) -> float:
     try:
         import torchaudio
 
-        waveform, sample_rate = torchaudio.load(str(audio_path))
-        if sample_rate <= 0:
+        info = torchaudio.info(str(audio_path))
+        if info.sample_rate <= 0:
             return 0.0
-        return float(waveform.shape[1]) / float(sample_rate)
+        return float(info.num_frames) / float(info.sample_rate)
     except Exception:
         if audio_path.suffix.lower() != ".wav":
             raise

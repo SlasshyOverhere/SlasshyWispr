@@ -1,6 +1,5 @@
 
 import "./style.css";
-import { buildAgentOperatingCorePrompt } from "./utils";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
@@ -15,9 +14,13 @@ import {
   unregisterAll as unregisterAllGlobalShortcuts,
   type ShortcutEvent,
 } from "@tauri-apps/plugin-global-shortcut";
+import {
+  buildAgentOperatingCorePrompt,
+  captureModeLabel,
+  type CaptureMode,
+} from "./utils";
 
 type Stage = "idle" | "recording" | "processing" | "speaking" | "error";
-type CaptureMode = "single-tap" | "push-to-talk";
 type ThemeMode = "system" | "light" | "dark";
 type StyleProfile = "adaptive" | "professional" | "casual" | "concise" | "developer";
 type MainPage = "home" | "dictionary" | "snippets" | "notes";
@@ -1969,6 +1972,14 @@ window.addEventListener("beforeunload", () => {
     window.clearTimeout(dockHideTimerId);
     dockHideTimerId = null;
   }
+  if (persistSettingsTimer !== null) {
+    window.clearTimeout(persistSettingsTimer);
+    persistSettingsTimer = null;
+  }
+  if (pendingSettingsToPersist) {
+    performPersistSettings(pendingSettingsToPersist);
+    pendingSettingsToPersist = null;
+  }
   if (foregroundBlockMonitorId !== null) {
     window.clearInterval(foregroundBlockMonitorId);
     foregroundBlockMonitorId = null;
@@ -2640,7 +2651,28 @@ function loadSettings(): PersistedSettings {
   }
 }
 
+let persistSettingsTimer: number | null = null;
+let pendingSettingsToPersist: PersistedSettings | null = null;
+
 function persistSettings(next: PersistedSettings): void {
+  pendingSettingsToPersist = next;
+  if (persistSettingsTimer === null) {
+    performPersistSettings(next);
+    pendingSettingsToPersist = null;
+  } else {
+    window.clearTimeout(persistSettingsTimer);
+  }
+
+  persistSettingsTimer = window.setTimeout(() => {
+    persistSettingsTimer = null;
+    if (pendingSettingsToPersist) {
+      performPersistSettings(pendingSettingsToPersist);
+      pendingSettingsToPersist = null;
+    }
+  }, 800);
+}
+
+function performPersistSettings(next: PersistedSettings): void {
   const payload: PersistedSettings = {
     ...next,
     apiKey: next.rememberApiKey ? next.apiKey : "",
@@ -2970,10 +3002,6 @@ function handleSettingsChange(): void {
   updateTtsSetupGate();
   publishDockState();
   void syncFloatingIndicatorWindow();
-}
-
-function captureModeLabel(mode: CaptureMode): string {
-  return mode === "push-to-talk" ? "Push-To-Talk" : "Single Tap";
 }
 
 function updateRuntimeModeNotice(sttMode: RuntimeMode, aiMode: RuntimeMode): void {
@@ -6340,13 +6368,41 @@ function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
     channels.push(audioBuffer.getChannelData(channel));
   }
 
-  let offset = 44;
-  for (let frame = 0; frame < frameCount; frame += 1) {
-    for (let channel = 0; channel < numChannels; channel += 1) {
-      const sample = Math.max(-1, Math.min(1, channels[channel]?.[frame] ?? 0));
-      const pcmValue = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff);
-      view.setInt16(offset, pcmValue, true);
-      offset += bytesPerSample;
+  // Optimization: use Int16Array view on the same buffer for faster PCM writing
+  // Offset 44 is where the data chunk starts.
+  const pcmData = new Int16Array(wavBuffer, 44, dataSize / 2);
+
+  let pcmIndex = 0;
+  if (numChannels === 2) {
+    const left = channels[0];
+    const right = channels[1];
+    for (let frame = 0; frame < frameCount; frame += 1) {
+      let sL = left[frame];
+      if (sL > 1) sL = 1;
+      else if (sL < -1) sL = -1;
+      pcmData[pcmIndex++] = sL < 0 ? Math.round(sL * 0x8000) : Math.round(sL * 0x7fff);
+
+      let sR = right[frame];
+      if (sR > 1) sR = 1;
+      else if (sR < -1) sR = -1;
+      pcmData[pcmIndex++] = sR < 0 ? Math.round(sR * 0x8000) : Math.round(sR * 0x7fff);
+    }
+  } else if (numChannels === 1) {
+    const channelData = channels[0];
+    for (let frame = 0; frame < frameCount; frame += 1) {
+      let sample = channelData[frame];
+      if (sample > 1) sample = 1;
+      else if (sample < -1) sample = -1;
+      pcmData[frame] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff);
+    }
+  } else {
+    for (let frame = 0; frame < frameCount; frame += 1) {
+      for (let channel = 0; channel < numChannels; channel += 1) {
+        let sample = channels[channel]?.[frame] ?? 0;
+        if (sample > 1) sample = 1;
+        else if (sample < -1) sample = -1;
+        pcmData[pcmIndex++] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff);
+      }
     }
   }
 
