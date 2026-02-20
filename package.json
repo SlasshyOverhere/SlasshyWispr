@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "pretauri:dev": "node scripts/ensure-valid-dev-exe.mjs",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "test": "bun test"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.0",
