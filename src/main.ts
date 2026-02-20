@@ -20,367 +20,62 @@ import {
   type CaptureMode,
 } from "./utils";
 
-type Stage = "idle" | "recording" | "processing" | "speaking" | "error";
-type ThemeMode = "system" | "light" | "dark";
-type StyleProfile = "adaptive" | "professional" | "casual" | "concise" | "developer";
-type MainPage = "home" | "dictionary" | "snippets" | "notes";
-type SettingsPane =
-  | "general"
-  | "models"
-  | "online"
-  | "offline"
-  | "hybrid"
-  | "update-security"
-  | "pipeline";
-type TtsEngine = "piper" | "coqui";
-type RuntimeMode = "online" | "local";
-type DictationLanguageMode = "single" | "multiple";
-type PiperQuality = "fast" | "balanced" | "high";
-type PiperEmotion = "neutral" | "calm" | "happy" | "excited" | "serious" | "sad";
-type CoquiQuality = "fast" | "balanced" | "high";
-type CoquiEmotion = "neutral" | "calm" | "happy" | "excited" | "serious" | "sad";
-type TtsProfilePane = "piper" | "coqui";
-type HoldSource = "notes-button" | "hotkey";
-type TeamScope = "personal" | "shared";
-type LocalSttHardwareAdvisorChoice = "suggestion" | "selected" | "cancel";
-
-interface AssistantInfoResponse {
-  baseUrl: string;
-  sttModel: string;
-  aiModel: string;
-  piperInstalled: boolean;
-  piperPath: string;
-  voiceInstalled: boolean;
-  voiceModelPath: string;
-  coquiInstalled: boolean;
-  coquiPythonPath: string;
-}
-
-interface RuntimeSetupResponse {
-  piperPath: string;
-  voiceModelPath: string;
-}
-
-interface VoiceInstallResponse {
-  modelPath: string;
-}
-
-interface PiperValidationResponse {
-  ok: boolean;
-  details: string;
-}
-
-interface CoquiStatusResponse {
-  available: boolean;
-  pythonPath: string;
-  ttsVersion: string;
-  cudaAvailable: boolean;
-  voiceDir: string;
-  voices: string[];
-  defaultModel: string;
-  error: string;
-}
-
-interface CoquiSetupResponse {
-  pythonPath: string;
-  details: string;
-}
-
-interface CoquiValidationResponse {
-  ok: boolean;
-  details: string;
-}
-
-interface CoquiVoicesResponse {
-  voiceDir: string;
-  voices: string[];
-}
-
-interface CoquiModelsResponse {
-  models: string[];
-}
-
-interface ProviderModelsResponse {
-  baseUrl: string;
-  models: string[];
-}
-
-interface OllamaPullResponse {
-  baseUrl: string;
-  model: string;
-  ok: boolean;
-  status: string;
-}
-
-interface OllamaStatusResponse {
-  installed: boolean;
-  running: boolean;
-  version: string;
-  details: string;
-}
-
-interface LocalSttDownloadResponse {
-  model: string;
-  provider: string;
-  method: string;
-  localPath: string;
-  details: string;
-}
-
-interface LocalSttDeleteResponse {
-  model: string;
-  repoId: string;
-  removed: boolean;
-  localPath: string;
-  details: string;
-}
-
-interface LocalSttOpenPathResponse {
-  model: string;
-  repoId: string;
-  localPath: string;
-  opened: boolean;
-  details: string;
-}
-
-interface LocalSttWarmupResponse {
-  model: string;
-  provider: string;
-  warmed: boolean;
-  details: string;
-}
-
-interface LocalSttDeactivateResponse {
-  model: string;
-  provider: string;
-  deactivated: boolean;
-  details: string;
-}
-
-interface LocalSttRuntimeStateResponse {
-  loaded: boolean;
-  daemonCount: number;
-  loadedDaemonCount: number;
-  details: string;
-}
-
-interface LocalSttHardwareAdviceResponse {
-  cpuName: string;
-  logicalCores: number;
-  totalRamGb: number;
-  nvidiaGpuDetected: boolean;
-  gpuName: string;
-  gpuVramGb: number;
-  performanceTier: string;
-  slasshySuggestionModel: string;
-  suggestedModels: string[];
-  cautionModels: string[];
-  selectedModelWarning: string;
-  details: string;
-}
-
-interface LocalSttDownloadStatusResponse {
-  active: boolean;
-  completed: boolean;
-  success: boolean;
-  model: string;
-  repoId: string;
-  stage: string;
-  message: string;
-  currentFile: string;
-  downloadedBytes: number;
-  totalBytes: number;
-  filesCompleted: number;
-  filesTotal: number;
-  progressPercent: number;
-  updatedAtMs: number;
-}
-
-interface CoquiVoiceCloneResponse {
-  speakerId: string;
-  durationSeconds: number;
-  voiceDir: string;
-  voices: string[];
-  previewAudioBase64: string;
-}
-
-interface CoquiVoicePreviewResponse {
-  audioBase64: string;
-  text: string;
-}
-
-interface TtsSetupStatusResponse {
-  running: boolean;
-  completed: boolean;
-  success: boolean;
-  stage: string;
-  logs: string[];
-}
-
-interface AssistantPipelineResponse {
-  mode: "assistant" | "dictation";
-  selectionRewrite: boolean;
-  selectionPending: boolean;
-  selectionContextCleared: boolean;
-  selectionContextUsed: boolean;
-  transcript: string;
-  assistantResponse: string;
-  audioBase64: string;
-  sttLatencyMs: number;
-  aiLatencyMs: number;
-  ttsLatencyMs: number;
-  totalLatencyMs: number;
-}
-
-interface AppUpdateCheckResponse {
-  currentVersion: string;
-  latestVersion: string;
-  available: boolean;
-  releaseName: string;
-  releaseNotes: string;
-  publishedAt: string;
-  releaseUrl: string;
-  installerDownloadUrl: string;
-  installerAssetName: string;
-}
-
-interface InstallAppUpdateRequest {
-  downloadUrl: string;
-  assetName?: string;
-  silent?: boolean;
-}
-
-interface PersistedSettings {
-  apiKey: string;
-  apiBaseUrl: string;
-  sttModelName: string;
-  aiModelName: string;
-  runtimeMode: RuntimeMode;
-  sttRuntimeMode: RuntimeMode;
-  aiRuntimeMode: RuntimeMode;
-  localOllamaBaseUrl: string;
-  localOllamaModel: string;
-  localSttModel: string;
-  rememberApiKey: boolean;
-  captureMode: CaptureMode;
-  piperPath: string;
-  microphoneDeviceId: string;
-  pushToTalkHotkey: string;
-  commandHotkey: string;
-  dictationLanguage: string;
-  dictationLanguageMode: DictationLanguageMode;
-  dictationLanguageAllowList: string[];
-  styleProfile: StyleProfile;
-  systemPrompt: string;
-  temperature: number;
-  maxTokens: number;
-  launchAtLogin: boolean;
-  showFlowBar: boolean;
-  showAppInDock: boolean;
-  commandMode: boolean;
-  wakeWordEnabled: boolean;
-  assistantName: string;
-  autoPasteDictation: boolean;
-  contextAwareness: boolean;
-  copyToClipboard: boolean;
-  incognitoMode: boolean;
-  themeMode: ThemeMode;
-  dictationSoundEffects: boolean;
-  muteMusicWhileDictating: boolean;
-  backtrackCorrection: boolean;
-  removeFillers: boolean;
-  autoPunctuation: boolean;
-  numberedLists: boolean;
-  ttsEngine: TtsEngine;
-  piperSpeed: number;
-  piperQuality: PiperQuality;
-  piperEmotion: PiperEmotion;
-  coquiPythonPath: string;
-  coquiModelName: string;
-  coquiLanguage: string;
-  coquiVoiceId: string;
-  coquiSpeed: number;
-  coquiQuality: CoquiQuality;
-  coquiEmotion: CoquiEmotion;
-  coquiUseGpu: boolean;
-  coquiSplitSentences: boolean;
-}
-
-interface HotkeySpec {
-  ctrl: boolean;
-  shift: boolean;
-  alt: boolean;
-  meta: boolean;
-  key: string;
-  label: string;
-}
-
-interface DictionaryTerm {
-  id: string;
-  source: string;
-  target: string;
-  scope: TeamScope;
-  createdAt: number;
-}
-
-interface SnippetEntry {
-  id: string;
-  trigger: string;
-  expansion: string;
-  scope: TeamScope;
-  createdAt: number;
-}
-
-interface QuickNoteEntry {
-  id: string;
-  text: string;
-  createdAt: number;
-}
-
-interface UsageStats {
-  sessions: number;
-  words: number;
-  avgWpm: number;
-}
-
-interface DockLayout {
-  x: number;
-  y: number;
-}
-
-interface ForegroundInputBlockStatus {
-  blocked: boolean;
-  processName: string;
-}
-
-interface HomeHistoryEntry {
-  speaker: string;
-  content: string;
-  tone: "assistant" | "user";
-  timestamp: number;
-}
-
-interface DockPlacementBounds {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
-
-interface ActiveTtsPlayback {
-  interrupted: boolean;
-  finish: (completed: boolean) => void;
-}
-
-type SelectionPopupMode = "rewrite" | "answer" | "pending";
-
-interface SelectionPopupPayload {
-  token: number;
-  mode: SelectionPopupMode;
-  title: string;
-  text: string;
-  audioBase64: string;
-}
+import type {
+  ActiveTtsPlayback,
+  AppUpdateCheckResponse,
+  AssistantInfoResponse,
+  AssistantPipelineResponse,
+  CoquiEmotion,
+  CoquiModelsResponse,
+  CoquiQuality,
+  CoquiSetupResponse,
+  CoquiStatusResponse,
+  CoquiValidationResponse,
+  CoquiVoiceCloneResponse,
+  CoquiVoicePreviewResponse,
+  CoquiVoicesResponse,
+  DictationLanguageMode,
+  DictionaryTerm,
+  DockLayout,
+  DockPlacementBounds,
+  ForegroundInputBlockStatus,
+  HoldSource,
+  HomeHistoryEntry,
+  HotkeySpec,
+  InstallAppUpdateRequest,
+  LocalSttDeactivateResponse,
+  LocalSttDeleteResponse,
+  LocalSttDownloadResponse,
+  LocalSttDownloadStatusResponse,
+  LocalSttHardwareAdviceResponse,
+  LocalSttHardwareAdvisorChoice,
+  LocalSttOpenPathResponse,
+  LocalSttRuntimeStateResponse,
+  LocalSttWarmupResponse,
+  MainPage,
+  OllamaPullResponse,
+  OllamaStatusResponse,
+  PersistedSettings,
+  PiperEmotion,
+  PiperQuality,
+  PiperValidationResponse,
+  ProviderModelsResponse,
+  QuickNoteEntry,
+  RuntimeMode,
+  RuntimeSetupResponse,
+  SelectionPopupPayload,
+  SettingsPane,
+  SnippetEntry,
+  Stage,
+  StyleProfile,
+  TeamScope,
+  ThemeMode,
+  TtsEngine,
+  TtsProfilePane,
+  TtsSetupStatusResponse,
+  UsageStats,
+  VoiceInstallResponse,
+} from "./types";
 
 const SELECTION_POPUP_WIDTH = 640;
 const SELECTION_POPUP_MIN_WIDTH = 420;
