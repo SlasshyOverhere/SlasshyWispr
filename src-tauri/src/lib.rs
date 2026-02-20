@@ -1318,16 +1318,30 @@ fn secure_settings_payload(payload: &str) -> Result<String, String> {
     if let Some(obj) = parsed.as_object_mut() {
         if let Some(api_key_val) = obj.get("apiKey") {
             if let Some(api_key) = api_key_val.as_str() {
-                let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER)
-                    .map_err(|error| format!("Failed to access keyring: {error}"))?;
-
                 if !api_key.is_empty() {
-                    entry
-                        .set_password(api_key)
-                        .map_err(|error| format!("Failed to save API key to keyring: {error}"))?;
-                    obj.insert("apiKey".to_string(), Value::String(String::new()));
+                    match Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+                        Ok(entry) => match entry.set_password(api_key) {
+                            Ok(()) => {
+                                obj.insert("apiKey".to_string(), Value::String(String::new()));
+                            }
+                            Err(error) => {
+                                warn!(
+                                    "[settings] keyring save failed; keeping api key in file as fallback: {}",
+                                    error
+                                );
+                            }
+                        },
+                        Err(error) => {
+                            warn!(
+                                "[settings] keyring unavailable; keeping api key in file as fallback: {}",
+                                error
+                            );
+                        }
+                    }
                 } else {
-                    let _ = entry.delete_credential();
+                    if let Ok(entry) = Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+                        let _ = entry.delete_credential();
+                    }
                 }
             }
         }
@@ -1342,12 +1356,11 @@ fn restore_settings_payload(payload: &str) -> Result<String, String> {
         .map_err(|error| format!("Failed to parse settings JSON: {error}"))?;
 
     if let Some(obj) = parsed.as_object_mut() {
-        let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER)
-            .map_err(|error| format!("Failed to access keyring: {error}"))?;
-
-        if let Ok(api_key) = entry.get_password() {
-            if !api_key.is_empty() {
-                obj.insert("apiKey".to_string(), Value::String(api_key));
+        if let Ok(entry) = Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+            if let Ok(api_key) = entry.get_password() {
+                if !api_key.is_empty() {
+                    obj.insert("apiKey".to_string(), Value::String(api_key));
+                }
             }
         }
     }
