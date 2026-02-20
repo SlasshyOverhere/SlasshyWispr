@@ -21,6 +21,7 @@ tauri-build = { version = "2.5.4", features = [] }
 base64 = "0.22"
 flate2 = "1"
 hound = "3.5"
+keyring = "3"
 log = "0.4"
 ort = "=2.0.0-rc.10"
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
