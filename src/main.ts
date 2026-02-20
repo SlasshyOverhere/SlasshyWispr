@@ -17,145 +17,116 @@ import {
 import {
   buildAgentOperatingCorePrompt,
   captureModeLabel,
-  type CaptureMode,
 } from "./utils";
 
+import {
+  SELECTION_POPUP_WIDTH,
+  SELECTION_POPUP_MIN_WIDTH,
+  SELECTION_POPUP_MIN_HEIGHT,
+  SELECTION_POPUP_MAX_HEIGHT,
+  SELECTION_POPUP_CHARS_PER_LINE,
+  SETTINGS_STORAGE_KEY,
+  LEGACY_SETTINGS_STORAGE_KEY,
+  DICTIONARY_STORAGE_KEY,
+  SNIPPETS_STORAGE_KEY,
+  NOTES_STORAGE_KEY,
+  USAGE_STORAGE_KEY,
+  DOCK_LAYOUT_STORAGE_KEY,
+  HOME_HISTORY_STORAGE_KEY,
+  SIDEBAR_COLLAPSED_STORAGE_KEY,
+  LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY,
+  EMPTY_HISTORY_HINT,
+  LEGACY_DEFAULT_SYSTEM_PROMPT,
+  DEFAULT_SYSTEM_PROMPT,
+  DEFAULT_TEMPERATURE,
+  DEFAULT_MAX_TOKENS,
+  DEFAULT_API_BASE_URL,
+  DEFAULT_STT_MODEL_NAME,
+  DEFAULT_AI_MODEL_NAME,
+  DEFAULT_RUNTIME_MODE,
+  DEFAULT_LOCAL_OLLAMA_BASE_URL,
+  DEFAULT_HOTKEY,
+  DEFAULT_COMMAND_HOTKEY,
+  DEFAULT_CAPTURE_MODE,
+  DEFAULT_STYLE_PROFILE,
+  DEFAULT_TTS_ENGINE,
+  DEFAULT_ASSISTANT_NAME,
+  DEFAULT_PIPER_SPEED,
+  DEFAULT_PIPER_QUALITY,
+  DEFAULT_PIPER_EMOTION,
+  DEFAULT_COQUI_MODEL,
+  DEFAULT_COQUI_LANGUAGE,
+  DEFAULT_COQUI_SPEED,
+  DEFAULT_COQUI_QUALITY,
+  DEFAULT_COQUI_EMOTION,
+  ZERO_PYTHON_MODE,
+  ZERO_PYTHON_TTS_NOTICE,
+  DEFAULT_DICTATION_LANGUAGE_MODE,
+  DICTATION_LANGUAGE_LABELS,
+  LOCAL_STT_MODEL_SIZE_LABELS,
+  MAX_COQUI_REFERENCE_SECONDS,
+  MAX_RECORDING_MS,
+  MAX_HISTORY_ITEMS,
+  FOREGROUND_BLOCK_CHECK_CACHE_MS,
+  BLOCKED_INPUT_NOTICE_COOLDOWN_MS,
+} from "./constants";
+
 import type {
-  ActiveTtsPlayback,
-  AppUpdateCheckResponse,
-  AssistantInfoResponse,
-  AssistantPipelineResponse,
-  CoquiEmotion,
-  CoquiModelsResponse,
-  CoquiQuality,
-  CoquiSetupResponse,
-  CoquiStatusResponse,
-  CoquiValidationResponse,
-  CoquiVoiceCloneResponse,
-  CoquiVoicePreviewResponse,
-  CoquiVoicesResponse,
-  DictationLanguageMode,
-  DictionaryTerm,
-  DockLayout,
-  DockPlacementBounds,
-  ForegroundInputBlockStatus,
-  HoldSource,
-  HomeHistoryEntry,
-  HotkeySpec,
-  InstallAppUpdateRequest,
-  LocalSttDeactivateResponse,
-  LocalSttDeleteResponse,
-  LocalSttDownloadResponse,
-  LocalSttDownloadStatusResponse,
-  LocalSttHardwareAdviceResponse,
-  LocalSttHardwareAdvisorChoice,
-  LocalSttOpenPathResponse,
-  LocalSttRuntimeStateResponse,
-  LocalSttWarmupResponse,
+  Stage,
+  ThemeMode,
+  StyleProfile,
   MainPage,
+  SettingsPane,
+  TtsEngine,
+  RuntimeMode,
+  DictationLanguageMode,
+  PiperQuality,
+  PiperEmotion,
+  CoquiQuality,
+  CoquiEmotion,
+  TtsProfilePane,
+  HoldSource,
+  TeamScope,
+  LocalSttHardwareAdvisorChoice,
+  AssistantInfoResponse,
+  RuntimeSetupResponse,
+  VoiceInstallResponse,
+  PiperValidationResponse,
+  CoquiStatusResponse,
+  CoquiSetupResponse,
+  CoquiValidationResponse,
+  CoquiVoicesResponse,
+  CoquiModelsResponse,
+  ProviderModelsResponse,
   OllamaPullResponse,
   OllamaStatusResponse,
-  PersistedSettings,
-  PiperEmotion,
-  PiperQuality,
-  PiperValidationResponse,
-  ProviderModelsResponse,
-  QuickNoteEntry,
-  RuntimeMode,
-  RuntimeSetupResponse,
-  SelectionPopupPayload,
-  SettingsPane,
-  SnippetEntry,
-  Stage,
-  StyleProfile,
-  TeamScope,
-  ThemeMode,
-  TtsEngine,
-  TtsProfilePane,
+  LocalSttDownloadResponse,
+  LocalSttDeleteResponse,
+  LocalSttOpenPathResponse,
+  LocalSttWarmupResponse,
+  LocalSttDeactivateResponse,
+  LocalSttRuntimeStateResponse,
+  LocalSttHardwareAdviceResponse,
+  LocalSttDownloadStatusResponse,
+  CoquiVoiceCloneResponse,
+  CoquiVoicePreviewResponse,
   TtsSetupStatusResponse,
+  AssistantPipelineResponse,
+  AppUpdateCheckResponse,
+  InstallAppUpdateRequest,
+  PersistedSettings,
+  HotkeySpec,
+  DictionaryTerm,
+  SnippetEntry,
+  QuickNoteEntry,
   UsageStats,
-  VoiceInstallResponse,
+  DockLayout,
+  ForegroundInputBlockStatus,
+  HomeHistoryEntry,
+  DockPlacementBounds,
+  ActiveTtsPlayback,
+  SelectionPopupPayload,
 } from "./types";
-
-const SELECTION_POPUP_WIDTH = 640;
-const SELECTION_POPUP_MIN_WIDTH = 420;
-const SELECTION_POPUP_MIN_HEIGHT = 120;
-const SELECTION_POPUP_MAX_HEIGHT = 560;
-const SELECTION_POPUP_CHARS_PER_LINE = 68;
-
-const SETTINGS_STORAGE_KEY = "slasshy-desktop-assistant-settings-v4";
-const LEGACY_SETTINGS_STORAGE_KEY = "slasshy-desktop-assistant-settings-v3";
-const DICTIONARY_STORAGE_KEY = "slasshy-wispr-dictionary-v1";
-const SNIPPETS_STORAGE_KEY = "slasshy-wispr-snippets-v1";
-const NOTES_STORAGE_KEY = "slasshy-wispr-notes-v1";
-const USAGE_STORAGE_KEY = "slasshy-wispr-usage-v1";
-const DOCK_LAYOUT_STORAGE_KEY = "slasshy-wispr-dock-layout-v2";
-const HOME_HISTORY_STORAGE_KEY = "slasshy-wispr-home-history-v1";
-const SIDEBAR_COLLAPSED_STORAGE_KEY = "slasshy-wispr-sidebar-collapsed-v1";
-const LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY = "slasshy-wispr-local-stt-hardware-advisor-v1";
-const EMPTY_HISTORY_HINT = "No turns yet. Start dictating to see your recent activity.";
-const LEGACY_DEFAULT_SYSTEM_PROMPT =
-  "You are SlasshyWispr, a helpful desktop voice assistant. Keep replies concise and easy to speak aloud.";
-const DEFAULT_SYSTEM_PROMPT = LEGACY_DEFAULT_SYSTEM_PROMPT;
-const DEFAULT_TEMPERATURE = 0.35;
-const DEFAULT_MAX_TOKENS = 320;
-const DEFAULT_API_BASE_URL = "";
-const DEFAULT_STT_MODEL_NAME = "";
-const DEFAULT_AI_MODEL_NAME = "";
-const DEFAULT_RUNTIME_MODE: RuntimeMode = "online";
-const DEFAULT_LOCAL_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
-const DEFAULT_HOTKEY = "Ctrl+Space";
-const DEFAULT_COMMAND_HOTKEY = "Ctrl+Shift+Space";
-const DEFAULT_CAPTURE_MODE: CaptureMode = "push-to-talk";
-const DEFAULT_STYLE_PROFILE: StyleProfile = "adaptive";
-const DEFAULT_TTS_ENGINE: TtsEngine = "piper";
-const DEFAULT_ASSISTANT_NAME = "Lily";
-const DEFAULT_PIPER_SPEED = 1.08;
-const DEFAULT_PIPER_QUALITY: PiperQuality = "fast";
-const DEFAULT_PIPER_EMOTION: PiperEmotion = "neutral";
-const DEFAULT_COQUI_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2";
-const DEFAULT_COQUI_LANGUAGE = "en";
-const DEFAULT_COQUI_SPEED = 1.0;
-const DEFAULT_COQUI_QUALITY: CoquiQuality = "balanced";
-const DEFAULT_COQUI_EMOTION: CoquiEmotion = "neutral";
-const ZERO_PYTHON_MODE = true;
-const ZERO_PYTHON_TTS_NOTICE = "Coqui is disabled in zero-Python mode. Piper is active.";
-const DEFAULT_DICTATION_LANGUAGE_MODE: DictationLanguageMode = "single";
-const DICTATION_LANGUAGE_OPTIONS: Array<{ code: string; label: string }> = [
-  { code: "en", label: "English" },
-  { code: "es", label: "Spanish" },
-  { code: "fr", label: "French" },
-  { code: "de", label: "German" },
-  { code: "it", label: "Italian" },
-  { code: "pt", label: "Portuguese" },
-  { code: "hi", label: "Hindi" },
-  { code: "bn", label: "Bengali" },
-  { code: "ja", label: "Japanese" },
-  { code: "ko", label: "Korean" },
-  { code: "zh", label: "Chinese" },
-  { code: "ar", label: "Arabic" },
-  { code: "ru", label: "Russian" },
-];
-const DICTATION_LANGUAGE_LABELS: Record<string, string> = Object.fromEntries(
-  DICTATION_LANGUAGE_OPTIONS.map((item) => [item.code, item.label]),
-);
-const LOCAL_STT_MODEL_SIZE_LABELS: Record<string, string> = {
-  "nvidia/parakeet-tdt-0.6b-v3": "Parakeet v3 (478 MB)",
-  "nvidia/parakeet-tdt_ctc-110m": "Parakeet v2 (473 MB)",
-  // Backward compatibility label for older persisted settings.
-  "openai/whisper-large-v3": "Whisper Large (1.1 GB)",
-  "openai/whisper-medium": "Whisper Medium (492 MB)",
-  "openai/whisper-small": "Whisper Small (487 MB)",
-  "UsefulSensors/moonshine-base": "Moonshine Base (58.0 MB)",
-  "openai/whisper-large-v3-turbo": "Whisper Turbo (1.6 GB)",
-  "nvidia/parakeet-tdt-0.6b-v2": "Parakeet v2 (473 MB)",
-  "FunAudioLLM/SenseVoiceSmall": "SenseVoice (160 MB)",
-};
-const MAX_COQUI_REFERENCE_SECONDS = 30;
-const MAX_RECORDING_MS = 45_000;
-const MAX_HISTORY_ITEMS = 12;
-const FOREGROUND_BLOCK_CHECK_CACHE_MS = 320;
-const BLOCKED_INPUT_NOTICE_COOLDOWN_MS = 2400;
 
 
 const appRoot = document.querySelector<HTMLDivElement>("#app");
