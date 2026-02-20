@@ -2669,7 +2669,10 @@ let pendingSettingsToPersist: PersistedSettings | null = null;
 
 function persistSettings(next: PersistedSettings): void {
   pendingSettingsToPersist = next;
-  if (persistSettingsTimer !== null) {
+  if (persistSettingsTimer === null) {
+    performPersistSettings(next);
+    pendingSettingsToPersist = null;
+  } else {
     window.clearTimeout(persistSettingsTimer);
   }
 
