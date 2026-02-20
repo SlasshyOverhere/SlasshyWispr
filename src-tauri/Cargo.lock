@@ -94,6 +94,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-log",
  "transcribe-rs",
+ "windows-sys 0.59.0",
  "zip",
 ]
 

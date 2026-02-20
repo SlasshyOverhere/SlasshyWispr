@@ -457,9 +457,7 @@ appRoot.innerHTML = `
             </div>
 
           </div>
-        </section>
 
-        <section class="settings-pane" data-settings-pane="general" hidden>
           <h3 class="settings-section-title">App settings</h3>
           <div class="settings-card">
             <label class="switch-row"><span>Launch app at login</span><input id="launchAtLoginToggle" class="switch-input" type="checkbox" /></label>
@@ -1214,6 +1212,9 @@ let shortcutsSuppressedByBlockedApp = false;
 let registeredPushShortcut = "";
 let registeredCommandShortcut = "";
 let registeredShortcutSignature = "";
+let lastGlobalShortcutToken = "";
+let lastGlobalShortcutState: "pressed" | "released" | "" = "";
+let lastGlobalShortcutHandledAt = 0;
 let shortcutSyncInFlight: Promise<void> | null = null;
 let shortcutSyncQueued = false;
 let dockRuntimeErrorShown = false;
@@ -1267,8 +1268,13 @@ let lastBlockedInputNoticeAt = 0;
 let lastBlockedInputProcess = "";
 let foregroundBlockMonitorId: number | null = null;
 let foregroundBlockMonitorInFlight = false;
+let persistSettingsTimer: number | null = null;
+let pendingSettingsToPersist: PersistedSettings | null = null;
+let lastPersistDiagnosticsSignature = "";
+let notificationPermissionRequested = false;
 const dockChannel = new BroadcastChannel("slasshywispr-dock");
 const selectionPopupChannel = new BroadcastChannel("slasshywispr-selection-popup");
+const ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION = false;
 const systemThemeMediaQuery =
   typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: light)")
@@ -1293,7 +1299,6 @@ renderLocalSttModelCatalog([], settings.localSttModel);
 renderCoquiVoiceOptions([], settings.coquiVoiceId);
 setActiveTtsProfile("piper");
 updateTtsSetupGate();
-persistSettings(settings);
 persistDictionaryTerms();
 persistSnippets();
 persistQuickNotes();
@@ -1452,7 +1457,8 @@ toggleSidebarBtn.addEventListener("click", () => {
 });
 
 openSettingsBtn.addEventListener("click", () => {
-  openSettings();
+  openSettings("user-click-settings-button");
+  setActiveSettingsPane("general", "user-click-settings-button");
 });
 
 sidebarToggleLocalSttBtn.addEventListener("click", () => {
@@ -1537,21 +1543,29 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (globalShortcutsActive) {
-    return;
-  }
-
   const commandHotkey = parseHotkey(settings.commandHotkey);
   if (settings.commandMode && commandHotkey && matchesHotkey(event, commandHotkey)) {
+    const commandShortcutToken = normalizeShortcutToken(toGlobalShortcutString(commandHotkey));
+    logClientEvent(
+      `[hotkey.local.command] keydown shortcut=${commandShortcutToken} repeat=${boolFlag(
+        event.repeat,
+      )}`,
+    );
+    if (shouldIgnoreLocalShortcutFromRecentGlobal(commandShortcutToken, "pressed")) {
+      return;
+    }
     if (event.repeat) {
+      logClientEvent("[hotkey.local.command] ignored repeated keydown");
       return;
     }
     event.preventDefault();
     void (async () => {
       if (await shouldBlockAssistantInputFromForegroundApp()) {
+        logClientEvent("[hotkey.local.command] blocked by foreground app policy");
         return;
       }
       toggleCommandModeArmed();
+      logClientEvent(`[hotkey.local.command] toggled commandModeArmed=${boolFlag(commandModeArmed)}`);
     })();
     return;
   }
@@ -1560,9 +1574,19 @@ document.addEventListener("keydown", (event) => {
   if (!parsed || !matchesHotkey(event, parsed)) {
     return;
   }
+  const pushShortcutToken = normalizeShortcutToken(toGlobalShortcutString(parsed));
+  logClientEvent(
+    `[hotkey.local.push] keydown shortcut=${pushShortcutToken} capture=${settings.captureMode} repeat=${boolFlag(
+      event.repeat,
+    )}`,
+  );
+  if (shouldIgnoreLocalShortcutFromRecentGlobal(pushShortcutToken, "pressed")) {
+    return;
+  }
 
   if (settings.captureMode === "push-to-talk") {
     if (event.repeat) {
+      logClientEvent("[hotkey.local.push] ignored repeated keydown in push-to-talk mode");
       return;
     }
 
@@ -1572,6 +1596,7 @@ document.addEventListener("keydown", (event) => {
   }
 
   if (event.repeat) {
+    logClientEvent("[hotkey.local.push] ignored repeated keydown in single-tap mode");
     return;
   }
 
@@ -1589,10 +1614,6 @@ document.addEventListener("keyup", (event) => {
     return;
   }
 
-  if (globalShortcutsActive) {
-    return;
-  }
-
   if (settings.captureMode !== "push-to-talk") {
     return;
   }
@@ -1603,6 +1624,13 @@ document.addEventListener("keyup", (event) => {
 
   const parsed = parseHotkey(settings.pushToTalkHotkey);
   if (!parsed || !isHotkeyReleaseEvent(event, parsed)) {
+    return;
+  }
+  const pushShortcutToken = normalizeShortcutToken(toGlobalShortcutString(parsed));
+  logClientEvent(
+    `[hotkey.local.push] keyup shortcut=${pushShortcutToken} capture=${settings.captureMode}`,
+  );
+  if (shouldIgnoreLocalShortcutFromRecentGlobal(pushShortcutToken, "released")) {
     return;
   }
 
@@ -1619,8 +1647,12 @@ window.addEventListener("blur", () => {
     return;
   }
 
+  logClientEvent(
+    `[record.ptt.blur] clearing holds=${pushToTalkHoldSources.size} stage=${stage}`,
+  );
   clearPushToTalkHolds();
   if (stage === "recording") {
+    logClientEvent("[record.ptt.blur] window blurred during recording -> stopRecording()");
     stopRecording();
   }
 });
@@ -1979,7 +2011,9 @@ navigator.mediaDevices?.addEventListener?.("devicechange", () => {
 });
 
 async function bootstrap(): Promise<void> {
+  logClientEvent("[bootstrap] start");
   await hydrateSettingsFromNativeStorage();
+  logClientEvent(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
   setStage("idle", "Loading assistant metadata...");
 
   try {
@@ -2021,6 +2055,8 @@ async function bootstrap(): Promise<void> {
     // Ignore bootstrap poll failures and continue normal app startup.
   }
   syncActionAvailability();
+  requestGlobalShortcutSync(true);
+  logClientEvent("[bootstrap] completed");
 }
 
 function asMainPage(value: string | undefined): MainPage | null {
@@ -2062,11 +2098,14 @@ function setActivePage(next: MainPage): void {
   }
 }
 
-function setActiveSettingsPane(next: SettingsPane): void {
+function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void {
   let resolved = next;
   if (resolved === "online" || resolved === "offline" || resolved === "hybrid") {
     resolved = "models";
   }
+  logClientEvent(
+    `[ui.settings.pane] requested=${next} resolved=${resolved} reason=${reason}`,
+  );
 
   const titleMap: Record<SettingsPane, string> = {
     general: "General",
@@ -2142,9 +2181,14 @@ function updateTtsSetupGate(): void {
   }
 }
 
-function openSettings(): void {
+function openSettings(reason = "unspecified"): void {
+  logClientEvent(`[ui.settings.open] reason=${reason}`);
   settingsOverlay.hidden = false;
   settingsOverlay.classList.add("is-open");
+  settingsOverlay.scrollTop = 0;
+  for (const panel of settingsPanels) {
+    panel.scrollTop = 0;
+  }
 }
 
 function closeSettings(): void {
@@ -2317,9 +2361,6 @@ function loadSettings(): PersistedSettings {
   }
 }
 
-let persistSettingsTimer: number | null = null;
-let pendingSettingsToPersist: PersistedSettings | null = null;
-
 function persistSettings(next: PersistedSettings): void {
   pendingSettingsToPersist = next;
   if (persistSettingsTimer === null) {
@@ -2339,45 +2380,97 @@ function persistSettings(next: PersistedSettings): void {
 }
 
 function performPersistSettings(next: PersistedSettings): void {
-  const payload: PersistedSettings = {
+  const nativePayload: PersistedSettings = {
     ...next,
     apiKey: next.rememberApiKey ? next.apiKey : "",
   };
 
-  const serialized = JSON.stringify(payload);
-  localStorage.setItem(SETTINGS_STORAGE_KEY, serialized);
+  const localPayload: PersistedSettings = isTauriEnvironment()
+    ? {
+        ...nativePayload,
+        // Keep API keys out of webview localStorage in desktop builds.
+        apiKey: "",
+      }
+    : nativePayload;
+  const serializedLocal = JSON.stringify(localPayload);
+  localStorage.setItem(SETTINGS_STORAGE_KEY, serializedLocal);
+  const diagnosticsSignature = [
+    next.captureMode,
+    next.sttRuntimeMode,
+    next.aiRuntimeMode,
+    boolFlag(next.rememberApiKey),
+    boolFlag(next.apiKey.trim().length > 0),
+    buildShortcutSyncSignature(next),
+  ].join("|");
+  if (diagnosticsSignature !== lastPersistDiagnosticsSignature) {
+    lastPersistDiagnosticsSignature = diagnosticsSignature;
+    logClientEvent(
+      `[settings.persist] tauri=${boolFlag(isTauriEnvironment())} ${summarizeSettingsForDiagnostics(
+        next,
+      )} nativeApiKeyPresent=${boolFlag(nativePayload.apiKey.trim().length > 0)} localApiKeyPresent=${boolFlag(
+        localPayload.apiKey.trim().length > 0,
+      )}`,
+    );
+  }
 
   if (!isTauriEnvironment()) {
     return;
   }
 
-  void invoke("save_persisted_local_settings", { payload: serialized }).catch((error) => {
+  const serializedNative = JSON.stringify(nativePayload);
+  logClientEvent(
+    `[settings.persist.native] payloadBytes=${serializedNative.length} remember=${boolFlag(
+      nativePayload.rememberApiKey,
+    )} apiKeyPresent=${boolFlag(nativePayload.apiKey.trim().length > 0)}`,
+  );
+  void invoke("save_persisted_local_settings", { payload: serializedNative }).catch((error) => {
+    setNotice(
+      `Unable to securely save settings: ${asErrorMessage(error)}. Check keyring access and try again.`,
+      true,
+    );
+    logClientEvent(`[settings.persist.native] failed: ${asErrorMessage(error)}`);
     console.warn(`[settings] failed to persist local settings: ${asErrorMessage(error)}`);
   });
 }
 
 async function hydrateSettingsFromNativeStorage(): Promise<void> {
   if (!isTauriEnvironment()) {
+    logClientEvent("[settings.hydrate] skipped because app is not running in tauri");
     return;
   }
 
+  logClientEvent("[settings.hydrate] start");
   try {
     const raw = await invoke<string>("load_persisted_local_settings");
     const trimmed = raw.trim();
+    logClientEvent(`[settings.hydrate] rawBytes=${raw.length} trimmedBytes=${trimmed.length}`);
     if (!trimmed) {
+      logClientEvent("[settings.hydrate] empty payload; leaving local settings unchanged");
       return;
     }
 
     const parsed = JSON.parse(trimmed);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      logClientEvent("[settings.hydrate] payload is not a valid settings object");
       return;
     }
+    const parsedObject = parsed as Partial<PersistedSettings>;
+    const parsedRemember = parsedObject.rememberApiKey === true;
+    const parsedApiKeyPresent =
+      typeof parsedObject.apiKey === "string" && parsedObject.apiKey.trim().length > 0;
+    logClientEvent(
+      `[settings.hydrate] parsed remember=${boolFlag(parsedRemember)} apiKeyPresent=${boolFlag(
+        parsedApiKeyPresent,
+      )}`,
+    );
 
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(parsed));
     const hydrated = loadSettings();
     applySettingsToForm(hydrated);
+    logClientEvent(`[settings.hydrate] applied ${summarizeSettingsForDiagnostics(hydrated)}`);
     handleSettingsChange();
   } catch (error) {
+    logClientEvent(`[settings.hydrate] failed: ${asErrorMessage(error)}`);
     console.warn(`[settings] failed to hydrate local settings: ${asErrorMessage(error)}`);
   }
 }
@@ -2541,6 +2634,7 @@ function applySettingsToForm(next: PersistedSettings): void {
 }
 
 function handleSettingsChange(): void {
+  const previousSettings = settings;
   const previousMode = settings.captureMode;
   const previousIncognito = settings.incognitoMode;
   const previousTtsEngine = settings.ttsEngine;
@@ -2569,6 +2663,31 @@ function handleSettingsChange(): void {
   }
 
   settings = next;
+  const previousDiagnosticsSignature = [
+    previousSettings.captureMode,
+    previousSettings.sttRuntimeMode,
+    previousSettings.aiRuntimeMode,
+    boolFlag(previousSettings.rememberApiKey),
+    boolFlag(previousSettings.apiKey.trim().length > 0),
+    buildShortcutSyncSignature(previousSettings),
+    boolFlag(previousSettings.commandMode),
+  ].join("|");
+  const nextDiagnosticsSignature = [
+    settings.captureMode,
+    settings.sttRuntimeMode,
+    settings.aiRuntimeMode,
+    boolFlag(settings.rememberApiKey),
+    boolFlag(settings.apiKey.trim().length > 0),
+    buildShortcutSyncSignature(settings),
+    boolFlag(settings.commandMode),
+  ].join("|");
+  if (previousDiagnosticsSignature !== nextDiagnosticsSignature) {
+    logClientEvent(
+      `[settings.change] from="${summarizeSettingsForDiagnostics(
+        previousSettings,
+      )}" to="${summarizeSettingsForDiagnostics(settings)}"`,
+    );
+  }
   applyDictationLanguageSettingsToForm(settings);
   temperatureValue.textContent = settings.temperature.toFixed(2);
   piperSpeedValue.textContent = `${settings.piperSpeed.toFixed(2)}x`;
@@ -2913,36 +3032,79 @@ function buildShortcutSyncSignature(source: PersistedSettings): string {
   return `${captureMode}|${push}|${commandEnabled}|${command}`;
 }
 
+function boolFlag(value: boolean): "1" | "0" {
+  return value ? "1" : "0";
+}
+
+function summarizeSettingsForDiagnostics(source: PersistedSettings): string {
+  const pushLabel = parseHotkey(source.pushToTalkHotkey)?.label ?? source.pushToTalkHotkey.trim();
+  const commandLabel = source.commandMode
+    ? parseHotkey(source.commandHotkey)?.label ?? source.commandHotkey.trim()
+    : "disabled";
+  const apiKeyPresent = source.apiKey.trim().length > 0;
+  return [
+    `capture=${source.captureMode}`,
+    `stt=${source.sttRuntimeMode}`,
+    `ai=${source.aiRuntimeMode}`,
+    `remember=${boolFlag(source.rememberApiKey)}`,
+    `apiKeyPresent=${boolFlag(apiKeyPresent)}`,
+    `commandMode=${boolFlag(source.commandMode)}`,
+    `push=${pushLabel || "-"}`,
+    `command=${commandLabel || "-"}`,
+  ].join(" ");
+}
+
 function requestGlobalShortcutSync(force = false): void {
+  logClientEvent(
+    `[hotkey.sync.request] force=${boolFlag(force)} inFlight=${boolFlag(
+      Boolean(shortcutSyncInFlight),
+    )} queued=${boolFlag(shortcutSyncQueued)} sig=${buildShortcutSyncSignature(settings)}`,
+  );
   if (force) {
     registeredShortcutSignature = "";
   }
 
   if (shortcutSyncInFlight) {
     shortcutSyncQueued = true;
+    logClientEvent("[hotkey.sync.request] queued=1 because sync is already running");
     return;
   }
 
   shortcutSyncInFlight = syncGlobalShortcuts(force)
     .catch((error) => {
+      logClientEvent(`[hotkey.sync.error] ${asErrorMessage(error)}`);
       setNotice(`Global hotkey sync failed: ${asErrorMessage(error)}`, true);
     })
     .finally(() => {
+      logClientEvent(
+        `[hotkey.sync.finally] queued=${boolFlag(shortcutSyncQueued)} active=${boolFlag(
+          globalShortcutsActive,
+        )} push=${registeredPushShortcut || "-"} command=${registeredCommandShortcut || "-"}`,
+      );
       shortcutSyncInFlight = null;
       if (shortcutSyncQueued) {
         shortcutSyncQueued = false;
+        logClientEvent("[hotkey.sync.finally] draining queued sync request");
         requestGlobalShortcutSync();
       }
     });
 }
 
 async function syncGlobalShortcuts(force = false): Promise<void> {
+  logClientEvent(
+    `[hotkey.sync.run] force=${boolFlag(force)} tauri=${boolFlag(
+      isTauriEnvironment(),
+    )} suppressed=${boolFlag(shortcutsSuppressedByBlockedApp)} ${summarizeSettingsForDiagnostics(
+      settings,
+    )}`,
+  );
   if (!isTauriEnvironment()) {
     registeredPushShortcut = "";
     registeredCommandShortcut = "";
     registeredShortcutSignature = "";
     globalShortcutsActive = false;
     publishDockState();
+    logClientEvent("[hotkey.sync.run] skipped because app is not running in tauri");
     return;
   }
 
@@ -2959,6 +3121,7 @@ async function syncGlobalShortcuts(force = false): Promise<void> {
     registeredShortcutSignature = "";
     globalShortcutsActive = false;
     publishDockState();
+    logClientEvent("[hotkey.sync.run] shortcuts disabled by blocked foreground app");
     return;
   }
 
@@ -2969,6 +3132,9 @@ async function syncGlobalShortcuts(force = false): Promise<void> {
     registeredShortcutSignature = "";
     globalShortcutsActive = false;
     publishDockState();
+    logClientEvent(
+      `[hotkey.sync.run] skipped because push-to-talk hotkey is invalid: "${settings.pushToTalkHotkey}"`,
+    );
     return;
   }
 
@@ -2994,8 +3160,14 @@ async function syncGlobalShortcuts(force = false): Promise<void> {
     settings.commandMode ? "1" : "0",
     normalizeShortcutToken(commandShortcut),
   ].join("|");
+  logClientEvent(
+    `[hotkey.sync.plan] push=${pushShortcut} command=${
+      commandShortcut || "-"
+    } desired=${desiredSignature} current=${registeredShortcutSignature || "-"}`,
+  );
 
   if (!force && globalShortcutsActive && desiredSignature === registeredShortcutSignature) {
+    logClientEvent("[hotkey.sync.plan] skipped because registered shortcuts already match");
     return;
   }
 
@@ -3012,11 +3184,15 @@ async function syncGlobalShortcuts(force = false): Promise<void> {
     registeredShortcutSignature = desiredSignature;
     globalShortcutsActive = true;
     publishDockState();
+    logClientEvent(
+      `[hotkey.sync.success] registered=${shortcuts.join(",")} signature=${registeredShortcutSignature}`,
+    );
   } catch (error) {
     registeredPushShortcut = "";
     registeredCommandShortcut = "";
     registeredShortcutSignature = "";
     globalShortcutsActive = false;
+    logClientEvent(`[hotkey.sync.failure] ${asErrorMessage(error)}`);
     setNotice(`Global hotkeys unavailable. Using in-app hotkeys only: ${asErrorMessage(error)}`, true);
     publishDockState();
   }
@@ -3102,6 +3278,63 @@ async function syncTitlebarMaximizeState(appWindow = getCurrentWindow()): Promis
   } catch {
     windowMaximizeGlyph.textContent = "□";
   }
+}
+
+async function ensureCurrentWindowVisible(): Promise<void> {
+  if (!isTauriEnvironment()) {
+    logClientEvent("[window.reveal] skipped because app is not running in tauri");
+    return;
+  }
+
+  const appWindow = getCurrentWindow();
+  logClientEvent("[window.reveal] start");
+  try {
+    await appWindow.unminimize();
+    logClientEvent("[window.reveal] unminimize ok");
+  } catch (error) {
+    logClientEvent(`[window.reveal] unminimize failed: ${asErrorMessage(error)}`);
+  }
+  try {
+    await appWindow.show();
+    logClientEvent("[window.reveal] show ok");
+  } catch (error) {
+    logClientEvent(`[window.reveal] show failed: ${asErrorMessage(error)}`);
+  }
+  try {
+    await appWindow.setFocus();
+    logClientEvent("[window.reveal] focus ok");
+  } catch (error) {
+    logClientEvent(`[window.reveal] focus failed: ${asErrorMessage(error)}`);
+  }
+}
+
+async function ensureCurrentWindowVisibleIfHidden(): Promise<void> {
+  if (!isTauriEnvironment()) {
+    logClientEvent("[window.reveal_if_hidden] skipped because app is not running in tauri");
+    return;
+  }
+
+  const appWindow = getCurrentWindow();
+  try {
+    const [visible, minimized] = await Promise.all([
+      appWindow.isVisible(),
+      appWindow.isMinimized(),
+    ]);
+    logClientEvent(
+      `[window.reveal_if_hidden] visible=${boolFlag(visible)} minimized=${boolFlag(minimized)}`,
+    );
+    if (visible && !minimized) {
+      logClientEvent("[window.reveal_if_hidden] no-op because window is already visible");
+      return;
+    }
+  } catch (error) {
+    logClientEvent(
+      `[window.reveal_if_hidden] visibility check failed: ${asErrorMessage(error)}; forcing reveal`,
+    );
+  }
+
+  logClientEvent("[window.reveal_if_hidden] forcing reveal");
+  await ensureCurrentWindowVisible();
 }
 
 function setUpdaterStatus(stage: "idle" | "processing" | "speaking" | "error", message: string): void {
@@ -3220,22 +3453,53 @@ function requestLaunchAtLoginSync(enabled: boolean): void {
 }
 
 function handleGlobalShortcutEvent(event: ShortcutEvent): void {
+  logClientEvent(
+    `[hotkey.global.event] shortcut=${event.shortcut || "-"} state=${String(
+      (event as { state?: unknown }).state ?? "",
+    )}`,
+  );
   if (hotkeyCaptureActive || commandHotkeyCaptureActive) {
+    logClientEvent("[hotkey.global.event] ignored because hotkey capture UI is active");
     return;
   }
 
-  if (event.state !== "Pressed" && event.state !== "Released") {
+  const rawState = String((event as { state?: unknown }).state ?? "")
+    .trim()
+    .toLowerCase();
+  const pressed = rawState === "pressed";
+  const released = rawState === "released";
+  if (!pressed && !released) {
+    logClientEvent(`[hotkey.global.event] ignored because state="${rawState}" is unsupported`);
     return;
   }
 
   const shortcut = normalizeShortcutToken(event.shortcut);
   const pushShortcut = normalizeShortcutToken(registeredPushShortcut);
   const commandShortcut = normalizeShortcutToken(registeredCommandShortcut);
+  logClientEvent(
+    `[hotkey.global.event] normalized shortcut=${shortcut || "-"} push=${
+      pushShortcut || "-"
+    } command=${commandShortcut || "-"} capture=${settings.captureMode}`,
+  );
 
   if (pushShortcut && shortcut === pushShortcut) {
-    if (event.state === "Pressed") {
+    if (pressed) {
+      markGlobalShortcutHandled(shortcut, "pressed");
+      logClientEvent(
+        `[hotkey.global.push] pressed capture=${settings.captureMode} holdCount=${pushToTalkHoldSources.size}`,
+      );
+      const activeSettings = readSettingsFromForm();
+      if (missingApiKeyForOnlineRuntime(activeSettings)) {
+        logClientEvent(
+          "[hotkey.global.push] blocked before reveal because API key is missing for online runtime",
+        );
+        showMissingApiKeyNotice("global-hotkey");
+        return;
+      }
+      void ensureCurrentWindowVisibleIfHidden();
       if (settings.captureMode === "push-to-talk") {
         if (pushToTalkHoldSources.has("hotkey")) {
+          logClientEvent("[hotkey.global.push] ignored repeated press because hold is already active");
           return;
         }
         void engagePushToTalk("hotkey");
@@ -3243,7 +3507,9 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
         void handleRecordToggle();
       }
     }
-    if (event.state === "Released" && settings.captureMode === "push-to-talk") {
+    if (released && settings.captureMode === "push-to-talk") {
+      markGlobalShortcutHandled(shortcut, "released");
+      logClientEvent("[hotkey.global.push] released -> release push-to-talk hold");
       releasePushToTalk("hotkey");
     }
     return;
@@ -3252,15 +3518,23 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
   if (
     commandShortcut &&
     shortcut === commandShortcut &&
-    event.state === "Pressed"
+    pressed
   ) {
+    markGlobalShortcutHandled(shortcut, "pressed");
+    void ensureCurrentWindowVisibleIfHidden();
+    logClientEvent("[hotkey.global.command] pressed -> toggling command mode");
     void (async () => {
       if (await shouldBlockAssistantInputFromForegroundApp()) {
+        logClientEvent("[hotkey.global.command] blocked by foreground app policy");
         return;
       }
       toggleCommandModeArmed();
+      logClientEvent(`[hotkey.global.command] toggled commandModeArmed=${boolFlag(commandModeArmed)}`);
     })();
+    return;
   }
+
+  logClientEvent("[hotkey.global.event] no handler matched the incoming shortcut");
 }
 
 function normalizeHotkeyModifierToken(token: string): "ctrl" | "shift" | "alt" | "meta" | "" {
@@ -3268,6 +3542,8 @@ function normalizeHotkeyModifierToken(token: string): "ctrl" | "shift" | "alt" |
   if (
     normalized === "commandorcontrol" ||
     normalized === "commandorctrl" ||
+    normalized === "cmdorctrl" ||
+    normalized === "cmdorcontrol" ||
     normalized === "ctrl" ||
     normalized === "control"
   ) {
@@ -3354,6 +3630,34 @@ function toGlobalShortcutString(hotkey: HotkeySpec): string {
   if (hotkey.meta) parts.push("Super");
   parts.push(toGlobalShortcutKeyToken(hotkey.key));
   return parts.join("+");
+}
+
+function markGlobalShortcutHandled(shortcutToken: string, state: "pressed" | "released"): void {
+  lastGlobalShortcutToken = shortcutToken;
+  lastGlobalShortcutState = state;
+  lastGlobalShortcutHandledAt = Date.now();
+}
+
+function shouldIgnoreLocalShortcutFromRecentGlobal(
+  shortcutToken: string,
+  state: "pressed" | "released",
+): boolean {
+  if (!globalShortcutsActive) {
+    return false;
+  }
+
+  if (lastGlobalShortcutState !== state || lastGlobalShortcutToken !== shortcutToken) {
+    return false;
+  }
+
+  const elapsed = Date.now() - lastGlobalShortcutHandledAt;
+  const shouldIgnore = elapsed >= 0 && elapsed <= 180;
+  if (shouldIgnore) {
+    logClientEvent(
+      `[hotkey.local.dedupe] ignored state=${state} shortcut=${shortcutToken} elapsedMs=${elapsed}`,
+    );
+  }
+  return shouldIgnore;
 }
 
 function normalizeShortcutToken(value: string): string {
@@ -6308,22 +6612,82 @@ async function handleTestCoquiVoice(): Promise<void> {
   }
 }
 
+function missingApiKeyForOnlineRuntime(activeSettings: PersistedSettings): boolean {
+  const anyOnlineRuntime =
+    activeSettings.sttRuntimeMode === "online" || activeSettings.aiRuntimeMode === "online";
+  const apiKeyPresent = activeSettings.apiKey.trim().length > 0;
+  return anyOnlineRuntime && !apiKeyPresent;
+}
+
+function showMissingApiKeyNotice(source: string): void {
+  const message =
+    "Recording blocked: API key is missing for online mode. Add API key in Settings > Models > Online provider.";
+  setNotice(message, true);
+  setStage("error", "Missing API key for online runtime.");
+  logClientEvent(`[record.start.blocked] missing-api-key notice source=${source}`);
+
+  if (typeof Notification === "undefined") {
+    return;
+  }
+
+  if (Notification.permission === "granted") {
+    try {
+      new Notification("SlasshyWispr", { body: message });
+    } catch {
+      // Ignore notification failures; notice is still shown in-app.
+    }
+    return;
+  }
+
+  if (Notification.permission !== "default" || notificationPermissionRequested) {
+    return;
+  }
+
+  notificationPermissionRequested = true;
+  void Notification.requestPermission()
+    .then((permission) => {
+      if (permission !== "granted") {
+        return;
+      }
+      try {
+        new Notification("SlasshyWispr", { body: message });
+      } catch {
+        // Ignore notification failures; notice is still shown in-app.
+      }
+    })
+    .catch(() => {
+      // Ignore notification permission errors.
+    });
+}
+
 async function handleRecordToggle(): Promise<void> {
+  logClientEvent(
+    `[record.toggle] stage=${stage} pipelineRunning=${boolFlag(
+      pipelineRunning,
+    )} holdCount=${pushToTalkHoldSources.size}`,
+  );
   if (stage === "recording") {
+    logClientEvent("[record.toggle] stage is recording -> stopRecording()");
     stopRecording();
     return;
   }
 
   if (await shouldBlockAssistantInputFromForegroundApp()) {
+    logClientEvent("[record.toggle] blocked by foreground app policy");
     return;
   }
 
-  interruptTtsPlaybackForCaptureIntent();
+  const interruptedPlayback = interruptTtsPlaybackForCaptureIntent();
+  if (interruptedPlayback) {
+    logClientEvent("[record.toggle] interrupted active TTS playback before recording");
+  }
 
   if (pipelineRunning) {
+    logClientEvent("[record.toggle] blocked because pipeline is already running");
     return;
   }
 
+  logClientEvent("[record.toggle] invoking startRecording()");
   await startRecording();
 }
 
@@ -6364,7 +6728,13 @@ function interruptTtsPlaybackForCaptureIntent(): boolean {
 }
 
 async function startRecording(): Promise<void> {
+  logClientEvent(
+    `[record.start] requested stage=${stage} pipelineRunning=${boolFlag(
+      pipelineRunning,
+    )} holdCount=${pushToTalkHoldSources.size} commandModeArmed=${boolFlag(commandModeArmed)}`,
+  );
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    logClientEvent("[record.start] blocked because browser media recording APIs are unavailable");
     clearPushToTalkHolds();
     setNotice("This environment does not support microphone recording.", true);
     setStage("error", "Media APIs unavailable.");
@@ -6372,21 +6742,25 @@ async function startRecording(): Promise<void> {
   }
 
   if (await shouldBlockAssistantInputFromForegroundApp()) {
+    logClientEvent("[record.start] blocked by foreground app policy");
     clearPushToTalkHolds();
     return;
   }
 
   const activeSettings = readSettingsFromForm();
+  logClientEvent(`[record.start] settings ${summarizeSettingsForDiagnostics(activeSettings)}`);
   if (commandModeArmed) {
+    logClientEvent("[record.start] command mode was armed; capturing selection snapshot");
     void primeSelectionSnapshotForCommandMode();
   }
-  const anyOnlineRuntime =
-    activeSettings.sttRuntimeMode === "online" || activeSettings.aiRuntimeMode === "online";
-  if (anyOnlineRuntime && !activeSettings.apiKey) {
+  if (missingApiKeyForOnlineRuntime(activeSettings)) {
+    logClientEvent(
+      `[record.start.blocked] missing-api-key stt=${activeSettings.sttRuntimeMode} ai=${activeSettings.aiRuntimeMode} remember=${boolFlag(
+        activeSettings.rememberApiKey,
+      )}`,
+    );
     clearPushToTalkHolds();
-    setNotice("API key is required before recording.", true);
-    openSettings();
-    setActiveSettingsPane("online");
+    showMissingApiKeyNotice("record-start");
     return;
   }
 
@@ -6398,11 +6772,19 @@ async function startRecording(): Promise<void> {
   if (preferredMimeType) {
     recorderOptions.mimeType = preferredMimeType;
   }
+  logClientEvent(
+    `[record.start] opening microphone device=${
+      activeSettings.microphoneDeviceId || "default"
+    } preferredMime=${preferredMimeType || "auto"}`,
+  );
 
   try {
     const stream = await openMicrophoneStream(activeSettings.microphoneDeviceId);
     mediaStream = stream;
     microphonePermissionGranted = true;
+    logClientEvent(
+      `[record.start] microphone stream opened tracks=${stream.getAudioTracks().length}`,
+    );
 
     mediaRecorder = new MediaRecorder(stream, recorderOptions);
     recorderMimeType = mediaRecorder.mimeType || preferredMimeType || "audio/webm";
@@ -6416,6 +6798,7 @@ async function startRecording(): Promise<void> {
     });
 
     mediaRecorder.addEventListener("error", () => {
+      logClientEvent("[record.start] media recorder emitted error event");
       clearPushToTalkHolds();
       setNotice("Recording failed due to media recorder error.", true);
       setStage("error", "Recording failed.");
@@ -6424,10 +6807,12 @@ async function startRecording(): Promise<void> {
     });
 
     mediaRecorder.addEventListener("stop", () => {
+      logClientEvent("[record.start] media recorder stop event received");
       void finalizeRecording();
     });
 
     mediaRecorder.start(180);
+    logClientEvent(`[record.start] media recorder started mime=${recorderMimeType}`);
     recordingStartedAt = Date.now();
     beginRecordingTicker();
     setStage("recording", "Listening...");
@@ -6438,6 +6823,7 @@ async function startRecording(): Promise<void> {
     }
     syncActionAvailability();
   } catch (error) {
+    logClientEvent(`[record.start] failed to open microphone: ${asErrorMessage(error)}`);
     clearPushToTalkHolds();
     stopAmplitudeMonitoring();
     releaseMicrophone();
@@ -6472,13 +6858,18 @@ async function openMicrophoneStream(preferredDeviceId: string): Promise<MediaStr
 }
 
 function stopRecording(): void {
+  logClientEvent(
+    `[record.stop] requested stage=${stage} recorderState=${mediaRecorder?.state || "none"}`,
+  );
   clearPushToTalkHolds();
 
   if (!mediaRecorder) {
+    logClientEvent("[record.stop] no active mediaRecorder");
     return;
   }
 
   if (mediaRecorder.state !== "inactive") {
+    logClientEvent("[record.stop] invoking mediaRecorder.stop()");
     mediaRecorder.stop();
   }
 
@@ -6492,8 +6883,10 @@ function stopRecording(): void {
 async function finalizeRecording(): Promise<void> {
   const blob = new Blob(recordedChunks, { type: recorderMimeType });
   recordedChunks = [];
+  logClientEvent(`[record.finalize] blobSize=${blob.size} mime=${recorderMimeType}`);
 
   if (blob.size === 0) {
+    logClientEvent("[record.finalize] blocked because captured blob is empty");
     setNotice("No usable audio captured. Please try again.", true);
     setStage("error", "No audio captured.");
     syncActionAvailability();
@@ -6948,6 +7341,13 @@ async function invokeExternalMediaPlayback(action: "pause" | "play"): Promise<vo
 }
 
 async function fetchForegroundInputBlockStatus(force = false): Promise<ForegroundInputBlockStatus> {
+  if (!ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION) {
+    const fallback: ForegroundInputBlockStatus = { blocked: false, processName: "" };
+    foregroundBlockStatusCache = fallback;
+    foregroundBlockCheckedAt = Date.now();
+    return fallback;
+  }
+
   if (!isTauriEnvironment()) {
     return { blocked: false, processName: "" };
   }
@@ -7010,6 +7410,10 @@ function notifyBlockedForegroundInput(processName: string): void {
 }
 
 async function shouldBlockAssistantInputFromForegroundApp(force = false): Promise<boolean> {
+  if (!ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION) {
+    return false;
+  }
+
   const status = await fetchForegroundInputBlockStatus(force);
   if (!status.blocked) {
     return false;
@@ -7046,6 +7450,10 @@ async function refreshBlockedAppShortcutSuppression(): Promise<void> {
 }
 
 function startBlockedAppShortcutSuppressionMonitor(): void {
+  if (!ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION) {
+    return;
+  }
+
   if (!isTauriEnvironment() || foregroundBlockMonitorId !== null) {
     return;
   }
@@ -7823,48 +8231,78 @@ function syncActionAvailability(): void {
 }
 
 async function engagePushToTalk(source: HoldSource): Promise<void> {
+  logClientEvent(
+    `[record.ptt.engage] source=${source} capture=${settings.captureMode} stage=${stage} pipelineRunning=${boolFlag(
+      pipelineRunning,
+    )} holds=${pushToTalkHoldSources.size}`,
+  );
   if (settings.captureMode !== "push-to-talk") {
+    logClientEvent("[record.ptt.engage] ignored because capture mode is not push-to-talk");
     return;
   }
 
   if (pushToTalkHoldSources.has(source)) {
+    logClientEvent("[record.ptt.engage] ignored because this hold source is already active");
     return;
   }
 
   if (await shouldBlockAssistantInputFromForegroundApp()) {
+    logClientEvent("[record.ptt.engage] blocked by foreground app policy");
     return;
   }
 
   pushToTalkHoldSources.add(source);
+  logClientEvent(`[record.ptt.engage] hold added source=${source} holds=${pushToTalkHoldSources.size}`);
 
-  interruptTtsPlaybackForCaptureIntent();
+  const interruptedPlayback = interruptTtsPlaybackForCaptureIntent();
+  if (interruptedPlayback) {
+    logClientEvent("[record.ptt.engage] interrupted active TTS playback");
+  }
 
   if (pipelineRunning || stage === "recording") {
+    logClientEvent(
+      `[record.ptt.engage] delayed because pipelineRunning=${boolFlag(
+        pipelineRunning,
+      )} stage=${stage}`,
+    );
     return;
   }
 
+  logClientEvent("[record.ptt.engage] invoking startRecording()");
   await startRecording();
 
   if (mediaRecorder?.state !== "recording") {
+    logClientEvent(
+      `[record.ptt.engage] startRecording did not reach recording state (state=${
+        mediaRecorder?.state || "none"
+      }); removing hold`,
+    );
     pushToTalkHoldSources.delete(source);
   }
 }
 
 function releasePushToTalk(source: HoldSource): void {
   if (!pushToTalkHoldSources.delete(source)) {
+    logClientEvent(`[record.ptt.release] ignored because hold source is not active: ${source}`);
     return;
   }
+  logClientEvent(`[record.ptt.release] source=${source} remainingHolds=${pushToTalkHoldSources.size}`);
 
   if (settings.captureMode !== "push-to-talk") {
+    logClientEvent("[record.ptt.release] capture mode changed; nothing to stop");
     return;
   }
 
   if (stage === "recording" && pushToTalkHoldSources.size === 0) {
+    logClientEvent("[record.ptt.release] no holds left while recording -> stopRecording()");
     stopRecording();
   }
 }
 
 function clearPushToTalkHolds(): void {
+  if (pushToTalkHoldSources.size > 0) {
+    logClientEvent(`[record.ptt.clear] clearing holds=${pushToTalkHoldSources.size}`);
+  }
   pushToTalkHoldSources.clear();
 }
 
