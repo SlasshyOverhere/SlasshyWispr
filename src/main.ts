@@ -14,9 +14,9 @@ import {
   unregisterAll as unregisterAllGlobalShortcuts,
   type ShortcutEvent,
 } from "@tauri-apps/plugin-global-shortcut";
+import { type CaptureMode, captureModeLabel } from "./utils";
 
 type Stage = "idle" | "recording" | "processing" | "speaking" | "error";
-type CaptureMode = "single-tap" | "push-to-talk";
 type ThemeMode = "system" | "light" | "dark";
 type StyleProfile = "adaptive" | "professional" | "casual" | "concise" | "developer";
 type MainPage = "home" | "dictionary" | "snippets" | "notes";
@@ -2986,10 +2986,6 @@ function handleSettingsChange(): void {
   updateTtsSetupGate();
   publishDockState();
   void syncFloatingIndicatorWindow();
-}
-
-function captureModeLabel(mode: CaptureMode): string {
-  return mode === "push-to-talk" ? "Push-To-Talk" : "Single Tap";
 }
 
 function updateRuntimeModeNotice(sttMode: RuntimeMode, aiMode: RuntimeMode): void {
