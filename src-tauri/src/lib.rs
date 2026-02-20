@@ -39,92 +39,8 @@ use transcribe_rs::{
 #[cfg(target_os = "windows")]
 use zip::ZipArchive;
 
-const DEFAULT_BASE_URL: &str = "";
-const DEFAULT_STT_MODEL: &str = "";
-const DEFAULT_AI_MODEL: &str = "";
-const DEFAULT_LOCAL_OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434";
-const DEFAULT_LOCAL_STT_PROVIDER: &str = "parakeet";
-const DEFAULT_SYSTEM_PROMPT: &str = "You are SlasshyWispr, an assistant in a speech-to-text app.
-Default mode is cleanup of spoken text while preserving intent and tone.
-Agent mode activates when directly addressed with a request.
-If selected text context is provided, use it as primary context.
-Output only final content with no meta-commentary or preamble.";
-
-const VOICE_MODEL_URL: &str = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx";
-const VOICE_CONFIG_URL: &str = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx.json";
-const VOICE_MODEL_FILE: &str = "en_US-hfc_female-medium.onnx";
-const VOICE_CONFIG_FILE: &str = "en_US-hfc_female-medium.onnx.json";
-const PIPER_DEFAULT_SPEED: f32 = 1.08;
-const PIPER_DEFAULT_QUALITY: &str = "fast";
-const PIPER_DEFAULT_EMOTION: &str = "neutral";
-const COQUI_DEFAULT_MODEL: &str = "tts_models/multilingual/multi-dataset/xtts_v2";
-const COQUI_DEFAULT_LANGUAGE: &str = "en";
-const COQUI_DEFAULT_QUALITY: &str = "balanced";
-const COQUI_DEFAULT_EMOTION: &str = "neutral";
-const COQUI_MAX_REFERENCE_SECONDS: f32 = 30.0;
-const PENDING_SELECTION_REWRITE_TTL_SECS: u64 = 90;
-const RECENT_SELECTION_CONTEXT_TTL_SECS: u64 = 240;
-const COQUI_BRIDGE_SCRIPT: &str = include_str!("../coqui_bridge.py");
-const LOCAL_STT_BRIDGE_SCRIPT: &str = include_str!("../local_stt_bridge.py");
-const MAIN_WINDOW_LABEL: &str = "main";
-const TRAY_ID: &str = "slasshywispr-tray";
-const TRAY_MENU_COPY_LAST_TRANSCRIPTION_ID: &str = "copy-last-transcription";
-const TRAY_MENU_COPY_LAST_RESPONSE_ID: &str = "copy-last-response";
-const TRAY_MENU_DASHBOARD_ID: &str = "dashboard";
-const TRAY_MENU_QUIT_ID: &str = "quit";
-const STARTUP_ARG_START_IN_TRAY: &str = "--start-in-tray";
-const LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS: u64 = 90;
-const LOCAL_STT_DAEMON_IDLE_TIMEOUT_SECS: u64 = 15 * 60;
-const LOCAL_STT_DAEMON_SWEEP_INTERVAL_SECS: u64 = 15;
-const LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_ENV: &str =
-    "SLASSHY_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS";
-const LOCAL_STT_DAEMON_IDLE_TIMEOUT_ENV: &str = "SLASSHY_STT_DAEMON_IDLE_TIMEOUT_SECS";
-const LOCAL_STT_DAEMON_SWEEP_INTERVAL_ENV: &str = "SLASSHY_STT_DAEMON_SWEEP_INTERVAL_SECS";
-const LOCAL_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE_ENV: &str =
-    "SLASSHY_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE";
-const LOCAL_STT_PARAKEET_CPU_INT8_ENV: &str = "SLASSHY_STT_PARAKEET_CPU_INT8";
-const LOCAL_STT_PARAKEET_FORCE_CPU_ENV: &str = "SLASSHY_STT_PARAKEET_FORCE_CPU";
-const LOCAL_STT_RUNTIME_READY_MARKER_FILE: &str = "runtime.ready.v2";
-const LOCAL_STT_RUNTIME_READY_MARKER_CONTENT: &str = "nemo+faster-whisper+torch";
-const ZERO_PYTHON_MODE_ENV: &str = "SLASSHY_ZERO_PYTHON_MODE";
-const ZERO_PYTHON_STT_NOTICE: &str =
-    "Zero-Python mode is enabled. Only native Parakeet local STT models are supported.";
-const ZERO_PYTHON_COQUI_NOTICE: &str =
-    "Coqui TTS is disabled in zero-Python mode. Use Piper TTS.";
-#[cfg(target_os = "windows")]
-const STARTUP_RUN_VALUE_NAME: &str = "SlasshyWispr";
-#[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-const UPDATE_REPOSITORY_OWNER: &str = "SlasshyOverhere";
-const UPDATE_REPOSITORY_NAME: &str = "SlasshyWispr";
-const UPDATE_REPOSITORY_OWNER_ENV: &str = "SLASSHY_UPDATE_REPOSITORY_OWNER";
-const UPDATE_REPOSITORY_NAME_ENV: &str = "SLASSHY_UPDATE_REPOSITORY_NAME";
-const UPDATE_GITHUB_TOKEN_ENV: &str = "SLASSHY_UPDATE_GITHUB_TOKEN";
-const UPDATE_HTTP_USER_AGENT: &str = "SlasshyWispr-Updater";
-const PERSISTED_SETTINGS_DIR_NAME: &str = "SlasshyWisprData";
-const PERSISTED_SETTINGS_FILE_NAME: &str = "settings.json";
-const PARAKEET_V2_INT8_ARCHIVE_URL: &str = "https://github.com/SlasshyOverhere/parakeet-int8-mirror/releases/download/models-parakeet-int8-v1/parakeet-v2-int8.tar.gz";
-const PARAKEET_V3_INT8_ARCHIVE_URL: &str = "https://github.com/SlasshyOverhere/parakeet-int8-mirror/releases/download/models-parakeet-int8-v1/parakeet-v3-int8.tar.gz";
-const PARAKEET_V2_INT8_ROOT_DIR: &str = "parakeet-tdt-0.6b-v2-int8";
-const PARAKEET_V3_INT8_ROOT_DIR: &str = "parakeet-tdt-0.6b-v3-int8";
-const LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_DEFAULT: usize = 4;
-const LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_MAX: usize = 8;
-const LOCAL_STT_ARCHIVE_MIN_BYTES_PER_CHUNK: u64 = 24 * 1024 * 1024;
-const LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_ENV: &str = "SLASSHY_STT_ARCHIVE_PARALLEL_CHUNKS";
-
-#[cfg(target_os = "windows")]
-const PIPER_ARCHIVE_URL: &str =
-    "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip";
-#[cfg(target_os = "windows")]
-const PIPER_ARCHIVE_FILE: &str = "piper_windows_amd64.zip";
-#[cfg(target_os = "windows")]
-const PIPER_BINARY_NAME: &str = "piper.exe";
-#[cfg(not(target_os = "windows"))]
-const PIPER_BINARY_NAME: &str = "piper";
-#[cfg(target_os = "windows")]
-const OLLAMA_WINDOWS_INSTALLER_URL: &str = "https://ollama.com/download/OllamaSetup.exe";
-#[cfg(target_os = "windows")]
-const OLLAMA_WINDOWS_INSTALLER_FILE: &str = "OllamaSetup.exe";
+pub mod constants;
+use constants::*;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -422,8 +338,7 @@ struct NativeParakeetRuntime {
 }
 
 static COQUI_DAEMONS: OnceLock<Mutex<HashMap<String, CoquiBridgeDaemon>>> = OnceLock::new();
-static LOCAL_STT_DAEMONS: OnceLock<Mutex<HashMap<String, LocalSttBridgeDaemon>>> =
-    OnceLock::new();
+static LOCAL_STT_DAEMONS: OnceLock<Mutex<HashMap<String, LocalSttBridgeDaemon>>> = OnceLock::new();
 static LOCAL_STT_RUNTIME_PYTHON_CACHE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static LOCAL_STT_DAEMON_SWEEPER_STARTED: OnceLock<()> = OnceLock::new();
 static LOCAL_STT_NATIVE_PARAKEET_RUNTIME: OnceLock<Mutex<Option<NativeParakeetRuntime>>> =
@@ -1054,13 +969,11 @@ impl TtsSetupState {
             progress.success = false;
             progress.stage = "Preparing setup...".to_string();
             progress.logs.clear();
-            progress
-                .logs
-                .push(if zero_python_mode_enabled() {
-                    "Starting TTS bootstrap for Piper runtime (zero-Python mode).".to_string()
-                } else {
-                    "Starting TTS bootstrap for Piper + Coqui runtime.".to_string()
-                });
+            progress.logs.push(if zero_python_mode_enabled() {
+                "Starting TTS bootstrap for Piper runtime (zero-Python mode).".to_string()
+            } else {
+                "Starting TTS bootstrap for Piper + Coqui runtime.".to_string()
+            });
         });
     }
 
@@ -1450,20 +1363,20 @@ fn start_local_stt_boot_warmup(app: AppHandle) {
         let app_for_worker = app.clone();
         let model_for_worker = model.clone();
         let provider_for_worker = provider.clone();
-        let warmup_result = tauri::async_runtime::spawn_blocking(move || {
-            match provider_for_worker.as_str() {
-                "parakeet" => {
-                    warmup_local_stt_parakeet_model_blocking(&app_for_worker, "", &model_for_worker)
-                }
-                "whisper" | "moonshine" | "sensevoice" => {
-                    if zero_python_mode_enabled() {
-                        return Err(ZERO_PYTHON_STT_NOTICE.to_string());
-                    }
-                    let python_path = setup_local_stt_runtime_blocking(&app_for_worker, "python")?;
-                    warmup_local_stt_hf_model_blocking(&app_for_worker, &python_path, &model_for_worker)
-                }
-                _ => Ok("Warmup skipped (unsupported provider).".to_string()),
+        let warmup_result = tauri::async_runtime::spawn_blocking(move || match provider_for_worker
+            .as_str()
+        {
+            "parakeet" => {
+                warmup_local_stt_parakeet_model_blocking(&app_for_worker, "", &model_for_worker)
             }
+            "whisper" | "moonshine" | "sensevoice" => {
+                if zero_python_mode_enabled() {
+                    return Err(ZERO_PYTHON_STT_NOTICE.to_string());
+                }
+                let python_path = setup_local_stt_runtime_blocking(&app_for_worker, "python")?;
+                warmup_local_stt_hf_model_blocking(&app_for_worker, &python_path, &model_for_worker)
+            }
+            _ => Ok("Warmup skipped (unsupported provider).".to_string()),
         })
         .await
         .map_err(|error| format!("Local STT startup warmup worker failed: {error}"))
@@ -2468,7 +2381,9 @@ async fn download_local_stt_model(
     }
     let allowed_models = built_in_local_stt_model_catalog();
     if !allowed_models.iter().any(|item| item == &model) {
-        return Err("Unsupported local STT model. Select one from the built-in catalog.".to_string());
+        return Err(
+            "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
+        );
     }
     let status_snapshot = state.snapshot_local_stt_download_status()?;
     if status_snapshot.active {
@@ -2717,28 +2632,26 @@ async fn download_local_stt_model(
                                 );
                             }
                             Err(warmup_error) => {
-                                let _ = state_for_task.update_local_stt_download_status(
-                                    |status| {
-                                        status.active = false;
-                                        status.completed = true;
-                                        status.success = true;
-                                        status.model = model_for_task.clone();
-                                        status.repo_id = repo_id_for_task.clone();
-                                        status.stage = "Download complete (warmup warning)."
-                                            .to_string();
-                                        status.message = format!(
-                                            "{download_details} Native Parakeet warmup skipped: {}",
-                                            clip_text(&single_line(&warmup_error), 360)
-                                        );
-                                        status.current_file.clear();
-                                        if status.total_bytes > 0 {
-                                            status.downloaded_bytes = status.total_bytes;
-                                        }
-                                        if status.files_total > 0 {
-                                            status.files_completed = status.files_total;
-                                        }
-                                    },
-                                );
+                                let _ = state_for_task.update_local_stt_download_status(|status| {
+                                    status.active = false;
+                                    status.completed = true;
+                                    status.success = true;
+                                    status.model = model_for_task.clone();
+                                    status.repo_id = repo_id_for_task.clone();
+                                    status.stage =
+                                        "Download complete (warmup warning).".to_string();
+                                    status.message = format!(
+                                        "{download_details} Native Parakeet warmup skipped: {}",
+                                        clip_text(&single_line(&warmup_error), 360)
+                                    );
+                                    status.current_file.clear();
+                                    if status.total_bytes > 0 {
+                                        status.downloaded_bytes = status.total_bytes;
+                                    }
+                                    if status.files_total > 0 {
+                                        status.files_completed = status.files_total;
+                                    }
+                                });
                             }
                         }
                     } else {
@@ -2821,11 +2734,16 @@ async fn delete_local_stt_model(
     }
     let allowed_models = built_in_local_stt_model_catalog();
     if !allowed_models.iter().any(|item| item == &model) {
-        return Err("Unsupported local STT model. Select one from the built-in catalog.".to_string());
+        return Err(
+            "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
+        );
     }
     let active_status = state.snapshot_local_stt_download_status()?;
     if active_status.active && active_status.model == model {
-        return Err("This model is currently downloading. Wait for it to finish before deleting.".to_string());
+        return Err(
+            "This model is currently downloading. Wait for it to finish before deleting."
+                .to_string(),
+        );
     }
 
     let provider = infer_local_stt_provider_from_model(&model);
@@ -2913,7 +2831,9 @@ async fn open_local_stt_model_path(
     }
     let allowed_models = built_in_local_stt_model_catalog();
     if !allowed_models.iter().any(|item| item == &model) {
-        return Err("Unsupported local STT model. Select one from the built-in catalog.".to_string());
+        return Err(
+            "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
+        );
     }
 
     let provider = infer_local_stt_provider_from_model(&model);
@@ -2950,7 +2870,9 @@ async fn warmup_local_stt_model(
     }
     let allowed_models = built_in_local_stt_model_catalog();
     if !allowed_models.iter().any(|item| item == &model) {
-        return Err("Unsupported local STT model. Select one from the built-in catalog.".to_string());
+        return Err(
+            "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
+        );
     }
 
     let provider = infer_local_stt_provider_from_model(&model);
@@ -2967,8 +2889,8 @@ async fn warmup_local_stt_model(
     let app_for_worker = app.clone();
     let model_for_worker = model.clone();
     let provider_for_worker = provider.clone();
-    let warmup_result = tauri::async_runtime::spawn_blocking(move || {
-        match provider_for_worker.as_str() {
+    let warmup_result =
+        tauri::async_runtime::spawn_blocking(move || match provider_for_worker.as_str() {
             "parakeet" => {
                 warmup_local_stt_parakeet_model_blocking(&app_for_worker, "", &model_for_worker)
             }
@@ -2980,10 +2902,9 @@ async fn warmup_local_stt_model(
                 warmup_local_stt_hf_model_blocking(&app_for_worker, &python_path, &model_for_worker)
             }
             _ => Ok("Warmup skipped (unsupported provider).".to_string()),
-        }
-    })
-    .await
-    .map_err(|error| format!("Local STT warmup task failed: {error}"));
+        })
+        .await
+        .map_err(|error| format!("Local STT warmup task failed: {error}"));
 
     match warmup_result {
         Ok(Ok(details)) => {
@@ -3024,7 +2945,9 @@ async fn deactivate_local_stt_model(
     } else {
         let allowed_models = built_in_local_stt_model_catalog();
         if !allowed_models.iter().any(|item| item == &model) {
-            return Err("Unsupported local STT model. Select one from the built-in catalog.".to_string());
+            return Err(
+                "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
+            );
         }
         let provider = infer_local_stt_provider_from_model(&model);
         (model, provider)
@@ -3044,7 +2967,8 @@ async fn deactivate_local_stt_model(
     .await
     .map_err(|error| format!("Local STT deactivate task failed: {error}"))??;
     let (trimmed_count, stopped_during_trim, fully_stopped, native_unloaded) = worker_result;
-    let deactivated = trimmed_count > 0 || stopped_during_trim > 0 || fully_stopped > 0 || native_unloaded;
+    let deactivated =
+        trimmed_count > 0 || stopped_during_trim > 0 || fully_stopped > 0 || native_unloaded;
 
     let details = if deactivated {
         if model_for_response.is_empty() {
@@ -3990,7 +3914,8 @@ fn assistant_name_token_matches(expected: &str, actual: &str) -> bool {
 
     let expected_normalized = expected.to_ascii_lowercase();
     let actual_normalized = actual.to_ascii_lowercase();
-    if expected_normalized.len() <= 5 && within_n_edits_ascii(&expected_normalized, &actual_normalized, 2)
+    if expected_normalized.len() <= 5
+        && within_n_edits_ascii(&expected_normalized, &actual_normalized, 2)
     {
         return true;
     }
@@ -4150,9 +4075,8 @@ fn resolve_pipeline_mode(request: &AssistantPipelineRequest) -> Result<PipelineM
     };
 
     let stt = if stt_local_mode {
-        let stt_model = canonical_local_stt_model_id(&normalize_model_name(
-            request.local_stt_model.as_deref(),
-        ));
+        let stt_model =
+            canonical_local_stt_model_id(&normalize_model_name(request.local_stt_model.as_deref()));
         if stt_model.is_empty() {
             return Err(
                 "Local STT model is required when STT runtime is local. Open Settings > Models and select a model."
@@ -4223,9 +4147,7 @@ async fn run_assistant_pipeline(
     let coqui_requested = requested_engine == "coqui";
     let use_coqui = coqui_requested && !zero_python_mode_enabled();
     if coqui_requested && zero_python_mode_enabled() {
-        warn!(
-            "[pipeline] coqui requested but disabled in zero-python mode; falling back to piper"
-        );
+        warn!("[pipeline] coqui requested but disabled in zero-python mode; falling back to piper");
     }
 
     let piper_path = if use_coqui {
@@ -4301,11 +4223,12 @@ async fn run_assistant_pipeline(
     let overall_start = Instant::now();
 
     let stt_start = Instant::now();
-    let effective_language_hint = normalize_stt_language_hint(request.language.as_deref()).or_else(|| {
-        normalize_stt_allowed_languages(request.allowed_languages.as_deref())
-            .first()
-            .cloned()
-    });
+    let effective_language_hint =
+        normalize_stt_language_hint(request.language.as_deref()).or_else(|| {
+            normalize_stt_allowed_languages(request.allowed_languages.as_deref())
+                .first()
+                .cloned()
+        });
     let transcript_raw = match &pipeline_mode.stt {
         SttModeConfig::Online {
             api_key,
@@ -4344,9 +4267,8 @@ async fn run_assistant_pipeline(
             if let Some(duration_secs) = estimate_wav_duration_seconds(&audio_bytes) {
                 let transcript_chars = transcript_raw.chars().count();
                 let cps = transcript_chars as f64 / duration_secs.max(0.001);
-                let likely_hallucination =
-                    (transcript_chars >= 120 && cps > 55.0)
-                        || (duration_secs <= 0.8 && transcript_chars >= 32 && cps > 80.0);
+                let likely_hallucination = (transcript_chars >= 120 && cps > 55.0)
+                    || (duration_secs <= 0.8 && transcript_chars >= 32 && cps > 80.0);
                 if likely_hallucination {
                     warn!(
                         "[pipeline] rejected implausible local transcript provider={} chars={} duration_secs={:.3} cps={:.1}",
@@ -4492,8 +4414,10 @@ async fn run_assistant_pipeline(
         state.set_recent_selection_context(selected.clone())?;
     }
     let selected_context_available = selected_text.is_some();
-    let selection_control_mode =
-        selected_context_available || command_mode || pending_rewrite_present || selection_intent_active;
+    let selection_control_mode = selected_context_available
+        || command_mode
+        || pending_rewrite_present
+        || selection_intent_active;
     let selection_context_used = selected_context_available || pending_rewrite_present;
     let selected_chars = selected_text
         .as_ref()
@@ -5058,8 +4982,8 @@ async fn transcribe_audio_local_hf_asr(
     let model = canonical_local_stt_model_id(&local.stt_model);
     let provider = infer_local_stt_provider_from_model(&model);
     let allowed_language_hints = normalize_stt_allowed_languages(allowed_languages);
-    let language_hint = normalize_stt_language_hint(language)
-        .or_else(|| allowed_language_hints.first().cloned());
+    let language_hint =
+        normalize_stt_language_hint(language).or_else(|| allowed_language_hints.first().cloned());
     let (repo_id, model_dir) = resolve_local_stt_repo_and_dir(app, &provider, &model)?;
     if !model_dir.exists() {
         return Err(format!(
@@ -5469,7 +5393,8 @@ async fn generate_assistant_response_ollama(
             .filter(|value| !value.is_empty())
             .map(str::to_string);
 
-        return content.ok_or_else(|| "Local Ollama response is missing message.content".to_string());
+        return content
+            .ok_or_else(|| "Local Ollama response is missing message.content".to_string());
     }
 
     if last_error.is_empty() {
@@ -5809,7 +5734,9 @@ fn seems_like_selection_edit_instruction(command: &str) -> bool {
     if normalized.is_empty() {
         return false;
     }
-    let edit_verbs = ["improve", "rewrite", "edit", "rephrase", "fix", "correct", "polish", "refine"];
+    let edit_verbs = [
+        "improve", "rewrite", "edit", "rephrase", "fix", "correct", "polish", "refine",
+    ];
     if edit_verbs
         .iter()
         .any(|phrase| contains_phrase(&normalized, phrase))
@@ -5817,7 +5744,14 @@ fn seems_like_selection_edit_instruction(command: &str) -> bool {
         return true;
     }
 
-    let style_rewrite_cues = ["shorten", "expand", "formal", "professional", "grammar", "typo"];
+    let style_rewrite_cues = [
+        "shorten",
+        "expand",
+        "formal",
+        "professional",
+        "grammar",
+        "typo",
+    ];
     if style_rewrite_cues
         .iter()
         .any(|phrase| contains_phrase(&normalized, phrase))
@@ -6898,7 +6832,15 @@ fn extract_text_from_chat_value(value: &Value) -> Option<String> {
             }
         }
         Value::Object(object) => {
-            for key in ["text", "content", "output_text", "value", "refusal", "message", "delta"] {
+            for key in [
+                "text",
+                "content",
+                "output_text",
+                "value",
+                "refusal",
+                "message",
+                "delta",
+            ] {
                 if let Some(candidate) = object.get(key) {
                     if let Some(text) = extract_text_from_chat_value(candidate) {
                         return Some(text);
@@ -7964,7 +7906,10 @@ fn run_local_stt_bridge_via_daemon(
                 let _ = stale.child.wait();
             }
 
-            info!("[local.stt.daemon] restarting after failure action={}", action);
+            info!(
+                "[local.stt.daemon] restarting after failure action={}",
+                action
+            );
             let mut daemon = spawn_local_stt_bridge_daemon(python_path, script_path, cache_dir)?;
             let retry = send_local_stt_daemon_request(&mut daemon, action, payload);
             match retry {
@@ -8757,9 +8702,12 @@ fn extract_tar_gz_archive(archive_path: &Path, destination: &Path) -> Result<(),
     })?;
     let decoder = GzDecoder::new(archive_file);
     let mut archive = Archive::new(decoder);
-    let entries = archive
-        .entries()
-        .map_err(|error| format!("Invalid tar.gz archive '{}': {error}", archive_path.display()))?;
+    let entries = archive.entries().map_err(|error| {
+        format!(
+            "Invalid tar.gz archive '{}': {error}",
+            archive_path.display()
+        )
+    })?;
 
     for (index, entry_result) in entries.enumerate() {
         let mut entry = entry_result.map_err(|error| {
@@ -8893,7 +8841,11 @@ fn normalize_stt_language_hint(raw: Option<&str>) -> Option<String> {
             value = iso2.to_string();
         }
     }
-    if value.is_empty() { None } else { Some(value) }
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 fn normalize_stt_allowed_languages(raw: Option<&[String]>) -> Vec<String> {
@@ -9026,17 +8978,18 @@ fn estimate_wav_duration_seconds(audio_bytes: &[u8]) -> Option<f64> {
         }
 
         if chunk_id == b"fmt " && chunk_size >= 16 {
-            channels = Some(u16::from_le_bytes([audio_bytes[cursor + 2], audio_bytes[cursor + 3]]) as f64);
+            channels =
+                Some(u16::from_le_bytes([audio_bytes[cursor + 2], audio_bytes[cursor + 3]]) as f64);
             sample_rate = Some(u32::from_le_bytes([
                 audio_bytes[cursor + 4],
                 audio_bytes[cursor + 5],
                 audio_bytes[cursor + 6],
                 audio_bytes[cursor + 7],
             ]) as f64);
-            bits_per_sample = Some(u16::from_le_bytes([
-                audio_bytes[cursor + 14],
-                audio_bytes[cursor + 15],
-            ]) as f64);
+            bits_per_sample =
+                Some(
+                    u16::from_le_bytes([audio_bytes[cursor + 14], audio_bytes[cursor + 15]]) as f64,
+                );
         } else if chunk_id == b"data" {
             data_size_bytes = Some(chunk_size as f64);
         }
@@ -9264,7 +9217,10 @@ fn probe_macos_local_stt_hardware(probe: &mut LocalSttHardwareProbe) {
     let capture = |command_name: &str, args: &[&str]| -> Option<String> {
         let mut command = Command::new(command_name);
         apply_no_window(&mut command);
-        command.args(args).stdout(Stdio::piped()).stderr(Stdio::null());
+        command
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
         let output = command.output().ok()?;
         if !output.status.success() {
             return None;
@@ -9290,7 +9246,10 @@ fn probe_nvidia_gpu_for_local_stt(probe: &mut LocalSttHardwareProbe) {
     let mut command = Command::new("nvidia-smi");
     apply_no_window(&mut command);
     command
-        .args(["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
+        .args([
+            "--query-gpu=name,memory.total",
+            "--format=csv,noheader,nounits",
+        ])
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
 
@@ -9349,7 +9308,11 @@ fn probe_nvidia_gpu_for_local_stt(probe: &mut LocalSttHardwareProbe) {
     }
 }
 
-fn local_stt_performance_tier(probe: &LocalSttHardwareProbe, ram_gb: f64, gpu_vram_gb: f64) -> &'static str {
+fn local_stt_performance_tier(
+    probe: &LocalSttHardwareProbe,
+    ram_gb: f64,
+    gpu_vram_gb: f64,
+) -> &'static str {
     let strong_cpu = probe.logical_cores >= 8;
     let low_cpu = probe.logical_cores > 0 && probe.logical_cores <= 4;
     let ample_ram = ram_gb >= 16.0;
@@ -9379,35 +9342,25 @@ fn local_stt_models_for_tier(
     match tier {
         "performance" => (
             "nvidia/parakeet-tdt_ctc-110m",
-            vec![
-                "nvidia/parakeet-tdt_ctc-110m",
-            ],
-            vec![
-                "nvidia/parakeet-tdt-0.6b-v3",
-            ],
+            vec!["nvidia/parakeet-tdt_ctc-110m"],
+            vec!["nvidia/parakeet-tdt-0.6b-v3"],
         ),
         "balanced" => (
             "nvidia/parakeet-tdt_ctc-110m",
-            vec![
-                "nvidia/parakeet-tdt_ctc-110m",
-            ],
-            vec![
-                "nvidia/parakeet-tdt-0.6b-v3",
-            ],
+            vec!["nvidia/parakeet-tdt_ctc-110m"],
+            vec!["nvidia/parakeet-tdt-0.6b-v3"],
         ),
         _ => (
             "nvidia/parakeet-tdt_ctc-110m",
-            vec![
-                "nvidia/parakeet-tdt_ctc-110m",
-            ],
-            vec![
-                "nvidia/parakeet-tdt-0.6b-v3",
-            ],
+            vec!["nvidia/parakeet-tdt_ctc-110m"],
+            vec!["nvidia/parakeet-tdt-0.6b-v3"],
         ),
     }
 }
 
-fn build_local_stt_hardware_advice(selected_model: Option<String>) -> LocalSttHardwareAdviceResponse {
+fn build_local_stt_hardware_advice(
+    selected_model: Option<String>,
+) -> LocalSttHardwareAdviceResponse {
     let probe = probe_local_stt_hardware();
     let ram_gb_raw = if probe.total_ram_bytes > 0 {
         probe.total_ram_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
@@ -9492,7 +9445,10 @@ fn build_local_stt_hardware_advice(selected_model: Option<String>) -> LocalSttHa
     let caution_suffix = if caution_labels.is_empty() {
         String::new()
     } else {
-        format!(" Heavy models on this hardware: {}.", caution_labels.join(", "))
+        format!(
+            " Heavy models on this hardware: {}.",
+            caution_labels.join(", ")
+        )
     };
     let gpu_summary = if probe.nvidia_gpu_detected {
         if gpu_vram_gb > 0.0 {
@@ -9832,9 +9788,9 @@ fn detect_nvidia_gpu_available() -> bool {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     match command.output() {
-        Ok(output) if output.status.success() => !String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .is_empty(),
+        Ok(output) if output.status.success() => {
+            !String::from_utf8_lossy(&output.stdout).trim().is_empty()
+        }
         _ => false,
     }
 }
@@ -10017,11 +9973,8 @@ fn setup_local_stt_runtime_blocking(
         &["-c", "import nemo.collections.asr"],
         &cache_dir,
     );
-    let probe_faster_whisper = run_local_stt_python_command(
-        &venv_python,
-        &["-c", "import faster_whisper"],
-        &cache_dir,
-    );
+    let probe_faster_whisper =
+        run_local_stt_python_command(&venv_python, &["-c", "import faster_whisper"], &cache_dir);
     if probe_nemo.is_ok() && probe_faster_whisper.is_ok() {
         let _ = try_install_local_stt_cuda_torch(
             &venv_python,
@@ -10029,11 +9982,11 @@ fn setup_local_stt_runtime_blocking(
             &runtime_dir,
             "runtime-ready",
         );
-        let cuda_available = local_stt_torch_cuda_available(&venv_python, &cache_dir).unwrap_or(false);
+        let cuda_available =
+            local_stt_torch_cuda_available(&venv_python, &cache_dir).unwrap_or(false);
         info!(
             "[local.stt.runtime] ready python={} cuda={}",
-            clip_text(&venv_python, 220)
-            ,
+            clip_text(&venv_python, 220),
             cuda_available
         );
         if let Ok(mut guard) = local_stt_runtime_python_cache().lock() {
@@ -10109,17 +10062,21 @@ fn setup_local_stt_runtime_blocking(
 
     let _ = run_local_stt_python_command(
         &venv_python,
-        &["-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"],
+        &[
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "pip",
+            "setuptools",
+            "wheel",
+        ],
         &cache_dir,
     )?;
 
-    let cuda_torch_installed = try_install_local_stt_cuda_torch(
-        &venv_python,
-        &cache_dir,
-        &runtime_dir,
-        "first-install",
-    )
-    .unwrap_or(false);
+    let cuda_torch_installed =
+        try_install_local_stt_cuda_torch(&venv_python, &cache_dir, &runtime_dir, "first-install")
+            .unwrap_or(false);
     if !cuda_torch_installed {
         let torch_install_output = run_local_stt_python_command(
             &venv_python,
@@ -10232,7 +10189,9 @@ fn decode_wav_audio_to_mono_f32(audio_bytes: &[u8]) -> Result<(Vec<f32>, u32), S
     let interleaved: Vec<f32> = match spec.sample_format {
         hound::SampleFormat::Float => reader
             .samples::<f32>()
-            .map(|sample| sample.map_err(|error| format!("Failed to read WAV float sample: {error}")))
+            .map(|sample| {
+                sample.map_err(|error| format!("Failed to read WAV float sample: {error}"))
+            })
             .collect::<Result<Vec<f32>, String>>()?,
         hound::SampleFormat::Int => {
             if spec.bits_per_sample <= 16 {
@@ -10504,10 +10463,12 @@ fn open_path_in_file_explorer(path: &Path) -> Result<(), String> {
     {
         let mut command = Command::new("explorer");
         apply_no_window(&mut command);
-        command
-            .arg(path)
-            .spawn()
-            .map_err(|error| format!("Failed to open '{}' in File Explorer: {error}", path.display()))?;
+        command.arg(path).spawn().map_err(|error| {
+            format!(
+                "Failed to open '{}' in File Explorer: {error}",
+                path.display()
+            )
+        })?;
         return Ok(());
     }
 
@@ -10595,7 +10556,10 @@ fn legacy_huggingface_repo_id_for_model(provider: &str, model: &str) -> Option<S
         return None;
     }
     let normalized_model = model.trim();
-    if normalized_model.to_ascii_lowercase().starts_with("openai/whisper-") {
+    if normalized_model
+        .to_ascii_lowercase()
+        .starts_with("openai/whisper-")
+    {
         Some(normalized_model.to_string())
     } else {
         None
@@ -10734,9 +10698,7 @@ fn preferred_huggingface_primary_file_names(repo_id: &str) -> &'static [&'static
         "openai/whisper-small" => &["model.safetensors"],
         "openai/whisper-large-v3-turbo" => &["model.safetensors"],
         "UsefulSensors/moonshine-base" => &["model.safetensors"],
-        "FunAudioLLM/SenseVoiceSmall" => {
-            &["model.pt", "chn_jpn_yue_eng_ko_spectok.bpe.model"]
-        }
+        "FunAudioLLM/SenseVoiceSmall" => &["model.pt", "chn_jpn_yue_eng_ko_spectok.bpe.model"],
         _ => &[],
     }
 }
@@ -10778,7 +10740,9 @@ fn select_huggingface_stt_download_entries(
                 selected_indices.push(index);
             }
         }
-    } else if selected_indices.is_empty() && repo_id.eq_ignore_ascii_case("FunAudioLLM/SenseVoiceSmall") {
+    } else if selected_indices.is_empty()
+        && repo_id.eq_ignore_ascii_case("FunAudioLLM/SenseVoiceSmall")
+    {
         for (index, (path, _)) in entries.iter().enumerate() {
             if file_name_equals(path, "model.pt")
                 || file_name_equals(path, "chn_jpn_yue_eng_ko_spectok.bpe.model")
@@ -10960,10 +10924,7 @@ fn concatenate_archive_parts(parts: &[PathBuf], destination: &Path) -> Result<()
 
     for part in parts {
         let mut input = fs::File::open(part).map_err(|error| {
-            format!(
-                "Failed to open archive part '{}': {error}",
-                part.display()
-            )
+            format!("Failed to open archive part '{}': {error}", part.display())
         })?;
         std::io::copy(&mut input, &mut output).map_err(|error| {
             format!(
@@ -10986,7 +10947,9 @@ async fn download_archive_parallel_ranges(
     state: &AppState,
 ) -> Result<u64, String> {
     if total_bytes == 0 || chunk_count <= 1 {
-        return Err("Parallel range download requires known content length and >1 chunks.".to_string());
+        return Err(
+            "Parallel range download requires known content length and >1 chunks.".to_string(),
+        );
     }
 
     let chunk_size = ((total_bytes + chunk_count as u64 - 1) / chunk_count as u64).max(1);
@@ -11072,7 +11035,12 @@ async fn download_archive_single_stream(
         .timeout(Duration::from_secs(60 * 60))
         .send()
         .await
-        .map_err(|error| format!("Failed to download archive '{}': {error}", clip_text(url, 220)))?;
+        .map_err(|error| {
+            format!(
+                "Failed to download archive '{}': {error}",
+                clip_text(url, 220)
+            )
+        })?;
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
@@ -11098,11 +11066,12 @@ async fn download_archive_single_stream(
     let mut downloaded_bytes = 0u64;
     let mut last_status_update = Instant::now();
 
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|error| format!("Failed reading archive stream '{}': {error}", clip_text(url, 220)))?
-    {
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        format!(
+            "Failed reading archive stream '{}': {error}",
+            clip_text(url, 220)
+        )
+    })? {
         output_file.write_all(&chunk).map_err(|error| {
             format!(
                 "Failed writing archive chunk '{}': {error}",
@@ -11128,8 +11097,9 @@ async fn download_prepacked_parakeet_model(
     target_dir: &Path,
     state: &AppState,
 ) -> Result<String, String> {
-    let source = local_parakeet_archive_source(repo_id)
-        .ok_or_else(|| format!("No prepacked Parakeet archive source configured for '{repo_id}'."))?;
+    let source = local_parakeet_archive_source(repo_id).ok_or_else(|| {
+        format!("No prepacked Parakeet archive source configured for '{repo_id}'.")
+    })?;
 
     if let Ok(existing_root) = find_local_parakeet_model_root(target_dir) {
         return Ok(format!(
@@ -11241,9 +11211,7 @@ async fn download_prepacked_parakeet_model(
 
     if downloaded_bytes == 0 {
         let _ = fs::remove_file(&temp_archive_path);
-        return Err(format!(
-            "Downloaded archive for '{repo_id}' was empty."
-        ));
+        return Err(format!("Downloaded archive for '{repo_id}' was empty."));
     }
 
     if archive_path.exists() {
@@ -11555,8 +11523,7 @@ async fn download_huggingface_stt_model(
             status.current_file.clear();
             status.message = format!(
                 "Downloaded {}/{} files.",
-                status.files_completed,
-                status.files_total
+                status.files_completed, status.files_total
             );
         })?;
     }
@@ -11625,11 +11592,13 @@ fn now_unix_ms() -> u64 {
 
 fn calculate_local_stt_progress_percent(status: &LocalSttDownloadStatusResponse) -> f64 {
     if status.total_bytes > 0 {
-        return ((status.downloaded_bytes as f64 / status.total_bytes as f64) * 100.0).clamp(0.0, 100.0);
+        return ((status.downloaded_bytes as f64 / status.total_bytes as f64) * 100.0)
+            .clamp(0.0, 100.0);
     }
 
     if status.files_total > 0 {
-        return ((status.files_completed as f64 / status.files_total as f64) * 100.0).clamp(0.0, 100.0);
+        return ((status.files_completed as f64 / status.files_total as f64) * 100.0)
+            .clamp(0.0, 100.0);
     }
 
     if status.completed && status.success {
@@ -11798,13 +11767,19 @@ mod tests {
     #[test]
     fn rejects_script_mismatch_for_latin_language_hint() {
         let transcript = "සාරි සාරි සාරි සාරි සාරි";
-        assert!(looks_like_repetitive_transcript_noise(transcript, Some("en")));
+        assert!(looks_like_repetitive_transcript_noise(
+            transcript,
+            Some("en")
+        ));
     }
 
     #[test]
     fn accepts_normal_english_transcript() {
         let transcript = "Hey Lily what do you think about India today";
-        assert!(!looks_like_repetitive_transcript_noise(transcript, Some("en")));
+        assert!(!looks_like_repetitive_transcript_noise(
+            transcript,
+            Some("en")
+        ));
     }
 
     #[test]
@@ -11890,8 +11865,8 @@ mod tests {
 
     #[test]
     fn tolerates_small_wake_prefix_misspelling() {
-        let command = extract_wake_command("He Lily draft a follow up email", "Lily")
-            .unwrap_or_default();
+        let command =
+            extract_wake_command("He Lily draft a follow up email", "Lily").unwrap_or_default();
         assert_eq!(command, "draft a follow up email");
     }
 
@@ -11959,7 +11934,8 @@ mod tests {
 
     #[test]
     fn flags_incomplete_draft_outputs() {
-        let incomplete = "Subject: Sick Leave - Unable to Attend Work Tomorrow\n\nDear [Boss's Name],\n\nI am";
+        let incomplete =
+            "Subject: Sick Leave - Unable to Attend Work Tomorrow\n\nDear [Boss's Name],\n\nI am";
         assert!(looks_like_incomplete_draft_output(incomplete));
 
         let complete = "Subject: Sick Leave Request for Tomorrow\n\nDear Manager,\n\nI am feeling unwell and will not be able to attend work tomorrow. I will monitor urgent messages and hand over critical items before the day starts.\n\nBest regards,\nSuman";
@@ -11982,7 +11958,10 @@ mod tests {
                 }
             ]
         });
-        assert_eq!(extract_chat_content(&payload).as_deref(), Some("Draft complete."));
+        assert_eq!(
+            extract_chat_content(&payload).as_deref(),
+            Some("Draft complete.")
+        );
     }
 
     #[test]
@@ -12075,8 +12054,12 @@ mod tests {
     fn zero_python_supported_local_stt_provider_flags() {
         assert!(local_stt_provider_supported_in_zero_python_mode("parakeet"));
         assert!(!local_stt_provider_supported_in_zero_python_mode("whisper"));
-        assert!(!local_stt_provider_supported_in_zero_python_mode("moonshine"));
-        assert!(!local_stt_provider_supported_in_zero_python_mode("sensevoice"));
+        assert!(!local_stt_provider_supported_in_zero_python_mode(
+            "moonshine"
+        ));
+        assert!(!local_stt_provider_supported_in_zero_python_mode(
+            "sensevoice"
+        ));
     }
 
     #[test]
@@ -12109,8 +12092,8 @@ mod tests {
                 },
                 GithubReleaseAsset {
                     name: "SlasshyWispr_0.1.1_x64-setup.exe".to_string(),
-                    browser_download_url:
-                        "https://example.com/SlasshyWispr_0.1.1_x64-setup.exe".to_string(),
+                    browser_download_url: "https://example.com/SlasshyWispr_0.1.1_x64-setup.exe"
+                        .to_string(),
                 },
             ],
         };
