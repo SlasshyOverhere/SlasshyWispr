@@ -1985,6 +1985,14 @@ window.addEventListener("beforeunload", () => {
     window.clearTimeout(dockHideTimerId);
     dockHideTimerId = null;
   }
+  if (persistSettingsTimer !== null) {
+    window.clearTimeout(persistSettingsTimer);
+    persistSettingsTimer = null;
+  }
+  if (pendingSettingsToPersist) {
+    performPersistSettings(pendingSettingsToPersist);
+    pendingSettingsToPersist = null;
+  }
   if (foregroundBlockMonitorId !== null) {
     window.clearInterval(foregroundBlockMonitorId);
     foregroundBlockMonitorId = null;
@@ -2656,7 +2664,28 @@ function loadSettings(): PersistedSettings {
   }
 }
 
+let persistSettingsTimer: number | null = null;
+let pendingSettingsToPersist: PersistedSettings | null = null;
+
 function persistSettings(next: PersistedSettings): void {
+  pendingSettingsToPersist = next;
+  if (persistSettingsTimer === null) {
+    performPersistSettings(next);
+    pendingSettingsToPersist = null;
+  } else {
+    window.clearTimeout(persistSettingsTimer);
+  }
+
+  persistSettingsTimer = window.setTimeout(() => {
+    persistSettingsTimer = null;
+    if (pendingSettingsToPersist) {
+      performPersistSettings(pendingSettingsToPersist);
+      pendingSettingsToPersist = null;
+    }
+  }, 800);
+}
+
+function performPersistSettings(next: PersistedSettings): void {
   const payload: PersistedSettings = {
     ...next,
     apiKey: next.rememberApiKey ? next.apiKey : "",
