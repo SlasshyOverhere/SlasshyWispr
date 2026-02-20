@@ -333,7 +333,7 @@ appRoot.innerHTML = `
           <button class="settings-nav-item" data-settings-pane-nav="pipeline" type="button">Pipeline</button>
         </nav>
 
-        <p class="settings-version">SlasshyWispr v0.1.2</p>
+        <p id="settingsVersionText" class="settings-version">SlasshyWispr</p>
       </aside>
 
       <section class="settings-main">
@@ -1001,6 +1001,7 @@ const snippetFilterButtons = Array.from(
 );
 
 const notesList = requiredElement<HTMLDivElement>("#notesList");
+const settingsVersionText = requiredElement<HTMLParagraphElement>("#settingsVersionText");
 
 const apiKeyInput = requiredElement<HTMLInputElement>("#apiKeyInput");
 const apiBaseUrlInput = requiredElement<HTMLInputElement>("#apiBaseUrlInput");
@@ -7252,6 +7253,8 @@ async function playGeneratedAudio(audioBase64: string, engine: TtsEngine): Promi
 
 function renderAssistantInfo(info: AssistantInfoResponse): void {
   latestAssistantInfoDefaults = info;
+  const appVersion = info.appVersion?.trim();
+  settingsVersionText.textContent = appVersion ? `SlasshyWispr v${appVersion}` : "SlasshyWispr";
   const sttLocalMode = settings.sttRuntimeMode === "local";
   const aiLocalMode = settings.aiRuntimeMode === "local";
   const configuredBaseUrl =

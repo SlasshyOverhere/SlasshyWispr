@@ -511,6 +511,7 @@ struct RuntimeSetupResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AssistantInfoResponse {
+    app_version: String,
     base_url: &'static str,
     stt_model: &'static str,
     ai_model: &'static str,
@@ -1260,6 +1261,29 @@ const KEYRING_SERVICE_ALIASES: [&str; 4] = [
 ];
 const KEYRING_USER_ALIASES: [&str; 3] = ["apiKey", "apikey", "default"];
 const SETTINGS_API_KEY_ENCRYPTED_FIELD: &str = "apiKeyEncrypted";
+const SETTINGS_API_KEY_FINGERPRINT_FIELD: &str = "apiKeyFingerprint";
+
+fn normalize_api_key_secret(raw: &str) -> String {
+    raw.chars()
+        .filter(|character| !character.is_control())
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+fn api_key_fingerprint(api_key: &str) -> String {
+    let normalized = normalize_api_key_secret(api_key);
+    if normalized.is_empty() {
+        return String::new();
+    }
+
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in normalized.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
 
 fn known_keyring_targets() -> Vec<(&'static str, &'static str)> {
     let mut targets =
@@ -1281,19 +1305,25 @@ fn known_keyring_targets() -> Vec<(&'static str, &'static str)> {
 }
 
 fn write_api_key_to_primary_keyring(api_key: &str) -> Result<(), String> {
+    let normalized_api_key = normalize_api_key_secret(api_key);
+    if normalized_api_key.is_empty() {
+        return Err("failed to save API key to keyring: key is empty after normalization".to_string());
+    }
+
     let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER)
         .map_err(|error| format!("failed to initialize keyring entry: {error}"))?;
     entry
-        .set_password(api_key)
+        .set_password(&normalized_api_key)
         .map_err(|error| format!("failed to save API key to keyring: {error}"))?;
 
-    let roundtrip = entry
+    let roundtrip_raw = entry
         .get_password()
         .map_err(|error| format!("keyring save verification failed: {error}"))?;
+    let roundtrip = normalize_api_key_secret(&roundtrip_raw);
     if roundtrip.trim().is_empty() {
         return Err("keyring save verification failed: stored value is empty".to_string());
     }
-    if roundtrip != api_key {
+    if roundtrip != normalized_api_key {
         return Err("keyring save verification failed: stored value mismatch".to_string());
     }
     Ok(())
@@ -1315,10 +1345,11 @@ fn read_api_key_from_known_keyring_entries() -> Option<(String, String, String)>
         let Ok(api_key) = entry.get_password() else {
             continue;
         };
-        if api_key.trim().is_empty() {
+        let normalized_api_key = normalize_api_key_secret(&api_key);
+        if normalized_api_key.trim().is_empty() {
             continue;
         }
-        return Some((api_key, service.to_string(), user.to_string()));
+        return Some((normalized_api_key, service.to_string(), user.to_string()));
     }
 
     None
@@ -1434,11 +1465,9 @@ fn secure_settings_payload(payload: &str) -> Result<String, String> {
 
     if let Some(obj) = parsed.as_object_mut() {
         let mut remember_api_key = obj.get("rememberApiKey").and_then(Value::as_bool);
-        let api_key = obj
-            .get("apiKey")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
+        let api_key =
+            normalize_api_key_secret(obj.get("apiKey").and_then(Value::as_str).unwrap_or_default());
+        let fingerprint = api_key_fingerprint(&api_key);
 
         if remember_api_key.is_none() && !api_key.is_empty() {
             remember_api_key = Some(true);
@@ -1451,11 +1480,18 @@ fn secure_settings_payload(payload: &str) -> Result<String, String> {
         if remember_api_key == Some(false) {
             obj.insert("apiKey".to_string(), Value::String(String::new()));
             obj.remove(SETTINGS_API_KEY_ENCRYPTED_FIELD);
+            obj.remove(SETTINGS_API_KEY_FINGERPRINT_FIELD);
             clear_api_key_from_known_keyring_entries();
             info!(
                 "[settings] rememberApiKey=false; cleared api key from keyring and encrypted fallback"
             );
         } else if remember_api_key == Some(true) && !api_key.is_empty() {
+            if !fingerprint.is_empty() {
+                obj.insert(
+                    SETTINGS_API_KEY_FINGERPRINT_FIELD.to_string(),
+                    Value::String(fingerprint),
+                );
+            }
             match write_api_key_to_primary_keyring(&api_key) {
                 Ok(()) => {
                     obj.insert("apiKey".to_string(), Value::String(String::new()));
@@ -1479,6 +1515,7 @@ fn secure_settings_payload(payload: &str) -> Result<String, String> {
                 }
                 Err(keyring_error) => match encrypt_api_key_fallback(&api_key) {
                     Ok(encrypted_value) => {
+                        clear_api_key_from_known_keyring_entries();
                         obj.insert("apiKey".to_string(), Value::String(String::new()));
                         obj.insert(
                             SETTINGS_API_KEY_ENCRYPTED_FIELD.to_string(),
@@ -1512,11 +1549,8 @@ fn restore_settings_payload(payload: &str) -> Result<String, String> {
 
     if let Some(obj) = parsed.as_object_mut() {
         let remember_field = obj.get("rememberApiKey").and_then(Value::as_bool);
-        let file_api_key = obj
-            .get("apiKey")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
+        let file_api_key =
+            normalize_api_key_secret(obj.get("apiKey").and_then(Value::as_str).unwrap_or_default());
         let file_api_present = !file_api_key.is_empty();
         let encrypted_api_key = obj
             .get(SETTINGS_API_KEY_ENCRYPTED_FIELD)
@@ -1524,6 +1558,11 @@ fn restore_settings_payload(payload: &str) -> Result<String, String> {
             .unwrap_or_default()
             .to_string();
         let encrypted_api_present = !encrypted_api_key.trim().is_empty();
+        let expected_fingerprint = obj
+            .get(SETTINGS_API_KEY_FINGERPRINT_FIELD)
+            .and_then(Value::as_str)
+            .map(|value| value.trim().to_ascii_lowercase())
+            .unwrap_or_default();
 
         let keyring_entry = read_api_key_from_known_keyring_entries();
         let keyring_api_key = keyring_entry
@@ -1549,7 +1588,7 @@ fn restore_settings_payload(payload: &str) -> Result<String, String> {
 
         let decrypted_fallback_api_key = if encrypted_api_present {
             match decrypt_api_key_fallback(&encrypted_api_key) {
-                Ok(value) => value,
+                Ok(value) => normalize_api_key_secret(&value),
                 Err(error) => {
                     warn!(
                         "[settings] encrypted fallback API key could not be decrypted: {}",
@@ -1562,6 +1601,9 @@ fn restore_settings_payload(payload: &str) -> Result<String, String> {
             String::new()
         };
         let encrypted_decrypted_present = !decrypted_fallback_api_key.is_empty();
+        let keyring_fingerprint = api_key_fingerprint(&keyring_api_key);
+        let encrypted_fingerprint = api_key_fingerprint(&decrypted_fallback_api_key);
+        let file_fingerprint = api_key_fingerprint(&file_api_key);
 
         let remember_api_key = match remember_field {
             Some(value) => value,
@@ -1577,17 +1619,46 @@ fn restore_settings_payload(payload: &str) -> Result<String, String> {
 
         let mut resolved_api_key = String::new();
         let mut resolved_source = "none";
+        let mut resolved_fingerprint_match = false;
 
         if remember_api_key {
-            if keyring_api_present {
-                resolved_api_key = keyring_api_key;
-                resolved_source = "keyring";
-            } else if encrypted_decrypted_present {
-                resolved_api_key = decrypted_fallback_api_key;
-                resolved_source = "encrypted-file";
-            } else if file_api_present {
-                resolved_api_key = file_api_key;
-                resolved_source = "legacy-plaintext-file";
+            if !expected_fingerprint.is_empty() {
+                if keyring_api_present && keyring_fingerprint == expected_fingerprint {
+                    resolved_api_key = keyring_api_key.clone();
+                    resolved_source = "keyring";
+                    resolved_fingerprint_match = true;
+                } else if encrypted_decrypted_present && encrypted_fingerprint == expected_fingerprint {
+                    resolved_api_key = decrypted_fallback_api_key.clone();
+                    resolved_source = "encrypted-file";
+                    resolved_fingerprint_match = true;
+                } else if file_api_present && file_fingerprint == expected_fingerprint {
+                    resolved_api_key = file_api_key.clone();
+                    resolved_source = "legacy-plaintext-file";
+                    resolved_fingerprint_match = true;
+                }
+            }
+
+            if resolved_api_key.is_empty() {
+                if keyring_api_present
+                    && encrypted_decrypted_present
+                    && keyring_api_key != decrypted_fallback_api_key
+                    && expected_fingerprint.is_empty()
+                {
+                    resolved_api_key = decrypted_fallback_api_key.clone();
+                    resolved_source = "encrypted-file-mismatch";
+                    warn!(
+                        "[settings] keyring and encrypted API keys differ with no fingerprint; preferring encrypted fallback"
+                    );
+                } else if keyring_api_present {
+                    resolved_api_key = keyring_api_key.clone();
+                    resolved_source = "keyring";
+                } else if encrypted_decrypted_present {
+                    resolved_api_key = decrypted_fallback_api_key.clone();
+                    resolved_source = "encrypted-file";
+                } else if file_api_present {
+                    resolved_api_key = file_api_key.clone();
+                    resolved_source = "legacy-plaintext-file";
+                }
             }
 
             if !resolved_api_key.is_empty() && resolved_source != "keyring" {
@@ -1607,15 +1678,36 @@ fn restore_settings_payload(payload: &str) -> Result<String, String> {
                 }
             }
 
+            let resolved_fingerprint = api_key_fingerprint(&resolved_api_key);
+            if !resolved_fingerprint.is_empty() {
+                if !expected_fingerprint.is_empty() && resolved_fingerprint == expected_fingerprint {
+                    resolved_fingerprint_match = true;
+                }
+                obj.insert(
+                    SETTINGS_API_KEY_FINGERPRINT_FIELD.to_string(),
+                    Value::String(resolved_fingerprint),
+                );
+            } else {
+                obj.remove(SETTINGS_API_KEY_FINGERPRINT_FIELD);
+            }
+
             obj.insert("apiKey".to_string(), Value::String(resolved_api_key));
         } else {
             obj.insert("apiKey".to_string(), Value::String(String::new()));
             obj.remove(SETTINGS_API_KEY_ENCRYPTED_FIELD);
+            obj.remove(SETTINGS_API_KEY_FINGERPRINT_FIELD);
         }
 
         info!(
-            "[settings] restore rememberApiKey={} keyring_api_present={} encrypted_api_present={} file_api_present={} keyring_source={} resolved_source={}",
-            remember_api_key, keyring_api_present, encrypted_api_present, file_api_present, keyring_source, resolved_source
+            "[settings] restore rememberApiKey={} keyring_api_present={} encrypted_api_present={} file_api_present={} keyring_source={} resolved_source={} fingerprint_present={} fingerprint_match={}",
+            remember_api_key,
+            keyring_api_present,
+            encrypted_api_present,
+            file_api_present,
+            keyring_source,
+            resolved_source,
+            !expected_fingerprint.is_empty(),
+            resolved_fingerprint_match
         );
     }
 
@@ -2553,6 +2645,7 @@ async fn get_assistant_info(app: AppHandle) -> Result<AssistantInfoResponse, Str
     };
 
     Ok(AssistantInfoResponse {
+        app_version: app.package_info().version.to_string(),
         base_url: DEFAULT_BASE_URL,
         stt_model: DEFAULT_STT_MODEL,
         ai_model: DEFAULT_AI_MODEL,
@@ -2616,7 +2709,7 @@ async fn fetch_provider_models(
     state: State<'_, AppState>,
     request: ProviderModelsRequest,
 ) -> Result<ProviderModelsResponse, String> {
-    let api_key = request.api_key.trim();
+    let api_key = normalize_api_key_secret(&request.api_key);
     if api_key.is_empty() {
         return Err("API key is required to fetch models.".to_string());
     }
@@ -2626,7 +2719,7 @@ async fn fetch_provider_models(
         return Err("API base URL is required to fetch models.".to_string());
     }
     let request_builder = state.http.get(format!("{base_url}/models"));
-    let response = apply_optional_bearer_auth(request_builder, Some(api_key))
+    let response = apply_optional_bearer_auth(request_builder, Some(api_key.as_str()))
         .send()
         .await
         .map_err(|error| format!("Failed to call models endpoint: {error}"))?;
@@ -4519,7 +4612,7 @@ fn resolve_pipeline_mode(request: &AssistantPipelineRequest) -> Result<PipelineM
     let requires_online_provider = !stt_local_mode || !ai_local_mode;
 
     let (api_key, api_base_url) = if requires_online_provider {
-        let api_key = request.api_key.trim();
+        let api_key = normalize_api_key_secret(&request.api_key);
         if api_key.is_empty() {
             return Err("API key is required for online STT/AI mode.".to_string());
         }
@@ -4530,7 +4623,7 @@ fn resolve_pipeline_mode(request: &AssistantPipelineRequest) -> Result<PipelineM
                     .to_string(),
             );
         }
-        (api_key.to_string(), api_base_url)
+        (api_key, api_base_url)
     } else {
         (String::new(), String::new())
     };

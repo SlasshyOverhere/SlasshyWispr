@@ -24,6 +24,7 @@ export type TeamScope = "personal" | "shared";
 export type LocalSttHardwareAdvisorChoice = "suggestion" | "selected" | "cancel";
 
 export interface AssistantInfoResponse {
+  appVersion: string;
   baseUrl: string;
   sttModel: string;
   aiModel: string;
