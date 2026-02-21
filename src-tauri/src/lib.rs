@@ -3802,6 +3802,7 @@ async fn setup_coqui_runtime(
         .filter(|value| !value.is_empty())
         .unwrap_or("python")
         .to_string();
+    validate_python_binary_path(&bootstrap_python)?;
     let use_gpu = request.use_gpu.unwrap_or(false);
 
     let app_for_worker = app.clone();
@@ -7727,6 +7728,34 @@ fn ensure_coqui_bridge_script(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(script_path)
 }
 
+fn validate_python_binary_path(path: &str) -> Result<(), String> {
+    let path_obj = Path::new(path);
+    if path_obj.is_absolute() && !path_obj.exists() {
+        return Err(format!("Python path '{}' does not exist.", path));
+    }
+
+    let file_name = path_obj
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !file_name.contains("python") && file_name != "py.exe" && file_name != "py" {
+        return Err(format!(
+            "Invalid Python path '{}': executable name must contain 'python' or be 'py'.",
+            path
+        ));
+    }
+
+    if path.contains(';') || path.contains('&') || path.contains('|') {
+        return Err(format!(
+            "Invalid Python path '{}': contains forbidden characters.",
+            path
+        ));
+    }
+
+    Ok(())
+}
+
 fn resolve_coqui_python_path(
     app: &AppHandle,
     requested_path: Option<&str>,
@@ -7735,6 +7764,7 @@ fn resolve_coqui_python_path(
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
+        validate_python_binary_path(path)?;
         return Ok(path.to_string());
     }
 
@@ -12614,6 +12644,27 @@ mod tests {
             "0.1.1",
         );
         assert_eq!(from_url, "SlasshyWispr_0.1.2_x64-setup.exe");
+    }
+
+    #[test]
+    fn validates_python_binary_path_safety() {
+        assert!(validate_python_binary_path("python").is_ok());
+        assert!(validate_python_binary_path("python3").is_ok());
+        assert!(validate_python_binary_path("python.exe").is_ok());
+        assert!(validate_python_binary_path("py").is_ok());
+        assert!(validate_python_binary_path("py.exe").is_ok());
+
+        // Path existence check only runs if absolute path exists.
+        // We can't easily test absolute paths in a cross-platform way without creating files.
+        // But we can test the name validation logic.
+        assert!(validate_python_binary_path("calc.exe").is_err());
+        assert!(validate_python_binary_path("bash").is_err());
+        assert!(validate_python_binary_path("cmd.exe").is_err());
+        assert!(validate_python_binary_path("powershell").is_err());
+
+        // Forbidden chars
+        assert!(validate_python_binary_path("python; rm -rf /").is_err());
+        assert!(validate_python_binary_path("python | bash").is_err());
     }
 }
 
