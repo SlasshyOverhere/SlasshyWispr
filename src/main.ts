@@ -3281,63 +3281,6 @@ async function syncTitlebarMaximizeState(appWindow = getCurrentWindow()): Promis
   }
 }
 
-async function ensureCurrentWindowVisible(): Promise<void> {
-  if (!isTauriEnvironment()) {
-    logClientEvent("[window.reveal] skipped because app is not running in tauri");
-    return;
-  }
-
-  const appWindow = getCurrentWindow();
-  logClientEvent("[window.reveal] start");
-  try {
-    await appWindow.unminimize();
-    logClientEvent("[window.reveal] unminimize ok");
-  } catch (error) {
-    logClientEvent(`[window.reveal] unminimize failed: ${asErrorMessage(error)}`);
-  }
-  try {
-    await appWindow.show();
-    logClientEvent("[window.reveal] show ok");
-  } catch (error) {
-    logClientEvent(`[window.reveal] show failed: ${asErrorMessage(error)}`);
-  }
-  try {
-    await appWindow.setFocus();
-    logClientEvent("[window.reveal] focus ok");
-  } catch (error) {
-    logClientEvent(`[window.reveal] focus failed: ${asErrorMessage(error)}`);
-  }
-}
-
-async function ensureCurrentWindowVisibleIfHidden(): Promise<void> {
-  if (!isTauriEnvironment()) {
-    logClientEvent("[window.reveal_if_hidden] skipped because app is not running in tauri");
-    return;
-  }
-
-  const appWindow = getCurrentWindow();
-  try {
-    const [visible, minimized] = await Promise.all([
-      appWindow.isVisible(),
-      appWindow.isMinimized(),
-    ]);
-    logClientEvent(
-      `[window.reveal_if_hidden] visible=${boolFlag(visible)} minimized=${boolFlag(minimized)}`,
-    );
-    if (visible && !minimized) {
-      logClientEvent("[window.reveal_if_hidden] no-op because window is already visible");
-      return;
-    }
-  } catch (error) {
-    logClientEvent(
-      `[window.reveal_if_hidden] visibility check failed: ${asErrorMessage(error)}; forcing reveal`,
-    );
-  }
-
-  logClientEvent("[window.reveal_if_hidden] forcing reveal");
-  await ensureCurrentWindowVisible();
-}
-
 function setUpdaterStatus(stage: "idle" | "processing" | "speaking" | "error", message: string): void {
   updateStatusPill.dataset.stage = stage;
   if (stage === "idle") {
@@ -3497,7 +3440,6 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
         showMissingApiKeyNotice("global-hotkey");
         return;
       }
-      void ensureCurrentWindowVisibleIfHidden();
       if (settings.captureMode === "push-to-talk") {
         if (pushToTalkHoldSources.has("hotkey")) {
           logClientEvent("[hotkey.global.push] ignored repeated press because hold is already active");
@@ -3522,7 +3464,6 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
     pressed
   ) {
     markGlobalShortcutHandled(shortcut, "pressed");
-    void ensureCurrentWindowVisibleIfHidden();
     logClientEvent("[hotkey.global.command] pressed -> toggling command mode");
     void (async () => {
       if (await shouldBlockAssistantInputFromForegroundApp()) {
