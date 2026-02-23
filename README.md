@@ -25,7 +25,7 @@ Speak naturally, get clean transcription, generate AI responses, and hear replie
 ## Key Features
 
 - Fast voice dictation with hotkeys
-- Wake phrase assistant mode (for example: "Hey Lily...")
+- Wake phrase assistant mode (for example: "Hey Jarvis...")
 - Online, Offline, or Hybrid model routing
 - Local STT support (Parakeet models)
 - Local AI support (Ollama models)
