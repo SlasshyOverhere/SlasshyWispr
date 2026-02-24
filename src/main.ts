@@ -4434,19 +4434,17 @@ function renderDictionaryList(): void {
         <button type="button" class="inline-link" data-dictionary-delete="${term.id}">Delete</button>
       </div>
     `;
+    const deleteBtn = row.querySelector<HTMLButtonElement>("[data-dictionary-delete]");
+    if (deleteBtn) {
+      deleteBtn.addEventListener("click", () => {
+        dictionaryTerms = dictionaryTerms.filter((entry) => entry.id !== term.id);
+        persistDictionaryTerms();
+        renderDictionaryList();
+      });
+    }
     fragment.append(row);
   }
   dictionaryList.append(fragment);
-
-  dictionaryList.querySelectorAll<HTMLButtonElement>("[data-dictionary-delete]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const id = button.dataset.dictionaryDelete;
-      if (!id) return;
-      dictionaryTerms = dictionaryTerms.filter((term) => term.id !== id);
-      persistDictionaryTerms();
-      renderDictionaryList();
-    });
-  });
 }
 
 function addDictionaryTerm(): void {
@@ -4502,19 +4500,17 @@ function renderSnippetsList(): void {
         <button type="button" class="inline-link" data-snippet-delete="${snippet.id}">Delete</button>
       </div>
     `;
+    const deleteBtn = row.querySelector<HTMLButtonElement>("[data-snippet-delete]");
+    if (deleteBtn) {
+      deleteBtn.addEventListener("click", () => {
+        snippets = snippets.filter((entry) => entry.id !== snippet.id);
+        persistSnippets();
+        renderSnippetsList();
+      });
+    }
     fragment.append(row);
   }
   snippetsList.append(fragment);
-
-  snippetsList.querySelectorAll<HTMLButtonElement>("[data-snippet-delete]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const id = button.dataset.snippetDelete;
-      if (!id) return;
-      snippets = snippets.filter((snippet) => snippet.id !== id);
-      persistSnippets();
-      renderSnippetsList();
-    });
-  });
 }
 
 function addSnippetEntry(): void {
@@ -4582,19 +4578,17 @@ function renderNotesList(): void {
         <button type="button" class="inline-link" data-note-delete="${note.id}">Delete</button>
       </div>
     `;
+    const deleteBtn = row.querySelector<HTMLButtonElement>("[data-note-delete]");
+    if (deleteBtn) {
+      deleteBtn.addEventListener("click", () => {
+        quickNotes = quickNotes.filter((entry) => entry.id !== note.id);
+        persistQuickNotes();
+        renderNotesList();
+      });
+    }
     fragment.append(row);
   }
   notesList.append(fragment);
-
-  notesList.querySelectorAll<HTMLButtonElement>("[data-note-delete]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const id = button.dataset.noteDelete;
-      if (!id) return;
-      quickNotes = quickNotes.filter((note) => note.id !== id);
-      persistQuickNotes();
-      renderNotesList();
-    });
-  });
 }
 
 function updateUsageMetrics(): void {
