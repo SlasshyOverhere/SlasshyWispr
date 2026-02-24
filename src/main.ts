@@ -1292,6 +1292,7 @@ settings.pushToTalkHotkey = initialHotkey?.label ?? DEFAULT_HOTKEY;
 const initialCommandHotkey =
   parseHotkey(settings.commandHotkey) ?? parseHotkey(DEFAULT_COMMAND_HOTKEY);
 settings.commandHotkey = initialCommandHotkey?.label ?? DEFAULT_COMMAND_HOTKEY;
+let cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
 applySettingsToForm(settings);
 renderCoquiModelCatalog([], settings.coquiModelName);
 renderProviderModelCatalog([], settings.aiModelName || settings.sttModelName);
@@ -2664,6 +2665,7 @@ function handleSettingsChange(): void {
   }
 
   settings = next;
+  cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
   const previousDiagnosticsSignature = [
     previousSettings.captureMode,
     previousSettings.sttRuntimeMode,
@@ -2694,7 +2696,7 @@ function handleSettingsChange(): void {
   piperSpeedValue.textContent = `${settings.piperSpeed.toFixed(2)}x`;
   coquiSpeedValue.textContent = `${settings.coquiSpeed.toFixed(2)}x`;
   updateWakePhrasePreview(settings.assistantName);
-  hotkeyHint.textContent = formatHotkeyForDisplay(settings.pushToTalkHotkey);
+  hotkeyHint.textContent = cachedHotkeyDisplay;
   captureModeHint.textContent = captureModeLabel(settings.captureMode);
   applyTheme(settings.themeMode);
   updateRuntimeModeNotice(settings.sttRuntimeMode, settings.aiRuntimeMode);
@@ -7552,7 +7554,7 @@ function publishDockState(): void {
       theme: resolvedDockTheme(),
       amplitude: dockAmplitude,
       captureMode: settings.captureMode,
-      hotkey: formatHotkeyForDisplay(settings.pushToTalkHotkey),
+      hotkey: cachedHotkeyDisplay,
       showFlowBar: settings.showFlowBar,
       commandModeArmed,
       globalShortcutsActive,
