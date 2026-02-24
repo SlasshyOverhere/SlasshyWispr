@@ -6289,6 +6289,10 @@ function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
   const pcmData = new Int16Array(wavBuffer, 44, dataSize / 2);
 
   let pcmIndex = 0;
+  // Use symmetric scaling (0x7FFF) to avoid conditional branching for negative numbers.
+  // Implicit float-to-int conversion (truncation) is faster than Math.round and sufficient for speech audio.
+  const scale = 0x7fff;
+
   if (numChannels === 2) {
     const left = channels[0];
     const right = channels[1];
@@ -6296,12 +6300,12 @@ function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
       let sL = left[frame];
       if (sL > 1) sL = 1;
       else if (sL < -1) sL = -1;
-      pcmData[pcmIndex++] = sL < 0 ? Math.round(sL * 0x8000) : Math.round(sL * 0x7fff);
+      pcmData[pcmIndex++] = sL * scale;
 
       let sR = right[frame];
       if (sR > 1) sR = 1;
       else if (sR < -1) sR = -1;
-      pcmData[pcmIndex++] = sR < 0 ? Math.round(sR * 0x8000) : Math.round(sR * 0x7fff);
+      pcmData[pcmIndex++] = sR * scale;
     }
   } else if (numChannels === 1) {
     const channelData = channels[0];
@@ -6309,7 +6313,7 @@ function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
       let sample = channelData[frame];
       if (sample > 1) sample = 1;
       else if (sample < -1) sample = -1;
-      pcmData[frame] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff);
+      pcmData[frame] = sample * scale;
     }
   } else {
     for (let frame = 0; frame < frameCount; frame += 1) {
@@ -6317,7 +6321,7 @@ function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
         let sample = channels[channel]?.[frame] ?? 0;
         if (sample > 1) sample = 1;
         else if (sample < -1) sample = -1;
-        pcmData[pcmIndex++] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff);
+        pcmData[pcmIndex++] = sample * scale;
       }
     }
   }
