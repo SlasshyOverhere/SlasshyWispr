@@ -1118,6 +1118,15 @@ Set {UPDATE_GITHUB_TOKEN_ENV} for private repositories, or verify {UPDATE_REPOSI
     })
 }
 
+fn is_safe_update_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    if !lower.starts_with("https://") {
+        return false;
+    }
+    lower.starts_with("https://github.com/")
+        || lower.starts_with("https://objects.githubusercontent.com/")
+}
+
 #[tauri::command]
 async fn download_and_install_app_update(
     app: AppHandle,
@@ -1129,6 +1138,13 @@ async fn download_and_install_app_update(
         let download_url = request.download_url.trim();
         if download_url.is_empty() {
             return Err("Update download URL is empty.".to_string());
+        }
+
+        if !is_safe_update_url(download_url) {
+            return Err(format!(
+                "Update download URL is not from a trusted source: {}",
+                clip_text(download_url, 120)
+            ));
         }
 
         let response = state
@@ -12129,6 +12145,14 @@ fn elapsed_ms(start: Instant) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn validates_safe_update_urls() {
+        assert!(is_safe_update_url("https://github.com/user/repo/releases/download/v1.0/app.exe"));
+        assert!(is_safe_update_url("https://objects.githubusercontent.com/github-production-release-asset-2e65be/123"));
+        assert!(!is_safe_update_url("https://evil.com/app.exe"));
+        assert!(!is_safe_update_url("http://github.com/user/repo"));
+        assert!(!is_safe_update_url("ftp://github.com/user/repo"));
+    }
     use super::*;
 
     fn refinement_request(
