@@ -15,18 +15,17 @@ Speak naturally, get clean transcription, generate AI responses, and hear replie
 
 ## Demo Video
 
-Click the GIF preview to play the full demo video:
+
 
 [![SlasshyWispr demo preview](./slasshywispr_demo_preview.gif)](https://github.com/SlasshyOverhere/SlasshyWispr/raw/main/slasshywispr_demo.mp4)
 
-- [Play demo video (MP4)](https://github.com/SlasshyOverhere/SlasshyWispr/raw/main/slasshywispr_demo.mp4)
 - GIF preview file: [`slasshywispr_demo_preview.gif`](./slasshywispr_demo_preview.gif)
 - Repo file: [`slasshywispr_demo.mp4`](./slasshywispr_demo.mp4)
 
 ## Key Features
 
 - Fast voice dictation with hotkeys
-- Wake phrase assistant mode (for example: "Hey Lily...")
+- Wake phrase assistant mode (for example: "Hey Jarvis...")
 - Online, Offline, or Hybrid model routing
 - Local STT support (Parakeet models)
 - Local AI support (Ollama models)
