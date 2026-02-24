@@ -4238,9 +4238,11 @@ function renderHomeHistory(): void {
   }
 
   conversationLog.innerHTML = "";
+  const fragment = document.createDocumentFragment();
   for (const entry of homeHistoryEntries) {
-    conversationLog.append(createConversationEntryElement(entry));
+    fragment.append(createConversationEntryElement(entry));
   }
+  conversationLog.append(fragment);
 }
 
 function loadDockLayout(): DockLayout | null {
@@ -4419,6 +4421,7 @@ function renderDictionaryList(): void {
   }
 
   dictionaryList.innerHTML = "";
+  const fragment = document.createDocumentFragment();
   for (const term of filtered) {
     const row = document.createElement("div");
     row.className = "managed-row managed-row-grid";
@@ -4429,8 +4432,9 @@ function renderDictionaryList(): void {
         <button type="button" class="inline-link" data-dictionary-delete="${term.id}">Delete</button>
       </div>
     `;
-    dictionaryList.append(row);
+    fragment.append(row);
   }
+  dictionaryList.append(fragment);
 
   dictionaryList.querySelectorAll<HTMLButtonElement>("[data-dictionary-delete]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -4483,6 +4487,7 @@ function renderSnippetsList(): void {
   }
 
   snippetsList.innerHTML = "";
+  const fragment = document.createDocumentFragment();
   for (const snippet of filtered) {
     const row = document.createElement("div");
     row.className = "managed-row managed-row-grid";
@@ -4495,8 +4500,9 @@ function renderSnippetsList(): void {
         <button type="button" class="inline-link" data-snippet-delete="${snippet.id}">Delete</button>
       </div>
     `;
-    snippetsList.append(row);
+    fragment.append(row);
   }
+  snippetsList.append(fragment);
 
   snippetsList.querySelectorAll<HTMLButtonElement>("[data-snippet-delete]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -4557,6 +4563,7 @@ function renderNotesList(): void {
   }
 
   notesList.innerHTML = "";
+  const fragment = document.createDocumentFragment();
   for (const note of quickNotes) {
     const row = document.createElement("article");
     row.className = "managed-row managed-row-grid managed-row-note";
@@ -4573,8 +4580,9 @@ function renderNotesList(): void {
         <button type="button" class="inline-link" data-note-delete="${note.id}">Delete</button>
       </div>
     `;
-    notesList.append(row);
+    fragment.append(row);
   }
+  notesList.append(fragment);
 
   notesList.querySelectorAll<HTMLButtonElement>("[data-note-delete]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -8325,11 +8333,16 @@ function startAmplitudeMonitoring(stream: MediaStream): void {
       return;
     }
 
+    if (now - lastDockAmplitudePublishAt < 16) {
+      amplitudeFrameId = window.requestAnimationFrame(tick);
+      return;
+    }
+
     analyserNode.getFloatTimeDomainData(amplitudeBuffer);
 
     let sumSquares = 0;
     for (let index = 0; index < amplitudeBuffer.length; index += 1) {
-      const sample = amplitudeBuffer[index] ?? 0;
+      const sample = amplitudeBuffer[index];
       sumSquares += sample * sample;
     }
 
@@ -8337,10 +8350,8 @@ function startAmplitudeMonitoring(stream: MediaStream): void {
     const normalized = Math.min(1, Math.max(0, (rms - 0.008) * 11.5));
     dockAmplitude = dockAmplitude * 0.72 + normalized * 0.28;
 
-    if (now - lastDockAmplitudePublishAt >= 16) {
-      publishDockState();
-      lastDockAmplitudePublishAt = now;
-    }
+    publishDockState();
+    lastDockAmplitudePublishAt = now;
 
     amplitudeFrameId = window.requestAnimationFrame(tick);
   };
