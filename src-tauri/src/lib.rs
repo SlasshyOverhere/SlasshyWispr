@@ -3818,6 +3818,7 @@ async fn setup_coqui_runtime(
         .filter(|value| !value.is_empty())
         .unwrap_or("python")
         .to_string();
+    validate_python_binary_path(&bootstrap_python)?;
     let use_gpu = request.use_gpu.unwrap_or(false);
 
     let app_for_worker = app.clone();
@@ -4168,6 +4169,9 @@ async fn start_tts_runtime_setup(
         .filter(|value| !value.is_empty())
         .unwrap_or("python")
         .to_string();
+    if let Err(error) = validate_python_binary_path(&bootstrap_python) {
+        return Err(error);
+    }
     let use_gpu = request.use_gpu.unwrap_or(false);
 
     setup.reset_and_start();
@@ -7473,16 +7477,48 @@ async fn ensure_piper_binary(app: &AppHandle, client: &Client) -> Result<PathBuf
     }
 }
 
+fn validate_piper_binary_path(path: &str) -> Result<(), String> {
+    let path_str = path.trim();
+    if path_str.is_empty() {
+        return Err("Piper binary path is empty.".to_string());
+    }
+
+    if path_str.contains(|c: char| matches!(c, '\0' | '\n' | '\r')) {
+        return Err("Piper binary path contains invalid characters.".to_string());
+    }
+
+    let path_buf = Path::new(path_str);
+    let file_name = path_buf
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Invalid piper binary path.".to_string())?;
+    let file_name_lower = file_name.to_ascii_lowercase();
+
+    let allowed_names = ["piper", "piper.exe"];
+
+    if !allowed_names.contains(&file_name_lower.as_str()) {
+        return Err(format!(
+            "Invalid piper binary name '{}'. Expected one of: {:?}",
+            file_name, allowed_names
+        ));
+    }
+
+    Ok(())
+}
+
 fn resolve_piper_path(app: &AppHandle, requested_path: Option<&str>) -> Result<String, String> {
     if let Some(path) = requested_path
         .map(str::trim)
         .filter(|path| !path.is_empty())
     {
+        validate_piper_binary_path(path)?;
         return Ok(path.to_string());
     }
 
     if let Some(installed_path) = discover_installed_piper_path(app)? {
-        return Ok(installed_path.to_string_lossy().into_owned());
+        let installed = installed_path.to_string_lossy().into_owned();
+        validate_piper_binary_path(&installed)?;
+        return Ok(installed);
     }
 
     Err("Piper is not configured. Click 'Auto Setup Runtime' inside the app first.".to_string())
@@ -7743,6 +7779,47 @@ fn ensure_coqui_bridge_script(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(script_path)
 }
 
+fn validate_python_binary_path(path: &str) -> Result<(), String> {
+    let path_str = path.trim();
+    if path_str.is_empty() {
+        return Err("Python binary path is empty.".to_string());
+    }
+
+    if path_str.contains(|c: char| matches!(c, '\0' | '\n' | '\r')) {
+        return Err("Python binary path contains invalid characters.".to_string());
+    }
+
+    let path_buf = Path::new(path_str);
+    let file_name = path_buf
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Invalid python binary path.".to_string())?;
+    let file_name_lower = file_name.to_ascii_lowercase();
+
+    let normalized = file_name_lower
+        .strip_suffix(".exe")
+        .unwrap_or(file_name_lower.as_str());
+    let is_python3_with_version = normalized
+        .strip_prefix("python3.")
+        .map(|suffix| {
+            !suffix.is_empty()
+                && suffix
+                    .chars()
+                    .all(|character| character.is_ascii_digit() || character == '.')
+        })
+        .unwrap_or(false);
+
+    if !matches!(normalized, "python" | "python3" | "pythonw" | "py") && !is_python3_with_version
+    {
+        return Err(format!(
+            "Invalid python binary name '{}'. Expected a python executable name.",
+            file_name
+        ));
+    }
+
+    Ok(())
+}
+
 fn resolve_coqui_python_path(
     app: &AppHandle,
     requested_path: Option<&str>,
@@ -7751,12 +7828,15 @@ fn resolve_coqui_python_path(
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
+        validate_python_binary_path(path)?;
         return Ok(path.to_string());
     }
 
     let venv_python = coqui_venv_python_path(app)?;
     if file_exists_with_content(&venv_python) {
-        return Ok(venv_python.to_string_lossy().into_owned());
+        let resolved = venv_python.to_string_lossy().into_owned();
+        validate_python_binary_path(&resolved)?;
+        return Ok(resolved);
     }
 
     Ok("python".to_string())
@@ -12638,6 +12718,41 @@ mod tests {
             "0.1.1",
         );
         assert_eq!(from_url, "SlasshyWispr_0.1.2_x64-setup.exe");
+    }
+
+    #[test]
+    fn validates_python_binary_path() {
+        assert!(validate_python_binary_path("python").is_ok());
+        assert!(validate_python_binary_path("python3").is_ok());
+        assert!(validate_python_binary_path("python3.12").is_ok());
+        assert!(validate_python_binary_path("python.exe").is_ok());
+        assert!(validate_python_binary_path("python3.11.exe").is_ok());
+        assert!(validate_python_binary_path("py.exe").is_ok());
+        assert!(validate_python_binary_path("/usr/bin/python3").is_ok());
+        #[cfg(target_os = "windows")]
+        assert!(validate_python_binary_path("C:\\Python39\\python.exe").is_ok());
+        #[cfg(not(target_os = "windows"))]
+        assert!(validate_python_binary_path("C:/Python39/python.exe").is_ok());
+        assert!(validate_python_binary_path("C:/Program Files (x86)/Python311/python.exe").is_ok());
+
+        assert!(validate_python_binary_path("bash").is_err());
+        assert!(validate_python_binary_path("cmd.exe").is_err());
+        assert!(validate_python_binary_path("powershell").is_err());
+        assert!(validate_python_binary_path("calc.exe").is_err());
+        assert!(validate_python_binary_path("python\nbad").is_err());
+        assert!(validate_python_binary_path("python\0bad").is_err());
+        assert!(validate_python_binary_path("").is_err());
+    }
+
+    #[test]
+    fn validates_piper_binary_path() {
+        assert!(validate_piper_binary_path("piper").is_ok());
+        assert!(validate_piper_binary_path("piper.exe").is_ok());
+        assert!(validate_piper_binary_path("/usr/local/bin/piper").is_ok());
+        assert!(validate_piper_binary_path("C:/Program Files (x86)/piper/piper.exe").is_ok());
+
+        assert!(validate_piper_binary_path("bash").is_err());
+        assert!(validate_piper_binary_path("piper\nbad").is_err());
     }
 }
 
