@@ -7,3 +7,8 @@
 **Vulnerability:** `resolve_coqui_python_path` and `resolve_piper_path` accepted any string as a binary path, which was subsequently used in `Command::new`. This could allow arbitrary command execution if a malicious path (e.g., to a different binary or script) was provided.
 **Learning:** Always verify that security-critical validation functions referenced in design/memory are actually present and called in the codebase.
 **Prevention:** Implement strict allowlist validation for binary names when allowing user-configurable executables. Use `validate_python_binary_path` and `validate_piper_binary_path` patterns.
+
+## 2025-02-20 - [SECURITY] Overly Permissive CSP Connect-Src
+**Vulnerability:** The `connect-src` directive in `tauri.conf.json` allowed `http:` and `https:`, potentially enabling data exfiltration via XSS to arbitrary external servers.
+**Learning:** Even if the frontend application logic does not use `fetch` or `XMLHttpRequest`, a permissive CSP leaves the door open for injected malicious scripts to communicate with attacker-controlled servers. Since all legitimate external communication is routed through the Tauri backend (IPC), the frontend does not need direct internet access.
+**Prevention:** Tighten `connect-src` to minimal required schemes (`self`, `ws:`, `wss:`, `asset:`). Verify frontend code for absence of direct network calls (`fetch`, `xhr`) before locking down.
