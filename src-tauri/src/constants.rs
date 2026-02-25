@@ -22,6 +22,7 @@ pub const COQUI_DEFAULT_LANGUAGE: &str = "en";
 pub const COQUI_DEFAULT_QUALITY: &str = "balanced";
 pub const COQUI_DEFAULT_EMOTION: &str = "neutral";
 pub const COQUI_MAX_REFERENCE_SECONDS: f32 = 30.0;
+pub const MAX_TTS_INPUT_LENGTH: usize = 2000;
 pub const PENDING_SELECTION_REWRITE_TTL_SECS: u64 = 90;
 pub const RECENT_SELECTION_CONTEXT_TTL_SECS: u64 = 240;
 pub const COQUI_BRIDGE_SCRIPT: &str = include_str!("../coqui_bridge.py");
