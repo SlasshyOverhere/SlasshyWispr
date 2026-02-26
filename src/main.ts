@@ -8329,7 +8329,8 @@ function startAmplitudeMonitoring(stream: MediaStream): void {
       return;
     }
 
-    if (now - lastDockAmplitudePublishAt < 16) {
+    // Throttle to ~30fps (33ms) to reduce IPC overhead for the dock visualizer.
+    if (now - lastDockAmplitudePublishAt < 33) {
       amplitudeFrameId = window.requestAnimationFrame(tick);
       return;
     }
