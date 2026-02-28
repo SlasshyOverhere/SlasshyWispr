@@ -7,3 +7,8 @@
 **Vulnerability:** `resolve_coqui_python_path` and `resolve_piper_path` accepted any string as a binary path, which was subsequently used in `Command::new`. This could allow arbitrary command execution if a malicious path (e.g., to a different binary or script) was provided.
 **Learning:** Always verify that security-critical validation functions referenced in design/memory are actually present and called in the codebase.
 **Prevention:** Implement strict allowlist validation for binary names when allowing user-configurable executables. Use `validate_python_binary_path` and `validate_piper_binary_path` patterns.
+
+## 2025-02-28 - Restrictive Content Security Policy (CSP) for Desktop Apps
+**Vulnerability:** The `connect-src` in `src-tauri/tauri.conf.json` previously allowed connections to `http:` and `https:`, which is overly permissive for a desktop app that communicates exclusively via Tauri IPC (`invoke`) and has no need to fetch resources via frontend fetch/XHR calls.
+**Learning:** In Tauri applications where the frontend's sole purpose is UI rendering and all network/system operations are handled by the Rust backend, removing `http:` and `https:` from `connect-src` significantly reduces the risk of data exfiltration or malicious API requests if an XSS vulnerability occurs.
+**Prevention:** Default to the most restrictive CSP possible. For offline-first or IPC-heavy apps, restrict `connect-src` to `ws: wss: asset:` (for development and local assets) and block external HTTP traffic.
