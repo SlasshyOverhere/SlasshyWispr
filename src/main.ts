@@ -8329,7 +8329,8 @@ function startAmplitudeMonitoring(stream: MediaStream): void {
       return;
     }
 
-    if (now - lastDockAmplitudePublishAt < 16) {
+    if (now - lastDockAmplitudePublishAt < 33) {
+      // Throttle visualization to ~30fps to reduce CPU and IPC overhead
       amplitudeFrameId = window.requestAnimationFrame(tick);
       return;
     }
