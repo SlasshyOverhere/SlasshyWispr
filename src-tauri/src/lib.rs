@@ -7042,6 +7042,12 @@ async fn synthesize_with_piper(
     if clean_text.is_empty() {
         return Err("No text provided for TTS".to_string());
     }
+    if clean_text.len() > MAX_TTS_INPUT_LENGTH {
+        return Err(format!(
+            "Input text exceeds the maximum allowed length of {} characters.",
+            MAX_TTS_INPUT_LENGTH
+        ));
+    }
     let numeric_stability_mode = clean_text
         .chars()
         .any(|character| character.is_ascii_digit());
@@ -7259,6 +7265,12 @@ async fn synthesize_with_coqui(
     let clean_text = text.replace('\r', " ").trim().to_string();
     if clean_text.is_empty() {
         return Err("No text provided for TTS".to_string());
+    }
+    if clean_text.len() > MAX_TTS_INPUT_LENGTH {
+        return Err(format!(
+            "Input text exceeds the maximum allowed length of {} characters.",
+            MAX_TTS_INPUT_LENGTH
+        ));
     }
 
     let model_name = coqui

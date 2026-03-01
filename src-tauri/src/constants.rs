@@ -17,6 +17,7 @@ pub const VOICE_CONFIG_FILE: &str = "en_US-hfc_female-medium.onnx.json";
 pub const PIPER_DEFAULT_SPEED: f32 = 1.08;
 pub const PIPER_DEFAULT_QUALITY: &str = "fast";
 pub const PIPER_DEFAULT_EMOTION: &str = "neutral";
+pub const MAX_TTS_INPUT_LENGTH: usize = 2000;
 pub const COQUI_DEFAULT_MODEL: &str = "tts_models/multilingual/multi-dataset/xtts_v2";
 pub const COQUI_DEFAULT_LANGUAGE: &str = "en";
 pub const COQUI_DEFAULT_QUALITY: &str = "balanced";
