@@ -2678,12 +2678,15 @@ async fn get_assistant_info(app: AppHandle) -> Result<AssistantInfoResponse, Str
     })
 }
 
-fn collect_model_ids_from_array(items: &[Value], output: &mut BTreeSet<String>) {
+// ⚡ Bolt Optimization: Use string slices (&str) inside the BTreeSet
+// instead of owned Strings to avoid unnecessary heap allocations
+// during the duplicate filtering phase.
+fn collect_model_ids_from_array<'a>(items: &'a [Value], output: &mut BTreeSet<&'a str>) {
     for item in items {
         if let Some(text) = item.as_str() {
             let trimmed = text.trim();
             if !trimmed.is_empty() {
-                output.insert(trimmed.to_string());
+                output.insert(trimmed);
             }
             continue;
         }
@@ -2696,7 +2699,7 @@ fn collect_model_ids_from_array(items: &[Value], output: &mut BTreeSet<String>) 
         {
             let trimmed = model.trim();
             if !trimmed.is_empty() {
-                output.insert(trimmed.to_string());
+                output.insert(trimmed);
             }
         }
     }
@@ -2717,7 +2720,9 @@ fn extract_model_ids_from_payload(payload: &Value) -> Vec<String> {
         }
     }
 
-    models.into_iter().collect()
+    // ⚡ Bolt Optimization: Convert unique references to owned Strings
+    // only after duplicates have been eliminated.
+    models.into_iter().map(String::from).collect()
 }
 
 #[tauri::command]
