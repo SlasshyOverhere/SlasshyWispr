@@ -6994,6 +6994,16 @@ fn is_numeric_token_start(chars: &[char], index: usize) -> bool {
     }
 }
 
+fn validate_tts_input_length(text: &str) -> Result<(), String> {
+    let count = text.chars().count();
+    if count > MAX_TTS_INPUT_LENGTH {
+        return Err(format!(
+            "TTS input text is too long ({count} characters). Maximum is {MAX_TTS_INPUT_LENGTH}."
+        ));
+    }
+    Ok(())
+}
+
 fn normalize_piper_text_for_tts(input: &str) -> String {
     let symbol_normalized = normalize_piper_math_symbols(input);
     let chars: Vec<char> = symbol_normalized.chars().collect();
@@ -7047,6 +7057,8 @@ async fn synthesize_with_piper(
     if clean_text.is_empty() {
         return Err("No text provided for TTS".to_string());
     }
+    validate_tts_input_length(&clean_text)?;
+
     let numeric_stability_mode = clean_text
         .chars()
         .any(|character| character.is_ascii_digit());
@@ -7265,6 +7277,7 @@ async fn synthesize_with_coqui(
     if clean_text.is_empty() {
         return Err("No text provided for TTS".to_string());
     }
+    validate_tts_input_length(&clean_text)?;
 
     let model_name = coqui
         .model_name
@@ -12230,6 +12243,18 @@ fn elapsed_ms(start: Instant) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn validates_tts_input_length() {
+        let short = "Short text.";
+        assert!(validate_tts_input_length(short).is_ok());
+
+        let boundary = "a".repeat(MAX_TTS_INPUT_LENGTH);
+        assert!(validate_tts_input_length(&boundary).is_ok());
+
+        let long = "a".repeat(MAX_TTS_INPUT_LENGTH + 1);
+        assert!(validate_tts_input_length(&long).is_err());
+    }
+
     #[test]
     fn validates_safe_update_urls() {
         assert!(is_safe_update_url("https://github.com/user/repo/releases/download/v1.0/app.exe"));
