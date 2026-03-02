@@ -5,3 +5,7 @@
 ## 2026-02-18 - IPC Overhead in Visualization
 **Learning:** Sending high-frequency updates via `BroadcastChannel` (e.g., 60fps) adds significant serialization and context-switching overhead.
 **Action:** Throttle peripheral visualizers to ~30fps (33ms) to halve IPC traffic without noticeably degrading the user experience.
+
+## 2026-03-02 - Object Allocation in Hot Paths (Keyboard Event Listeners)
+**Learning:** Instantiating large mapping objects inside functions that are called frequently (like keydown event listeners) causes unnecessary memory allocation and garbage collection overhead on every keystroke.
+**Action:** Extract static lookup maps (e.g., key aliases) to module-level constants to ensure they are created only once.
