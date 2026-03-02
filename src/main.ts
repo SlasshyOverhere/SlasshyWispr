@@ -8329,7 +8329,9 @@ function startAmplitudeMonitoring(stream: MediaStream): void {
       return;
     }
 
-    if (now - lastDockAmplitudePublishAt < 16) {
+    // Throttle visualization updates to ~30fps (33ms) to reduce IPC/CPU overhead
+    // for this peripheral background visualizer.
+    if (now - lastDockAmplitudePublishAt < 33) {
       amplitudeFrameId = window.requestAnimationFrame(tick);
       return;
     }
@@ -8344,7 +8346,8 @@ function startAmplitudeMonitoring(stream: MediaStream): void {
 
     const rms = Math.sqrt(sumSquares / amplitudeBuffer.length);
     const normalized = Math.min(1, Math.max(0, (rms - 0.008) * 11.5));
-    dockAmplitude = dockAmplitude * 0.72 + normalized * 0.28;
+    // Adjusted smoothing factor for lower update rate (0.72^2 ≈ 0.52) to maintain visual decay.
+    dockAmplitude = dockAmplitude * 0.52 + normalized * 0.48;
 
     publishDockState();
     lastDockAmplitudePublishAt = now;
