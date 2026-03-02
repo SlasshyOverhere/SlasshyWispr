@@ -1123,8 +1123,9 @@ fn is_safe_update_url(url: &str) -> bool {
     if !lower.starts_with("https://") {
         return false;
     }
-    lower.starts_with("https://github.com/")
-        || lower.starts_with("https://objects.githubusercontent.com/")
+    let (owner, name) = resolve_update_repository();
+    let expected_prefix = format!("https://github.com/{owner}/{name}/").to_ascii_lowercase();
+    lower.starts_with(&expected_prefix)
 }
 
 #[tauri::command]
@@ -12257,8 +12258,24 @@ mod tests {
 
     #[test]
     fn validates_safe_update_urls() {
-        assert!(is_safe_update_url("https://github.com/user/repo/releases/download/v1.0/app.exe"));
-        assert!(is_safe_update_url("https://objects.githubusercontent.com/github-production-release-asset-2e65be/123"));
+        let (owner, name) = resolve_update_repository();
+        let valid_prefix = format!("https://github.com/{owner}/{name}/");
+        let valid_url = format!("{valid_prefix}releases/download/v1.0/app.exe");
+
+        assert!(is_safe_update_url(&valid_url));
+        assert!(is_safe_update_url(&valid_url.to_ascii_uppercase())); // Case insensitive check
+
+        // Untrusted repositories on GitHub must be rejected
+        assert!(!is_safe_update_url(
+            "https://github.com/Attacker/MalwareRepo/releases/download/v1.0/app.exe"
+        ));
+
+        // Direct objects links are now rejected to enforce repo trust
+        assert!(!is_safe_update_url(
+            "https://objects.githubusercontent.com/github-production-release-asset-2e65be/123"
+        ));
+
+        // Other domains and protocols
         assert!(!is_safe_update_url("https://evil.com/app.exe"));
         assert!(!is_safe_update_url("http://github.com/user/repo"));
         assert!(!is_safe_update_url("ftp://github.com/user/repo"));
