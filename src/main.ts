@@ -2870,41 +2870,43 @@ function pickDefaultLocalSttModelFromCatalog(): string {
   return localSttModelCatalog[0] ?? "";
 }
 
+const EMBEDDING_MARKERS = [
+  "embed",
+  "embedding",
+  "nomic-embed",
+  "bge-",
+  "e5-",
+  "minilm",
+];
+
 function looksLikeEmbeddingOnlyOllamaModel(model: string): boolean {
   const normalized = model.trim().toLowerCase();
   if (!normalized) {
     return false;
   }
-  const embeddingMarkers = [
-    "embed",
-    "embedding",
-    "nomic-embed",
-    "bge-",
-    "e5-",
-    "minilm",
-  ];
-  return embeddingMarkers.some((marker) => normalized.includes(marker));
+  return EMBEDDING_MARKERS.some((marker) => normalized.includes(marker));
 }
+
+const PREFERRED_CHAT_FAMILIES = [
+  "llama",
+  "qwen",
+  "mistral",
+  "gemma",
+  "phi",
+  "deepseek",
+  "command-r",
+];
 
 function pickDefaultLocalOllamaModelFromCatalog(): string {
   if (localOllamaModelCatalog.length === 0) {
     return "";
   }
-  const preferredChatFamilies = [
-    "llama",
-    "qwen",
-    "mistral",
-    "gemma",
-    "phi",
-    "deepseek",
-    "command-r",
-  ];
   for (const model of localOllamaModelCatalog) {
     const normalized = model.toLowerCase();
     if (looksLikeEmbeddingOnlyOllamaModel(model)) {
       continue;
     }
-    if (preferredChatFamilies.some((family) => normalized.includes(family))) {
+    if (PREFERRED_CHAT_FAMILIES.some((family) => normalized.includes(family))) {
       return model;
     }
   }
@@ -3512,48 +3514,48 @@ function normalizeHotkeyModifierToken(token: string): "ctrl" | "shift" | "alt" |
   return "";
 }
 
-function toGlobalShortcutKeyToken(key: string): string {
-  const map: Record<string, string> = {
-    space: "Space",
-    enter: "Enter",
-    tab: "Tab",
-    escape: "Escape",
-    backspace: "Backspace",
-    delete: "Delete",
-    insert: "Insert",
-    home: "Home",
-    end: "End",
-    pageup: "PageUp",
-    pagedown: "PageDown",
-    up: "Up",
-    down: "Down",
-    left: "Left",
-    right: "Right",
-    capslock: "CapsLock",
-    numlock: "NumLock",
-    scrolllock: "ScrollLock",
-    printscreen: "PrintScreen",
-    pause: "Pause",
-    plus: "Plus",
-    ",": "Comma",
-    ".": "Period",
-    "/": "Slash",
-    "\\": "Backslash",
-    ";": "Semicolon",
-    "'": "Quote",
-    "`": "Backquote",
-    "-": "Minus",
-    "=": "Equal",
-    "[": "BracketLeft",
-    "]": "BracketRight",
-    numpadadd: "NumpadAdd",
-    numpadsubtract: "NumpadSubtract",
-    numpadmultiply: "NumpadMultiply",
-    numpaddivide: "NumpadDivide",
-    numpaddecimal: "NumpadDecimal",
-    numpadenter: "NumpadEnter",
-  };
+const GLOBAL_SHORTCUT_KEY_MAP: Record<string, string> = {
+  space: "Space",
+  enter: "Enter",
+  tab: "Tab",
+  escape: "Escape",
+  backspace: "Backspace",
+  delete: "Delete",
+  insert: "Insert",
+  home: "Home",
+  end: "End",
+  pageup: "PageUp",
+  pagedown: "PageDown",
+  up: "Up",
+  down: "Down",
+  left: "Left",
+  right: "Right",
+  capslock: "CapsLock",
+  numlock: "NumLock",
+  scrolllock: "ScrollLock",
+  printscreen: "PrintScreen",
+  pause: "Pause",
+  plus: "Plus",
+  ",": "Comma",
+  ".": "Period",
+  "/": "Slash",
+  "\\": "Backslash",
+  ";": "Semicolon",
+  "'": "Quote",
+  "`": "Backquote",
+  "-": "Minus",
+  "=": "Equal",
+  "[": "BracketLeft",
+  "]": "BracketRight",
+  numpadadd: "NumpadAdd",
+  numpadsubtract: "NumpadSubtract",
+  numpadmultiply: "NumpadMultiply",
+  numpaddivide: "NumpadDivide",
+  numpaddecimal: "NumpadDecimal",
+  numpadenter: "NumpadEnter",
+};
 
+function toGlobalShortcutKeyToken(key: string): string {
   if (/^f([1-9]|1[0-9]|2[0-4])$/.test(key)) {
     return key.toUpperCase();
   }
@@ -3563,7 +3565,7 @@ function toGlobalShortcutKeyToken(key: string): string {
   if (key.length === 1 && /[a-z0-9]/.test(key)) {
     return key.toUpperCase();
   }
-  return map[key] ?? key;
+  return GLOBAL_SHORTCUT_KEY_MAP[key] ?? key;
 }
 
 function toGlobalShortcutString(hotkey: HotkeySpec): string {
@@ -7636,39 +7638,40 @@ function includesAnyIntentPhrase(text: string, phrases: readonly string[]): bool
   return phrases.some((phrase) => text.includes(phrase));
 }
 
+const COMPOSE_VERBS = [
+  "write",
+  "draft",
+  "compose",
+  "create",
+  "generate",
+  "make",
+  "prepare",
+];
+
+const COMPOSE_TARGETS = [
+  "email",
+  "mail",
+  "message",
+  "reply",
+  "letter",
+  "review",
+  "proposal",
+  "summary",
+  "description",
+  "caption",
+  "post",
+  "bio",
+  "application",
+];
+
 function looksLikeDraftingRequest(transcript: string): boolean {
   const normalized = normalizeIntentText(transcript);
   if (!normalized) {
     return false;
   }
 
-  const composeVerbs = [
-    "write",
-    "draft",
-    "compose",
-    "create",
-    "generate",
-    "make",
-    "prepare",
-  ];
-  const composeTargets = [
-    "email",
-    "mail",
-    "message",
-    "reply",
-    "letter",
-    "review",
-    "proposal",
-    "summary",
-    "description",
-    "caption",
-    "post",
-    "bio",
-    "application",
-  ];
-
-  const hasComposeVerb = includesAnyIntentPhrase(normalized, composeVerbs);
-  const hasComposeTarget = includesAnyIntentPhrase(normalized, composeTargets);
+  const hasComposeVerb = includesAnyIntentPhrase(normalized, COMPOSE_VERBS);
+  const hasComposeTarget = includesAnyIntentPhrase(normalized, COMPOSE_TARGETS);
   if (hasComposeVerb && hasComposeTarget) {
     return true;
   }
@@ -8532,116 +8535,119 @@ function parseHotkey(raw: string): HotkeySpec | null {
   };
 }
 
+const SHIFTED_ALIASES_MAP: Record<string, string> = {
+  "!": "1",
+  "@": "2",
+  "#": "3",
+  $: "4",
+  "%": "5",
+  "^": "6",
+  "&": "7",
+  "*": "8",
+  "(": "9",
+  ")": "0",
+  _: "-",
+  "+": "plus",
+  "{": "[",
+  "}": "]",
+  "|": "\\",
+  ":": ";",
+  '"': "'",
+  "<": ",",
+  ">": ".",
+  "?": "/",
+  "~": "`",
+};
+
+const ALLOWED_PUNCTUATION_KEYS = new Set([",", ".", "/", "\\", ";", "'", "`", "-", "=", "[", "]"]);
+
+const NORMALIZED_HOTKEY_MAP: Record<string, string> = {
+  space: "space",
+  spacebar: "space",
+  enter: "enter",
+  return: "enter",
+  tab: "tab",
+  esc: "escape",
+  escape: "escape",
+  backspace: "backspace",
+  delete: "delete",
+  del: "delete",
+  insert: "insert",
+  ins: "insert",
+  home: "home",
+  end: "end",
+  pageup: "pageup",
+  pgup: "pageup",
+  pagedown: "pagedown",
+  pgdown: "pagedown",
+  arrowup: "up",
+  up: "up",
+  arrowdown: "down",
+  down: "down",
+  arrowleft: "left",
+  left: "left",
+  arrowright: "right",
+  right: "right",
+  capslock: "capslock",
+  numlock: "numlock",
+  scrolllock: "scrolllock",
+  printscreen: "printscreen",
+  prtsc: "printscreen",
+  pause: "pause",
+  break: "pause",
+  comma: ",",
+  period: ".",
+  dot: ".",
+  slash: "/",
+  forwardslash: "/",
+  backslash: "\\",
+  semicolon: ";",
+  quote: "'",
+  apostrophe: "'",
+  backquote: "`",
+  grave: "`",
+  graveaccent: "`",
+  minus: "-",
+  dash: "-",
+  hyphen: "-",
+  equal: "=",
+  equals: "=",
+  plus: "plus",
+  leftbracket: "[",
+  bracketleft: "[",
+  lbracket: "[",
+  rightbracket: "]",
+  bracketright: "]",
+  rbracket: "]",
+  numpadadd: "numpadadd",
+  add: "numpadadd",
+  numpadsubtract: "numpadsubtract",
+  subtract: "numpadsubtract",
+  numpadmultiply: "numpadmultiply",
+  multiply: "numpadmultiply",
+  numpaddivide: "numpaddivide",
+  divide: "numpaddivide",
+  numpaddecimal: "numpaddecimal",
+  decimal: "numpaddecimal",
+  numpadenter: "numpadenter",
+};
+
 function normalizeHotkeyKeyToken(token: string): string {
   const normalized = token.trim().toLowerCase();
   if (!normalized) return "";
   if (normalized.length === 1) {
     if (/[a-z0-9]/.test(normalized)) return normalized;
-    const shiftedAliases: Record<string, string> = {
-      "!": "1",
-      "@": "2",
-      "#": "3",
-      $: "4",
-      "%": "5",
-      "^": "6",
-      "&": "7",
-      "*": "8",
-      "(": "9",
-      ")": "0",
-      _: "-",
-      "+": "plus",
-      "{": "[",
-      "}": "]",
-      "|": "\\",
-      ":": ";",
-      '"': "'",
-      "<": ",",
-      ">": ".",
-      "?": "/",
-      "~": "`",
-    };
-    if (shiftedAliases[normalized]) {
-      return shiftedAliases[normalized];
+    if (SHIFTED_ALIASES_MAP[normalized]) {
+      return SHIFTED_ALIASES_MAP[normalized];
     }
-    if ([",", ".", "/", "\\", ";", "'", "`", "-", "=", "[", "]"].includes(normalized)) {
+    if (ALLOWED_PUNCTUATION_KEYS.has(normalized)) {
       return normalized;
     }
   }
   if (/^f([1-9]|1[0-9]|2[0-4])$/.test(normalized)) return normalized;
   if (/^numpad[0-9]$/.test(normalized)) return normalized;
 
-  const map: Record<string, string> = {
-    space: "space",
-    spacebar: "space",
-    enter: "enter",
-    return: "enter",
-    tab: "tab",
-    esc: "escape",
-    escape: "escape",
-    backspace: "backspace",
-    delete: "delete",
-    del: "delete",
-    insert: "insert",
-    ins: "insert",
-    home: "home",
-    end: "end",
-    pageup: "pageup",
-    pgup: "pageup",
-    pagedown: "pagedown",
-    pgdown: "pagedown",
-    arrowup: "up",
-    up: "up",
-    arrowdown: "down",
-    down: "down",
-    arrowleft: "left",
-    left: "left",
-    arrowright: "right",
-    right: "right",
-    capslock: "capslock",
-    numlock: "numlock",
-    scrolllock: "scrolllock",
-    printscreen: "printscreen",
-    prtsc: "printscreen",
-    pause: "pause",
-    break: "pause",
-    comma: ",",
-    period: ".",
-    dot: ".",
-    slash: "/",
-    forwardslash: "/",
-    backslash: "\\",
-    semicolon: ";",
-    quote: "'",
-    apostrophe: "'",
-    backquote: "`",
-    grave: "`",
-    graveaccent: "`",
-    minus: "-",
-    dash: "-",
-    hyphen: "-",
-    equal: "=",
-    equals: "=",
-    plus: "plus",
-    leftbracket: "[",
-    bracketleft: "[",
-    lbracket: "[",
-    rightbracket: "]",
-    bracketright: "]",
-    rbracket: "]",
-    numpadadd: "numpadadd",
-    add: "numpadadd",
-    numpadsubtract: "numpadsubtract",
-    subtract: "numpadsubtract",
-    numpadmultiply: "numpadmultiply",
-    multiply: "numpadmultiply",
-    numpaddivide: "numpaddivide",
-    divide: "numpaddivide",
-    numpaddecimal: "numpaddecimal",
-    decimal: "numpaddecimal",
-    numpadenter: "numpadenter",
-  };
-
-  return map[normalized] ?? "";
+  return NORMALIZED_HOTKEY_MAP[normalized] ?? "";
 }
 
 function displayHotkeyKey(key: string): string {
