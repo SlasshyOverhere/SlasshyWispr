@@ -2879,12 +2879,21 @@ const EMBEDDING_MARKERS = [
   "minilm",
 ];
 
-function looksLikeEmbeddingOnlyOllamaModel(model: string): boolean {
-  const normalized = model.trim().toLowerCase();
-  if (!normalized) {
-    return false;
+function containsAnyFragment(text: string, fragments: readonly string[]): boolean {
+  for (const fragment of fragments) {
+    if (text.includes(fragment)) {
+      return true;
+    }
   }
-  return EMBEDDING_MARKERS.some((marker) => normalized.includes(marker));
+  return false;
+}
+
+function isEmbeddingOnlyNormalizedModel(normalizedModel: string): boolean {
+  return normalizedModel.length > 0 && containsAnyFragment(normalizedModel, EMBEDDING_MARKERS);
+}
+
+function looksLikeEmbeddingOnlyOllamaModel(model: string): boolean {
+  return isEmbeddingOnlyNormalizedModel(model.trim().toLowerCase());
 }
 
 const PREFERRED_CHAT_FAMILIES = [
@@ -2901,21 +2910,20 @@ function pickDefaultLocalOllamaModelFromCatalog(): string {
   if (localOllamaModelCatalog.length === 0) {
     return "";
   }
+  let firstNonEmbeddingModel = "";
   for (const model of localOllamaModelCatalog) {
-    const normalized = model.toLowerCase();
-    if (looksLikeEmbeddingOnlyOllamaModel(model)) {
+    const normalized = model.trim().toLowerCase();
+    if (isEmbeddingOnlyNormalizedModel(normalized)) {
       continue;
     }
-    if (PREFERRED_CHAT_FAMILIES.some((family) => normalized.includes(family))) {
+    if (!firstNonEmbeddingModel) {
+      firstNonEmbeddingModel = model;
+    }
+    if (containsAnyFragment(normalized, PREFERRED_CHAT_FAMILIES)) {
       return model;
     }
   }
-  for (const model of localOllamaModelCatalog) {
-    if (!looksLikeEmbeddingOnlyOllamaModel(model)) {
-      return model;
-    }
-  }
-  return localOllamaModelCatalog[0] ?? "";
+  return firstNonEmbeddingModel || localOllamaModelCatalog[0] || "";
 }
 
 function requestLocalSttRuntimeSyncForMode(
@@ -3555,17 +3563,26 @@ const GLOBAL_SHORTCUT_KEY_MAP: Record<string, string> = {
   numpadenter: "NumpadEnter",
 };
 
+const FUNCTION_KEY_TOKEN_PATTERN = /^f([1-9]|1[0-9]|2[0-4])$/;
+const NUMPAD_DIGIT_TOKEN_PATTERN = /^numpad[0-9]$/;
+
+function isAsciiLowerAlphaNumeric(value: string): boolean {
+  const code = value.charCodeAt(0);
+  return (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+}
+
 function toGlobalShortcutKeyToken(key: string): string {
-  if (/^f([1-9]|1[0-9]|2[0-4])$/.test(key)) {
+  if (FUNCTION_KEY_TOKEN_PATTERN.test(key)) {
     return key.toUpperCase();
   }
-  if (/^numpad[0-9]$/.test(key)) {
+  if (NUMPAD_DIGIT_TOKEN_PATTERN.test(key)) {
     return `Numpad${key.slice(-1)}`;
   }
-  if (key.length === 1 && /[a-z0-9]/.test(key)) {
+  if (key.length === 1 && isAsciiLowerAlphaNumeric(key)) {
     return key.toUpperCase();
   }
-  return GLOBAL_SHORTCUT_KEY_MAP[key] ?? key;
+  const mappedKey = GLOBAL_SHORTCUT_KEY_MAP[key];
+  return typeof mappedKey === "string" ? mappedKey : key;
 }
 
 function toGlobalShortcutString(hotkey: HotkeySpec): string {
@@ -7626,16 +7643,19 @@ function nextSelectionPopupToken(): number {
   return selectionPopupTokenCounter;
 }
 
+const NON_ALNUM_INTENT_CHAR_PATTERN = /[^\p{L}\p{N}\s]/gu;
+const MULTI_SPACE_PATTERN = /\s+/g;
+
 function normalizeIntentText(value: string): string {
   return value
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
+    .replace(NON_ALNUM_INTENT_CHAR_PATTERN, " ")
+    .replace(MULTI_SPACE_PATTERN, " ")
     .trim();
 }
 
 function includesAnyIntentPhrase(text: string, phrases: readonly string[]): boolean {
-  return phrases.some((phrase) => text.includes(phrase));
+  return containsAnyFragment(text, phrases);
 }
 
 const COMPOSE_VERBS = [
@@ -7664,6 +7684,9 @@ const COMPOSE_TARGETS = [
   "application",
 ];
 
+const DRAFT_EDIT_VERB_PATTERN = /\b(make|rewrite|edit|improve|polish|refine|fix)\b/;
+const DRAFT_EDIT_TARGET_PATTERN = /\b(this|it|text|review|email|message|paragraph|sentence)\b/;
+
 function looksLikeDraftingRequest(transcript: string): boolean {
   const normalized = normalizeIntentText(transcript);
   if (!normalized) {
@@ -7676,10 +7699,7 @@ function looksLikeDraftingRequest(transcript: string): boolean {
     return true;
   }
 
-  if (
-    /\b(make|rewrite|edit|improve|polish|refine|fix)\b/.test(normalized) &&
-    /\b(this|it|text|review|email|message|paragraph|sentence)\b/.test(normalized)
-  ) {
+  if (DRAFT_EDIT_VERB_PATTERN.test(normalized) && DRAFT_EDIT_TARGET_PATTERN.test(normalized)) {
     return true;
   }
 
@@ -8636,18 +8656,20 @@ function normalizeHotkeyKeyToken(token: string): string {
   const normalized = token.trim().toLowerCase();
   if (!normalized) return "";
   if (normalized.length === 1) {
-    if (/[a-z0-9]/.test(normalized)) return normalized;
-    if (SHIFTED_ALIASES_MAP[normalized]) {
-      return SHIFTED_ALIASES_MAP[normalized];
+    if (isAsciiLowerAlphaNumeric(normalized)) return normalized;
+    const shiftedAlias = SHIFTED_ALIASES_MAP[normalized];
+    if (typeof shiftedAlias === "string") {
+      return shiftedAlias;
     }
     if (ALLOWED_PUNCTUATION_KEYS.has(normalized)) {
       return normalized;
     }
   }
-  if (/^f([1-9]|1[0-9]|2[0-4])$/.test(normalized)) return normalized;
-  if (/^numpad[0-9]$/.test(normalized)) return normalized;
+  if (FUNCTION_KEY_TOKEN_PATTERN.test(normalized)) return normalized;
+  if (NUMPAD_DIGIT_TOKEN_PATTERN.test(normalized)) return normalized;
 
-  return NORMALIZED_HOTKEY_MAP[normalized] ?? "";
+  const mappedKey = NORMALIZED_HOTKEY_MAP[normalized];
+  return typeof mappedKey === "string" ? mappedKey : "";
 }
 
 function displayHotkeyKey(key: string): string {
