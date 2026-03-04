@@ -86,6 +86,7 @@ export const LOCAL_STT_MODEL_SIZE_LABELS: Record<string, string> = {
 };
 export const MAX_COQUI_REFERENCE_SECONDS = 30;
 export const MAX_RECORDING_MS = 45_000;
+export const ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS = 1_000;
 export const MAX_HISTORY_ITEMS = 12;
 export const FOREGROUND_BLOCK_CHECK_CACHE_MS = 320;
 export const BLOCKED_INPUT_NOTICE_COOLDOWN_MS = 2400;

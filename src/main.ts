@@ -66,6 +66,7 @@ import {
   LOCAL_STT_MODEL_SIZE_LABELS,
   MAX_COQUI_REFERENCE_SECONDS,
   MAX_RECORDING_MS,
+  ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS,
   MAX_HISTORY_ITEMS,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
   BLOCKED_INPUT_NOTICE_COOLDOWN_MS,
@@ -127,6 +128,12 @@ import type {
   ActiveTtsPlayback,
   SelectionPopupPayload,
 } from "./types";
+
+type StopRecordingOptions = {
+  cancelPipeline?: boolean;
+  cancelNotice?: string;
+  cancelStatus?: string;
+};
 
 
 const appRoot = document.querySelector<HTMLDivElement>("#app");
@@ -1167,6 +1174,9 @@ let recorderMimeType = "audio/webm";
 let recordedChunks: Blob[] = [];
 let recordingStartedAt = 0;
 let recordingTickerId: number | null = null;
+let skipPipelineAfterRecorderStop = false;
+let skipPipelineAfterRecorderStopNotice = "";
+let skipPipelineAfterRecorderStopStatus = "";
 let audioContext: AudioContext | null = null;
 let analyserNode: AnalyserNode | null = null;
 let amplitudeSourceNode: MediaStreamAudioSourceNode | null = null;
@@ -1177,6 +1187,7 @@ let lastDockAmplitudePublishAt = 0;
 let dockHideTimerId: number | null = null;
 let microphonePermissionGranted = false;
 const pushToTalkHoldSources = new Set<HoldSource>();
+const pushToTalkHoldStartedAt = new Map<HoldSource, number>();
 let activeTtsPlayback: ActiveTtsPlayback | null = null;
 let voiceIndicatorWindow: WebviewWindow | null = null;
 let selectionAssistantWindow: WebviewWindow | null = null;
@@ -1613,10 +1624,6 @@ document.addEventListener("keyup", (event) => {
   }
   if (commandHotkeyCaptureActive) {
     handleCommandHotkeyCaptureKeyup(event);
-    return;
-  }
-
-  if (settings.captureMode !== "push-to-talk") {
     return;
   }
 
@@ -2194,6 +2201,10 @@ function openSettings(reason = "unspecified"): void {
 }
 
 function closeSettings(): void {
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLElement && settingsOverlay.contains(activeElement)) {
+    activeElement.blur();
+  }
   settingsOverlay.classList.remove("is-open");
   settingsOverlay.hidden = true;
 }
@@ -2468,7 +2479,8 @@ async function hydrateSettingsFromNativeStorage(): Promise<void> {
 
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(parsed));
     const hydrated = loadSettings();
-    applySettingsToForm(hydrated);
+    settings = hydrated;
+    applySettingsToForm(settings);
     logClientEvent(`[settings.hydrate] applied ${summarizeSettingsForDiagnostics(hydrated)}`);
     handleSettingsChange();
   } catch (error) {
@@ -2646,6 +2658,14 @@ function handleSettingsChange(): void {
   const previousLaunchAtLogin = settings.launchAtLogin;
   const previousShortcutSignature = buildShortcutSyncSignature(settings);
   const next = readSettingsFromForm();
+  if (settingsOverlay.hidden && next.captureMode !== previousSettings.captureMode) {
+    logClientEvent(
+      `[settings.captureMode] ignored hidden-overlay flip from=${previousSettings.captureMode} to=${next.captureMode}`,
+    );
+    next.captureMode = previousSettings.captureMode;
+    captureModeSingleInput.checked = next.captureMode === "single-tap";
+    captureModePushToTalkInput.checked = next.captureMode === "push-to-talk";
+  }
   const parsed = parseHotkey(next.pushToTalkHotkey);
   const commandParsed = parseHotkey(next.commandHotkey);
 
@@ -3462,7 +3482,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
         void handleRecordToggle();
       }
     }
-    if (released && settings.captureMode === "push-to-talk") {
+    if (released && (settings.captureMode === "push-to-talk" || pushToTalkHoldSources.has("hotkey"))) {
       markGlobalShortcutHandled(shortcut, "released");
       logClientEvent("[hotkey.global.push] released -> release push-to-talk hold");
       releasePushToTalk("hotkey");
@@ -6822,30 +6842,66 @@ async function openMicrophoneStream(preferredDeviceId: string): Promise<MediaStr
   return navigator.mediaDevices.getUserMedia({ audio: baseConstraints });
 }
 
-function stopRecording(): void {
+function stopRecording(options: StopRecordingOptions = {}): void {
+  const cancelPipeline = Boolean(options.cancelPipeline);
+  const cancelNotice = options.cancelNotice?.trim();
+  const cancelStatus = options.cancelStatus?.trim();
   logClientEvent(
     `[record.stop] requested stage=${stage} recorderState=${mediaRecorder?.state || "none"}`,
   );
   clearPushToTalkHolds();
 
   if (!mediaRecorder) {
+    skipPipelineAfterRecorderStop = false;
+    skipPipelineAfterRecorderStopNotice = "";
+    skipPipelineAfterRecorderStopStatus = "";
     logClientEvent("[record.stop] no active mediaRecorder");
     return;
   }
 
-  if (mediaRecorder.state !== "inactive") {
+  const recorderWasActive = mediaRecorder.state !== "inactive";
+  skipPipelineAfterRecorderStop = cancelPipeline && recorderWasActive;
+  skipPipelineAfterRecorderStopNotice = cancelPipeline && recorderWasActive ? cancelNotice || "" : "";
+  skipPipelineAfterRecorderStopStatus = cancelPipeline && recorderWasActive ? cancelStatus || "" : "";
+
+  if (recorderWasActive) {
     logClientEvent("[record.stop] invoking mediaRecorder.stop()");
     mediaRecorder.stop();
   }
 
   stopRecordingTicker();
   releaseMicrophone();
-  setStage("processing", "Preparing audio...");
-  setNotice("Recording stopped. Running pipeline...");
+  if (cancelPipeline) {
+    setStage("idle", skipPipelineAfterRecorderStopStatus || "Canceled before transcription.");
+    setNotice(skipPipelineAfterRecorderStopNotice || "Short hotkey tap detected. STT request canceled.");
+  } else {
+    setStage("processing", "Preparing audio...");
+    setNotice("Recording stopped. Running pipeline...");
+  }
   syncActionAvailability();
 }
 
 async function finalizeRecording(): Promise<void> {
+  const skipPipeline = skipPipelineAfterRecorderStop;
+  const skipNotice = skipPipelineAfterRecorderStopNotice;
+  const skipStatus = skipPipelineAfterRecorderStopStatus;
+  skipPipelineAfterRecorderStop = false;
+  skipPipelineAfterRecorderStopNotice = "";
+  skipPipelineAfterRecorderStopStatus = "";
+
+  if (skipPipeline) {
+    recordedChunks = [];
+    logClientEvent("[record.finalize] pipeline canceled before transcription");
+    if (skipNotice) {
+      setNotice(skipNotice);
+    }
+    if (stage !== "idle") {
+      setStage("idle", skipStatus || "Canceled before transcription.");
+    }
+    syncActionAvailability();
+    return;
+  }
+
   const blob = new Blob(recordedChunks, { type: recorderMimeType });
   recordedChunks = [];
   logClientEvent(`[record.finalize] blobSize=${blob.size} mime=${recorderMimeType}`);
@@ -8222,7 +8278,9 @@ async function engagePushToTalk(source: HoldSource): Promise<void> {
     return;
   }
 
+  const holdStartedAt = Date.now();
   pushToTalkHoldSources.add(source);
+  pushToTalkHoldStartedAt.set(source, holdStartedAt);
   logClientEvent(`[record.ptt.engage] hold added source=${source} holds=${pushToTalkHoldSources.size}`);
 
   const interruptedPlayback = interruptTtsPlaybackForCaptureIntent();
@@ -8249,24 +8307,65 @@ async function engagePushToTalk(source: HoldSource): Promise<void> {
       }); removing hold`,
     );
     pushToTalkHoldSources.delete(source);
+    pushToTalkHoldStartedAt.delete(source);
+    return;
+  }
+
+  if (!pushToTalkHoldSources.has(source) && pushToTalkHoldSources.size === 0) {
+    const holdDurationMs = Date.now() - holdStartedAt;
+    const cancelShortHotkeyTap =
+      source === "hotkey" && holdDurationMs <= ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS;
+    logClientEvent(
+      `[record.ptt.engage] hold released before recording stabilized source=${source} holdMs=${holdDurationMs} cancel=${boolFlag(
+        cancelShortHotkeyTap,
+      )}`,
+    );
+    stopRecording(
+      cancelShortHotkeyTap
+        ? {
+            cancelPipeline: true,
+            cancelNotice: "Short hotkey tap detected. STT request canceled.",
+            cancelStatus: "Hotkey tap canceled.",
+          }
+        : undefined,
+    );
   }
 }
 
 function releasePushToTalk(source: HoldSource): void {
+  const holdStartedAt = pushToTalkHoldStartedAt.get(source) ?? 0;
+  pushToTalkHoldStartedAt.delete(source);
   if (!pushToTalkHoldSources.delete(source)) {
     logClientEvent(`[record.ptt.release] ignored because hold source is not active: ${source}`);
     return;
   }
-  logClientEvent(`[record.ptt.release] source=${source} remainingHolds=${pushToTalkHoldSources.size}`);
-
-  if (settings.captureMode !== "push-to-talk") {
-    logClientEvent("[record.ptt.release] capture mode changed; nothing to stop");
-    return;
-  }
+  const holdDurationMs = holdStartedAt > 0 ? Date.now() - holdStartedAt : -1;
+  const cancelShortHotkeyTap =
+    source === "hotkey" &&
+    holdDurationMs >= 0 &&
+    holdDurationMs <= ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS;
+  logClientEvent(
+    `[record.ptt.release] source=${source} remainingHolds=${pushToTalkHoldSources.size} holdMs=${holdDurationMs} cancel=${boolFlag(
+      cancelShortHotkeyTap,
+    )}`,
+  );
 
   if (stage === "recording" && pushToTalkHoldSources.size === 0) {
     logClientEvent("[record.ptt.release] no holds left while recording -> stopRecording()");
-    stopRecording();
+    stopRecording(
+      cancelShortHotkeyTap
+        ? {
+            cancelPipeline: true,
+            cancelNotice: "Short hotkey tap detected. STT request canceled.",
+            cancelStatus: "Hotkey tap canceled.",
+          }
+        : undefined,
+    );
+    return;
+  }
+
+  if (settings.captureMode !== "push-to-talk") {
+    logClientEvent("[record.ptt.release] capture mode changed; nothing to stop");
   }
 }
 
@@ -8275,6 +8374,7 @@ function clearPushToTalkHolds(): void {
     logClientEvent(`[record.ptt.clear] clearing holds=${pushToTalkHoldSources.size}`);
   }
   pushToTalkHoldSources.clear();
+  pushToTalkHoldStartedAt.clear();
 }
 
 function bindPushToTalkPointerHold(button: HTMLButtonElement, source: HoldSource): void {

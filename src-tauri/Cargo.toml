@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.1.5"
+version = "0.1.6"
 description = "Desktop voice dictation and AI assistant with online, offline, and hybrid model routing."
 authors = ["you"]
 license = ""
