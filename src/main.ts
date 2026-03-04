@@ -1291,20 +1291,17 @@ const systemThemeMediaQuery =
   typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: light)")
     : null;
-renderSidebarLocalSttToggle();
 enforceZeroPythonUi();
 
 let settings = loadSettings();
 if (ZERO_PYTHON_MODE && settings.ttsEngine === "coqui") {
   settings.ttsEngine = "piper";
 }
-const initialHotkey = parseHotkey(settings.pushToTalkHotkey) ?? parseHotkey(DEFAULT_HOTKEY);
-settings.pushToTalkHotkey = initialHotkey?.label ?? DEFAULT_HOTKEY;
-const initialCommandHotkey =
-  parseHotkey(settings.commandHotkey) ?? parseHotkey(DEFAULT_COMMAND_HOTKEY);
-settings.commandHotkey = initialCommandHotkey?.label ?? DEFAULT_COMMAND_HOTKEY;
+settings.pushToTalkHotkey = settings.pushToTalkHotkey.trim() || DEFAULT_HOTKEY;
+settings.commandHotkey = settings.commandHotkey.trim() || DEFAULT_COMMAND_HOTKEY;
 let cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
 applySettingsToForm(settings);
+renderSidebarLocalSttToggle();
 renderCoquiModelCatalog([], settings.coquiModelName);
 renderProviderModelCatalog([], settings.aiModelName || settings.sttModelName);
 renderLocalOllamaModelCatalog([], settings.localOllamaModel);
@@ -1415,7 +1412,6 @@ initializeUpdaterPanel();
 setupCustomWindowControls();
 hotkeyInput.readOnly = true;
 commandHotkeyInput.readOnly = true;
-requestGlobalShortcutSync(true);
 requestLaunchAtLoginSync(settings.launchAtLogin);
 startBlockedAppShortcutSuppressionMonitor();
 applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
@@ -3583,8 +3579,13 @@ const GLOBAL_SHORTCUT_KEY_MAP: Record<string, string> = {
   numpadenter: "NumpadEnter",
 };
 
-const FUNCTION_KEY_TOKEN_PATTERN = /^f([1-9]|1[0-9]|2[0-4])$/;
-const NUMPAD_DIGIT_TOKEN_PATTERN = /^numpad[0-9]$/;
+function isFunctionKeyToken(value: string): boolean {
+  return /^f([1-9]|1[0-9]|2[0-4])$/.test(value);
+}
+
+function isNumpadDigitToken(value: string): boolean {
+  return /^numpad[0-9]$/.test(value);
+}
 
 function isAsciiLowerAlphaNumeric(value: string): boolean {
   const code = value.charCodeAt(0);
@@ -3592,10 +3593,10 @@ function isAsciiLowerAlphaNumeric(value: string): boolean {
 }
 
 function toGlobalShortcutKeyToken(key: string): string {
-  if (FUNCTION_KEY_TOKEN_PATTERN.test(key)) {
+  if (isFunctionKeyToken(key)) {
     return key.toUpperCase();
   }
-  if (NUMPAD_DIGIT_TOKEN_PATTERN.test(key)) {
+  if (isNumpadDigitToken(key)) {
     return `Numpad${key.slice(-1)}`;
   }
   if (key.length === 1 && isAsciiLowerAlphaNumeric(key)) {
@@ -8765,8 +8766,8 @@ function normalizeHotkeyKeyToken(token: string): string {
       return normalized;
     }
   }
-  if (FUNCTION_KEY_TOKEN_PATTERN.test(normalized)) return normalized;
-  if (NUMPAD_DIGIT_TOKEN_PATTERN.test(normalized)) return normalized;
+  if (isFunctionKeyToken(normalized)) return normalized;
+  if (isNumpadDigitToken(normalized)) return normalized;
 
   const mappedKey = NORMALIZED_HOTKEY_MAP[normalized];
   return typeof mappedKey === "string" ? mappedKey : "";
