@@ -12,3 +12,7 @@
 **Vulnerability:** The `synthesize_with_piper` and `synthesize_with_coqui` functions accepted arbitrarily long strings for text-to-speech generation. This could allow an attacker or a malfunctioning frontend to consume excessive CPU/Memory resources (Denial of Service) by requesting synthesis of a massive text payload.
 **Learning:** Always validate input length for resource-intensive operations like TTS or AI processing, even if the input comes from an authenticated user or internal component.
 **Prevention:** Implemented `validate_tts_input_length` which enforces a strict character limit (`MAX_TTS_INPUT_LENGTH = 2000`) on all TTS requests.
+## 2025-05-23 - [CRITICAL] Fix Path Traversal in Update URL Validation
+**Vulnerability:** The `is_safe_update_url` function validated update URLs by checking if the raw string started with `https://github.com/{owner}/{repo}/`. This allowed an attacker to bypass the check using URL path traversal (e.g., `https://github.com/owner/repo/../../attacker/repo/releases/download/...`), tricking the app into downloading and executing a malicious installer.
+**Learning:** Checking string prefixes for URL validation is insecure because HTTP clients (like `reqwest`) resolve path traversals (`..`) before making the request.
+**Prevention:** Always parse URLs using a proper URL parser (like the `Url` crate) and validate the individual components (scheme, host, and resolved path).

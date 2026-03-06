@@ -1119,13 +1119,23 @@ Set {UPDATE_GITHUB_TOKEN_ENV} for private repositories, or verify {UPDATE_REPOSI
 }
 
 fn is_safe_update_url(url: &str) -> bool {
-    let lower = url.to_ascii_lowercase();
-    if !lower.starts_with("https://") {
+    let parsed = match Url::parse(url) {
+        Ok(u) => u,
+        Err(_) => return false,
+    };
+
+    if parsed.scheme() != "https" {
         return false;
     }
+
+    if parsed.host_str() != Some("github.com") {
+        return false;
+    }
+
     let (owner, name) = resolve_update_repository();
-    let expected_prefix = format!("https://github.com/{owner}/{name}/").to_ascii_lowercase();
-    lower.starts_with(&expected_prefix)
+    let expected_path_prefix = format!("/{owner}/{name}/").to_ascii_lowercase();
+
+    parsed.path().to_ascii_lowercase().starts_with(&expected_path_prefix)
 }
 
 #[tauri::command]
@@ -12264,6 +12274,11 @@ mod tests {
 
         assert!(is_safe_update_url(&valid_url));
         assert!(is_safe_update_url(&valid_url.to_ascii_uppercase())); // Case insensitive check
+
+        // Path traversal in URL must be rejected
+        assert!(!is_safe_update_url(
+            &format!("{valid_prefix}../../Attacker/MalwareRepo/releases/download/v1.0/app.exe")
+        ));
 
         // Untrusted repositories on GitHub must be rejected
         assert!(!is_safe_update_url(
