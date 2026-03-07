@@ -1119,13 +1119,23 @@ Set {UPDATE_GITHUB_TOKEN_ENV} for private repositories, or verify {UPDATE_REPOSI
 }
 
 fn is_safe_update_url(url: &str) -> bool {
-    let lower = url.to_ascii_lowercase();
-    if !lower.starts_with("https://") {
+    let Ok(parsed_url) = Url::parse(url) else {
+        return false;
+    };
+
+    if parsed_url.scheme() != "https" {
         return false;
     }
+
+    if parsed_url.host_str() != Some("github.com") {
+        return false;
+    }
+
     let (owner, name) = resolve_update_repository();
-    let expected_prefix = format!("https://github.com/{owner}/{name}/").to_ascii_lowercase();
-    lower.starts_with(&expected_prefix)
+    let path = parsed_url.path();
+    let expected_path_prefix = format!("/{owner}/{name}/");
+
+    path.to_ascii_lowercase().starts_with(&expected_path_prefix.to_ascii_lowercase())
 }
 
 #[tauri::command]
@@ -12268,6 +12278,11 @@ mod tests {
         // Untrusted repositories on GitHub must be rejected
         assert!(!is_safe_update_url(
             "https://github.com/Attacker/MalwareRepo/releases/download/v1.0/app.exe"
+        ));
+
+        // Path traversal should be rejected
+        assert!(!is_safe_update_url(
+            "https://github.com/SlasshyOverhere/SlasshyWispr/../../Attacker/MalwareRepo/releases/download/v1.0/app.exe"
         ));
 
         // Direct objects links are now rejected to enforce repo trust
