@@ -1287,6 +1287,13 @@ let notificationPermissionRequested = false;
 const dockChannel = new BroadcastChannel("slasshywispr-dock");
 const selectionPopupChannel = new BroadcastChannel("slasshywispr-selection-popup");
 const ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION = false;
+
+// Hoisted date formatters for performance (avoiding expensive Intl.DateTimeFormat instantiation per call)
+const DATE_FORMATTER_ACTIVITY = new Intl.DateTimeFormat([], { month: "long", day: "numeric", year: "numeric" });
+const DATE_FORMATTER_UPDATER = new Intl.DateTimeFormat([], { month: "short", day: "numeric", year: "numeric" });
+const TIME_FORMATTER_CONVERSATION = new Intl.DateTimeFormat([], { hour: "2-digit", minute: "2-digit" });
+const DATETIME_FORMATTER_NOTE = new Intl.DateTimeFormat([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+
 const systemThemeMediaQuery =
   typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: light)")
@@ -1415,11 +1422,7 @@ commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
 startBlockedAppShortcutSuppressionMonitor();
 applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
-activityDate.textContent = new Date().toLocaleDateString([], {
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-});
+activityDate.textContent = DATE_FORMATTER_ACTIVITY.format(new Date());
 
 for (const navButton of pageNavButtons) {
   navButton.addEventListener("click", () => {
@@ -3333,7 +3336,7 @@ function formatPublishedDate(raw: string): string {
   if (Number.isNaN(parsed.getTime())) {
     return cleaned;
   }
-  return parsed.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  return DATE_FORMATTER_UPDATER.format(parsed);
 }
 
 async function handleCheckForUpdates(): Promise<void> {
@@ -4251,10 +4254,7 @@ function persistHomeHistory(): void {
 }
 
 function formatConversationTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return TIME_FORMATTER_CONVERSATION.format(new Date(timestamp));
 }
 
 function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
@@ -4605,12 +4605,7 @@ function renderNotesList(): void {
   for (const note of quickNotes) {
     const row = document.createElement("article");
     row.className = "managed-row managed-row-grid managed-row-note";
-    const time = new Date(note.createdAt).toLocaleString([], {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const time = DATETIME_FORMATTER_NOTE.format(new Date(note.createdAt));
     row.innerHTML = `
       <p class="managed-row-main"><strong>Quick note</strong><span>${escapeHtml(note.text)}</span></p>
       <span class="managed-row-meta">${time}</span>
