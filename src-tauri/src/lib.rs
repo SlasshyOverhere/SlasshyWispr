@@ -1132,10 +1132,15 @@ fn is_safe_update_url(url: &str) -> bool {
     }
 
     let (owner, name) = resolve_update_repository();
-    let path = parsed_url.path();
     let expected_path_prefix = format!("/{owner}/{name}/");
+    let normalized = parsed_url
+        .path_segments()
+        .map(|segments| format!("/{}", segments.collect::<Vec<_>>().join("/")))
+        .unwrap_or_default();
 
-    path.to_ascii_lowercase().starts_with(&expected_path_prefix.to_ascii_lowercase())
+    normalized
+        .to_ascii_lowercase()
+        .starts_with(&expected_path_prefix.to_ascii_lowercase())
 }
 
 #[tauri::command]
