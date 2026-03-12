@@ -1440,7 +1440,7 @@ commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
 startBlockedAppShortcutSuppressionMonitor();
 applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
-activityDate.textContent = ACTIVITY_DATE_FORMATTER.format(new Date());
+activityDate.textContent = ACTIVITY_DATE_FORMATTER.format(Date.now());
 
 for (const navButton of pageNavButtons) {
   navButton.addEventListener("click", () => {
@@ -4272,7 +4272,7 @@ function persistHomeHistory(): void {
 }
 
 function formatConversationTime(timestamp: number): string {
-  return CONVERSATION_TIME_FORMATTER.format(new Date(timestamp));
+  return CONVERSATION_TIME_FORMATTER.format(timestamp);
 }
 
 function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
@@ -4623,7 +4623,7 @@ function renderNotesList(): void {
   for (const note of quickNotes) {
     const row = document.createElement("article");
     row.className = "managed-row managed-row-grid managed-row-note";
-    const time = NOTE_TIME_FORMATTER.format(new Date(note.createdAt));
+    const time = NOTE_TIME_FORMATTER.format(note.createdAt);
     row.innerHTML = `
       <p class="managed-row-main"><strong>Quick note</strong><span>${escapeHtml(note.text)}</span></p>
       <span class="managed-row-meta">${time}</span>
