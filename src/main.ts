@@ -8484,9 +8484,19 @@ function startAmplitudeMonitoring(stream: MediaStream): void {
     const rms = Math.sqrt(sumSquares / amplitudeBuffer.length);
     const normalized = Math.min(1, Math.max(0, (rms - 0.008) * 11.5));
     // Adjusted smoothing factor for lower update rate (0.72^2 ≈ 0.52) to maintain visual decay.
-    dockAmplitude = dockAmplitude * 0.52 + normalized * 0.48;
+    let nextAmplitude = dockAmplitude * 0.52 + normalized * 0.48;
 
-    publishDockState();
+    // ⚡ Bolt Optimization: Clamp near-zero amplitude to avoid infinite float decay,
+    // skipping expensive IPC broadcast serialization during absolute silence.
+    if (nextAmplitude < 0.005) {
+      nextAmplitude = 0;
+    }
+
+    if (dockAmplitude !== nextAmplitude) {
+      dockAmplitude = nextAmplitude;
+      publishDockState();
+    }
+
     lastDockAmplitudePublishAt = now;
 
     amplitudeFrameId = window.requestAnimationFrame(tick);
