@@ -9444,7 +9444,18 @@ async fn download_file(client: &Client, url: &str, destination: &Path) -> Result
 }
 
 fn single_line(input: &str) -> String {
-    input.split_whitespace().collect::<Vec<_>>().join(" ")
+    // ⚡ Bolt Optimization: Replaced `input.split_whitespace().collect::<Vec<_>>().join(" ")`
+    // with a direct String mutation using `with_capacity` to prevent allocating an
+    // intermediate `Vec<&str>` on the heap, which reduces memory allocations
+    // and copying overhead on this frequently called formatting path.
+    let mut result = String::with_capacity(input.len());
+    for word in input.split_whitespace() {
+        if !result.is_empty() {
+            result.push(' ');
+        }
+        result.push_str(word);
+    }
+    result
 }
 
 fn clip_text(input: &str, max_chars: usize) -> String {

@@ -9,3 +9,7 @@
 ## 2026-03-03 - Hoisting Static Arrays and Maps
 **Learning:** Functions that frequently run (e.g. keyboard event listeners, input validators) shouldn't recreate static arrays and maps on every execution, as this causes unnecessary memory allocation and garbage collection.
 **Action:** Extract these literal arrays and objects out of the function scope and into module-level constants. Convert lookup arrays to `Set`s for O(1) lookups instead of O(n) `.includes()`.
+
+## 2026-03-06 - Avoid Intermediate Vector Allocations for String Joining
+**Learning:** `collect::<Vec<_>>().join(" ")` on string iterators unnecessarily allocates a dynamic heap vector simply to join elements immediately after. This introduces extra memory allocations and copying overhead on hot paths.
+**Action:** Replace `collect::<Vec<_>>().join(sep)` with a direct `String` mutation using `String::with_capacity` and an explicit loop to avoid intermediate object allocations.
