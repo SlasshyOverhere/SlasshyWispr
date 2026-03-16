@@ -9,3 +9,7 @@
 ## 2026-03-03 - Hoisting Static Arrays and Maps
 **Learning:** Functions that frequently run (e.g. keyboard event listeners, input validators) shouldn't recreate static arrays and maps on every execution, as this causes unnecessary memory allocation and garbage collection.
 **Action:** Extract these literal arrays and objects out of the function scope and into module-level constants. Convert lookup arrays to `Set`s for O(1) lookups instead of O(n) `.includes()`.
+
+## 2026-03-16 - Avoid Intermediate Vec Allocations in Rust Hot Paths
+**Learning:** Text normalization functions that use `.collect::<Vec<_>>().join(" ")` or repeatedly allocate formatting strings (`format!`) cause unnecessary heap allocations and memory copying, significantly impacting performance on repetitive or large text operations.
+**Action:** Replace `Vec` accumulations with direct string mutation using `String::with_capacity` and `push_str`. Check for substring existence with `.contains` before attempting substring replacements to bypass allocation and string cloning overhead when unnecessary.

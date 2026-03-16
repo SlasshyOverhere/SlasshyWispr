@@ -6646,7 +6646,7 @@ fn remove_filler_words(input: &str) -> String {
 
     let single_fillers = ["um", "uh", "erm", "hmm", "basically"];
 
-    let mut kept = Vec::new();
+    let mut kept = String::with_capacity(current.len());
     for token in current.split_whitespace() {
         let trimmed = token
             .trim_matches(|ch: char| !ch.is_alphanumeric())
@@ -6654,10 +6654,13 @@ fn remove_filler_words(input: &str) -> String {
         if single_fillers.contains(&trimmed.as_str()) {
             continue;
         }
-        kept.push(token);
+        if !kept.is_empty() {
+            kept.push(' ');
+        }
+        kept.push_str(token);
     }
 
-    kept.join(" ")
+    kept
 }
 
 fn apply_numbered_list_formatting(input: &str) -> String {
@@ -6668,23 +6671,25 @@ fn apply_numbered_list_formatting(input: &str) -> String {
 
     let without_label = replace_case_insensitive_ascii(input, "numbered list", " ");
     let separated = replace_case_insensitive_ascii(&without_label, "next item", "\n");
-    let items: Vec<String> = separated
+    let items: Vec<&str> = separated
         .split('\n')
         .map(str::trim)
         .filter(|part| !part.is_empty())
-        .map(str::to_string)
         .collect();
 
     if items.len() < 2 {
         return without_label.trim().to_string();
     }
 
-    items
-        .iter()
-        .enumerate()
-        .map(|(index, item)| format!("{}. {}", index + 1, item))
-        .collect::<Vec<_>>()
-        .join("\n")
+    use std::fmt::Write;
+    let mut out = String::with_capacity(separated.len() + items.len() * 4);
+    for (index, item) in items.into_iter().enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        let _ = write!(&mut out, "{}. {}", index + 1, item);
+    }
+    out
 }
 
 fn apply_auto_punctuation(input: &str) -> String {
@@ -6704,30 +6709,50 @@ fn apply_auto_punctuation(input: &str) -> String {
         current = replace_case_insensitive_ascii(&current, spoken, symbol);
     }
 
-    for punctuation in [",", ".", "?", "!", ";", ":"] {
-        current = current.replace(&format!(" {punctuation}"), punctuation);
+    let punctuation_map = [
+        (" ,", ","),
+        (" .", "."),
+        (" ?", "?"),
+        (" !", "!"),
+        (" ;", ";"),
+        (" :", ":"),
+    ];
+
+    for (search, replace) in punctuation_map {
+        current = current.replace(search, replace);
     }
 
-    let normalized = normalize_spacing(&current);
+    let mut normalized = normalize_spacing(&current);
     if normalized.is_empty() {
         return normalized;
     }
 
-    if normalized.ends_with('.') || normalized.ends_with('!') || normalized.ends_with('?') {
-        return normalized;
+    if !normalized.ends_with('.') && !normalized.ends_with('!') && !normalized.ends_with('?') {
+        normalized.push('.');
     }
 
-    format!("{normalized}.")
+    normalized
 }
 
 fn normalize_spacing(input: &str) -> String {
-    input
-        .lines()
-        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
-        .collect::<Vec<_>>()
-        .join("\n")
-        .trim()
-        .to_string()
+    let mut out = String::with_capacity(input.len());
+    let mut first_line = true;
+    for line in input.lines() {
+        if !first_line {
+            out.push('\n');
+        }
+        first_line = false;
+
+        let mut first_word = true;
+        for word in line.split_whitespace() {
+            if !first_word {
+                out.push(' ');
+            }
+            out.push_str(word);
+            first_word = false;
+        }
+    }
+    out.trim().to_string()
 }
 
 fn replace_case_insensitive_ascii(input: &str, needle: &str, replacement: &str) -> String {
