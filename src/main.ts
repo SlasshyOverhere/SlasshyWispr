@@ -2894,12 +2894,16 @@ function syncRuntimeModePaneVisibility(_sttMode: RuntimeMode, _aiMode: RuntimeMo
   }
 }
 
+const PREFERRED_LOCAL_STT_MODELS = [
+  "nvidia/parakeet-tdt_ctc-110m",
+  "nvidia/parakeet-tdt-0.6b-v3",
+];
+
 function pickDefaultLocalSttModelFromCatalog(): string {
   if (localSttModelCatalog.length === 0) {
     return "";
   }
-  const preferredOrder = ["nvidia/parakeet-tdt_ctc-110m", "nvidia/parakeet-tdt-0.6b-v3"];
-  for (const candidate of preferredOrder) {
+  for (const candidate of PREFERRED_LOCAL_STT_MODELS) {
     if (localSttModelCatalog.includes(candidate)) {
       return candidate;
     }
@@ -5843,19 +5847,20 @@ async function deactivateLocalSttModel(): Promise<void> {
   }
 }
 
+const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB"];
+
 function formatBytes(value: number): string {
   if (!Number.isFinite(value) || value <= 0) {
     return "0 B";
   }
-  const units = ["B", "KB", "MB", "GB", "TB"];
   let size = value;
   let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
+  while (size >= 1024 && unitIndex < BYTE_UNITS.length - 1) {
     size /= 1024;
     unitIndex += 1;
   }
   const precision = unitIndex <= 1 ? 0 : 1;
-  return `${size.toFixed(precision)} ${units[unitIndex]}`;
+  return `${size.toFixed(precision)} ${BYTE_UNITS[unitIndex]}`;
 }
 
 function applyLocalSttDownloadStatus(status: LocalSttDownloadStatusResponse): void {
@@ -8576,15 +8581,15 @@ function formatHotkeyForDisplay(hotkey: string): string {
     .join(" + ");
 }
 
-function pickBestRecorderMimeType(): string {
-  const candidates = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/ogg;codecs=opus",
-    "audio/mp4",
-  ];
+const RECORDER_MIME_CANDIDATES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/ogg;codecs=opus",
+  "audio/mp4",
+];
 
-  for (const mimeType of candidates) {
+function pickBestRecorderMimeType(): string {
+  for (const mimeType of RECORDER_MIME_CANDIDATES) {
     if (MediaRecorder.isTypeSupported(mimeType)) return mimeType;
   }
 

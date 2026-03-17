@@ -9,3 +9,7 @@
 ## 2026-03-03 - Hoisting Static Arrays and Maps
 **Learning:** Functions that frequently run (e.g. keyboard event listeners, input validators) shouldn't recreate static arrays and maps on every execution, as this causes unnecessary memory allocation and garbage collection.
 **Action:** Extract these literal arrays and objects out of the function scope and into module-level constants. Convert lookup arrays to `Set`s for O(1) lookups instead of O(n) `.includes()`.
+
+## 2026-03-03 - Hoisting Static Formatting Lookups
+**Learning:** Inline array allocations inside frequently called utility functions (like byte formatters or catalog searchers) add unnecessary GC pressure without any benefit.
+**Action:** Extract static lists out of utility functions like `formatBytes` and `pickDefaultLocalSttModelFromCatalog` into module-scope constants.
