@@ -17,3 +17,8 @@
 **Vulnerability:** The `is_safe_update_url` function relied on a simple string `starts_with` check (`lower.starts_with("https://github.com/owner/repo/")`) to validate update URLs. This was susceptible to path traversal attacks (e.g., `https://github.com/owner/repo/../../attacker/repo/releases/download/...`), allowing downloads from unintended repositories.
 **Learning:** String prefix matching is insufficient for URL validation because it does not account for path normalization rules (like `.` and `..`) applied by HTTP clients during resolution.
 **Prevention:** Use a robust URL parsing library (like `Url` from the `reqwest` or `url` crate) to parse the URL and explicitly validate its normalized components (scheme, host, path) rather than the raw string.
+
+## 2025-03-08 - [CRITICAL] Untrusted File Download via Trusted Repository Attachments
+**Vulnerability:** The `is_safe_update_url` function validated that download URLs belonged to `github.com` and matched the repository's path (`/{owner}/{name}/`). However, this allowed any file uploaded as an issue/PR attachment in that repository (e.g., `https://github.com/owner/name/files/123/malware.exe`) to be trusted and executed by the updater.
+**Learning:** Checking that a URL belongs to a trusted repository is not enough if the hosting provider allows public users to upload unreviewed content (like issue attachments) to that same repository namespace.
+**Prevention:** Make the URL validation strict enough to only allow downloads from paths that require repository write access to publish (e.g., `/{owner}/{name}/releases/download/`).
