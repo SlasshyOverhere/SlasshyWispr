@@ -9,3 +9,7 @@
 ## 2026-03-03 - Hoisting Static Arrays and Maps
 **Learning:** Functions that frequently run (e.g. keyboard event listeners, input validators) shouldn't recreate static arrays and maps on every execution, as this causes unnecessary memory allocation and garbage collection.
 **Action:** Extract these literal arrays and objects out of the function scope and into module-level constants. Convert lookup arrays to `Set`s for O(1) lookups instead of O(n) `.includes()`.
+
+## 2026-03-18 - String Manipulation Overhead
+**Learning:** Chaining `.replace()` operations (e.g., in a loop over punctuation) and creating intermediate `Vec` allocations during string transformations (e.g., `collect::<Vec<_>>().join()`) introduces significant allocation overhead, especially on frequently called string processing paths.
+**Action:** Guard `.replace()` operations with `.contains()` checks, and use direct `String::with_capacity` mutations to build strings rather than allocating intermediate collections.
