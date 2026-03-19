@@ -4278,11 +4278,20 @@ function formatConversationTime(timestamp: number): string {
 function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
   const row = document.createElement("article");
   row.className = `entry entry-${entry.tone}`;
-  row.innerHTML = `
-    <time class="entry-time">${formatConversationTime(entry.timestamp)}</time>
-    <p class="entry-speaker">${escapeHtml(entry.speaker)}</p>
-    <p class="entry-content">${escapeHtml(entry.content)}</p>
-  `;
+
+  const timeEl = document.createElement("time");
+  timeEl.className = "entry-time";
+  timeEl.textContent = formatConversationTime(entry.timestamp);
+
+  const speakerEl = document.createElement("p");
+  speakerEl.className = "entry-speaker";
+  speakerEl.textContent = entry.speaker;
+
+  const contentEl = document.createElement("p");
+  contentEl.className = "entry-content";
+  contentEl.textContent = entry.content;
+
+  row.append(timeEl, speakerEl, contentEl);
   return row;
 }
 
