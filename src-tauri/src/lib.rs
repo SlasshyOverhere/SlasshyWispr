@@ -1132,7 +1132,7 @@ fn is_safe_update_url(url: &str) -> bool {
     }
 
     let (owner, name) = resolve_update_repository();
-    let expected_path_prefix = format!("/{owner}/{name}/");
+    let expected_path_prefix = format!("/{owner}/{name}/releases/download/");
     let normalized = parsed_url
         .path_segments()
         .map(|segments| format!("/{}", segments.collect::<Vec<_>>().join("/")))
