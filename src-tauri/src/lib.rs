@@ -9443,8 +9443,19 @@ async fn download_file(client: &Client, url: &str, destination: &Path) -> Result
     Ok(())
 }
 
+// ⚡ Bolt Optimization: Use String::with_capacity and direct pushing
+// instead of collecting to an intermediate Vec to avoid unnecessary heap allocations.
 fn single_line(input: &str) -> String {
-    input.split_whitespace().collect::<Vec<_>>().join(" ")
+    let mut out = String::with_capacity(input.len());
+    let mut first = true;
+    for word in input.split_whitespace() {
+        if !first {
+            out.push(' ');
+        }
+        out.push_str(word);
+        first = false;
+    }
+    out
 }
 
 fn clip_text(input: &str, max_chars: usize) -> String {
