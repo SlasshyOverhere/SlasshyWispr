@@ -3600,12 +3600,16 @@ const GLOBAL_SHORTCUT_KEY_MAP: Record<string, string> = {
   numpadenter: "NumpadEnter",
 };
 
+const FUNCTION_KEY_PATTERN = /^f([1-9]|1[0-9]|2[0-4])$/;
+
 function isFunctionKeyToken(value: string): boolean {
-  return /^f([1-9]|1[0-9]|2[0-4])$/.test(value);
+  return FUNCTION_KEY_PATTERN.test(value);
 }
 
+const NUMPAD_DIGIT_PATTERN = /^numpad[0-9]$/;
+
 function isNumpadDigitToken(value: string): boolean {
-  return /^numpad[0-9]$/.test(value);
+  return NUMPAD_DIGIT_PATTERN.test(value);
 }
 
 function isAsciiLowerAlphaNumeric(value: string): boolean {
@@ -7756,6 +7760,7 @@ const COMPOSE_TARGETS = [
 
 const DRAFT_EDIT_VERB_PATTERN = /\b(make|rewrite|edit|improve|polish|refine|fix)\b/;
 const DRAFT_EDIT_TARGET_PATTERN = /\b(this|it|text|review|email|message|paragraph|sentence)\b/;
+const DRAFT_RESPONSE_START_PATTERN = /^(subject:|dear\s|hello\s|hi\s|to:)/i;
 
 function looksLikeDraftingRequest(transcript: string): boolean {
   const normalized = normalizeIntentText(transcript);
@@ -7782,7 +7787,7 @@ function looksLikeDraftResponse(assistantResponse: string): boolean {
     return false;
   }
 
-  if (/^(subject:|dear\s|hello\s|hi\s|to:)/i.test(trimmed)) {
+  if (DRAFT_RESPONSE_START_PATTERN.test(trimmed)) {
     return true;
   }
 
