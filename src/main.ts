@@ -4278,11 +4278,22 @@ function formatConversationTime(timestamp: number): string {
 function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
   const row = document.createElement("article");
   row.className = `entry entry-${entry.tone}`;
-  row.innerHTML = `
-    <time class="entry-time">${formatConversationTime(entry.timestamp)}</time>
-    <p class="entry-speaker">${escapeHtml(entry.speaker)}</p>
-    <p class="entry-content">${escapeHtml(entry.content)}</p>
-  `;
+
+  // ⚡ Bolt: Replace innerHTML string parsing with document.createElement to avoid HTML layout thrashing
+  // and remove the need for runtime escapeHtml() execution in the loop.
+  const timeNode = document.createElement("time");
+  timeNode.className = "entry-time";
+  timeNode.textContent = formatConversationTime(entry.timestamp);
+
+  const speakerNode = document.createElement("p");
+  speakerNode.className = "entry-speaker";
+  speakerNode.textContent = entry.speaker;
+
+  const contentNode = document.createElement("p");
+  contentNode.className = "entry-content";
+  contentNode.textContent = entry.content;
+
+  row.append(timeNode, speakerNode, contentNode);
   return row;
 }
 
@@ -4482,24 +4493,39 @@ function renderDictionaryList(): void {
 
   dictionaryList.innerHTML = "";
   const fragment = document.createDocumentFragment();
+  // ⚡ Bolt: Replace innerHTML string parsing with document.createElement to avoid HTML layout thrashing
+  // and remove the need for runtime escapeHtml() execution in the loop.
+  // We also attach the event listener directly below, making the data-dictionary-delete attribute obsolete.
   for (const term of filtered) {
     const row = document.createElement("div");
     row.className = "managed-row managed-row-grid";
-    row.innerHTML = `
-      <p class="managed-row-main"><strong>${escapeHtml(term.source)}</strong><span>${escapeHtml(term.target)}</span></p>
-      <span class="managed-row-meta">${term.scope === "shared" ? "Shared" : "Personal"}</span>
-      <div class="managed-row-actions">
-        <button type="button" class="inline-link" data-dictionary-delete="${term.id}">Delete</button>
-      </div>
-    `;
-    const deleteBtn = row.querySelector<HTMLButtonElement>("[data-dictionary-delete]");
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => {
-        dictionaryTerms = dictionaryTerms.filter((entry) => entry.id !== term.id);
-        persistDictionaryTerms();
-        renderDictionaryList();
-      });
-    }
+
+    const mainNode = document.createElement("p");
+    mainNode.className = "managed-row-main";
+    const strongNode = document.createElement("strong");
+    strongNode.textContent = term.source;
+    const spanNode = document.createElement("span");
+    spanNode.textContent = term.target;
+    mainNode.append(strongNode, spanNode);
+
+    const metaNode = document.createElement("span");
+    metaNode.className = "managed-row-meta";
+    metaNode.textContent = term.scope === "shared" ? "Shared" : "Personal";
+
+    const actionsNode = document.createElement("div");
+    actionsNode.className = "managed-row-actions";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "inline-link";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", () => {
+      dictionaryTerms = dictionaryTerms.filter((entry) => entry.id !== term.id);
+      persistDictionaryTerms();
+      renderDictionaryList();
+    });
+    actionsNode.append(deleteBtn);
+
+    row.append(mainNode, metaNode, actionsNode);
     fragment.append(row);
   }
   dictionaryList.append(fragment);
@@ -4546,26 +4572,39 @@ function renderSnippetsList(): void {
 
   snippetsList.innerHTML = "";
   const fragment = document.createDocumentFragment();
+  // ⚡ Bolt: Replace innerHTML string parsing with document.createElement to avoid HTML layout thrashing
+  // and remove the need for runtime escapeHtml() execution in the loop.
+  // We also attach the event listener directly below, making the data-snippet-delete attribute obsolete.
   for (const snippet of filtered) {
     const row = document.createElement("div");
     row.className = "managed-row managed-row-grid";
-    row.innerHTML = `
-      <p class="managed-row-main"><strong>${escapeHtml(snippet.trigger)}</strong><span>${escapeHtml(
-        snippet.expansion,
-      )}</span></p>
-      <span class="managed-row-meta">${snippet.scope === "shared" ? "Shared" : "Personal"}</span>
-      <div class="managed-row-actions">
-        <button type="button" class="inline-link" data-snippet-delete="${snippet.id}">Delete</button>
-      </div>
-    `;
-    const deleteBtn = row.querySelector<HTMLButtonElement>("[data-snippet-delete]");
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => {
-        snippets = snippets.filter((entry) => entry.id !== snippet.id);
-        persistSnippets();
-        renderSnippetsList();
-      });
-    }
+
+    const mainNode = document.createElement("p");
+    mainNode.className = "managed-row-main";
+    const strongNode = document.createElement("strong");
+    strongNode.textContent = snippet.trigger;
+    const spanNode = document.createElement("span");
+    spanNode.textContent = snippet.expansion;
+    mainNode.append(strongNode, spanNode);
+
+    const metaNode = document.createElement("span");
+    metaNode.className = "managed-row-meta";
+    metaNode.textContent = snippet.scope === "shared" ? "Shared" : "Personal";
+
+    const actionsNode = document.createElement("div");
+    actionsNode.className = "managed-row-actions";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "inline-link";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", () => {
+      snippets = snippets.filter((entry) => entry.id !== snippet.id);
+      persistSnippets();
+      renderSnippetsList();
+    });
+    actionsNode.append(deleteBtn);
+
+    row.append(mainNode, metaNode, actionsNode);
     fragment.append(row);
   }
   snippetsList.append(fragment);
@@ -4620,25 +4659,40 @@ function renderNotesList(): void {
 
   notesList.innerHTML = "";
   const fragment = document.createDocumentFragment();
+  // ⚡ Bolt: Replace innerHTML string parsing with document.createElement to avoid HTML layout thrashing
+  // and remove the need for runtime escapeHtml() execution in the loop.
+  // We also attach the event listener directly below, making the data-note-delete attribute obsolete.
   for (const note of quickNotes) {
     const row = document.createElement("article");
     row.className = "managed-row managed-row-grid managed-row-note";
     const time = NOTE_TIME_FORMATTER.format(note.createdAt);
-    row.innerHTML = `
-      <p class="managed-row-main"><strong>Quick note</strong><span>${escapeHtml(note.text)}</span></p>
-      <span class="managed-row-meta">${time}</span>
-      <div class="managed-row-actions">
-        <button type="button" class="inline-link" data-note-delete="${note.id}">Delete</button>
-      </div>
-    `;
-    const deleteBtn = row.querySelector<HTMLButtonElement>("[data-note-delete]");
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => {
-        quickNotes = quickNotes.filter((entry) => entry.id !== note.id);
-        persistQuickNotes();
-        renderNotesList();
-      });
-    }
+
+    const mainNode = document.createElement("p");
+    mainNode.className = "managed-row-main";
+    const strongNode = document.createElement("strong");
+    strongNode.textContent = "Quick note";
+    const spanNode = document.createElement("span");
+    spanNode.textContent = note.text;
+    mainNode.append(strongNode, spanNode);
+
+    const metaNode = document.createElement("span");
+    metaNode.className = "managed-row-meta";
+    metaNode.textContent = time;
+
+    const actionsNode = document.createElement("div");
+    actionsNode.className = "managed-row-actions";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "inline-link";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", () => {
+      quickNotes = quickNotes.filter((entry) => entry.id !== note.id);
+      persistQuickNotes();
+      renderNotesList();
+    });
+    actionsNode.append(deleteBtn);
+
+    row.append(mainNode, metaNode, actionsNode);
     fragment.append(row);
   }
   notesList.append(fragment);
