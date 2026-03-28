@@ -4481,25 +4481,42 @@ function renderDictionaryList(): void {
   }
 
   dictionaryList.innerHTML = "";
+  // ⚡ Bolt Optimization: Using DocumentFragment and programmatic DOM creation
+  // instead of innerHTML to avoid parsing overhead and unnecessary re-queries.
+  // This reduces memory allocation and speeds up list rendering.
   const fragment = document.createDocumentFragment();
   for (const term of filtered) {
     const row = document.createElement("div");
     row.className = "managed-row managed-row-grid";
-    row.innerHTML = `
-      <p class="managed-row-main"><strong>${escapeHtml(term.source)}</strong><span>${escapeHtml(term.target)}</span></p>
-      <span class="managed-row-meta">${term.scope === "shared" ? "Shared" : "Personal"}</span>
-      <div class="managed-row-actions">
-        <button type="button" class="inline-link" data-dictionary-delete="${term.id}">Delete</button>
-      </div>
-    `;
-    const deleteBtn = row.querySelector<HTMLButtonElement>("[data-dictionary-delete]");
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => {
-        dictionaryTerms = dictionaryTerms.filter((entry) => entry.id !== term.id);
-        persistDictionaryTerms();
-        renderDictionaryList();
-      });
-    }
+
+    const mainP = document.createElement("p");
+    mainP.className = "managed-row-main";
+    const sourceStrong = document.createElement("strong");
+    sourceStrong.textContent = term.source;
+    const targetSpan = document.createElement("span");
+    targetSpan.textContent = term.target;
+    mainP.append(sourceStrong, targetSpan);
+
+    const metaSpan = document.createElement("span");
+    metaSpan.className = "managed-row-meta";
+    metaSpan.textContent = term.scope === "shared" ? "Shared" : "Personal";
+
+    const actionsDiv = document.createElement("div");
+    actionsDiv.className = "managed-row-actions";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "inline-link";
+    deleteBtn.dataset.dictionaryDelete = term.id;
+    deleteBtn.textContent = "Delete";
+
+    deleteBtn.addEventListener("click", () => {
+      dictionaryTerms = dictionaryTerms.filter((entry) => entry.id !== term.id);
+      persistDictionaryTerms();
+      renderDictionaryList();
+    });
+
+    actionsDiv.append(deleteBtn);
+    row.append(mainP, metaSpan, actionsDiv);
     fragment.append(row);
   }
   dictionaryList.append(fragment);
@@ -4545,27 +4562,41 @@ function renderSnippetsList(): void {
   }
 
   snippetsList.innerHTML = "";
+  // ⚡ Bolt Optimization: Programmatic DOM creation avoids innerHTML string parsing
+  // and direct event listener attachment prevents DOM queries in the hot path.
   const fragment = document.createDocumentFragment();
   for (const snippet of filtered) {
     const row = document.createElement("div");
     row.className = "managed-row managed-row-grid";
-    row.innerHTML = `
-      <p class="managed-row-main"><strong>${escapeHtml(snippet.trigger)}</strong><span>${escapeHtml(
-        snippet.expansion,
-      )}</span></p>
-      <span class="managed-row-meta">${snippet.scope === "shared" ? "Shared" : "Personal"}</span>
-      <div class="managed-row-actions">
-        <button type="button" class="inline-link" data-snippet-delete="${snippet.id}">Delete</button>
-      </div>
-    `;
-    const deleteBtn = row.querySelector<HTMLButtonElement>("[data-snippet-delete]");
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => {
-        snippets = snippets.filter((entry) => entry.id !== snippet.id);
-        persistSnippets();
-        renderSnippetsList();
-      });
-    }
+
+    const mainP = document.createElement("p");
+    mainP.className = "managed-row-main";
+    const triggerStrong = document.createElement("strong");
+    triggerStrong.textContent = snippet.trigger;
+    const expansionSpan = document.createElement("span");
+    expansionSpan.textContent = snippet.expansion;
+    mainP.append(triggerStrong, expansionSpan);
+
+    const metaSpan = document.createElement("span");
+    metaSpan.className = "managed-row-meta";
+    metaSpan.textContent = snippet.scope === "shared" ? "Shared" : "Personal";
+
+    const actionsDiv = document.createElement("div");
+    actionsDiv.className = "managed-row-actions";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "inline-link";
+    deleteBtn.dataset.snippetDelete = snippet.id;
+    deleteBtn.textContent = "Delete";
+
+    deleteBtn.addEventListener("click", () => {
+      snippets = snippets.filter((entry) => entry.id !== snippet.id);
+      persistSnippets();
+      renderSnippetsList();
+    });
+
+    actionsDiv.append(deleteBtn);
+    row.append(mainP, metaSpan, actionsDiv);
     fragment.append(row);
   }
   snippetsList.append(fragment);
@@ -4619,26 +4650,43 @@ function renderNotesList(): void {
   }
 
   notesList.innerHTML = "";
+  // ⚡ Bolt Optimization: Using document.createElement instead of innerHTML
+  // eliminates HTML string evaluation and XSS escaping overhead, improving
+  // list render times.
   const fragment = document.createDocumentFragment();
   for (const note of quickNotes) {
     const row = document.createElement("article");
     row.className = "managed-row managed-row-grid managed-row-note";
     const time = NOTE_TIME_FORMATTER.format(note.createdAt);
-    row.innerHTML = `
-      <p class="managed-row-main"><strong>Quick note</strong><span>${escapeHtml(note.text)}</span></p>
-      <span class="managed-row-meta">${time}</span>
-      <div class="managed-row-actions">
-        <button type="button" class="inline-link" data-note-delete="${note.id}">Delete</button>
-      </div>
-    `;
-    const deleteBtn = row.querySelector<HTMLButtonElement>("[data-note-delete]");
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => {
-        quickNotes = quickNotes.filter((entry) => entry.id !== note.id);
-        persistQuickNotes();
-        renderNotesList();
-      });
-    }
+
+    const mainP = document.createElement("p");
+    mainP.className = "managed-row-main";
+    const titleStrong = document.createElement("strong");
+    titleStrong.textContent = "Quick note";
+    const textSpan = document.createElement("span");
+    textSpan.textContent = note.text;
+    mainP.append(titleStrong, textSpan);
+
+    const metaSpan = document.createElement("span");
+    metaSpan.className = "managed-row-meta";
+    metaSpan.textContent = time;
+
+    const actionsDiv = document.createElement("div");
+    actionsDiv.className = "managed-row-actions";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "inline-link";
+    deleteBtn.dataset.noteDelete = note.id;
+    deleteBtn.textContent = "Delete";
+
+    deleteBtn.addEventListener("click", () => {
+      quickNotes = quickNotes.filter((entry) => entry.id !== note.id);
+      persistQuickNotes();
+      renderNotesList();
+    });
+
+    actionsDiv.append(deleteBtn);
+    row.append(mainP, metaSpan, actionsDiv);
     fragment.append(row);
   }
   notesList.append(fragment);
