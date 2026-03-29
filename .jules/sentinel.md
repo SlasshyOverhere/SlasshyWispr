@@ -17,3 +17,8 @@
 **Vulnerability:** The `is_safe_update_url` function relied on a simple string `starts_with` check (`lower.starts_with("https://github.com/owner/repo/")`) to validate update URLs. This was susceptible to path traversal attacks (e.g., `https://github.com/owner/repo/../../attacker/repo/releases/download/...`), allowing downloads from unintended repositories.
 **Learning:** String prefix matching is insufficient for URL validation because it does not account for path normalization rules (like `.` and `..`) applied by HTTP clients during resolution.
 **Prevention:** Use a robust URL parsing library (like `Url` from the `reqwest` or `url` crate) to parse the URL and explicitly validate its normalized components (scheme, host, path) rather than the raw string.
+
+## 2025-03-08 - Missing Binary Path Validation in Local STT Runtime
+**Vulnerability:** Arbitrary command execution risk via unvalidated user input (`bootstrap_python` variables) flowing into `Command::new()`.
+**Learning:** Functions that execute subprocesses using user-provided binary paths must explicitly re-validate the path, even if it is validated in the caller. Defense in depth prevents vulnerabilities if the function is reused from a new caller that fails to validate input.
+**Prevention:** Ensure all variables used as paths in `Command::new()` (like `bootstrap_python` or `piper_path`) are explicitly validated inside the function that executes the command using existing functions like `validate_python_binary_path` before execution.
