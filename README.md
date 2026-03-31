@@ -20,7 +20,7 @@ Speak naturally, get clean transcription, generate AI responses, and hear replie
 [![SlasshyWispr demo preview](./slasshywispr_demo_preview.gif)](https://github.com/SlasshyOverhere/SlasshyWispr/raw/main/slasshywispr_demo.mp4)
 
 - GIF preview file: [`slasshywispr_demo_preview.gif`](./slasshywispr_demo_preview.gif)
-- Repo file: [`slasshywispr_demo.mp4`](./slasshywispr_demo.mp4)
+
 
 ## Key Features
 
