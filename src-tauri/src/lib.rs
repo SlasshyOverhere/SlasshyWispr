@@ -7067,6 +7067,7 @@ async fn synthesize_with_piper(
     text: String,
     piper: Option<&PiperPipelineRequest>,
 ) -> Result<Vec<u8>, String> {
+    validate_piper_binary_path(&piper_path)?;
     let synth_start = Instant::now();
     let clean_text = text.replace('\r', " ").trim().to_string();
 
@@ -7873,6 +7874,7 @@ fn resolve_coqui_python_path(
         return Ok(resolved);
     }
 
+    validate_python_binary_path("python")?;
     Ok("python".to_string())
 }
 
@@ -7901,6 +7903,7 @@ fn setup_coqui_runtime_blocking(
     bootstrap_python: &str,
     use_gpu: bool,
 ) -> Result<(String, String), String> {
+    validate_python_binary_path(bootstrap_python)?;
     let runtime_dir = coqui_runtime_dir(app)?;
     let venv_dir = runtime_dir.join("venv");
     let venv_python_path = coqui_venv_python_path(app)?;
@@ -8360,6 +8363,7 @@ fn spawn_local_stt_bridge_daemon(
     script_path: &Path,
     cache_dir: &Path,
 ) -> Result<LocalSttBridgeDaemon, String> {
+    validate_python_binary_path(python_path)?;
     let parakeet_cpu_int8 = if env_flag(LOCAL_STT_PARAKEET_CPU_INT8_ENV, true) {
         "1"
     } else {
@@ -8609,6 +8613,7 @@ fn spawn_coqui_bridge_daemon(
     script_path: &Path,
     cache_dir: &Path,
 ) -> Result<CoquiBridgeDaemon, String> {
+    validate_python_binary_path(python_path)?;
     let mut command = Command::new(python_path);
     apply_no_window(&mut command);
     command
@@ -8875,6 +8880,7 @@ fn parse_coqui_bridge_response(
 }
 
 fn run_coqui_bridge(app: &AppHandle, python_path: &str, payload: Value) -> Result<Value, String> {
+    validate_python_binary_path(python_path)?;
     let runtime_dir = coqui_runtime_dir(app)?;
     let cache_dir = coqui_cache_dir(app)?;
     let script_path = ensure_coqui_bridge_script(app)?;
@@ -10412,6 +10418,7 @@ fn run_local_stt_python_command(
     args: &[&str],
     cache_dir: &Path,
 ) -> Result<String, String> {
+    validate_python_binary_path(python_path)?;
     let mut command = Command::new(python_path);
     apply_no_window(&mut command);
     command.args(args);
@@ -10558,6 +10565,7 @@ fn setup_local_stt_runtime_blocking(
     app: &AppHandle,
     bootstrap_python: &str,
 ) -> Result<String, String> {
+    validate_python_binary_path(bootstrap_python)?;
     let runtime_dir = stt_runtime_dir(app)?;
     let cache_dir = stt_cache_dir(app)?;
     let venv_dir = runtime_dir.join("venv");
