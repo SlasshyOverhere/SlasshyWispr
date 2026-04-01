@@ -4276,13 +4276,26 @@ function formatConversationTime(timestamp: number): string {
 }
 
 function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
+  // ⚡ Bolt Performance Optimization:
+  // Replaced `innerHTML` parsing and `escapeHtml` calls with direct programmatic DOM node creation.
+  // This eliminates HTML parser overhead and provides inherent XSS protection via `textContent`,
+  // significantly improving list rendering performance on long conversation logs.
   const row = document.createElement("article");
   row.className = `entry entry-${entry.tone}`;
-  row.innerHTML = `
-    <time class="entry-time">${formatConversationTime(entry.timestamp)}</time>
-    <p class="entry-speaker">${escapeHtml(entry.speaker)}</p>
-    <p class="entry-content">${escapeHtml(entry.content)}</p>
-  `;
+
+  const timeEl = document.createElement("time");
+  timeEl.className = "entry-time";
+  timeEl.textContent = formatConversationTime(entry.timestamp);
+
+  const speakerEl = document.createElement("p");
+  speakerEl.className = "entry-speaker";
+  speakerEl.textContent = entry.speaker;
+
+  const contentEl = document.createElement("p");
+  contentEl.className = "entry-content";
+  contentEl.textContent = entry.content;
+
+  row.append(timeEl, speakerEl, contentEl);
   return row;
 }
 
@@ -4483,23 +4496,44 @@ function renderDictionaryList(): void {
   dictionaryList.innerHTML = "";
   const fragment = document.createDocumentFragment();
   for (const term of filtered) {
+    // ⚡ Bolt Performance Optimization:
+    // Removed template literal `innerHTML` assignments inside the loop.
+    // By programmatically creating elements and attaching event listeners directly to the node objects,
+    // we bypass the browser's HTML parser entirely and eliminate the need to query the DOM
+    // (`row.querySelector`) afterward to attach events. This reduces memory allocation and CPU time.
     const row = document.createElement("div");
     row.className = "managed-row managed-row-grid";
-    row.innerHTML = `
-      <p class="managed-row-main"><strong>${escapeHtml(term.source)}</strong><span>${escapeHtml(term.target)}</span></p>
-      <span class="managed-row-meta">${term.scope === "shared" ? "Shared" : "Personal"}</span>
-      <div class="managed-row-actions">
-        <button type="button" class="inline-link" data-dictionary-delete="${term.id}">Delete</button>
-      </div>
-    `;
-    const deleteBtn = row.querySelector<HTMLButtonElement>("[data-dictionary-delete]");
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => {
-        dictionaryTerms = dictionaryTerms.filter((entry) => entry.id !== term.id);
-        persistDictionaryTerms();
-        renderDictionaryList();
-      });
-    }
+
+    const mainEl = document.createElement("p");
+    mainEl.className = "managed-row-main";
+    const strongEl = document.createElement("strong");
+    strongEl.textContent = term.source;
+    const spanEl = document.createElement("span");
+    spanEl.textContent = term.target;
+    mainEl.append(strongEl, spanEl);
+
+    const metaEl = document.createElement("span");
+    metaEl.className = "managed-row-meta";
+    metaEl.textContent = term.scope === "shared" ? "Shared" : "Personal";
+
+    const actionsEl = document.createElement("div");
+    actionsEl.className = "managed-row-actions";
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "inline-link";
+    deleteBtn.dataset.dictionaryDelete = term.id;
+    deleteBtn.textContent = "Delete";
+
+    deleteBtn.addEventListener("click", () => {
+      dictionaryTerms = dictionaryTerms.filter((entry) => entry.id !== term.id);
+      persistDictionaryTerms();
+      renderDictionaryList();
+    });
+
+    actionsEl.append(deleteBtn);
+    row.append(mainEl, metaEl, actionsEl);
+
     fragment.append(row);
   }
   dictionaryList.append(fragment);
@@ -4547,25 +4581,42 @@ function renderSnippetsList(): void {
   snippetsList.innerHTML = "";
   const fragment = document.createDocumentFragment();
   for (const snippet of filtered) {
+    // ⚡ Bolt Performance Optimization:
+    // Programmatic DOM creation avoids expensive HTML string parsing and post-render DOM querying
+    // for event listener attachment, yielding faster updates for large lists.
     const row = document.createElement("div");
     row.className = "managed-row managed-row-grid";
-    row.innerHTML = `
-      <p class="managed-row-main"><strong>${escapeHtml(snippet.trigger)}</strong><span>${escapeHtml(
-        snippet.expansion,
-      )}</span></p>
-      <span class="managed-row-meta">${snippet.scope === "shared" ? "Shared" : "Personal"}</span>
-      <div class="managed-row-actions">
-        <button type="button" class="inline-link" data-snippet-delete="${snippet.id}">Delete</button>
-      </div>
-    `;
-    const deleteBtn = row.querySelector<HTMLButtonElement>("[data-snippet-delete]");
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => {
-        snippets = snippets.filter((entry) => entry.id !== snippet.id);
-        persistSnippets();
-        renderSnippetsList();
-      });
-    }
+
+    const mainEl = document.createElement("p");
+    mainEl.className = "managed-row-main";
+    const strongEl = document.createElement("strong");
+    strongEl.textContent = snippet.trigger;
+    const spanEl = document.createElement("span");
+    spanEl.textContent = snippet.expansion;
+    mainEl.append(strongEl, spanEl);
+
+    const metaEl = document.createElement("span");
+    metaEl.className = "managed-row-meta";
+    metaEl.textContent = snippet.scope === "shared" ? "Shared" : "Personal";
+
+    const actionsEl = document.createElement("div");
+    actionsEl.className = "managed-row-actions";
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "inline-link";
+    deleteBtn.dataset.snippetDelete = snippet.id;
+    deleteBtn.textContent = "Delete";
+
+    deleteBtn.addEventListener("click", () => {
+      snippets = snippets.filter((entry) => entry.id !== snippet.id);
+      persistSnippets();
+      renderSnippetsList();
+    });
+
+    actionsEl.append(deleteBtn);
+    row.append(mainEl, metaEl, actionsEl);
+
     fragment.append(row);
   }
   snippetsList.append(fragment);
@@ -4621,24 +4672,43 @@ function renderNotesList(): void {
   notesList.innerHTML = "";
   const fragment = document.createDocumentFragment();
   for (const note of quickNotes) {
+    // ⚡ Bolt Performance Optimization:
+    // Directly building DOM elements and attaching listeners skips the heavy HTML parser overhead
+    // and eliminates the `querySelector` lookup, making list rendering noticeably faster.
     const row = document.createElement("article");
     row.className = "managed-row managed-row-grid managed-row-note";
     const time = NOTE_TIME_FORMATTER.format(note.createdAt);
-    row.innerHTML = `
-      <p class="managed-row-main"><strong>Quick note</strong><span>${escapeHtml(note.text)}</span></p>
-      <span class="managed-row-meta">${time}</span>
-      <div class="managed-row-actions">
-        <button type="button" class="inline-link" data-note-delete="${note.id}">Delete</button>
-      </div>
-    `;
-    const deleteBtn = row.querySelector<HTMLButtonElement>("[data-note-delete]");
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => {
-        quickNotes = quickNotes.filter((entry) => entry.id !== note.id);
-        persistQuickNotes();
-        renderNotesList();
-      });
-    }
+
+    const mainEl = document.createElement("p");
+    mainEl.className = "managed-row-main";
+    const strongEl = document.createElement("strong");
+    strongEl.textContent = "Quick note";
+    const spanEl = document.createElement("span");
+    spanEl.textContent = note.text;
+    mainEl.append(strongEl, spanEl);
+
+    const metaEl = document.createElement("span");
+    metaEl.className = "managed-row-meta";
+    metaEl.textContent = time;
+
+    const actionsEl = document.createElement("div");
+    actionsEl.className = "managed-row-actions";
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "inline-link";
+    deleteBtn.dataset.noteDelete = note.id;
+    deleteBtn.textContent = "Delete";
+
+    deleteBtn.addEventListener("click", () => {
+      quickNotes = quickNotes.filter((entry) => entry.id !== note.id);
+      persistQuickNotes();
+      renderNotesList();
+    });
+
+    actionsEl.append(deleteBtn);
+    row.append(mainEl, metaEl, actionsEl);
+
     fragment.append(row);
   }
   notesList.append(fragment);
