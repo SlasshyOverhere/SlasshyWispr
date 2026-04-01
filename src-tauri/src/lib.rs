@@ -2104,7 +2104,11 @@ fn spawn_powershell_detached(script: &str) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn escape_powershell_single_quoted(value: &str) -> String {
-    value.replace('\'', "''")
+    if value.contains('\'') {
+        value.replace('\'', "''")
+    } else {
+        value.to_string()
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -6646,7 +6650,8 @@ fn remove_filler_words(input: &str) -> String {
 
     let single_fillers = ["um", "uh", "erm", "hmm", "basically"];
 
-    let mut kept = Vec::new();
+    let mut out = String::with_capacity(current.len());
+    let mut first = true;
     for token in current.split_whitespace() {
         let trimmed = token
             .trim_matches(|ch: char| !ch.is_alphanumeric())
@@ -6654,10 +6659,14 @@ fn remove_filler_words(input: &str) -> String {
         if single_fillers.contains(&trimmed.as_str()) {
             continue;
         }
-        kept.push(token);
+        if !first {
+            out.push(' ');
+        }
+        out.push_str(token);
+        first = false;
     }
 
-    kept.join(" ")
+    out
 }
 
 fn apply_numbered_list_formatting(input: &str) -> String {
@@ -6704,8 +6713,17 @@ fn apply_auto_punctuation(input: &str) -> String {
         current = replace_case_insensitive_ascii(&current, spoken, symbol);
     }
 
-    for punctuation in [",", ".", "?", "!", ";", ":"] {
-        current = current.replace(&format!(" {punctuation}"), punctuation);
+    for (spaced, symbol) in [
+        (" ,", ","),
+        (" .", "."),
+        (" ?", "?"),
+        (" !", "!"),
+        (" ;", ";"),
+        (" :", ":"),
+    ] {
+        if current.contains(spaced) {
+            current = current.replace(spaced, symbol);
+        }
     }
 
     let normalized = normalize_spacing(&current);
@@ -6721,13 +6739,17 @@ fn apply_auto_punctuation(input: &str) -> String {
 }
 
 fn normalize_spacing(input: &str) -> String {
-    input
-        .lines()
-        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
-        .collect::<Vec<_>>()
-        .join("\n")
-        .trim()
-        .to_string()
+    let mut out = String::with_capacity(input.len());
+    let mut first_line = true;
+    for line in input.lines() {
+        let trimmed_line = single_line(line);
+        if !first_line {
+            out.push('\n');
+        }
+        out.push_str(&trimmed_line);
+        first_line = false;
+    }
+    out.trim().to_string()
 }
 
 fn replace_case_insensitive_ascii(input: &str, needle: &str, replacement: &str) -> String {
@@ -9450,7 +9472,16 @@ async fn download_file(client: &Client, url: &str, destination: &Path) -> Result
 }
 
 fn single_line(input: &str) -> String {
-    input.split_whitespace().collect::<Vec<_>>().join(" ")
+    let mut out = String::with_capacity(input.len());
+    let mut first = true;
+    for token in input.split_whitespace() {
+        if !first {
+            out.push(' ');
+        }
+        out.push_str(token);
+        first = false;
+    }
+    out
 }
 
 fn clip_text(input: &str, max_chars: usize) -> String {
