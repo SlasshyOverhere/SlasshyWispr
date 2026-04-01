@@ -17,3 +17,8 @@
 **Vulnerability:** The `is_safe_update_url` function relied on a simple string `starts_with` check (`lower.starts_with("https://github.com/owner/repo/")`) to validate update URLs. This was susceptible to path traversal attacks (e.g., `https://github.com/owner/repo/../../attacker/repo/releases/download/...`), allowing downloads from unintended repositories.
 **Learning:** String prefix matching is insufficient for URL validation because it does not account for path normalization rules (like `.` and `..`) applied by HTTP clients during resolution.
 **Prevention:** Use a robust URL parsing library (like `Url` from the `reqwest` or `url` crate) to parse the URL and explicitly validate its normalized components (scheme, host, path) rather than the raw string.
+
+## 2024-04-01 - Prevented Command Injection in Local STT Runtime Setup
+**Vulnerability:** The `setup_local_stt_runtime_blocking` function accepted a user-provided `bootstrap_python` string and passed it directly to `Command::new()` without prior validation, allowing arbitrary command execution.
+**Learning:** Even internal setup functions must sanitize binary paths when the value originates from an external source or configurable payload.
+**Prevention:** Ensured `validate_python_binary_path(bootstrap_python)?` is called prior to execution, restricting the path to safe python binary names and preventing shell metacharacter injection.

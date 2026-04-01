@@ -10558,6 +10558,7 @@ fn setup_local_stt_runtime_blocking(
     app: &AppHandle,
     bootstrap_python: &str,
 ) -> Result<String, String> {
+    validate_python_binary_path(bootstrap_python)?;
     let runtime_dir = stt_runtime_dir(app)?;
     let cache_dir = stt_cache_dir(app)?;
     let venv_dir = runtime_dir.join("venv");
