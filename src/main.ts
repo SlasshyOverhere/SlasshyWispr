@@ -4299,16 +4299,22 @@ function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
 
 function renderHomeHistory(): void {
   if (settings.incognitoMode) {
-    conversationLog.innerHTML = '<p class="empty-hint">Incognito mode enabled. History is hidden.</p>';
+    const hint = document.createElement("p");
+    hint.className = "empty-hint";
+    hint.textContent = "Incognito mode enabled. History is hidden.";
+    conversationLog.replaceChildren(hint);
     return;
   }
 
   if (homeHistoryEntries.length === 0) {
-    conversationLog.innerHTML = `<p class="empty-hint">${EMPTY_HISTORY_HINT}</p>`;
+    const hint = document.createElement("p");
+    hint.className = "empty-hint";
+    hint.textContent = EMPTY_HISTORY_HINT;
+    conversationLog.replaceChildren(hint);
     return;
   }
 
-  conversationLog.innerHTML = "";
+  conversationLog.replaceChildren();
   const fragment = document.createDocumentFragment();
   for (const entry of homeHistoryEntries) {
     fragment.append(createConversationEntryElement(entry));
