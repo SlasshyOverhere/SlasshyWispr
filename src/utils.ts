@@ -1,3 +1,53 @@
+
+import { DICTATION_LANGUAGE_LABELS } from "./constants";
+
+export function normalizeDictationLanguageCode(value: unknown): string {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", "-");
+  if (!raw) {
+    return "";
+  }
+
+  const [base] = raw.split("-", 1);
+  return DICTATION_LANGUAGE_LABELS[base] ? base : "";
+}
+
+
+// PERFORMANCE OPTIMIZATION (Bolt):
+// normalizeDictationLanguageAllowList historically used chained array operations (.map().filter())
+// combined with an O(n) array .includes() check inside the loop, causing unnecessary memory
+// allocations and O(n^2) time complexity for deduplication.
+// By migrating to a single-pass iteration and a Set, we achieve O(n) time complexity and
+// O(1) lookups, significantly reducing garbage collection overhead during hot execution paths.
+export function normalizeDictationLanguageAllowList(value: unknown): string[] {
+
+  const next = new Set<string>();
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const normalized = normalizeDictationLanguageCode(item);
+      if (normalized) {
+        next.add(normalized);
+      }
+    }
+  } else if (typeof value === "string") {
+    const parts = value.split(",");
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i].trim();
+      if (part.length > 0) {
+        const normalized = normalizeDictationLanguageCode(part);
+        if (normalized) {
+          next.add(normalized);
+        }
+      }
+    }
+  }
+
+  return Array.from(next);
+}
+
 export type CaptureMode = "single-tap" | "push-to-talk";
 
 export function captureModeLabel(mode: CaptureMode): string {

@@ -3,6 +3,8 @@ import {
   buildAgentOperatingCorePrompt,
   captureModeLabel,
   type CaptureMode,
+  normalizeDictationLanguageCode,
+  normalizeDictationLanguageAllowList,
 } from "./utils";
 
 describe("captureModeLabel", () => {
@@ -49,5 +51,49 @@ describe("buildAgentOperatingCorePrompt", () => {
     const agentName2 = "Bob";
     const prompt2 = buildAgentOperatingCorePrompt(agentName2);
     expect(prompt2).toContain(`You are "${agentName2}"`);
+  });
+});
+
+
+describe("normalizeDictationLanguageCode", () => {
+  it("should handle valid inputs", () => {
+    expect(normalizeDictationLanguageCode("en")).toBe("en");
+    expect(normalizeDictationLanguageCode("en-US")).toBe("en");
+    expect(normalizeDictationLanguageCode("EN_US")).toBe("en");
+  });
+
+  it("should handle invalid inputs", () => {
+    expect(normalizeDictationLanguageCode(null)).toBe("");
+    expect(normalizeDictationLanguageCode(undefined)).toBe("");
+    expect(normalizeDictationLanguageCode("")).toBe("");
+    expect(normalizeDictationLanguageCode("invalid")).toBe("");
+  });
+});
+
+describe("normalizeDictationLanguageAllowList", () => {
+  it("should handle valid string inputs", () => {
+    expect(normalizeDictationLanguageAllowList("en,es,fr")).toEqual(["en", "es", "fr"]);
+    expect(normalizeDictationLanguageAllowList("en-US, es_ES")).toEqual(["en", "es"]);
+  });
+
+  it("should deduplicate string inputs", () => {
+    expect(normalizeDictationLanguageAllowList("en, en-US, es")).toEqual(["en", "es"]);
+  });
+
+  it("should handle valid array inputs", () => {
+    expect(normalizeDictationLanguageAllowList(["en", "es", "fr"])).toEqual(["en", "es", "fr"]);
+    expect(normalizeDictationLanguageAllowList(["en-US", "es_ES"])).toEqual(["en", "es"]);
+  });
+
+  it("should deduplicate array inputs", () => {
+    expect(normalizeDictationLanguageAllowList(["en", "en-US", "es"])).toEqual(["en", "es"]);
+  });
+
+  it("should handle invalid inputs", () => {
+    expect(normalizeDictationLanguageAllowList(null)).toEqual([]);
+    expect(normalizeDictationLanguageAllowList(undefined)).toEqual([]);
+    expect(normalizeDictationLanguageAllowList("")).toEqual([]);
+    expect(normalizeDictationLanguageAllowList("invalid")).toEqual([]);
+    expect(normalizeDictationLanguageAllowList(["invalid"])).toEqual([]);
   });
 });

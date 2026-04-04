@@ -17,6 +17,8 @@ import {
 import {
   buildAgentOperatingCorePrompt,
   captureModeLabel,
+  normalizeDictationLanguageCode,
+  normalizeDictationLanguageAllowList,
 } from "./utils";
 
 import {
@@ -3975,40 +3977,6 @@ function asRuntimeMode(value: unknown): RuntimeMode {
 
 function asDictationLanguageMode(value: unknown): DictationLanguageMode {
   return value === "multiple" ? "multiple" : "single";
-}
-
-function normalizeDictationLanguageCode(value: unknown): string {
-  const raw = String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replaceAll("_", "-");
-  if (!raw) {
-    return "";
-  }
-
-  const [base] = raw.split("-", 1);
-  return DICTATION_LANGUAGE_LABELS[base] ? base : "";
-}
-
-function normalizeDictationLanguageAllowList(value: unknown): string[] {
-  const rawValues: unknown[] = Array.isArray(value)
-    ? value
-    : typeof value === "string"
-      ? value
-          .split(",")
-          .map((item) => item.trim())
-          .filter((item) => item.length > 0)
-      : [];
-
-  const next: string[] = [];
-  for (const item of rawValues) {
-    const normalized = normalizeDictationLanguageCode(item);
-    if (!normalized || next.includes(normalized)) {
-      continue;
-    }
-    next.push(normalized);
-  }
-  return next;
 }
 
 function formatDictationLanguageLabel(languageCode: string): string {
