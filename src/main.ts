@@ -4298,22 +4298,29 @@ function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
 }
 
 function renderHomeHistory(): void {
+  // Performance optimization: Using document.createElement and replaceChildren
+  // avoids HTML parsing overhead and prevents XSS vulnerabilities.
   if (settings.incognitoMode) {
-    conversationLog.innerHTML = '<p class="empty-hint">Incognito mode enabled. History is hidden.</p>';
+    const hint = document.createElement("p");
+    hint.className = "empty-hint";
+    hint.textContent = "Incognito mode enabled. History is hidden.";
+    conversationLog.replaceChildren(hint);
     return;
   }
 
   if (homeHistoryEntries.length === 0) {
-    conversationLog.innerHTML = `<p class="empty-hint">${EMPTY_HISTORY_HINT}</p>`;
+    const hint = document.createElement("p");
+    hint.className = "empty-hint";
+    hint.textContent = EMPTY_HISTORY_HINT;
+    conversationLog.replaceChildren(hint);
     return;
   }
 
-  conversationLog.innerHTML = "";
   const fragment = document.createDocumentFragment();
   for (const entry of homeHistoryEntries) {
     fragment.append(createConversationEntryElement(entry));
   }
-  conversationLog.append(fragment);
+  conversationLog.replaceChildren(fragment);
 }
 
 function loadDockLayout(): DockLayout | null {
@@ -4487,11 +4494,12 @@ function renderDictionaryList(): void {
   );
 
   if (filtered.length === 0) {
-    dictionaryList.innerHTML = "<p>No dictionary terms in this view.</p>";
+    const hint = document.createElement("p");
+    hint.textContent = "No dictionary terms in this view.";
+    dictionaryList.replaceChildren(hint);
     return;
   }
 
-  dictionaryList.innerHTML = "";
   const fragment = document.createDocumentFragment();
   for (const term of filtered) {
     const row = document.createElement("div");
@@ -4526,7 +4534,7 @@ function renderDictionaryList(): void {
     row.append(mainEl, metaEl, actionsEl);
     fragment.append(row);
   }
-  dictionaryList.append(fragment);
+  dictionaryList.replaceChildren(fragment);
 }
 
 function addDictionaryTerm(): void {
@@ -4564,11 +4572,12 @@ function renderSnippetsList(): void {
   );
 
   if (filtered.length === 0) {
-    snippetsList.innerHTML = "<p>No snippets in this view.</p>";
+    const hint = document.createElement("p");
+    hint.textContent = "No snippets in this view.";
+    snippetsList.replaceChildren(hint);
     return;
   }
 
-  snippetsList.innerHTML = "";
   const fragment = document.createDocumentFragment();
   for (const snippet of filtered) {
     const row = document.createElement("div");
@@ -4603,7 +4612,7 @@ function renderSnippetsList(): void {
     row.append(mainEl, metaEl, actionsEl);
     fragment.append(row);
   }
-  snippetsList.append(fragment);
+  snippetsList.replaceChildren(fragment);
 }
 
 function addSnippetEntry(): void {
@@ -4649,11 +4658,13 @@ function addQuickNote(text: string): void {
 
 function renderNotesList(): void {
   if (quickNotes.length === 0 || settings.incognitoMode) {
-    notesList.innerHTML = '<p class="notes-empty">No notes found</p>';
+    const hint = document.createElement("p");
+    hint.className = "notes-empty";
+    hint.textContent = "No notes found";
+    notesList.replaceChildren(hint);
     return;
   }
 
-  notesList.innerHTML = "";
   const fragment = document.createDocumentFragment();
   for (const note of quickNotes) {
     const row = document.createElement("article");
@@ -4689,7 +4700,7 @@ function renderNotesList(): void {
     row.append(mainEl, metaEl, actionsEl);
     fragment.append(row);
   }
-  notesList.append(fragment);
+  notesList.replaceChildren(fragment);
 }
 
 function updateUsageMetrics(): void {
@@ -4851,7 +4862,10 @@ function toggleCommandModeArmed(): void {
 
 async function refreshMicrophones(requestPermission: boolean): Promise<void> {
   if (!navigator.mediaDevices?.enumerateDevices) {
-    microphoneSelect.innerHTML = "<option value=''>Microphone listing not supported</option>";
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "Microphone listing not supported";
+    microphoneSelect.replaceChildren(opt);
     updateMicrophoneSummary();
     return;
   }
@@ -4869,7 +4883,10 @@ async function refreshMicrophones(requestPermission: boolean): Promise<void> {
     const microphones = devices.filter((device) => device.kind === "audioinput");
 
     if (microphones.length === 0) {
-      microphoneSelect.innerHTML = "<option value=''>No microphones found</option>";
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No microphones found";
+      microphoneSelect.replaceChildren(opt);
       settings.microphoneDeviceId = "";
       persistSettings(settings);
       updateMicrophoneSummary();
@@ -4880,13 +4897,18 @@ async function refreshMicrophones(requestPermission: boolean): Promise<void> {
     const hasCurrent = microphones.some((device) => device.deviceId === currentId);
     const selectedId = hasCurrent ? currentId : microphones[0]?.deviceId ?? "";
 
-    microphoneSelect.innerHTML = microphones
-      .map((device, index) => {
-        const label = device.label?.trim() || `Microphone ${index + 1}`;
-        const selected = device.deviceId === selectedId ? " selected" : "";
-        return `<option value="${escapeHtml(device.deviceId)}"${selected}>${escapeHtml(label)}</option>`;
-      })
-      .join("");
+    const fragment = document.createDocumentFragment();
+    for (let index = 0; index < microphones.length; index += 1) {
+      const device = microphones[index];
+      if (!device) continue;
+      const label = device.label?.trim() || `Microphone ${index + 1}`;
+      const opt = document.createElement("option");
+      opt.value = device.deviceId;
+      if (device.deviceId === selectedId) opt.selected = true;
+      opt.textContent = label;
+      fragment.append(opt);
+    }
+    microphoneSelect.replaceChildren(fragment);
 
     settings.microphoneDeviceId = selectedId;
     persistSettings(settings);
@@ -5001,14 +5023,22 @@ async function handleDownloadVoice(): Promise<void> {
 
 function renderTtsSetupLogs(logs: string[]): void {
   if (logs.length === 0) {
-    ttsSetupLogs.innerHTML = '<p class="setup-log-item">No setup logs yet.</p>';
+    const hint = document.createElement("p");
+    hint.className = "setup-log-item";
+    hint.textContent = "No setup logs yet.";
+    ttsSetupLogs.replaceChildren(hint);
     return;
   }
 
-  ttsSetupLogs.innerHTML = logs
-    .slice(-200)
-    .map((line) => `<p class="setup-log-item">${escapeHtml(line)}</p>`)
-    .join("");
+  const fragment = document.createDocumentFragment();
+  const recentLogs = logs.slice(-200);
+  for (const line of recentLogs) {
+    const p = document.createElement("p");
+    p.className = "setup-log-item";
+    p.textContent = line;
+    fragment.append(p);
+  }
+  ttsSetupLogs.replaceChildren(fragment);
   ttsSetupLogs.scrollTop = ttsSetupLogs.scrollHeight;
 }
 
@@ -5112,7 +5142,10 @@ function renderCoquiVoiceOptions(voices: string[], preferredVoiceId = ""): void 
   const safeVoices = Array.from(new Set(voices.map((voice) => voice.trim()).filter(Boolean))).sort();
 
   if (safeVoices.length === 0) {
-    coquiVoiceSelect.innerHTML = '<option value="">No voices found</option>';
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No voices found";
+    coquiVoiceSelect.replaceChildren(opt);
     coquiVoiceSelect.value = "";
     return;
   }
@@ -5121,12 +5154,15 @@ function renderCoquiVoiceOptions(voices: string[], preferredVoiceId = ""): void 
     ? preferredVoiceId
     : safeVoices[0];
 
-  coquiVoiceSelect.innerHTML = safeVoices
-    .map((voice) => {
-      const active = voice === selected ? " selected" : "";
-      return `<option value="${escapeHtml(voice)}"${active}>${escapeHtml(voice)}</option>`;
-    })
-    .join("");
+  const fragment = document.createDocumentFragment();
+  for (const voice of safeVoices) {
+    const opt = document.createElement("option");
+    opt.value = voice;
+    if (voice === selected) opt.selected = true;
+    opt.textContent = voice;
+    fragment.append(opt);
+  }
+  coquiVoiceSelect.replaceChildren(fragment);
   coquiVoiceSelect.value = selected;
   if (!coquiVoiceIdInput.value.trim() || !safeVoices.includes(coquiVoiceIdInput.value.trim())) {
     coquiVoiceIdInput.value = selected;
@@ -5149,7 +5185,10 @@ function renderCoquiModelCatalog(models: string[], selectedModel = ""): void {
   coquiModelCatalog = finalModels;
 
   if (finalModels.length === 0) {
-    coquiModelCatalogSelect.innerHTML = '<option value="">No models available</option>';
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No models available";
+    coquiModelCatalogSelect.replaceChildren(opt);
     return;
   }
 
@@ -5158,12 +5197,19 @@ function renderCoquiModelCatalog(models: string[], selectedModel = ""): void {
     : finalModels.includes(fallbackModel)
       ? fallbackModel
       : "";
-  const options = ['<option value="">Select a model...</option>'];
+  const fragment = document.createDocumentFragment();
+  const defaultOpt = document.createElement("option");
+  defaultOpt.value = "";
+  defaultOpt.textContent = "Select a model...";
+  fragment.append(defaultOpt);
   for (const model of finalModels) {
-    const active = model === selected ? " selected" : "";
-    options.push(`<option value="${escapeHtml(model)}"${active}>${escapeHtml(model)}</option>`);
+    const opt = document.createElement("option");
+    opt.value = model;
+    if (model === selected) opt.selected = true;
+    opt.textContent = model;
+    fragment.append(opt);
   }
-  coquiModelCatalogSelect.innerHTML = options.join("");
+  coquiModelCatalogSelect.replaceChildren(fragment);
   coquiModelCatalogSelect.value = selected;
 }
 
@@ -5184,7 +5230,10 @@ function renderProviderModelCatalog(models: string[], selectedModel = ""): void 
   providerModelCatalog = finalModels;
 
   if (finalModels.length === 0) {
-    providerModelCatalogSelect.innerHTML = '<option value="">No models available</option>';
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No models available";
+    providerModelCatalogSelect.replaceChildren(opt);
     return;
   }
 
@@ -5193,12 +5242,19 @@ function renderProviderModelCatalog(models: string[], selectedModel = ""): void 
     : finalModels.includes(fallbackModel)
       ? fallbackModel
       : "";
-  const options = ['<option value="">Select a model...</option>'];
+  const fragment = document.createDocumentFragment();
+  const defaultOpt = document.createElement("option");
+  defaultOpt.value = "";
+  defaultOpt.textContent = "Select a model...";
+  fragment.append(defaultOpt);
   for (const model of finalModels) {
-    const active = model === selected ? " selected" : "";
-    options.push(`<option value="${escapeHtml(model)}"${active}>${escapeHtml(model)}</option>`);
+    const opt = document.createElement("option");
+    opt.value = model;
+    if (model === selected) opt.selected = true;
+    opt.textContent = model;
+    fragment.append(opt);
   }
-  providerModelCatalogSelect.innerHTML = options.join("");
+  providerModelCatalogSelect.replaceChildren(fragment);
   providerModelCatalogSelect.value = selected;
 }
 
@@ -5215,7 +5271,10 @@ function renderLocalOllamaModelCatalog(models: string[], selectedModel = ""): vo
   localOllamaModelCatalog = finalModels;
 
   if (finalModels.length === 0) {
-    localOllamaModelCatalogSelect.innerHTML = '<option value="">No models available</option>';
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No models available";
+    localOllamaModelCatalogSelect.replaceChildren(opt);
     return;
   }
 
@@ -5224,12 +5283,19 @@ function renderLocalOllamaModelCatalog(models: string[], selectedModel = ""): vo
     : finalModels.includes(fallbackModel)
       ? fallbackModel
       : "";
-  const options = ['<option value="">Select a model...</option>'];
+  const fragment = document.createDocumentFragment();
+  const defaultOpt = document.createElement("option");
+  defaultOpt.value = "";
+  defaultOpt.textContent = "Select a model...";
+  fragment.append(defaultOpt);
   for (const model of finalModels) {
-    const active = model === selected ? " selected" : "";
-    options.push(`<option value="${escapeHtml(model)}"${active}>${escapeHtml(model)}</option>`);
+    const opt = document.createElement("option");
+    opt.value = model;
+    if (model === selected) opt.selected = true;
+    opt.textContent = model;
+    fragment.append(opt);
   }
-  localOllamaModelCatalogSelect.innerHTML = options.join("");
+  localOllamaModelCatalogSelect.replaceChildren(fragment);
   localOllamaModelCatalogSelect.value = selected;
 }
 
@@ -5238,7 +5304,10 @@ function renderLocalSttModelCatalog(models: string[], selectedModel = ""): void 
   localSttModelCatalog = normalized;
 
   if (normalized.length === 0) {
-    localSttModelCatalogSelect.innerHTML = '<option value="">No models available</option>';
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No models available";
+    localSttModelCatalogSelect.replaceChildren(opt);
     return;
   }
 
@@ -5248,13 +5317,19 @@ function renderLocalSttModelCatalog(models: string[], selectedModel = ""): void 
   if (currentInputModel && !normalized.includes(currentInputModel)) {
     localSttModelInput.value = "";
   }
-  const options = ['<option value="">Select a model...</option>'];
+  const fragment = document.createDocumentFragment();
+  const defaultOpt = document.createElement("option");
+  defaultOpt.value = "";
+  defaultOpt.textContent = "Select a model...";
+  fragment.append(defaultOpt);
   for (const model of normalized) {
-    const active = model === selectedOrCurrent ? " selected" : "";
-    const label = LOCAL_STT_MODEL_SIZE_LABELS[model] || model;
-    options.push(`<option value="${escapeHtml(model)}"${active}>${escapeHtml(label)}</option>`);
+    const opt = document.createElement("option");
+    opt.value = model;
+    if (model === selectedOrCurrent) opt.selected = true;
+    opt.textContent = LOCAL_STT_MODEL_SIZE_LABELS[model] || model;
+    fragment.append(opt);
   }
-  localSttModelCatalogSelect.innerHTML = options.join("");
+  localSttModelCatalogSelect.replaceChildren(fragment);
   localSttModelCatalogSelect.value = selectedOrCurrent;
 }
 
@@ -8922,15 +8997,6 @@ function coerceBoolean(value: unknown, fallback: boolean): boolean {
     return value;
   }
   return fallback;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function asErrorMessage(error: unknown): string {
