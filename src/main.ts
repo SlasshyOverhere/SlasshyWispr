@@ -3991,23 +3991,37 @@ function normalizeDictationLanguageCode(value: unknown): string {
 }
 
 function normalizeDictationLanguageAllowList(value: unknown): string[] {
-  const rawValues: unknown[] = Array.isArray(value)
-    ? value
-    : typeof value === "string"
-      ? value
-          .split(",")
-          .map((item) => item.trim())
-          .filter((item) => item.length > 0)
-      : [];
-
+  // ⚡ Bolt Optimization: Use a single-pass iteration and a Set for O(1) deduplication
+  // Expected Impact: Eliminates multiple intermediate array allocations per call on hot paths.
   const next: string[] = [];
-  for (const item of rawValues) {
-    const normalized = normalizeDictationLanguageCode(item);
-    if (!normalized || next.includes(normalized)) {
-      continue;
+  const unique = new Set<string>();
+
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const normalized = normalizeDictationLanguageCode(value[i]);
+      if (normalized && !unique.has(normalized)) {
+        unique.add(normalized);
+        next.push(normalized);
+      }
     }
-    next.push(normalized);
+  } else if (typeof value === "string") {
+    let start = 0;
+    const len = value.length;
+    for (let i = 0; i <= len; i++) {
+      if (i === len || value[i] === ',') {
+        const token = value.slice(start, i).trim();
+        if (token.length > 0) {
+          const normalized = normalizeDictationLanguageCode(token);
+          if (normalized && !unique.has(normalized)) {
+            unique.add(normalized);
+            next.push(normalized);
+          }
+        }
+        start = i + 1;
+      }
+    }
   }
+
   return next;
 }
 
