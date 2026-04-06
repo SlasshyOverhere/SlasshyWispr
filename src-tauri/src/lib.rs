@@ -2032,6 +2032,46 @@ fn capture_selected_text_windows() -> Result<String, String> {
 }
 
 #[cfg(target_os = "windows")]
+mod win_registry {
+    pub type HKEY = isize;
+    pub const HKEY_CURRENT_USER: HKEY = -2147483647isize;
+    pub const KEY_SET_VALUE: u32 = 0x0002;
+    pub const REG_SZ: u32 = 1;
+    pub const ERROR_SUCCESS: i32 = 0;
+
+    #[link(name = "advapi32")]
+    extern "system" {
+        pub fn RegCreateKeyExW(
+            hkey: HKEY,
+            lp_sub_key: *const u16,
+            reserved: u32,
+            lp_class: *const u16,
+            dw_options: u32,
+            sam_desired: u32,
+            lp_security_attributes: *const std::ffi::c_void,
+            phk_result: *mut HKEY,
+            lpdw_disposition: *mut u32,
+        ) -> i32;
+
+        pub fn RegSetValueExW(
+            hkey: HKEY,
+            lp_value_name: *const u16,
+            reserved: u32,
+            dw_type: u32,
+            lp_data: *const u8,
+            cb_data: u32,
+        ) -> i32;
+
+        pub fn RegDeleteValueW(
+            hkey: HKEY,
+            lp_value_name: *const u16,
+        ) -> i32;
+
+        pub fn RegCloseKey(hkey: HKEY) -> i32;
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn run_powershell_script(
     script: &str,
     stdin_text: Option<&str>,
@@ -2180,31 +2220,65 @@ async fn set_clipboard_text(text: String) -> Result<(), String> {
 async fn configure_launch_at_login(enabled: bool) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        let run_key = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-        let value_name = STARTUP_RUN_VALUE_NAME.replace('\'', "''");
+        use std::os::windows::ffi::OsStrExt;
+
+        let run_key_path = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+        let mut subkey_wide: Vec<u16> = std::ffi::OsStr::new(run_key_path)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut value_name_wide: Vec<u16> = std::ffi::OsStr::new(STARTUP_RUN_VALUE_NAME)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
 
         if enabled {
             let exe_path = std::env::current_exe()
                 .map_err(|error| format!("Failed to resolve executable path: {error}"))?;
             let exe_text = exe_path.to_string_lossy().to_string();
-            let script = format!(
-                "$ErrorActionPreference='Stop'; \
-                 $exe=[Console]::In.ReadToEnd().Trim(); \
-                 if ([string]::IsNullOrWhiteSpace($exe)) {{ throw 'Executable path is empty.' }}; \
-                 $runKey='{run_key}'; \
-                 $name='{value_name}'; \
-                 $value='\"' + $exe.Replace('\"','\"\"') + '\" {STARTUP_ARG_START_IN_TRAY}'; \
-                 New-Item -Path $runKey -Force | Out-Null; \
-                 Set-ItemProperty -Path $runKey -Name $name -Value $value -Type String;"
-            );
-            let output = run_powershell_script(&script, Some(&exe_text))?;
-            if !output.status.success() {
-                let merged = merge_process_output(&output.stdout, &output.stderr);
-                return Err(format!(
-                    "Unable to enable launch at login: {}",
-                    clip_text(&single_line(&merged), 300)
-                ));
+            if exe_text.trim().is_empty() {
+                return Err("Executable path is empty.".to_string());
             }
+
+            let value = format!("\"{}\" {}", exe_text.replace('\"', "\"\""), STARTUP_ARG_START_IN_TRAY);
+            let mut value_wide: Vec<u16> = std::ffi::OsStr::new(&value)
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+
+            let mut hkey: win_registry::HKEY = 0;
+            unsafe {
+                let create_result = win_registry::RegCreateKeyExW(
+                    win_registry::HKEY_CURRENT_USER,
+                    subkey_wide.as_ptr(),
+                    0,
+                    std::ptr::null(),
+                    0,
+                    win_registry::KEY_SET_VALUE,
+                    std::ptr::null(),
+                    &mut hkey,
+                    std::ptr::null_mut(),
+                );
+                if create_result != win_registry::ERROR_SUCCESS {
+                    return Err(format!("Unable to enable launch at login (RegCreateKeyExW failed: {})", create_result));
+                }
+
+                let set_result = win_registry::RegSetValueExW(
+                    hkey,
+                    value_name_wide.as_ptr(),
+                    0,
+                    win_registry::REG_SZ,
+                    value_wide.as_ptr() as *const u8,
+                    (value_wide.len() * 2) as u32,
+                );
+
+                win_registry::RegCloseKey(hkey);
+
+                if set_result != win_registry::ERROR_SUCCESS {
+                    return Err(format!("Unable to enable launch at login (RegSetValueExW failed: {})", set_result));
+                }
+            }
+
             info!(
                 "[startup] launch at login enabled with start-in-tray flag path={}",
                 clip_text(&single_line(&exe_text), 240)
@@ -2212,20 +2286,26 @@ async fn configure_launch_at_login(enabled: bool) -> Result<(), String> {
             return Ok(());
         }
 
-        let script = format!(
-            "$ErrorActionPreference='Stop'; \
-             $runKey='{run_key}'; \
-             $name='{value_name}'; \
-             if (Test-Path $runKey) {{ Remove-ItemProperty -Path $runKey -Name $name -ErrorAction SilentlyContinue }};"
-        );
-        let output = run_powershell_script(&script, None)?;
-        if !output.status.success() {
-            let merged = merge_process_output(&output.stdout, &output.stderr);
-            return Err(format!(
-                "Unable to disable launch at login: {}",
-                clip_text(&single_line(&merged), 300)
-            ));
+        let mut hkey: win_registry::HKEY = 0;
+        unsafe {
+            let create_result = win_registry::RegCreateKeyExW(
+                win_registry::HKEY_CURRENT_USER,
+                subkey_wide.as_ptr(),
+                0,
+                std::ptr::null(),
+                0,
+                win_registry::KEY_SET_VALUE,
+                std::ptr::null(),
+                &mut hkey,
+                std::ptr::null_mut(),
+            );
+
+            if create_result == win_registry::ERROR_SUCCESS {
+                win_registry::RegDeleteValueW(hkey, value_name_wide.as_ptr());
+                win_registry::RegCloseKey(hkey);
+            }
         }
+
         info!("[startup] launch at login disabled");
         return Ok(());
     }
