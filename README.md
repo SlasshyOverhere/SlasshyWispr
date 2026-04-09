@@ -7,13 +7,6 @@ Speak naturally, get clean transcription, generate AI responses, and hear replie
 > [!WARNING]
 > SlasshyWispr is in **strong beta**. Expect bugs, rough edges, and breaking changes while features are actively evolving.
 
-> [!IMPORTANT]
-> **Demo video notice:** `slasshywispr_demo.mp4` is only a demonstration and is **not** the exact final behavior of the live application.
-
-> [!TIP]
-> Contributions are accepted and welcome. Please open issues and pull requests.
-
-## Demo Video
 
 
 
