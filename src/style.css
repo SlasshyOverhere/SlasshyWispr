@@ -3399,3 +3399,72 @@ body.sidebar-collapsed .app-frame > .flow-shell .flow-sidebar::-webkit-scrollbar
   width: 0;
   height: 0;
 }
+
+/* ============================================================================
+   OFFLINE MODE DIAGNOSTIC DIALOG STYLES
+   ============================================================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.offline-diagnostic-overlay {
+  animation-fill-mode: forwards;
+}
+
+.offline-diagnostic-dialog {
+  position: relative;
+}
+
+.offline-diagnostic-dialog .diagnostic-action-btn:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4) !important;
+  transition: all 0.2s ease !important;
+}
+
+.offline-diagnostic-dialog .diagnostic-action-btn:active {
+  transform: translateY(0) !important;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Responsive adjustments for diagnostic dialog */
+@media (max-width: 600px) {
+  .offline-diagnostic-dialog {
+    padding: 20px !important;
+    max-width: 95vw !important;
+  }
+
+  .offline-diagnostic-dialog h3 {
+    font-size: 16px !important;
+  }
+
+  .offline-diagnostic-dialog p {
+    font-size: 13px !important;
+  }
+
+  .offline-diagnostic-dialog ol li {
+    font-size: 12px !important;
+  }
+
+  .offline-diagnostic-dialog .diagnostic-action-btn {
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+  }
+}
