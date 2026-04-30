@@ -136,73 +136,116 @@ export function App() {
 
       <section className="flow-page" data-page="dictionary" hidden>
         <div className="flow-page-inner">
-          <div className="page-title-row">
-            <h1>Dictionary</h1>
+          <header className="page-header-row">
+            <div>
+              <h1>Dictionary</h1>
+              <p className="page-subtitle">Teach SlasshyWispr your unique vocabulary and jargon.</p>
+            </div>
             <button id="dictionaryAddBtnTop" className="dark-action" type="button">Add new</button>
-          </div>
+          </header>
+          
           <div className="mini-tabs" role="tablist" aria-label="Dictionary filters">
             <button className="mini-tab is-active" data-dictionary-filter="all" type="button">All</button>
             <button className="mini-tab" data-dictionary-filter="personal" type="button">Personal</button>
             <button className="mini-tab" data-dictionary-filter="shared" type="button">Shared with team</button>
           </div>
+
           <article className="focus-card">
-            <h2>SlasshyWispr speaks the way you speak.</h2>
+            <h2>Vocabulary Training</h2>
             <p>
-              Learn unique words and names automatically or manually. Add personal terms, company jargon,
-              and client names so everyone stays aligned.
+              Add specific pronunciations or spellings for names, products, and technical terms 
+              to ensure perfect transcription every time.
             </p>
             <form id="dictionaryForm" className="inline-create-form is-collapsed">
               <input id="dictionarySourceInput" type="text" placeholder="Spoken term (example: slashy)" autoComplete="off" />
               <input id="dictionaryTargetInput" type="text" placeholder="Correct term (example: Slasshy)" autoComplete="off" />
               <label className="inline-check"><input id="dictionarySharedInput" type="checkbox" />Shared with team</label>
-              <button id="dictionaryAddBtn" className="dark-action" type="submit">Add new word</button>
+              <button id="dictionaryAddBtn" className="dark-action" type="submit">Add term</button>
             </form>
           </article>
+
           <div id="dictionaryList" className="simple-list">
-            <p>No dictionary terms yet. Add your first correction above.</p>
+            <div className="empty-state">
+              <div className="empty-state-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
+              </div>
+              <h4>No terms yet</h4>
+              <p>Your dictionary is currently empty. Start by adding a term above.</p>
+            </div>
           </div>
         </div>
       </section>
 
       <section className="flow-page" data-page="snippets" hidden>
         <div className="flow-page-inner">
-          <div className="page-title-row">
-            <h1>Snippets</h1>
+          <header className="page-header-row">
+            <div>
+              <h1>Snippets</h1>
+              <p className="page-subtitle">Create shortcuts for text you use frequently.</p>
+            </div>
             <button id="snippetsAddBtnTop" className="dark-action" type="button">Add new</button>
-          </div>
+          </header>
+
           <div className="mini-tabs" role="tablist" aria-label="Snippet filters">
             <button className="mini-tab is-active" data-snippet-filter="all" type="button">All</button>
             <button className="mini-tab" data-snippet-filter="personal" type="button">Personal</button>
             <button className="mini-tab" data-snippet-filter="shared" type="button">Shared with team</button>
           </div>
+
           <article className="focus-card">
-            <h2>The stuff you shouldn't have to re-type.</h2>
-            <p>Save shortcuts for things you type all the time and expand them instantly while dictating.</p>
+            <h2>Text Shortcuts</h2>
+            <p>Define short phrases that expand into full paragraphs or templates instantly.</p>
             <form id="snippetForm" className="inline-create-form is-collapsed">
-              <input id="snippetTriggerInput" type="text" placeholder="Trigger phrase (example: intro email)" autoComplete="off" />
+              <input id="snippetTriggerInput" type="text" placeholder="Trigger (example: /sig)" autoComplete="off" />
               <input id="snippetExpansionInput" type="text" placeholder="Expansion text" autoComplete="off" />
               <label className="inline-check"><input id="snippetSharedInput" type="checkbox" />Shared with team</label>
-              <button id="snippetAddBtn" className="dark-action" type="submit">Add new snippet</button>
+              <button id="snippetAddBtn" className="dark-action" type="submit">Add snippet</button>
             </form>
           </article>
+
           <div id="snippetsList" className="simple-list">
-            <p>No snippets yet. Add your first expansion above.</p>
+            <div className="empty-state">
+              <div className="empty-state-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+              </div>
+              <h4>No snippets yet</h4>
+              <p>Save time by creating your first text expansion shortcut.</p>
+            </div>
           </div>
         </div>
       </section>
 
       <section className="flow-page" data-page="notes" hidden>
         <div className="flow-page-inner notes-layout">
-          <h1>For quick thoughts you want to come back to</h1>
+          <header className="page-header-row">
+            <div>
+              <h1>Quick Notes</h1>
+              <p className="page-subtitle">Voice-captured thoughts, ready for review.</p>
+            </div>
+          </header>
+
           <article className="quick-note-card">
-            <p>Take a quick note with your voice</p>
-            <button id="notesQuickMicBtn" className="notes-mic-btn" type="button" aria-label="Dictate a quick note">🎤</button>
+            <div className="quick-note-info">
+              <h3>Capture a thought</h3>
+              <p>Tap to record a voice note</p>
+            </div>
+            <button id="notesQuickMicBtn" className="notes-mic-btn" type="button" aria-label="Dictate a quick note">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+            </button>
           </article>
+
           <div className="section-head notes-head">
-            <h3>Recents</h3>
+            <h3>Recent Notes</h3>
           </div>
+
           <div id="notesList" className="notes-list">
-            <p className="notes-empty">No notes found</p>
+            <div className="empty-state">
+              <div className="empty-state-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              </div>
+              <h4>No notes found</h4>
+              <p>Your captured thoughts will appear here.</p>
+            </div>
           </div>
         </div>
       </section>
@@ -244,10 +287,22 @@ export function App() {
       <aside className="settings-sidebar">
         <p className="settings-kicker">Settings</p>
         <nav className="settings-nav" aria-label="Settings sections">
-          <button className="settings-nav-item is-active" data-settings-pane-nav="general" type="button">General</button>
-          <button className="settings-nav-item" data-settings-pane-nav="models" type="button">Models</button>
-          <button className="settings-nav-item" data-settings-pane-nav="update-security" type="button">Update and Security</button>
-          <button className="settings-nav-item" data-settings-pane-nav="pipeline" type="button">Pipeline</button>
+          <button className="settings-nav-item is-active" data-settings-pane-nav="general" type="button">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            General
+          </button>
+          <button className="settings-nav-item" data-settings-pane-nav="models" type="button">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            Models
+          </button>
+          <button className="settings-nav-item" data-settings-pane-nav="update-security" type="button">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            Update and Security
+          </button>
+          <button className="settings-nav-item" data-settings-pane-nav="pipeline" type="button">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+            Pipeline
+          </button>
         </nav>
 
         <p id="settingsVersionText" className="settings-version">SlasshyWispr</p>
@@ -796,6 +851,29 @@ export function App() {
           </div>
         </section>
       </section>
+    </div>
+  </div>
+
+  <div id="flowBar" className="flow-bar" style={{ display: "none" }} data-tauri-drag-region="true">
+    <button className="dock-mic-btn" type="button" aria-label="Toggle recording">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+    </button>
+    <div className="visualizer-container">
+      <div className="viz-bar" style={{ height: "40%" }}></div>
+      <div className="viz-bar" style={{ height: "70%" }}></div>
+      <div className="viz-bar" style={{ height: "50%" }}></div>
+      <div className="viz-bar" style={{ height: "90%" }}></div>
+      <div className="viz-bar" style={{ height: "30%" }}></div>
+    </div>
+    <span id="dockStatus" className="dock-status">Ready</span>
+  </div>
+
+  <div id="selectionPopup" className="selection-popup" style={{ display: "none" }}>
+    <div className="popup-text" id="selectionAssistantText">Processing...</div>
+    <div className="popup-actions">
+      <button className="ghost-action mini" type="button">Copy</button>
+      <button className="ghost-action mini" type="button">Replace</button>
+      <button className="close-settings mini" type="button">✕</button>
     </div>
   </div>
 
