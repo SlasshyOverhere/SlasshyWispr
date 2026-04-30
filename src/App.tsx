@@ -34,7 +34,8 @@ export function App() {
       </div>
 
       <nav className="nav-main" aria-label="Main navigation">
-        <button className="nav-item is-active" data-page-nav="home" data-label="Home" aria-label="Home" type="button"><span className="nav-glyph">⌂</span>Home</button>
+        <button className="nav-item" data-page-nav="home" data-label="Home" aria-label="Home" type="button"><span className="nav-glyph">⌂</span>Home</button>
+        <button className="nav-item" data-page-nav="history" data-label="History" aria-label="History" type="button"><span className="nav-glyph">↺</span>History</button>
         <button className="nav-item" data-page-nav="dictionary" data-label="Dictionary" aria-label="Dictionary" type="button"><span className="nav-glyph">◱</span>Dictionary</button>
         <button className="nav-item" data-page-nav="snippets" data-label="Snippets" aria-label="Snippets" type="button"><span className="nav-glyph">⌘</span>Snippets</button>
         <button className="nav-item" data-page-nav="notes" data-label="Notes" aria-label="Notes" type="button"><span className="nav-glyph">✎</span>Notes</button>
@@ -119,7 +120,10 @@ export function App() {
                 <h3 id="activityDate">Recent Activity</h3>
                 <p className="section-sub">Your latest transcriptions from this device.</p>
               </div>
-              <button id="clearHistoryBtn" className="inline-link view-full-history" type="button">View Full History</button>
+              <div className="section-actions">
+                <button id="viewFullHistoryBtn" className="inline-link" type="button">View Full History</button>
+                <button id="clearHistoryBtn" className="inline-link" type="button">Clear History</button>
+              </div>
             </div>
             <div id="conversationLog" className="conversation-log" role="log" aria-live="polite">
               <div className="empty-hint">
@@ -131,6 +135,21 @@ export function App() {
               </div>
             </div>
           </section>
+        </div>
+      </section>
+
+      <section className="flow-page" data-page="history" hidden>
+        <div className="flow-page-inner">
+          <header className="page-header-row">
+            <div>
+              <h1>History</h1>
+              <p className="page-subtitle">A full log of your transcriptions and AI interactions.</p>
+            </div>
+            <button id="clearHistoryBtnFull" className="dark-action" type="button">Clear all</button>
+          </header>
+          <div id="fullHistoryLog" className="conversation-log full-history-log" role="log" aria-live="polite">
+            {/* Populated dynamically */}
+          </div>
         </div>
       </section>
 

@@ -132,8 +132,6 @@ body,
   overflow: hidden;
   user-select: none;
   background-color: var(--bg-app);
-  background-image: radial-gradient(circle, #2a2a32 1px, transparent 1px);
-  background-size: 24px 24px;
   color: var(--text-primary);
   font-family: var(--font-main);
   font-size: 14px;
@@ -233,9 +231,6 @@ button, input, select, textarea {
   flex: 1;
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  padding-top: 0;
   min-height: 0;
   transition: grid-template-columns var(--transition-main);
 }
@@ -246,15 +241,13 @@ body.sidebar-collapsed .flow-shell {
 
 /* Phase 2.3: Left Sidebar */
 .flow-sidebar {
-  background: linear-gradient(to bottom, hsl(240 8% 6%), hsl(240 8% 4%));
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: var(--radius-container);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-subtle);
   padding: var(--space-2);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   overflow: hidden;
-  box-shadow: 20px 0 50px -20px rgba(0, 0, 0, 0.5);
   height: 100%;
 }
 
@@ -437,7 +430,7 @@ body.sidebar-collapsed .secondary-link {
 
 /* Phase 2.4: Content Area */
 .flow-content {
-  background: var(--bg-app); /* Match main background */
+  background-color: var(--bg-app);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -459,13 +452,10 @@ body.sidebar-collapsed .secondary-link {
 .flow-page-inner {
   width: 100%;
   max-width: 1100px; 
-  margin: 0;
+  margin: 0 auto;
   height: 100%;
   padding: var(--space-8) var(--space-10);
-  background: hsl(var(--card));
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: var(--radius-container);
-  box-shadow: var(--shadow-card);
+  background: transparent;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -746,15 +736,16 @@ body.sidebar-collapsed .secondary-link {
   margin-top: 2px;
 }
 
-.view-full-history {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  white-space: nowrap;
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
 }
 
-.view-full-history:hover {
-  color: var(--text-primary);
+.full-history-log {
+  flex: 1;
+  overflow-y: auto;
 }
 
 /* Activity Log */

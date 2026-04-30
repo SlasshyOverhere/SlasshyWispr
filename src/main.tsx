@@ -405,6 +405,8 @@ const cloneCoquiVoiceBtn = requiredElement<HTMLButtonElement>("#cloneCoquiVoiceB
 const testCoquiVoiceBtn = requiredElement<HTMLButtonElement>("#testCoquiVoiceBtn");
 const recordBtn = requiredElement<HTMLButtonElement>("#recordBtn");
 const clearHistoryBtn = requiredElement<HTMLButtonElement>("#clearHistoryBtn");
+const clearHistoryBtnFull = requiredElement<HTMLButtonElement>("#clearHistoryBtnFull");
+const viewFullHistoryBtn = requiredElement<HTMLButtonElement>("#viewFullHistoryBtn");
 const notesQuickMicBtn = requiredElement<HTMLButtonElement>("#notesQuickMicBtn");
 
 const toggleHotkeyEditorBtn = requiredElement<HTMLButtonElement>("#toggleHotkeyEditorBtn");
@@ -421,6 +423,7 @@ const totalLatency = requiredElement<HTMLElement>("#totalLatency");
 const transcriptText = requiredElement<HTMLParagraphElement>("#transcriptText");
 const assistantText = requiredElement<HTMLParagraphElement>("#assistantText");
 const conversationLog = requiredElement<HTMLDivElement>("#conversationLog");
+const fullHistoryLog = requiredElement<HTMLDivElement>("#fullHistoryLog");
 const assistantAudio = requiredElement<HTMLAudioElement>("#assistantAudio");
 const coquiVoicePreview = requiredElement<HTMLAudioElement>("#coquiVoicePreview");
 const coquiCloneStatus = requiredElement<HTMLParagraphElement>("#coquiCloneStatus");
@@ -1285,11 +1288,24 @@ applyModelToSttBtn.addEventListener("click", () => {
 });
 
 clearHistoryBtn.addEventListener("click", () => {
+  clearAllHistory();
+});
+
+clearHistoryBtnFull.addEventListener("click", () => {
+  clearAllHistory();
+});
+
+viewFullHistoryBtn.addEventListener("click", () => {
+  setActivePage("history");
+});
+
+function clearAllHistory(): void {
   homeHistoryEntries = [];
   persistHomeHistory();
   renderHomeHistory();
+  renderFullHistory();
   recentTurns.length = 0;
-});
+}
 
 navigator.mediaDevices?.addEventListener?.("devicechange", () => {
   void refreshMicrophones(false);
@@ -1345,7 +1361,7 @@ async function bootstrap(): Promise<void> {
 }
 
 function asMainPage(value: string | undefined): MainPage | null {
-  if (value === "home" || value === "dictionary" || value === "snippets" || value === "notes") {
+  if (value === "home" || value === "history" || value === "dictionary" || value === "snippets" || value === "notes") {
     return value;
   }
 
@@ -1380,6 +1396,12 @@ function setActivePage(next: MainPage): void {
     const current = panel.dataset.page === next;
     panel.classList.toggle("is-active", current);
     panel.hidden = !current;
+  }
+
+  if (next === "home") {
+    renderHomeHistory();
+  } else if (next === "history") {
+    renderFullHistory();
   }
 }
 
@@ -2854,7 +2876,7 @@ const GLOBAL_SHORTCUT_KEY_MAP: Record<string, string> = {
   numpadadd: "NumpadAdd",
   numpadsubtract: "NumpadSubtract",
   numpadmultiply: "NumpadMultiply",
-  numpaddivide: "NumpadDivide",
+  numpaddivide: "Numpaddivide",
   numpaddecimal: "NumpadDecimal",
   numpadenter: "NumpadEnter",
 };
@@ -3569,10 +3591,30 @@ function renderHomeHistory(): void {
 
   conversationLog.innerHTML = "";
   const fragment = document.createDocumentFragment();
-  for (const entry of homeHistoryEntries) {
+  const recent = homeHistoryEntries.slice(0, 5);
+  for (const entry of recent) {
     fragment.append(createConversationEntryElement(entry));
   }
   conversationLog.append(fragment);
+}
+
+function renderFullHistory(): void {
+  if (settings.incognitoMode) {
+    fullHistoryLog.innerHTML = '<p class="empty-hint">Incognito mode enabled. History is hidden.</p>';
+    return;
+  }
+
+  if (homeHistoryEntries.length === 0) {
+    fullHistoryLog.innerHTML = `<p class="empty-hint">${EMPTY_HISTORY_HINT}</p>`;
+    return;
+  }
+
+  fullHistoryLog.innerHTML = "";
+  const fragment = document.createDocumentFragment();
+  for (const entry of homeHistoryEntries) {
+    fragment.append(createConversationEntryElement(entry));
+  }
+  fullHistoryLog.append(fragment);
 }
 
 function loadDockLayout(): DockLayout | null {
@@ -6608,14 +6650,12 @@ function appendConversationEntry(
       timestamp: Date.now(),
     };
 
-    const emptyHint = conversationLog.querySelector(".empty-hint");
-    if (emptyHint) {
-      emptyHint.remove();
-    }
-
-    conversationLog.prepend(createConversationEntryElement(historyEntry));
     homeHistoryEntries.unshift(historyEntry);
     persistHomeHistory();
+    renderHomeHistory();
+    if (activePage === "history") {
+      renderFullHistory();
+    }
   }
 
   recentTurns.unshift({ speaker, content });
