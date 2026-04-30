@@ -321,6 +321,7 @@ export interface UsageStats {
   sessions: number;
   words: number;
   avgWpm: number;
+  speakingSeconds: number;
 }
 
 export interface DockLayout {

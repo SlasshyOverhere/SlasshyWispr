@@ -227,6 +227,8 @@ const captureModeHint = requiredElement<HTMLElement>("#captureModeHint");
 const noticeText = requiredElement<HTMLParagraphElement>("#noticeText");
 const activityDate = requiredElement<HTMLElement>("#activityDate");
 const metricWords = requiredElement<HTMLElement>("#metricWords");
+const metricSpeakingTime = requiredElement<HTMLElement>("#metricSpeakingTime");
+const metricSessions = requiredElement<HTMLElement>("#metricSessions");
 const metricWpm = requiredElement<HTMLElement>("#metricWpm");
 
 function syncSidebarHoverTitles(collapsed: boolean): void {
@@ -3512,7 +3514,7 @@ function persistQuickNotes(): void {
 function loadUsageStats(): UsageStats {
   const raw = localStorage.getItem(USAGE_STORAGE_KEY);
   if (!raw) {
-    return { sessions: 0, words: 0, avgWpm: 0 };
+    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
   }
 
   try {
@@ -3521,9 +3523,10 @@ function loadUsageStats(): UsageStats {
       sessions: coerceInteger(parsed.sessions, 0, 0, 999_999),
       words: coerceInteger(parsed.words, 0, 0, 99_999_999),
       avgWpm: coerceNumber(parsed.avgWpm, 0, 0, 600),
+      speakingSeconds: coerceInteger(parsed.speakingSeconds, 0, 0, 99_999_999),
     };
   } catch {
-    return { sessions: 0, words: 0, avgWpm: 0 };
+    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
   }
 }
 
@@ -4000,9 +4003,26 @@ function renderNotesList(): void {
   notesList.append(fragment);
 }
 
+function formatSpeakingTime(totalSeconds: number): string {
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+
+  if (hours <= 0) {
+    return `${minutes}m`;
+  }
+
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
 function updateUsageMetrics(): void {
   metricWords.textContent = `${usageStats.words} words`;
-  metricWpm.textContent = `${Math.round(usageStats.avgWpm)} WPM`;
+  metricSpeakingTime.textContent = formatSpeakingTime(usageStats.speakingSeconds);
+  metricSessions.textContent = `${usageStats.sessions}`;
+  metricWpm.innerHTML = `${Math.round(usageStats.avgWpm)} <span class="stat-unit">wpm</span>`;
 }
 
 function trackUsage(transcript: string): void {
@@ -4010,6 +4030,7 @@ function trackUsage(transcript: string): void {
   usageStats.sessions += 1;
   usageStats.words += words;
   const seconds = Math.max((Date.now() - recordingStartedAt) / 1000, 1);
+  usageStats.speakingSeconds += Math.round(seconds);
   const currentWpm = (words / seconds) * 60;
   if (usageStats.sessions <= 1) {
     usageStats.avgWpm = currentWpm;
