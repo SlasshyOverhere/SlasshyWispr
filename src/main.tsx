@@ -88,7 +88,7 @@ import type {
   CoquiEmotion,
   TtsProfilePane,
   HoldSource,
-  TeamScope,
+
   LocalSttHardwareAdvisorChoice,
   AssistantInfoResponse,
   RuntimeSetupResponse,
@@ -251,23 +251,17 @@ const dictionaryList = requiredElement<HTMLDivElement>("#dictionaryList");
 const dictionaryForm = requiredElement<HTMLFormElement>("#dictionaryForm");
 const dictionarySourceInput = requiredElement<HTMLInputElement>("#dictionarySourceInput");
 const dictionaryTargetInput = requiredElement<HTMLInputElement>("#dictionaryTargetInput");
-const dictionarySharedInput = requiredElement<HTMLInputElement>("#dictionarySharedInput");
 const dictionaryAddBtn = requiredElement<HTMLButtonElement>("#dictionaryAddBtn");
 const dictionaryAddBtnTop = requiredElement<HTMLButtonElement>("#dictionaryAddBtnTop");
-const dictionaryFilterButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>("[data-dictionary-filter]"),
-);
+
 
 const snippetsList = requiredElement<HTMLDivElement>("#snippetsList");
 const snippetForm = requiredElement<HTMLFormElement>("#snippetForm");
 const snippetTriggerInput = requiredElement<HTMLInputElement>("#snippetTriggerInput");
 const snippetExpansionInput = requiredElement<HTMLInputElement>("#snippetExpansionInput");
-const snippetSharedInput = requiredElement<HTMLInputElement>("#snippetSharedInput");
 const snippetAddBtn = requiredElement<HTMLButtonElement>("#snippetAddBtn");
 const snippetsAddBtnTop = requiredElement<HTMLButtonElement>("#snippetsAddBtnTop");
-const snippetFilterButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>("[data-snippet-filter]"),
-);
+
 
 const notesList = requiredElement<HTMLDivElement>("#notesList");
 const settingsVersionText = requiredElement<HTMLParagraphElement>("#settingsVersionText");
@@ -474,8 +468,7 @@ const commandHotkeyCaptureModifiers = {
   alt: false,
   meta: false,
 };
-let activeDictionaryFilter: "all" | TeamScope = "all";
-let activeSnippetFilter: "all" | TeamScope = "all";
+
 let dictionaryTerms = loadDictionaryTerms();
 let snippets = loadSnippets();
 let quickNotes = loadQuickNotes();
@@ -1140,15 +1133,7 @@ dictionaryAddBtnTop.addEventListener("click", () => {
   }
 });
 
-for (const button of dictionaryFilterButtons) {
-  button.addEventListener("click", () => {
-    const value = button.dataset.dictionaryFilter;
-    if (value === "all" || value === "personal" || value === "shared") {
-      activeDictionaryFilter = value;
-      renderDictionaryList();
-    }
-  });
-}
+
 
 snippetForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -1164,15 +1149,7 @@ snippetsAddBtnTop.addEventListener("click", () => {
   }
 });
 
-for (const button of snippetFilterButtons) {
-  button.addEventListener("click", () => {
-    const value = button.dataset.snippetFilter;
-    if (value === "all" || value === "personal" || value === "shared") {
-      activeSnippetFilter = value;
-      renderSnippetsList();
-    }
-  });
-}
+
 
 notesQuickMicBtn.addEventListener("click", () => {
   if (settings.captureMode === "push-to-talk") {
@@ -3443,14 +3420,12 @@ function loadDictionaryTerms(): DictionaryTerm[] {
         id: createId(),
         source: "whispr",
         target: "Wispr",
-        scope: "personal",
         createdAt: Date.now(),
       },
       {
         id: createId(),
         source: "slashy",
         target: "Slasshy",
-        scope: "shared",
         createdAt: Date.now(),
       },
     ];
@@ -3476,14 +3451,12 @@ function loadSnippets(): SnippetEntry[] {
         id: createId(),
         trigger: "intro email",
         expansion: "Hey, would love to find some time to chat later.",
-        scope: "personal",
         createdAt: Date.now(),
       },
       {
         id: createId(),
         trigger: "my calendly link",
         expansion: "https://calendly.com/you/invite-name",
-        scope: "shared",
         createdAt: Date.now(),
       },
     ];
@@ -3814,13 +3787,7 @@ async function resolveDockStartPosition(dockWidth: number, dockHeight: number): 
 }
 
 function renderDictionaryList(): void {
-  for (const button of dictionaryFilterButtons) {
-    button.classList.toggle("is-active", button.dataset.dictionaryFilter === activeDictionaryFilter);
-  }
-
-  const filtered = dictionaryTerms.filter(
-    (term) => activeDictionaryFilter === "all" || term.scope === activeDictionaryFilter,
-  );
+  const filtered = dictionaryTerms;
 
   if (filtered.length === 0) {
     dictionaryList.innerHTML = "<p>No dictionary terms in this view.</p>";
@@ -3841,9 +3808,7 @@ function renderDictionaryList(): void {
     spanEl.textContent = term.target;
     mainEl.append(strongEl, spanEl);
 
-    const metaEl = document.createElement("span");
-    metaEl.className = "managed-row-meta";
-    metaEl.textContent = term.scope === "shared" ? "Shared" : "Personal";
+
 
     const actionsEl = document.createElement("div");
     actionsEl.className = "managed-row-actions";
@@ -3859,7 +3824,7 @@ function renderDictionaryList(): void {
     });
     actionsEl.append(deleteBtn);
 
-    row.append(mainEl, metaEl, actionsEl);
+    row.append(mainEl, actionsEl);
     fragment.append(row);
   }
   dictionaryList.append(fragment);
@@ -3877,27 +3842,20 @@ function addDictionaryTerm(): void {
     id: createId(),
     source,
     target,
-    scope: dictionarySharedInput.checked ? "shared" : "personal",
     createdAt: Date.now(),
   });
   persistDictionaryTerms();
   renderDictionaryList();
   dictionarySourceInput.value = "";
   dictionaryTargetInput.value = "";
-  dictionarySharedInput.checked = false;
+
   dictionaryForm.classList.add("is-collapsed");
   dictionaryAddBtnTop.textContent = "Add new";
   setNotice(`Dictionary term added: ${source} → ${target}`);
 }
 
 function renderSnippetsList(): void {
-  for (const button of snippetFilterButtons) {
-    button.classList.toggle("is-active", button.dataset.snippetFilter === activeSnippetFilter);
-  }
-
-  const filtered = snippets.filter(
-    (item) => activeSnippetFilter === "all" || item.scope === activeSnippetFilter,
-  );
+  const filtered = snippets;
 
   if (filtered.length === 0) {
     snippetsList.innerHTML = "<p>No snippets in this view.</p>";
@@ -3918,9 +3876,7 @@ function renderSnippetsList(): void {
     spanEl.textContent = snippet.expansion;
     mainEl.append(strongEl, spanEl);
 
-    const metaEl = document.createElement("span");
-    metaEl.className = "managed-row-meta";
-    metaEl.textContent = snippet.scope === "shared" ? "Shared" : "Personal";
+
 
     const actionsEl = document.createElement("div");
     actionsEl.className = "managed-row-actions";
@@ -3936,7 +3892,7 @@ function renderSnippetsList(): void {
     });
     actionsEl.append(deleteBtn);
 
-    row.append(mainEl, metaEl, actionsEl);
+    row.append(mainEl, actionsEl);
     fragment.append(row);
   }
   snippetsList.append(fragment);
@@ -3954,14 +3910,13 @@ function addSnippetEntry(): void {
     id: createId(),
     trigger,
     expansion,
-    scope: snippetSharedInput.checked ? "shared" : "personal",
     createdAt: Date.now(),
   });
   persistSnippets();
   renderSnippetsList();
   snippetTriggerInput.value = "";
   snippetExpansionInput.value = "";
-  snippetSharedInput.checked = false;
+
   snippetForm.classList.add("is-collapsed");
   snippetsAddBtnTop.textContent = "Add new";
   setNotice(`Snippet added: ${trigger}`);

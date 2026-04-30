@@ -204,11 +204,7 @@ export function App() {
                   <button id="dictionaryAddBtnTop" className="dark-action" type="button">Add new</button>
                 </header>
                 
-                <div className="mini-tabs" role="tablist" aria-label="Dictionary filters">
-                  <button className="mini-tab is-active" data-dictionary-filter="all" type="button">All</button>
-                  <button className="mini-tab" data-dictionary-filter="personal" type="button">Personal</button>
-                  <button className="mini-tab" data-dictionary-filter="shared" type="button">Shared with team</button>
-                </div>
+
 
                 <article className="focus-card">
                   <h2>Vocabulary Training</h2>
@@ -219,7 +215,7 @@ export function App() {
                   <form id="dictionaryForm" className="inline-create-form is-collapsed">
                     <input id="dictionarySourceInput" type="text" placeholder="Spoken term (example: slashy)" autoComplete="off" />
                     <input id="dictionaryTargetInput" type="text" placeholder="Correct term (example: Slasshy)" autoComplete="off" />
-                    <label className="inline-check"><input id="dictionarySharedInput" type="checkbox" />Shared with team</label>
+
                     <button id="dictionaryAddBtn" className="dark-action" type="submit">Add term</button>
                   </form>
                 </article>
@@ -246,11 +242,7 @@ export function App() {
                   <button id="snippetsAddBtnTop" className="dark-action" type="button">Add new</button>
                 </header>
 
-                <div className="mini-tabs" role="tablist" aria-label="Snippet filters">
-                  <button className="mini-tab is-active" data-snippet-filter="all" type="button">All</button>
-                  <button className="mini-tab" data-snippet-filter="personal" type="button">Personal</button>
-                  <button className="mini-tab" data-snippet-filter="shared" type="button">Shared with team</button>
-                </div>
+
 
                 <article className="focus-card">
                   <h2>Text Shortcuts</h2>
@@ -258,7 +250,7 @@ export function App() {
                   <form id="snippetForm" className="inline-create-form is-collapsed">
                     <input id="snippetTriggerInput" type="text" placeholder="Trigger (example: /sig)" autoComplete="off" />
                     <input id="snippetExpansionInput" type="text" placeholder="Expansion text" autoComplete="off" />
-                    <label className="inline-check"><input id="snippetSharedInput" type="checkbox" />Shared with team</label>
+
                     <button id="snippetAddBtn" className="dark-action" type="submit">Add snippet</button>
                   </form>
                 </article>

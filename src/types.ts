@@ -20,7 +20,7 @@ export type CoquiQuality = "fast" | "balanced" | "high";
 export type CoquiEmotion = "neutral" | "calm" | "happy" | "excited" | "serious" | "sad";
 export type TtsProfilePane = "piper" | "coqui";
 export type HoldSource = "notes-button" | "hotkey";
-export type TeamScope = "personal" | "shared";
+
 export type LocalSttHardwareAdvisorChoice = "suggestion" | "selected" | "cancel";
 
 export interface AssistantInfoResponse {
@@ -299,7 +299,7 @@ export interface DictionaryTerm {
   id: string;
   source: string;
   target: string;
-  scope: TeamScope;
+
   createdAt: number;
 }
 
@@ -307,7 +307,7 @@ export interface SnippetEntry {
   id: string;
   trigger: string;
   expansion: string;
-  scope: TeamScope;
+
   createdAt: number;
 }
 
