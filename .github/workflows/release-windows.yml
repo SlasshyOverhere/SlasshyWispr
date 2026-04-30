@@ -174,9 +174,8 @@ jobs:
                 continue;
               }
 
-              const author = commit.author?.login ? ` by @${commit.author.login}` : "";
               const link = commit.html_url || `https://github.com/${owner}/${repo}/commit/${commit.sha}`;
-              const line = `- ${rawTitle} ([\`${sha}\`](${link}))${author}`;
+              const line = `- ${rawTitle} ([\`${sha}\`](${link}))`;
 
               const match = rawTitle.match(conventionalCommitRegex);
               if (!match) {
