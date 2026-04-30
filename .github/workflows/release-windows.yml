@@ -41,7 +41,7 @@ jobs:
           workspaces: "./src-tauri -> target"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Validate tag matches app version
         shell: pwsh
