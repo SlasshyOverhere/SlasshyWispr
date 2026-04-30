@@ -1,314 +1,338 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SlasshyWispr Floating Dock</title>
-    <style>
-      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
 
-      :root {
-        color-scheme: dark;
-        --background: #0a0a0c;
-        --foreground: #ffffff;
-        --primary: #ffffff;
-        --primary-glow: rgba(255, 255, 255, 0.4);
-        --border: #1c1c22;
-        --bg-glass: rgba(10, 10, 12, 0.65);
-        --border-glass: rgba(255, 255, 255, 0.15);
-        --accent: var(--primary);
-        --text-primary: var(--foreground);
-        --text-secondary: #b3b3b3;
-        --font-main: "Inter", system-ui, -apple-system, sans-serif;
-        --font-mono: "JetBrains Mono", monospace;
-      }
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SlasshyWispr Floating Dock</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
 
-      :root[data-theme="light"] {
-        color-scheme: light;
-        --background: #ffffff;
-        --foreground: #000000;
-        --primary: #000000;
-        --primary-glow: rgba(0, 0, 0, 0.15);
-        --border: #e5e5e5;
-        --bg-glass: rgba(255, 255, 255, 0.75);
-        --border-glass: rgba(0, 0, 0, 0.1);
-        --accent: var(--primary);
-        --text-primary: var(--foreground);
-        --text-secondary: #4d4d4d;
-      }
+    :root {
+      color-scheme: dark;
+      --background: #0a0a0c;
+      --foreground: #ffffff;
+      --primary: #ffffff;
+      --primary-glow: rgba(255, 255, 255, 0.4);
+      --border: #1c1c22;
+      --bg-glass: rgba(10, 10, 12, 0.65);
+      --border-glass: rgba(255, 255, 255, 0.15);
+      --accent: var(--primary);
+      --text-primary: var(--foreground);
+      --text-secondary: #b3b3b3;
+      --font-main: "Inter", system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono", monospace;
+    }
 
-      * {
-        box-sizing: border-box;
-      }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --background: #ffffff;
+      --foreground: #000000;
+      --primary: #000000;
+      --primary-glow: rgba(0, 0, 0, 0.15);
+      --border: #e5e5e5;
+      --bg-glass: rgba(255, 255, 255, 0.75);
+      --border-glass: rgba(0, 0, 0, 0.1);
+      --accent: var(--primary);
+      --text-primary: var(--foreground);
+      --text-secondary: #4d4d4d;
+    }
 
-      html,
-      body {
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        overflow: hidden;
-        background: transparent;
-        font-family: var(--font-main);
-      }
+    * {
+      box-sizing: border-box;
+    }
 
-      .dock-shell {
-        width: 100%;
-        height: 100%;
-        border-radius: 999px;
-        border: 1px solid var(--border-glass);
-        background: var(--bg-glass);
-        backdrop-filter: blur(24px) saturate(180%);
-        -webkit-backdrop-filter: blur(24px) saturate(180%);
-        box-shadow: 
-          0 8px 32px rgba(0, 0, 0, 0.4),
-          inset 0 0 0 1px hsla(0, 0%, 100%, 0.05);
-        color: var(--text-primary);
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 0 22px 0 6px;
-        user-select: none;
-        transition: all 400ms cubic-bezier(0.16, 1, 0.3, 1);
-        position: relative;
-        overflow: hidden;
-      }
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
+      font-family: var(--font-main);
+    }
 
-      .dock-shell::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(
-          90deg,
+    .dock-shell {
+      width: 100%;
+      height: 100%;
+      border-radius: 999px;
+      border: 1px solid var(--border-glass);
+      background: var(--bg-glass);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        inset 0 0 0 1px hsla(0, 0%, 100%, 0.05);
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 0 22px 0 6px;
+      user-select: none;
+      transition: all 400ms cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .dock-shell::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg,
           transparent,
           hsla(0, 0%, 100%, 0.03),
-          transparent
-        );
-        animation: scan 4s infinite linear;
-        pointer-events: none;
+          transparent);
+      animation: scan 4s infinite linear;
+      pointer-events: none;
+    }
+
+    @keyframes scan {
+      0% {
+        left: -100%;
       }
 
-      @keyframes scan {
-        0% { left: -100%; }
-        100% { left: 100%; }
+      100% {
+        left: 100%;
+      }
+    }
+
+    .dock-shell[data-visible="false"] {
+      opacity: 0;
+      transform: scale(0.92) translateY(8px);
+      pointer-events: none;
+    }
+
+    .mic-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+    }
+
+    .mic-btn {
+      width: 34px;
+      height: 34px;
+      border: 0;
+      border-radius: 50%;
+      color: var(--background);
+      background: var(--accent);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition: all 300ms cubic-bezier(0.23, 1, 0.32, 1);
+      flex-shrink: 0;
+      z-index: 2;
+      position: relative;
+      box-shadow: 0 0 15px var(--primary-glow);
+      overflow: hidden;
+    }
+
+    .mic-btn:hover {
+      transform: scale(1.08);
+      filter: brightness(0.9);
+    }
+
+    .mic-ring {
+      position: absolute;
+      width: 34px;
+      height: 34px;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: conic-gradient(from 0deg, transparent 30%, var(--accent) 100%);
+      mask: radial-gradient(transparent 58%, black 60%);
+      -webkit-mask: radial-gradient(transparent 58%, black 60%);
+      filter: blur(0.5px);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 1;
+      transition: opacity 300ms ease;
+    }
+
+    .dock-shell[data-stage="recording"] .mic-ring {
+      opacity: 1;
+      animation: spin-glow-centered 1s linear infinite;
+    }
+
+    @keyframes spin-glow-centered {
+      from {
+        transform: translate(-50%, -50%) rotate(0deg);
       }
 
-      .dock-shell[data-visible="false"] {
-        opacity: 0;
-        transform: scale(0.92) translateY(8px);
-        pointer-events: none;
+      to {
+        transform: translate(-50%, -50%) rotate(360deg);
+      }
+    }
+
+
+
+    .viz-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 100%;
+      position: relative;
+    }
+
+    .bars {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      height: 24px;
+    }
+
+    .bars span {
+      width: 3px;
+      height: 4px;
+      background: var(--accent);
+      border-radius: 4px;
+      transition: height 120ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      box-shadow: 0 0 8px var(--primary-glow);
+    }
+
+    .status-group {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 60px;
+    }
+
+    .status-text {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+    }
+
+    .processing-dots {
+      display: flex;
+      gap: 5px;
+    }
+
+    .processing-dots span {
+      width: 5px;
+      height: 5px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: dots 1.2s infinite ease-in-out;
+      box-shadow: 0 0 5px var(--primary-glow);
+    }
+
+    .processing-dots span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .processing-dots span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes dots {
+
+      0%,
+      80%,
+      100% {
+        transform: scale(0.6);
+        opacity: 0.3;
       }
 
-      .mic-wrap {
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 44px;
-        height: 44px;
-      }
-
-      .mic-btn {
-        width: 34px;
-        height: 34px;
-        border: 0;
-        border-radius: 50%;
-        color: var(--background);
-        background: var(--accent);
-        display: grid;
-        place-items: center;
-        cursor: pointer;
-        transition: all 300ms cubic-bezier(0.23, 1, 0.32, 1);
-        flex-shrink: 0;
-        z-index: 2;
-        position: relative;
-        box-shadow: 0 0 15px var(--primary-glow);
-        overflow: hidden;
-      }
-
-      .mic-btn:hover {
-        transform: scale(1.08);
-        filter: brightness(0.9);
-      }
-
-      .mic-ring {
-        position: absolute;
-        width: 34px;
-        height: 34px;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        border-radius: 50%;
-        background: conic-gradient(from 0deg, transparent 30%, var(--accent) 100%);
-        mask: radial-gradient(transparent 58%, black 60%);
-        -webkit-mask: radial-gradient(transparent 58%, black 60%);
-        filter: blur(0.5px);
-        opacity: 0;
-        pointer-events: none;
-        z-index: 1;
-        transition: opacity 300ms ease;
-      }
-
-      .dock-shell[data-stage="recording"] .mic-ring {
+      40% {
+        transform: scale(1.2);
         opacity: 1;
-        animation: spin-glow-centered 1s linear infinite;
       }
+    }
+  </style>
+</head>
 
-      @keyframes spin-glow-centered {
-        from { transform: translate(-50%, -50%) rotate(0deg); }
-        to { transform: translate(-50%, -50%) rotate(360deg); }
-      }
+<body>
+  <main class="dock-shell" id="dock" data-stage="idle" data-visible="false" data-theme="dark" data-tauri-drag-region>
+    <div class="mic-wrap" data-tauri-drag-region>
+      <div class="mic-ring"></div>
+      <button class="mic-btn" id="micBtn" type="button" aria-label="Toggle dictation"
+        style="background: transparent; box-shadow: none;">
+        <img src="logo.png" alt="SlasshyWispr"
+          style="width: 34px; height: 34px; object-fit: contain; transform: scale(2.0) translate(-9%, -3%); transform-origin: center; position: relative; z-index: 10;" />
+      </button>
+    </div>
 
-
-
-      .viz-wrap {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 44px;
-        height: 100%;
-        position: relative;
-      }
-
-      .bars {
-        display: flex;
-        align-items: center;
-        gap: 3px;
-        height: 24px;
-      }
-
-      .bars span {
-        width: 3px;
-        height: 4px;
-        background: var(--accent);
-        border-radius: 4px;
-        transition: height 120ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        box-shadow: 0 0 8px var(--primary-glow);
-      }
-
-      .status-group {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        min-width: 60px;
-      }
-
-      .status-text {
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: var(--text-primary);
-        font-family: var(--font-mono);
-      }
-
-      .processing-dots {
-        display: flex;
-        gap: 5px;
-      }
-
-      .processing-dots span {
-        width: 5px;
-        height: 5px;
-        background: var(--accent);
-        border-radius: 50%;
-        animation: dots 1.2s infinite ease-in-out;
-        box-shadow: 0 0 5px var(--primary-glow);
-      }
-
-      .processing-dots span:nth-child(2) { animation-delay: 0.2s; }
-      .processing-dots span:nth-child(3) { animation-delay: 0.4s; }
-
-      @keyframes dots {
-        0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
-        40% { transform: scale(1.2); opacity: 1; }
-      }
-
-    </style>
-  </head>
-  <body>
-    <main class="dock-shell" id="dock" data-stage="idle" data-visible="false" data-theme="dark" data-tauri-drag-region>
-      <div class="mic-wrap" data-tauri-drag-region>
-        <div class="mic-ring"></div>
-        <button class="mic-btn" id="micBtn" type="button" aria-label="Toggle dictation" style="background: transparent; box-shadow: none;">
-          <img src="logo.png" alt="SlasshyWispr" style="width: 100%; height: 100%; object-fit: contain; position: relative; z-index: 10;" />
-        </button>
+    <div class="viz-wrap" data-tauri-drag-region>
+      <div id="vizBars" class="bars">
+        <span></span><span></span><span></span><span></span><span></span><span></span>
       </div>
-
-      <div class="viz-wrap" data-tauri-drag-region>
-        <div id="vizBars" class="bars">
-          <span></span><span></span><span></span><span></span><span></span><span></span>
-        </div>
-        <div id="vizProcessing" class="processing-dots" style="display: none;">
-          <span></span><span></span><span></span>
-        </div>
+      <div id="vizProcessing" class="processing-dots" style="display: none;">
+        <span></span><span></span><span></span>
       </div>
-    </main>
+    </div>
+  </main>
 
-    <script>
-      const dock = document.getElementById("dock");
-      const micBtn = document.getElementById("micBtn");
-      const vizBars = document.getElementById("vizBars");
-      const vizProcessing = document.getElementById("vizProcessing");
-      const bars = Array.from(vizBars.querySelectorAll("span"));
-      const channel = new BroadcastChannel("slasshywispr-dock");
+  <script>
+    const dock = document.getElementById("dock");
+    const micBtn = document.getElementById("micBtn");
+    const vizBars = document.getElementById("vizBars");
+    const vizProcessing = document.getElementById("vizProcessing");
+    const bars = Array.from(vizBars.querySelectorAll("span"));
+    const channel = new BroadcastChannel("slasshywispr-dock");
 
-      let stage = "idle";
-      let targetAmplitude = 0;
-      let smoothAmplitude = 0;
+    let stage = "idle";
+    let targetAmplitude = 0;
+    let smoothAmplitude = 0;
 
-      function render(state) {
-        if (!state || state.kind !== "state") return;
+    function render(state) {
+      if (!state || state.kind !== "state") return;
 
-        stage = state.stage || "idle";
-        targetAmplitude = Math.min(Math.max(Number(state.amplitude || 0), 0), 1);
+      stage = state.stage || "idle";
+      targetAmplitude = Math.min(Math.max(Number(state.amplitude || 0), 0), 1);
 
-        dock.dataset.visible = state.visible ? "true" : "false";
-        dock.dataset.stage = stage;
-        
-        const theme = state.theme === "light" ? "light" : "dark";
-        dock.dataset.theme = theme;
-        document.documentElement.setAttribute("data-theme", theme);
+      dock.dataset.visible = state.visible ? "true" : "false";
+      dock.dataset.stage = stage;
 
-        if (stage === "recording" || stage === "speaking") {
-          vizBars.style.display = "flex";
-          vizProcessing.style.display = "none";
-        } else if (stage === "processing") {
-          vizBars.style.display = "none";
-          vizProcessing.style.display = "flex";
-        } else {
-          vizBars.style.display = "flex";
-          vizProcessing.style.display = "none";
-        }
+      const theme = state.theme === "light" ? "light" : "dark";
+      dock.dataset.theme = theme;
+      document.documentElement.setAttribute("data-theme", theme);
+
+      if (stage === "recording" || stage === "speaking") {
+        vizBars.style.display = "flex";
+        vizProcessing.style.display = "none";
+      } else if (stage === "processing") {
+        vizBars.style.display = "none";
+        vizProcessing.style.display = "flex";
+      } else {
+        vizBars.style.display = "flex";
+        vizProcessing.style.display = "none";
       }
+    }
 
-      function animate(now) {
-        smoothAmplitude += (targetAmplitude - smoothAmplitude) * 0.12;
-        const active = stage === "recording" || stage === "speaking";
-        
-        bars.forEach((bar, i) => {
-          const wobble = active ? (Math.sin(now * 0.015 + i * 0.8) * 0.3 + 0.7) : 0.05;
-          const minH = 4;
-          const maxH = 20;
-          const height = active ? (minH + smoothAmplitude * (maxH - minH) * wobble) : minH;
-          bar.style.height = `${height}px`;
-          bar.style.opacity = active ? 1 : 0.15;
-        });
+    function animate(now) {
+      smoothAmplitude += (targetAmplitude - smoothAmplitude) * 0.12;
+      const active = stage === "recording" || stage === "speaking";
 
-        requestAnimationFrame(animate);
-      }
-
-      micBtn.addEventListener("click", () => {
-        channel.postMessage({ kind: "action", action: "toggle-mic" });
+      bars.forEach((bar, i) => {
+        const wobble = active ? (Math.sin(now * 0.015 + i * 0.8) * 0.3 + 0.7) : 0.05;
+        const minH = 4;
+        const maxH = 20;
+        const height = active ? (minH + smoothAmplitude * (maxH - minH) * wobble) : minH;
+        bar.style.height = `${height}px`;
+        bar.style.opacity = active ? 1 : 0.15;
       });
 
-      channel.onmessage = (event) => render(event.data);
       requestAnimationFrame(animate);
-    </script>
-  </body>
+    }
+
+    micBtn.addEventListener("click", () => {
+      channel.postMessage({ kind: "action", action: "toggle-mic" });
+    });
+
+    channel.onmessage = (event) => render(event.data);
+    requestAnimationFrame(animate);
+  </script>
+</body>
+
 </html>
-
-
-
