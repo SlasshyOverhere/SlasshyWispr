@@ -332,6 +332,8 @@ export interface DockLayout {
 export interface ForegroundInputBlockStatus {
   blocked: boolean;
   processName: string;
+  reason: string;
+  fullscreen: boolean;
 }
 
 export interface HomeHistoryEntry {

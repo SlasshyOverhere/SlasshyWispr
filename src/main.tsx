@@ -2,6 +2,7 @@
 import "./style.css";
 import "./settings.css";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   LogicalSize,
@@ -532,6 +533,8 @@ let cachedUpdateResult: AppUpdateCheckResponse | null = null;
 let foregroundBlockStatusCache: ForegroundInputBlockStatus = {
   blocked: false,
   processName: "",
+  reason: "",
+  fullscreen: false,
 };
 let foregroundBlockCheckedAt = 0;
 let foregroundBlockCheckInFlight: Promise<ForegroundInputBlockStatus> | null = null;
@@ -539,13 +542,15 @@ let lastBlockedInputNoticeAt = 0;
 let lastBlockedInputProcess = "";
 let foregroundBlockMonitorId: number | null = null;
 let foregroundBlockMonitorInFlight = false;
+let mainWindowHiddenToTray = false;
 let persistSettingsTimer: number | null = null;
 let pendingSettingsToPersist: PersistedSettings | null = null;
 let lastPersistDiagnosticsSignature = "";
 let notificationPermissionRequested = false;
 const dockChannel = new BroadcastChannel("slasshywispr-dock");
 const selectionPopupChannel = new BroadcastChannel("slasshywispr-selection-popup");
-const ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION = false;
+const ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION = true;
+const MAIN_WINDOW_VISIBILITY_EVENT = "slasshy://main-window-visibility";
 
 const ACTIVITY_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "long",
@@ -694,6 +699,7 @@ refreshRecordButton();
 syncActionAvailability();
 initializeUpdaterPanel();
 setupCustomWindowControls();
+void initializeTrayBackgroundLifecycle();
 hotkeyInput.readOnly = true;
 commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
@@ -6844,14 +6850,19 @@ async function invokeExternalMediaPlayback(action: "pause" | "play"): Promise<vo
 
 async function fetchForegroundInputBlockStatus(force = false): Promise<ForegroundInputBlockStatus> {
   if (!ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION) {
-    const fallback: ForegroundInputBlockStatus = { blocked: false, processName: "" };
+    const fallback: ForegroundInputBlockStatus = {
+      blocked: false,
+      processName: "",
+      reason: "",
+      fullscreen: false,
+    };
     foregroundBlockStatusCache = fallback;
     foregroundBlockCheckedAt = Date.now();
     return fallback;
   }
 
   if (!isTauriEnvironment()) {
-    return { blocked: false, processName: "" };
+    return { blocked: false, processName: "", reason: "", fullscreen: false };
   }
 
   const now = Date.now();
@@ -6869,12 +6880,19 @@ async function fetchForegroundInputBlockStatus(force = false): Promise<Foregroun
       const next: ForegroundInputBlockStatus = {
         blocked: Boolean(status?.blocked),
         processName: String(status?.processName ?? "").trim().toLowerCase(),
+        reason: String(status?.reason ?? "").trim().toLowerCase(),
+        fullscreen: Boolean(status?.fullscreen),
       };
       foregroundBlockStatusCache = next;
       foregroundBlockCheckedAt = Date.now();
       return next;
     } catch {
-      const fallback: ForegroundInputBlockStatus = { blocked: false, processName: "" };
+      const fallback: ForegroundInputBlockStatus = {
+        blocked: false,
+        processName: "",
+        reason: "",
+        fullscreen: false,
+      };
       foregroundBlockStatusCache = fallback;
       foregroundBlockCheckedAt = Date.now();
       return fallback;
@@ -6965,6 +6983,97 @@ function startBlockedAppShortcutSuppressionMonitor(): void {
   }, 1200);
 
   void refreshBlockedAppShortcutSuppression();
+}
+
+async function closeSelectionAssistantWindowForTray(): Promise<void> {
+  latestSelectionPopupPayload = null;
+  if (!selectionAssistantWindow) {
+    return;
+  }
+
+  try {
+    await selectionAssistantWindow.close();
+  } catch (error) {
+    logClientEvent(`[tray.background] selection popup close failed: ${asErrorMessage(error)}`);
+    try {
+      await selectionAssistantWindow.hide();
+    } catch {
+      // Ignore best-effort cleanup failures while entering tray mode.
+    }
+  } finally {
+    selectionAssistantWindow = null;
+  }
+}
+
+async function closeVoiceIndicatorWindowForTray(): Promise<void> {
+  if (!voiceIndicatorWindow) {
+    return;
+  }
+
+  try {
+    await persistDockPositionFromWindow(voiceIndicatorWindow);
+  } catch {
+    // Preserve best effort only.
+  }
+
+  try {
+    await voiceIndicatorWindow.close();
+  } catch (error) {
+    logClientEvent(`[tray.background] dock close failed: ${asErrorMessage(error)}`);
+    try {
+      await voiceIndicatorWindow.hide();
+    } catch {
+      // Ignore best-effort cleanup failures while entering tray mode.
+    }
+  } finally {
+    voiceIndicatorWindow = null;
+  }
+}
+
+function stopNonEssentialUiPollingForTray(): void {
+  stopTtsSetupPolling();
+  stopLocalSttDownloadStatusPolling();
+  hideLocalSttLoadOverlay();
+}
+
+function resumeNonEssentialUiPollingAfterTray(): void {
+  if (ttsSetupRunning) {
+    startTtsSetupPolling();
+    void pollTtsSetupStatusOnce();
+  }
+  if (localSttDownloadActive) {
+    startLocalSttDownloadStatusPolling();
+    void pollLocalSttDownloadStatusOnce({ quiet: true });
+  }
+}
+
+async function applyMainWindowTrayVisibility(hidden: boolean): Promise<void> {
+  mainWindowHiddenToTray = hidden;
+  if (!hidden) {
+    resumeNonEssentialUiPollingAfterTray();
+    return;
+  }
+
+  stopNonEssentialUiPollingForTray();
+  await closeSelectionAssistantWindowForTray();
+  await closeVoiceIndicatorWindowForTray();
+}
+
+async function initializeTrayBackgroundLifecycle(): Promise<void> {
+  if (!isTauriEnvironment()) {
+    return;
+  }
+
+  await listen<{ hidden?: boolean }>(MAIN_WINDOW_VISIBILITY_EVENT, (event) => {
+    void applyMainWindowTrayVisibility(Boolean(event.payload?.hidden));
+  });
+
+  try {
+    const visible = await getCurrentWindow().isVisible();
+    await applyMainWindowTrayVisibility(!visible);
+  } catch {
+    mainWindowHiddenToTray = false;
+  }
 }
 
 function queueExternalMediaControl(task: () => Promise<void>): void {
@@ -7099,6 +7208,7 @@ function publishDockState(): void {
       kind: "state",
       stage,
       visible: shouldDisplayDock(),
+      mainWindowHiddenToTray,
       theme: resolvedDockTheme(),
       amplitude: dockAmplitude,
       captureMode: settings.captureMode,

@@ -29,7 +29,7 @@ use tar::Archive;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, State,
+    AppHandle, Emitter, Manager, State,
 };
 use transcribe_rs::{
     engines::parakeet::{
@@ -733,6 +733,15 @@ struct PipelineModeConfig {
 struct ForegroundInputBlockStatus {
     blocked: bool,
     process_name: String,
+    reason: String,
+    fullscreen: bool,
+}
+
+#[derive(Debug, Clone)]
+struct ForegroundWindowProbeResult {
+    process_name: String,
+    window_title: String,
+    fullscreen: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2483,7 +2492,12 @@ fn is_blocked_game_process_name(process_name: &str) -> bool {
 
     let base = normalized.trim_end_matches(".exe");
 
-    const BLOCKED_EXACT: [&str; 18] = [
+    const BLOCKED_EXACT: [&str; 35] = [
+        "ac_client",
+        "apex",
+        "bf1",
+        "bf2042",
+        "bo6",
         "valorant",
         "valorant-win64-shipping",
         "cs2",
@@ -2496,9 +2510,21 @@ fn is_blocked_game_process_name(process_name: &str) -> bool {
         "rocketleague",
         "gta5",
         "eldenring",
+        "escapedfromtarkov",
+        "eurotrucks2",
+        "farlight84",
+        "fc25",
         "leagueclientux",
         "leagueclientuxrender",
         "leagueoflegends",
+        "minecraft",
+        "minecraftlauncher",
+        "palworld-win64-shipping",
+        "pathofexile",
+        "pathofexilesteam",
+        "warframe.x64",
+        "witcher3",
+        "wow",
         "destiny2",
         "pubg",
         "rustclient",
@@ -2508,23 +2534,110 @@ fn is_blocked_game_process_name(process_name: &str) -> bool {
         return true;
     }
 
-    const BLOCKED_PREFIXES: [&str; 11] = [
+    const BLOCKED_PREFIXES: [&str; 32] = [
+        "arma",
+        "assettocorsa",
+        "blackops",
+        "cod",
+        "counter-strike",
+        "cyberpunk",
         "valorant",
         "fortniteclient",
         "r5apex",
+        "diablo",
+        "dragonage",
+        "ea sports fc",
+        "eafc",
+        "elden",
+        "fifa",
+        "forza",
+        "genshin",
+        "honkai",
         "leagueclient",
         "leagueoflegends",
+        "nba2k",
+        "nfs",
         "rainbowsix",
         "rocketleague",
         "overwatch",
+        "palworld",
         "destiny2",
         "pubg",
         "rustclient",
+        "starrail",
+        "tekken",
+        "witcher",
     ];
 
     BLOCKED_PREFIXES
         .iter()
         .any(|prefix| base.starts_with(prefix))
+}
+
+fn is_allowed_fullscreen_process_name(process_name: &str) -> bool {
+    let normalized = process_name.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return true;
+    }
+
+    let base = normalized.trim_end_matches(".exe");
+    const ALLOWED_FULLSCREEN_EXACT: [&str; 25] = [
+        "app",
+        "arc",
+        "brave",
+        "chrome",
+        "code",
+        "cursor",
+        "discord",
+        "explorer",
+        "firefox",
+        "mpc-hc64",
+        "msedge",
+        "obs64",
+        "opera",
+        "outlook",
+        "photos",
+        "potplayermini64",
+        "powerpnt",
+        "slack",
+        "spotify",
+        "steam",
+        "telegram",
+        "teams",
+        "vlc",
+        "webview2manager",
+        "zoom",
+    ];
+    if ALLOWED_FULLSCREEN_EXACT.contains(&base) {
+        return true;
+    }
+
+    const ALLOWED_FULLSCREEN_PREFIXES: [&str; 7] = [
+        "code - insiders",
+        "microsoft",
+        "ms-teams",
+        "powerpoint",
+        "wezterm",
+        "windows terminal",
+        "windowsterminal",
+    ];
+    ALLOWED_FULLSCREEN_PREFIXES
+        .iter()
+        .any(|prefix| base.starts_with(prefix))
+}
+
+fn is_likely_fullscreen_game_window(process_name: &str, window_title: &str, fullscreen: bool) -> bool {
+    if !fullscreen || is_allowed_fullscreen_process_name(process_name) {
+        return false;
+    }
+
+    let normalized_title = window_title.trim().to_ascii_lowercase();
+    !(normalized_title.contains("youtube")
+        || normalized_title.contains("netflix")
+        || normalized_title.contains("twitch")
+        || normalized_title.contains("prime video")
+        || normalized_title.contains("presentation")
+        || normalized_title.contains("powerpoint"))
 }
 
 fn is_blocked_terminal_process_name(process_name: &str) -> bool {
@@ -2592,25 +2705,64 @@ fn is_ide_terminal_window(process_name: &str, window_title: &str) -> bool {
         || normalized_title.contains("fish")
 }
 
-fn should_block_foreground_input(process_name: &str, window_title: &str) -> bool {
-    is_blocked_game_process_name(process_name)
-        || is_blocked_terminal_process_name(process_name)
-        || is_ide_terminal_window(process_name, window_title)
+fn foreground_input_block_reason(
+    process_name: &str,
+    window_title: &str,
+    fullscreen: bool,
+) -> Option<&'static str> {
+    if is_blocked_game_process_name(process_name) {
+        return Some("game-process");
+    }
+    if is_likely_fullscreen_game_window(process_name, window_title, fullscreen) {
+        return Some("fullscreen-game-heuristic");
+    }
+    if is_blocked_terminal_process_name(process_name) {
+        return Some("terminal-process");
+    }
+    if is_ide_terminal_window(process_name, window_title) {
+        return Some("ide-terminal");
+    }
+    None
 }
 
-#[tauri::command]
-async fn get_foreground_input_block_status() -> Result<ForegroundInputBlockStatus, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let script = r#"$ErrorActionPreference='Stop';
+fn emit_main_window_visibility(app: &AppHandle, hidden: bool) {
+    let payload = json!({ "hidden": hidden });
+    if let Err(error) = app.emit(APP_EVENT_MAIN_WINDOW_VISIBILITY, payload) {
+        warn!("[tray] failed to emit main-window visibility event: {error}");
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn probe_foreground_window_windows() -> Result<ForegroundWindowProbeResult, String> {
+    let script = r#"$ErrorActionPreference='Stop';
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public static class ForegroundWindowProbe {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Auto)]
+    public struct MONITORINFO {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+    }
     [DllImport("user32.dll", SetLastError=true)]
     public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll", SetLastError=true)]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+    [DllImport("user32.dll", CharSet=CharSet.Auto, SetLastError=true)]
+    public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 }
 "@;
 $hwnd=[ForegroundWindowProbe]::GetForegroundWindow();
@@ -2619,43 +2771,80 @@ $pid = 0;
 [void][ForegroundWindowProbe]::GetWindowThreadProcessId($hwnd, [ref]$pid);
 if ($pid -le 0) { [Console]::Out.Write(''); exit 0 }
 $title = '';
-try {
-  $title = [System.Diagnostics.Process]::GetProcessById([int]$pid).MainWindowTitle
-} catch {
-  $title = ''
-}
-if ($null -eq $title) { $title = '' }
+$procName = '';
 try {
   $proc = Get-Process -Id $pid -ErrorAction Stop;
-  [Console]::Out.Write(($proc.ProcessName.ToLowerInvariant()) + '||' + $title.ToLowerInvariant());
+  $procName = $proc.ProcessName.ToLowerInvariant();
+  $title = $proc.MainWindowTitle;
 } catch {
   [Console]::Out.Write('');
-}"#;
+  exit 0
+}
+if ($null -eq $title) { $title = '' }
+$fullscreen = $false;
+$rect = New-Object ForegroundWindowProbe+RECT;
+$monitor = [ForegroundWindowProbe]::MonitorFromWindow($hwnd, 2);
+if ($monitor -ne [IntPtr]::Zero -and [ForegroundWindowProbe]::GetWindowRect($hwnd, [ref]$rect)) {
+  $info = New-Object ForegroundWindowProbe+MONITORINFO;
+  $info.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf([type][ForegroundWindowProbe+MONITORINFO]);
+  if ([ForegroundWindowProbe]::GetMonitorInfo($monitor, [ref]$info)) {
+    $t = 2;
+    $fullscreen =
+      [Math]::Abs($rect.Left - $info.rcMonitor.Left) -le $t -and
+      [Math]::Abs($rect.Top - $info.rcMonitor.Top) -le $t -and
+      [Math]::Abs($rect.Right - $info.rcMonitor.Right) -le $t -and
+      [Math]::Abs($rect.Bottom - $info.rcMonitor.Bottom) -le $t;
+  }
+}
+[Console]::Out.Write($procName + '||' + $title.ToLowerInvariant() + '||' + ($(if ($fullscreen) { '1' } else { '0' })));
+"#;
 
-        let output = run_powershell_script(script, None)?;
-        if !output.status.success() {
-            let merged = merge_process_output(&output.stdout, &output.stderr);
-            return Err(format!(
-                "Foreground app detection failed: {}",
-                clip_text(&single_line(&merged), 280)
-            ));
-        }
+    let output = run_powershell_script(script, None)?;
+    if !output.status.success() {
+        let merged = merge_process_output(&output.stdout, &output.stderr);
+        return Err(format!(
+            "Foreground app detection failed: {}",
+            clip_text(&single_line(&merged), 280)
+        ));
+    }
 
-        let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let (process_name, window_title) = if raw.is_empty() {
-            (String::new(), String::new())
-        } else if let Some((proc, title)) = raw.split_once("||") {
-            (
-                proc.trim().to_ascii_lowercase(),
-                title.trim().to_ascii_lowercase(),
-            )
-        } else {
-            (raw.to_ascii_lowercase(), String::new())
-        };
-        let blocked = should_block_foreground_input(&process_name, &window_title);
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if raw.is_empty() {
+        return Ok(ForegroundWindowProbeResult {
+            process_name: String::new(),
+            window_title: String::new(),
+            fullscreen: false,
+        });
+    }
+
+    let mut parts = raw.splitn(3, "||");
+    Ok(ForegroundWindowProbeResult {
+        process_name: parts
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase(),
+        window_title: parts
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase(),
+        fullscreen: parts.next().unwrap_or_default().trim() == "1",
+    })
+}
+
+#[tauri::command]
+async fn get_foreground_input_block_status() -> Result<ForegroundInputBlockStatus, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let probe = probe_foreground_window_windows()?;
+        let reason =
+            foreground_input_block_reason(&probe.process_name, &probe.window_title, probe.fullscreen);
         return Ok(ForegroundInputBlockStatus {
-            blocked,
-            process_name,
+            blocked: reason.is_some(),
+            process_name: probe.process_name,
+            reason: reason.unwrap_or_default().to_string(),
+            fullscreen: probe.fullscreen,
         });
     }
 
@@ -2664,6 +2853,8 @@ try {
         Ok(ForegroundInputBlockStatus {
             blocked: false,
             process_name: String::new(),
+            reason: String::new(),
+            fullscreen: false,
         })
     }
 }
@@ -12899,6 +13090,7 @@ fn show_main_window(app: &AppHandle) {
     if let Err(error) = window.set_focus() {
         warn!("[tray] failed to focus main window: {error}");
     }
+    emit_main_window_visibility(app, false);
 }
 
 fn hide_main_window_to_tray(app: &AppHandle) {
@@ -12909,6 +13101,7 @@ fn hide_main_window_to_tray(app: &AppHandle) {
     if let Err(error) = window.hide() {
         warn!("[tray] failed to hide main window to tray: {error}");
     }
+    emit_main_window_visibility(app, true);
 }
 
 fn copy_last_transcript_to_clipboard(app: &AppHandle) {
