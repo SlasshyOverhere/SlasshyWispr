@@ -4757,20 +4757,32 @@ async fn run_assistant_pipeline(
     let piper_path = if use_coqui {
         None
     } else {
-        Some(resolve_piper_path(&app, request.piper_path.as_deref())?)
+        match resolve_piper_path(&app, request.piper_path.as_deref()) {
+            Ok(path) => Some(path),
+            Err(error) => {
+                warn!("[pipeline] piper path resolution deferred/skipped: {}", error);
+                None
+            }
+        }
     };
 
     let piper_model_path = if use_coqui {
         None
     } else {
-        let (model_path, config_path) = voice_paths(&app)?;
-        if !file_exists_with_content(&model_path) || !file_exists_with_content(&config_path) {
-            return Err(
-                "Voice model files are missing. Open Settings > TTS and run Piper setup first."
-                    .to_string(),
-            );
+        match voice_paths(&app) {
+            Ok((model_path, config_path)) => {
+                if file_exists_with_content(&model_path) && file_exists_with_content(&config_path) {
+                    Some(model_path)
+                } else {
+                    warn!("[pipeline] piper voice model files missing; deferred/skipped");
+                    None
+                }
+            }
+            Err(error) => {
+                warn!("[pipeline] piper voice paths resolution failed: {}", error);
+                None
+            }
         }
-        Some(model_path)
     };
 
     let audio_bytes = BASE64_STANDARD
@@ -5356,24 +5368,34 @@ async fn run_assistant_pipeline(
     }
 
     let tts_start = Instant::now();
-    let tts_bytes = if use_coqui {
-        let coqui = request.coqui.as_ref().ok_or_else(|| {
-            "Coqui settings are required when TTS engine is set to Coqui.".to_string()
-        })?;
-        synthesize_with_coqui(&app, coqui, assistant_response.clone()).await?
+    let tts_result = if use_coqui {
+        match request.coqui.as_ref() {
+            Some(coqui) => synthesize_with_coqui(&app, coqui, assistant_response.clone()).await,
+            None => Err("Coqui settings are missing.".to_string()),
+        }
     } else {
-        let resolved_piper_path = piper_path
-            .ok_or_else(|| "Piper path was not resolved for Piper synthesis.".to_string())?;
-        let resolved_model_path = piper_model_path
-            .ok_or_else(|| "Piper voice model path was not resolved.".to_string())?;
-        synthesize_with_piper(
-            resolved_piper_path,
-            resolved_model_path,
-            assistant_response.clone(),
-            request.piper.as_ref(),
-        )
-        .await?
+        match (piper_path, piper_model_path) {
+            (Some(rpp), Some(rmp)) => {
+                synthesize_with_piper(
+                    rpp,
+                    rmp,
+                    assistant_response.clone(),
+                    request.piper.as_ref(),
+                )
+                .await
+            }
+            _ => Err("Piper runtime or voice model files are missing.".to_string()),
+        }
     };
+
+    let tts_bytes = match tts_result {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            warn!("[pipeline] tts synthesis skipped/failed: {}", error);
+            Vec::new()
+        }
+    };
+
     let tts_latency_ms = elapsed_ms(tts_start);
     info!(
         "[pipeline] tts done engine={} latency_ms={} audio_bytes={}",
@@ -5381,14 +5403,6 @@ async fn run_assistant_pipeline(
         tts_latency_ms,
         tts_bytes.len()
     );
-
-    if tts_bytes.is_empty() {
-        return Err(if use_coqui {
-            "Coqui returned empty audio output".to_string()
-        } else {
-            "Piper returned empty audio output".to_string()
-        });
-    }
 
     let total_latency_ms = elapsed_ms(overall_start);
     info!("[pipeline] complete total_latency_ms={}", total_latency_ms);

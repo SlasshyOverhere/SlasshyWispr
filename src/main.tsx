@@ -1,5 +1,6 @@
 
 import "./style.css";
+import "./settings.css";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
@@ -87,7 +88,7 @@ import type {
   CoquiEmotion,
   TtsProfilePane,
   HoldSource,
-  TeamScope,
+
   LocalSttHardwareAdvisorChoice,
   AssistantInfoResponse,
   RuntimeSetupResponse,
@@ -145,755 +146,14 @@ document.body.classList.add("shadcn-ui");
 document.body.classList.add("mono-ui");
 document.body.classList.add("overhaul-v3");
 
-appRoot.innerHTML = `
-  <div class="app-frame">
-    <header class="app-titlebar">
-      <div id="appTitlebarDrag" class="app-titlebar-drag" data-tauri-drag-region>
-        <span class="app-titlebar-dot" aria-hidden="true"></span>
-        <span class="app-titlebar-name">SlasshyWispr</span>
-      </div>
-      <div class="app-titlebar-actions">
-        <button id="windowMinimizeBtn" class="titlebar-action" type="button" aria-label="Minimize">−</button>
-        <button id="windowMaximizeBtn" class="titlebar-action" type="button" aria-label="Maximize">
-          <span id="windowMaximizeGlyph">□</span>
-        </button>
-        <button id="windowCloseBtn" class="titlebar-action titlebar-close" type="button" aria-label="Close">×</button>
-      </div>
-    </header>
+import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
+import { App } from './App';
 
-    <div class="flow-shell">
-    <aside class="flow-sidebar">
-      <div class="window-controls">
-        <button id="toggleSidebarBtn" class="chrome-icon" type="button" data-label="Collapse sidebar" aria-label="Collapse sidebar">
-          <span class="ico-grid"></span>
-        </button>
-      </div>
+flushSync(() => {
+  createRoot(appRoot).render(<App />);
+});
 
-      <div class="brand-row">
-        <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-        <strong>SlasshyWispr</strong>
-        <span class="brand-plan">Basic</span>
-      </div>
-
-      <nav class="nav-main" aria-label="Main navigation">
-        <button class="nav-item is-active" data-page-nav="home" data-label="Home" aria-label="Home" type="button"><span class="nav-glyph">⌂</span>Home</button>
-        <button class="nav-item" data-page-nav="dictionary" data-label="Dictionary" aria-label="Dictionary" type="button"><span class="nav-glyph">◱</span>Dictionary</button>
-        <button class="nav-item" data-page-nav="snippets" data-label="Snippets" aria-label="Snippets" type="button"><span class="nav-glyph">⌘</span>Snippets</button>
-        <button class="nav-item" data-page-nav="notes" data-label="Notes" aria-label="Notes" type="button"><span class="nav-glyph">✎</span>Notes</button>
-      </nav>
-
-      <nav class="nav-secondary" aria-label="Secondary navigation">
-        <button id="sidebarToggleLocalSttBtn" class="secondary-link" data-label="Load local STT model" aria-label="Load local STT model" type="button"><span id="sidebarToggleLocalSttGlyph" class="secondary-glyph">▶</span><span id="sidebarToggleLocalSttLabel">Load STT</span></button>
-        <button id="openSettingsBtn" class="secondary-link" data-label="Settings" aria-label="Settings" type="button"><span class="secondary-glyph">⚙</span>Settings</button>
-      </nav>
-    </aside>
-
-    <main class="flow-content">
-      <section class="flow-page is-active" data-page="home">
-        <div class="flow-page-inner home-page">
-          <div class="welcome-row">
-            <div class="metric-pills" aria-label="Activity metrics">
-              <span id="metricWords">0 words</span>
-              <span id="metricWpm">0 WPM</span>
-            </div>
-          </div>
-
-          <section class="home-output">
-            <article class="home-output-card">
-              <h3>Transcript</h3>
-              <p id="transcriptText" class="output-text muted">Your transcribed speech will appear here.</p>
-            </article>
-            <article class="home-output-card">
-              <h3>Assistant Response</h3>
-              <p id="assistantText" class="output-text muted">The AI response will appear here.</p>
-            </article>
-          </section>
-
-          <section class="home-log">
-            <div class="section-head">
-              <h3 id="activityDate">February 18, 2026</h3>
-              <button id="clearHistoryBtn" class="inline-link" type="button">Clear</button>
-            </div>
-            <div class="log-head" aria-hidden="true">
-              <span>Time</span>
-              <span>Source</span>
-              <span>Content</span>
-            </div>
-            <div id="conversationLog" class="conversation-log" role="log" aria-live="polite">
-              <p class="empty-hint">No turns yet. Start dictating to see your recent activity.</p>
-            </div>
-          </section>
-        </div>
-      </section>
-
-      <section class="flow-page" data-page="dictionary" hidden>
-        <div class="flow-page-inner">
-          <div class="page-title-row">
-            <h1>Dictionary</h1>
-            <button id="dictionaryAddBtnTop" class="dark-action" type="button">Add new</button>
-          </div>
-          <div class="mini-tabs" role="tablist" aria-label="Dictionary filters">
-            <button class="mini-tab is-active" data-dictionary-filter="all" type="button">All</button>
-            <button class="mini-tab" data-dictionary-filter="personal" type="button">Personal</button>
-            <button class="mini-tab" data-dictionary-filter="shared" type="button">Shared with team</button>
-          </div>
-          <article class="focus-card">
-            <h2>SlasshyWispr speaks the way you speak.</h2>
-            <p>
-              Learn unique words and names automatically or manually. Add personal terms, company jargon,
-              and client names so everyone stays aligned.
-            </p>
-            <form id="dictionaryForm" class="inline-create-form is-collapsed">
-              <input id="dictionarySourceInput" type="text" placeholder="Spoken term (example: slashy)" autocomplete="off" />
-              <input id="dictionaryTargetInput" type="text" placeholder="Correct term (example: Slasshy)" autocomplete="off" />
-              <label class="inline-check"><input id="dictionarySharedInput" type="checkbox" />Shared with team</label>
-              <button id="dictionaryAddBtn" class="dark-action" type="submit">Add new word</button>
-            </form>
-          </article>
-          <div id="dictionaryList" class="simple-list">
-            <p>No dictionary terms yet. Add your first correction above.</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="flow-page" data-page="snippets" hidden>
-        <div class="flow-page-inner">
-          <div class="page-title-row">
-            <h1>Snippets</h1>
-            <button id="snippetsAddBtnTop" class="dark-action" type="button">Add new</button>
-          </div>
-          <div class="mini-tabs" role="tablist" aria-label="Snippet filters">
-            <button class="mini-tab is-active" data-snippet-filter="all" type="button">All</button>
-            <button class="mini-tab" data-snippet-filter="personal" type="button">Personal</button>
-            <button class="mini-tab" data-snippet-filter="shared" type="button">Shared with team</button>
-          </div>
-          <article class="focus-card">
-            <h2>The stuff you shouldn't have to re-type.</h2>
-            <p>Save shortcuts for things you type all the time and expand them instantly while dictating.</p>
-            <form id="snippetForm" class="inline-create-form is-collapsed">
-              <input id="snippetTriggerInput" type="text" placeholder="Trigger phrase (example: intro email)" autocomplete="off" />
-              <input id="snippetExpansionInput" type="text" placeholder="Expansion text" autocomplete="off" />
-              <label class="inline-check"><input id="snippetSharedInput" type="checkbox" />Shared with team</label>
-              <button id="snippetAddBtn" class="dark-action" type="submit">Add new snippet</button>
-            </form>
-          </article>
-          <div id="snippetsList" class="simple-list">
-            <p>No snippets yet. Add your first expansion above.</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="flow-page" data-page="notes" hidden>
-        <div class="flow-page-inner notes-layout">
-          <h1>For quick thoughts you want to come back to</h1>
-          <article class="quick-note-card">
-            <p>Take a quick note with your voice</p>
-            <button id="notesQuickMicBtn" class="notes-mic-btn" type="button" aria-label="Dictate a quick note">🎤</button>
-          </article>
-          <div class="section-head notes-head">
-            <h3>Recents</h3>
-          </div>
-          <div id="notesList" class="notes-list">
-            <p class="notes-empty">No notes found</p>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <div id="sttLoadOverlay" class="stt-load-overlay" hidden>
-    <div class="stt-load-dialog" role="dialog" aria-modal="true" aria-labelledby="sttLoadTitle">
-      <span class="stt-load-spinner" aria-hidden="true"></span>
-      <h3 id="sttLoadTitle">Loading Local STT Model</h3>
-      <p id="sttLoadModel" class="stt-load-model">Model: -</p>
-      <p id="sttLoadDetail" class="stt-load-detail">
-        Preparing runtime. Load time depends on your CPU/GPU, RAM, and model size.
-      </p>
-    </div>
-  </div>
-
-  <div id="sttHardwareAdvisorOverlay" class="stt-advisor-overlay" hidden>
-    <div class="stt-advisor-dialog" role="dialog" aria-modal="true" aria-labelledby="sttHardwareAdvisorTitle">
-      <h3 id="sttHardwareAdvisorTitle">Local STT Hardware Recommendation</h3>
-      <p id="sttHardwareAdvisorHardware" class="stt-advisor-hardware">Checking your hardware profile...</p>
-      <p id="sttHardwareAdvisorSuggestion" class="stt-advisor-suggestion">SlasshyWispr Suggestion: -</p>
-      <p id="sttHardwareAdvisorWarning" class="stt-advisor-warning">
-        Warning: Higher models can be system-hungry and can feel slow on basic hardware.
-      </p>
-      <p id="sttHardwareAdvisorList" class="stt-advisor-list">Recommended models: -</p>
-      <div class="stt-advisor-actions">
-        <button id="sttHardwareAdvisorUseSuggestionBtn" class="dark-action" type="button">Use suggestion</button>
-        <button id="sttHardwareAdvisorContinueBtn" class="ghost-action" type="button">Continue selected</button>
-        <button id="sttHardwareAdvisorCancelBtn" class="ghost-action" type="button">Cancel</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="settingsOverlay" class="settings-overlay" hidden>
-    <div class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsPaneTitle">
-      <aside class="settings-sidebar">
-        <p class="settings-kicker">Settings</p>
-        <nav class="settings-nav" aria-label="Settings sections">
-          <button class="settings-nav-item is-active" data-settings-pane-nav="general" type="button">General</button>
-          <button class="settings-nav-item" data-settings-pane-nav="models" type="button">Models</button>
-          <button class="settings-nav-item" data-settings-pane-nav="update-security" type="button">Update and Security</button>
-          <button class="settings-nav-item" data-settings-pane-nav="pipeline" type="button">Pipeline</button>
-        </nav>
-
-        <p id="settingsVersionText" class="settings-version">SlasshyWispr</p>
-      </aside>
-
-      <section class="settings-main">
-        <header class="settings-header">
-          <h2 id="settingsPaneTitle">General</h2>
-          <button id="closeSettingsBtn" class="close-settings" type="button" aria-label="Close settings">✕</button>
-        </header>
-
-        <section class="settings-pane is-active" data-settings-pane="general">
-          <div class="settings-card">
-            <div class="settings-row">
-              <div>
-                <h3>Keyboard shortcuts</h3>
-                <p>Dictation shortcut is <strong id="hotkeyHint">Ctrl + Space</strong>. <span class="learn-link">Learn more →</span></p>
-                <div id="hotkeyEditor" class="inline-editor" hidden>
-                  <label class="field">
-                    <span>Push-To-Talk Hotkey</span>
-                    <input id="hotkeyInput" type="text" placeholder="Click and press keys" autocomplete="off" />
-                  </label>
-                  <label class="field">
-                    <span>Command Mode Hotkey</span>
-                    <input id="commandHotkeyInput" type="text" placeholder="Ctrl+Shift+Space" autocomplete="off" />
-                  </label>
-                </div>
-              </div>
-              <button id="toggleHotkeyEditorBtn" class="ghost-action" type="button">Change</button>
-            </div>
-
-            <div class="settings-row">
-              <div>
-                <h3>Microphone</h3>
-                <p id="microphoneSummary">Auto-detect</p>
-                <div id="microphoneEditor" class="inline-editor" hidden>
-                  <label class="field">
-                    <span>Microphone Device</span>
-                    <select id="microphoneSelect"></select>
-                  </label>
-                  <button id="refreshMicsBtn" class="ghost-action mini" type="button">Refresh</button>
-                </div>
-              </div>
-              <button id="toggleMicEditorBtn" class="ghost-action" type="button">Change</button>
-            </div>
-
-            <div class="settings-row">
-              <div>
-                <h3>Dictation languages</h3>
-                <p id="dictationLanguageSummary">Whisper language mode: Auto-detect.</p>
-                <div class="inline-editor">
-                  <div class="capture-mode-pills">
-                    <label><input id="dictationLanguageModeSingle" name="dictationLanguageMode" type="radio" value="single" />Single language</label>
-                    <label><input id="dictationLanguageModeMultiple" name="dictationLanguageMode" type="radio" value="multiple" />Multiple languages</label>
-                  </div>
-                  <label class="field">
-                    <span>Primary language</span>
-                    <select id="dictationLanguageSelect">
-                      <option value="">Auto-detect</option>
-                      <option value="en">English</option>
-                      <option value="es">Spanish</option>
-                      <option value="fr">French</option>
-                      <option value="de">German</option>
-                      <option value="it">Italian</option>
-                      <option value="pt">Portuguese</option>
-                      <option value="hi">Hindi</option>
-                      <option value="bn">Bengali</option>
-                      <option value="ja">Japanese</option>
-                      <option value="ko">Korean</option>
-                      <option value="zh">Chinese</option>
-                      <option value="ar">Arabic</option>
-                      <option value="ru">Russian</option>
-                    </select>
-                  </label>
-                  <div id="dictationLanguageMultiWrap" class="dictation-language-multi" hidden>
-                    <p class="dictation-language-multi-label">Allowed languages (Whisper will stay inside these)</p>
-                    <div class="dictation-language-grid">
-                      <label><input type="checkbox" value="en" data-dictation-lang-option />English</label>
-                      <label><input type="checkbox" value="es" data-dictation-lang-option />Spanish</label>
-                      <label><input type="checkbox" value="fr" data-dictation-lang-option />French</label>
-                      <label><input type="checkbox" value="de" data-dictation-lang-option />German</label>
-                      <label><input type="checkbox" value="it" data-dictation-lang-option />Italian</label>
-                      <label><input type="checkbox" value="pt" data-dictation-lang-option />Portuguese</label>
-                      <label><input type="checkbox" value="hi" data-dictation-lang-option />Hindi</label>
-                      <label><input type="checkbox" value="bn" data-dictation-lang-option />Bengali</label>
-                      <label><input type="checkbox" value="ja" data-dictation-lang-option />Japanese</label>
-                      <label><input type="checkbox" value="ko" data-dictation-lang-option />Korean</label>
-                      <label><input type="checkbox" value="zh" data-dictation-lang-option />Chinese</label>
-                      <label><input type="checkbox" value="ar" data-dictation-lang-option />Arabic</label>
-                      <label><input type="checkbox" value="ru" data-dictation-lang-option />Russian</label>
-                    </div>
-                    <p class="notice">Online and Offline Whisper will decode only the selected languages.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="settings-row">
-              <div>
-                <h3>Capture mode</h3>
-                <p id="captureModeHint">Push-To-Talk</p>
-                <div class="capture-mode-pills">
-                  <label><input id="captureModeSingle" name="captureMode" type="radio" value="single-tap" />Single tap</label>
-                  <label><input id="captureModePushToTalk" name="captureMode" type="radio" value="push-to-talk" />Push-to-talk</label>
-                </div>
-              </div>
-            </div>
-
-            <div class="settings-row">
-              <div>
-                <h3>Style profile</h3>
-                <p>Choose how SlasshyWispr rewrites and responds.</p>
-                <label class="field inline-select">
-                  <span>Style</span>
-                  <select id="styleProfileSelect">
-                    <option value="adaptive">Adaptive</option>
-                    <option value="professional">Professional</option>
-                    <option value="casual">Casual</option>
-                    <option value="concise">Concise</option>
-                    <option value="developer">Developer</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-
-          </div>
-
-          <h3 class="settings-section-title">App settings</h3>
-          <div class="settings-card">
-            <label class="switch-row"><span>Launch app at login</span><input id="launchAtLoginToggle" class="switch-input" type="checkbox" /></label>
-            <label class="switch-row"><span>Show floating dock at all times</span><input id="showFlowBarToggle" class="switch-input" type="checkbox" /></label>
-            <label class="switch-row"><span>Show app in dock</span><input id="showAppInDockToggle" class="switch-input" type="checkbox" /></label>
-            <label class="switch-row"><span>Command mode</span><input id="commandModeToggle" class="switch-input" type="checkbox" /></label>
-            <label class="switch-row"><span>Require wake phrase for AI replies</span><input id="wakeWordEnabledToggle" class="switch-input" type="checkbox" /></label>
-            <label class="field">
-              <span>Assistant wake name (say "Hey name")</span>
-              <input id="assistantNameInput" type="text" placeholder="${DEFAULT_ASSISTANT_NAME}" autocomplete="off" />
-            </label>
-            <p id="wakePhrasePreview" class="notice">Wake phrase examples: "Hey ${DEFAULT_ASSISTANT_NAME}", "Hi ${DEFAULT_ASSISTANT_NAME}", "Okay ${DEFAULT_ASSISTANT_NAME}"</p>
-            <label class="switch-row"><span>Context awareness (recent turns)</span><input id="contextAwarenessToggle" class="switch-input" type="checkbox" /></label>
-            <label class="switch-row"><span>Copy assistant response to clipboard</span><input id="copyToClipboardToggle" class="switch-input" type="checkbox" /></label>
-            <label class="switch-row"><span>Auto paste dictation after copy</span><input id="autoPasteDictationToggle" class="switch-input" type="checkbox" /></label>
-            <label class="switch-row"><span>Incognito mode (no local history/notes)</span><input id="incognitoModeToggle" class="switch-input" type="checkbox" /></label>
-            <label class="select-row">
-              <span>Theme</span>
-              <select id="themeModeSelect">
-                <option value="system">Match system</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </select>
-            </label>
-          </div>
-
-          <h3 class="settings-section-title">Sound</h3>
-          <div class="settings-card">
-            <label class="switch-row"><span>Dictation sound effects</span><input id="dictationSoundEffectsToggle" class="switch-input" type="checkbox" /></label>
-            <label class="switch-row"><span>Mute music while dictating</span><input id="muteMusicWhileDictatingToggle" class="switch-input" type="checkbox" /></label>
-          </div>
-
-          <h3 class="settings-section-title">Transcript refinement</h3>
-          <div class="settings-card">
-            <label class="switch-row"><span>Backtrack corrections (e.g. "scratch that")</span><input id="backtrackToggle" class="switch-input" type="checkbox" /></label>
-            <label class="switch-row"><span>Remove filler words</span><input id="removeFillersToggle" class="switch-input" type="checkbox" /></label>
-            <label class="switch-row"><span>Auto punctuation</span><input id="autoPunctuationToggle" class="switch-input" type="checkbox" /></label>
-            <label class="switch-row"><span>Auto numbered lists</span><input id="numberedListsToggle" class="switch-input" type="checkbox" /></label>
-          </div>
-        </section>
-
-        <section class="settings-pane" data-settings-pane="update-security" hidden>
-          <h3 class="settings-section-title">Updates</h3>
-          <div class="settings-card updater-card">
-            <div class="pipeline-status-row">
-              <div id="updateStatusPill" class="status-pill" data-stage="idle">Idle</div>
-              <p id="updateStatusText" class="status-detail">Check to see if a new version is available.</p>
-            </div>
-            <div class="latency-grid updater-grid" aria-live="polite">
-              <p><span>Current</span><strong id="updateCurrentVersion">-</strong></p>
-              <p><span>Latest</span><strong id="updateLatestVersion">-</strong></p>
-              <p><span>Published</span><strong id="updatePublishedAt">-</strong></p>
-              <p><span>Channel</span><strong>Stable</strong></p>
-            </div>
-            <div class="button-row">
-              <button id="checkUpdatesBtn" class="ghost-action" type="button">Check for updates</button>
-              <button id="installUpdateBtn" class="dark-action" type="button" disabled>Download & install</button>
-            </div>
-          </div>
-
-          <h3 class="settings-section-title">Security</h3>
-          <div class="settings-card">
-            <p class="notice">
-              Updates are fetched only from your configured GitHub releases and installed locally.
-              Review release notes before installing any new build.
-            </p>
-          </div>
-        </section>
-
-        <section class="settings-pane" data-settings-pane="models" hidden>
-          <h3 class="settings-section-title">Models</h3>
-          <div class="settings-card">
-            <div class="settings-row">
-              <div class="full-row">
-                <h3>Runtime routing</h3>
-                <p>Choose STT and AI runtime independently.</p>
-                <div class="capture-mode-pills runtime-mode-pills">
-                  <span>STT:</span>
-                  <label><input id="sttRuntimeModeOnline" name="sttRuntimeModeProfile" type="radio" value="online" />Online</label>
-                  <label><input id="sttRuntimeModeOffline" name="sttRuntimeModeProfile" type="radio" value="offline" />Offline</label>
-                </div>
-                <div class="capture-mode-pills runtime-mode-pills">
-                  <span>AI:</span>
-                  <label><input id="aiRuntimeModeOnline" name="aiRuntimeModeProfile" type="radio" value="online" />Online</label>
-                  <label><input id="aiRuntimeModeOffline" name="aiRuntimeModeProfile" type="radio" value="offline" />Offline</label>
-                </div>
-                <p id="runtimeModeNotice" class="notice">
-                  Online mode is active. API base URL + API key will be used for STT and AI.
-                </p>
-              </div>
-            </div>
-
-            <div id="onlineProviderSection" class="settings-row">
-              <div class="full-row">
-                <h3>Online provider models</h3>
-                <div class="compact-grid">
-                  <label class="field" data-online-field="base-url">
-                    <span>API Base URL</span>
-                    <input id="apiBaseUrlInput" type="text" placeholder="Use default provider URL" autocomplete="off" />
-                  </label>
-                  <label class="field" data-online-field="stt-model">
-                    <span>STT model</span>
-                    <input id="sttModelInput" type="text" placeholder="Use default STT model" autocomplete="off" />
-                  </label>
-                </div>
-                <label class="field">
-                  <span>Provider API Key</span>
-                  <input id="apiKeyInput" type="password" placeholder="Paste your API key" autocomplete="off" />
-                </label>
-                <label class="checkbox-field">
-                  <input id="rememberApiKeyInput" type="checkbox" />
-                  <span>Remember API key locally on this machine</span>
-                </label>
-                <label class="field" data-online-field="ai-model">
-                  <span>AI model</span>
-                  <input id="aiModelInput" type="text" placeholder="Use default AI model" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span>Model catalog</span>
-                  <select id="providerModelCatalogSelect">
-                    <option value="">Fetch models to load catalog...</option>
-                  </select>
-                </label>
-                <div class="button-row">
-                  <button id="fetchProviderModelsBtn" class="ghost-action" type="button">Fetch models</button>
-                  <button id="applyModelToAiBtn" class="ghost-action" type="button">Use for AI</button>
-                  <button id="applyModelToSttBtn" class="ghost-action" type="button">Use for STT</button>
-                </div>
-                <p id="onlineProviderModeNotice" class="notice">Used only in online mode.</p>
-              </div>
-            </div>
-
-            <div id="offlineOllamaSection" class="settings-row">
-              <div class="full-row">
-                <h3>Ollama (local AI / offline LLM)</h3>
-                <div class="compact-grid">
-                  <label class="field">
-                    <span>Ollama Base URL</span>
-                    <input id="localOllamaBaseUrlInput" type="text" placeholder="${DEFAULT_LOCAL_OLLAMA_BASE_URL}" autocomplete="off" />
-                  </label>
-                  <label class="field">
-                    <span>Ollama model</span>
-                    <input id="localOllamaModelInput" type="text" placeholder="llama3.1:8b, qwen2.5:7b, etc." autocomplete="off" />
-                  </label>
-                </div>
-                <label class="field">
-                  <span>Ollama model catalog</span>
-                  <select id="localOllamaModelCatalogSelect">
-                    <option value="">Fetch models to load catalog...</option>
-                  </select>
-                </label>
-                <p id="ollamaStatusNotice" class="notice">Ollama status has not been checked yet.</p>
-                <div class="button-row">
-                  <button id="checkOllamaStatusBtn" class="ghost-action" type="button">Check Ollama status</button>
-                  <button id="installOllamaBtn" class="ghost-action" type="button">Install Ollama</button>
-                  <button id="fetchOllamaModelsBtn" class="ghost-action" type="button">Fetch Ollama models</button>
-                  <button id="useOllamaModelBtn" class="ghost-action" type="button">Use selected model</button>
-                  <button id="pullOllamaModelBtn" class="ghost-action" type="button">Pull/download model</button>
-                </div>
-              </div>
-            </div>
-
-            <div id="offlineSttSection" class="settings-row">
-              <div class="full-row">
-                <h3>Local STT (Native Parakeet)</h3>
-                <label class="field">
-                  <span>Selected local STT model</span>
-                  <input id="localSttModelInput" type="text" placeholder="Select a model from catalog below" autocomplete="off" readonly />
-                </label>
-                <label class="field">
-                  <span>Model catalog (NVIDIA Parakeet)</span>
-                  <select id="localSttModelCatalogSelect">
-                    <option value="">Loading built-in model catalog...</option>
-                  </select>
-                </label>
-                <div class="button-row">
-                  <button id="downloadLocalSttModelBtn" class="ghost-action" type="button">Download & install selected model</button>
-                  <button id="deleteLocalSttModelBtn" class="ghost-action" type="button">Delete selected model</button>
-                  <button id="openLocalSttModelPathBtn" class="ghost-action" type="button">Open selected model folder</button>
-                </div>
-                <div class="stt-download-status" aria-live="polite">
-                  <div class="stt-download-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
-                    <span id="localSttDownloadProgressBar" class="stt-download-fill"></span>
-                  </div>
-                  <p id="localSttDownloadProgressText" class="notice">No local STT download in progress.</p>
-                </div>
-                <p id="localSttDownloadNotice" class="notice" style="display: none;">
-                  Pick a model from catalog and install it directly from inside the app.
-                </p>
-                <p class="notice">
-                  Available models: Parakeet v3 (478 MB), Parakeet v2 (473 MB).
-                </p>
-              </div>
-            </div>
-            <p id="offlineRuntimeModeNotice" class="notice">
-              In local mode, pipeline uses Ollama for AI and your selected local STT model for transcription.
-            </p>
-          </div>
-
-          <h3 class="settings-section-title">Setup</h3>
-          <div id="ttsBootstrapCard" class="settings-card tts-bootstrap-card">
-            <div class="tts-bootstrap-head">
-              <div>
-                <h3>TTS Runtime Bootstrap</h3>
-                <p>
-                  Use one button to install and configure Piper runtime dependencies with live progress logs.
-                </p>
-              </div>
-              <button id="setupAllTtsBtn" class="dark-action" type="button">Setup TTS runtime</button>
-            </div>
-            <p id="ttsSetupStatus" class="notice">Waiting for setup.</p>
-            <div id="ttsSetupLogs" class="setup-log-list" aria-live="polite">
-              <p class="setup-log-item">No setup logs yet.</p>
-            </div>
-          </div>
-
-          <div id="ttsProfilesArea" hidden>
-            <h3 class="settings-section-title">Profiles</h3>
-            <div class="settings-card tts-engine-card">
-              <label class="field inline-select">
-                <span>Active engine profile</span>
-                <select id="ttsEngineSelect">
-                  <option value="piper">Piper (Main)</option>
-                  <option value="coqui">Coqui (Disabled)</option>
-                </select>
-              </label>
-
-              <div class="compact-grid">
-                <label class="field">
-                  <span>Quality</span>
-                  <select id="coquiQualitySelect">
-                    <option value="fast">Fast</option>
-                    <option value="balanced">Balanced</option>
-                    <option value="high">High quality</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Emotion style</span>
-                  <select id="coquiEmotionSelect">
-                    <option value="neutral">Neutral</option>
-                    <option value="calm">Calm</option>
-                    <option value="happy">Happy</option>
-                    <option value="excited">Excited</option>
-                    <option value="serious">Serious</option>
-                    <option value="sad">Sad</option>
-                  </select>
-                </label>
-              </div>
-
-              <label class="field">
-                <span>Speed <strong id="coquiSpeedValue">1.00x</strong></span>
-                <input id="coquiSpeedInput" type="range" min="0.5" max="2" step="0.05" />
-              </label>
-              <label class="checkbox-field">
-                <input id="coquiSplitSentencesToggle" type="checkbox" />
-                <span>Split long replies into shorter sentence chunks (Coqui)</span>
-              </label>
-            </div>
-
-            <div class="tts-profile-tabs" role="tablist" aria-label="TTS profiles">
-              <button id="ttsProfilePiperTab" class="mini-tab is-active" type="button">Piper (Main)</button>
-              <button id="ttsProfileCoquiTab" class="mini-tab" type="button">Coqui (Beta)</button>
-            </div>
-
-            <div id="ttsProfilePiperPanel" class="settings-card tts-profile-panel">
-              <div class="tts-profile-grid">
-                <label class="field">
-                  <span>Piper executable path (optional override)</span>
-                  <input id="piperPathInput" type="text" placeholder="Auto-filled after runtime setup" autocomplete="off" />
-                </label>
-                <div class="compact-grid">
-                  <label class="field">
-                    <span>Voice quality</span>
-                    <select id="piperQualitySelect">
-                      <option value="fast">Fast</option>
-                      <option value="balanced">Balanced</option>
-                      <option value="high">High quality</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span>Emotion style</span>
-                    <select id="piperEmotionSelect">
-                      <option value="neutral">Neutral</option>
-                      <option value="calm">Calm</option>
-                      <option value="happy">Happy</option>
-                      <option value="excited">Excited</option>
-                      <option value="serious">Serious</option>
-                      <option value="sad">Sad</option>
-                    </select>
-                  </label>
-                </div>
-                <label class="field">
-                  <span>Speed <strong id="piperSpeedValue">1.00x</strong></span>
-                  <input id="piperSpeedInput" type="range" min="0.5" max="2" step="0.05" />
-                </label>
-                <p class="notice">Emotion/quality for Piper are expressive presets, not true voice cloning.</p>
-
-                <div class="button-row">
-                  <button id="setupRuntimeBtn" class="ghost-action" type="button">Re-setup Piper</button>
-                  <button id="validatePiperBtn" class="ghost-action" type="button">Validate Piper</button>
-                  <button id="downloadVoiceBtn" class="ghost-action" type="button">Download voice only</button>
-                </div>
-              </div>
-
-              <div class="model-meta">
-                <p><span>Base URL</span><code id="baseUrlValue">loading...</code></p>
-                <p><span>STT Model</span><code id="sttModelValue">loading...</code></p>
-                <p><span>AI Model</span><code id="aiModelValue">loading...</code></p>
-                <p><span>Piper</span><code id="piperStatusValue">checking...</code></p>
-                <p><span>Piper Path</span><code id="piperPathValue">-</code></p>
-                <p><span>Voice</span><code id="voiceStatusValue">checking...</code></p>
-                <p><span>Voice Path</span><code id="voicePathValue">-</code></p>
-              </div>
-            </div>
-
-            <div id="ttsProfileCoquiPanel" class="settings-card tts-profile-panel" hidden>
-              <p class="notice">Coqui is beta and loads only when you select it.</p>
-              <div class="tts-profile-grid">
-                <label class="field">
-                  <span>Python path (optional override)</span>
-                  <input id="coquiPythonPathInput" type="text" placeholder="Leave blank to use bundled/runtime python" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span>Coqui model</span>
-                  <input id="coquiModelInput" type="text" placeholder="${DEFAULT_COQUI_MODEL}" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span>Language code</span>
-                  <input id="coquiLanguageInput" type="text" placeholder="en" autocomplete="off" />
-                </label>
-                <label class="checkbox-field">
-                  <input id="coquiUseGpuToggle" type="checkbox" />
-                  <span>Use CUDA/GPU if available</span>
-                </label>
-
-                <div class="button-row">
-                  <button id="setupCoquiBtn" class="ghost-action" type="button">Re-setup Coqui</button>
-                  <button id="validateCoquiBtn" class="ghost-action" type="button">Validate Coqui</button>
-                  <button id="refreshCoquiModelsBtn" class="ghost-action" type="button">Refresh models</button>
-                </div>
-
-                <label class="field">
-                  <span>Model catalog</span>
-                  <select id="coquiModelCatalogSelect">
-                    <option value="">Load models list...</option>
-                  </select>
-                </label>
-
-                <div class="model-meta">
-                  <p><span>Status</span><code id="coquiStatusValue">checking...</code></p>
-                  <p><span>Python</span><code id="coquiPythonValue">-</code></p>
-                  <p><span>TTS Version</span><code id="coquiVersionValue">-</code></p>
-                  <p><span>CUDA</span><code id="coquiCudaValue">-</code></p>
-                  <p><span>Voice Dir</span><code id="coquiVoiceDirValue">-</code></p>
-                </div>
-              </div>
-
-              <div class="tts-clone-card">
-                <label class="field">
-                  <span>Voice profile ID</span>
-                  <input id="coquiVoiceIdInput" type="text" placeholder="my_voice_profile" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span>Reference sample (WAV/MP3/WEBM, max 30 seconds)</span>
-                  <input id="coquiVoiceFileInput" type="file" accept="audio/*" />
-                </label>
-                <p id="coquiCloneStatus" class="notice">Ready to clone a voice sample.</p>
-                <div class="button-row">
-                  <button id="cloneCoquiVoiceBtn" class="ghost-action" type="button">Clone voice</button>
-                  <button id="testCoquiVoiceBtn" class="ghost-action" type="button">Test selected voice</button>
-                  <button id="refreshCoquiVoicesBtn" class="ghost-action" type="button">Refresh voices</button>
-                </div>
-                <label class="field">
-                  <span>Saved cloned voices</span>
-                  <select id="coquiVoiceSelect">
-                    <option value="">No voices found</option>
-                  </select>
-                </label>
-                <audio id="coquiVoicePreview" controls preload="none"></audio>
-                <p class="notice">Upload a clean sample between 3 and 30 seconds for best cloning quality.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="settings-pane" data-settings-pane="pipeline" hidden>
-          <h3 class="settings-section-title">Prompting</h3>
-          <div class="settings-card">
-            <label class="field">
-              <span>System Prompt</span>
-              <textarea id="systemPromptInput" rows="4" spellcheck="false"></textarea>
-            </label>
-            <div class="compact-grid">
-              <label class="field">
-                <span>Temperature <strong id="temperatureValue">0.35</strong></span>
-                <input id="temperatureInput" type="range" min="0" max="1.2" step="0.05" />
-              </label>
-              <label class="field">
-                <span>Max Tokens</span>
-                <input id="maxTokensInput" type="number" min="64" max="1024" step="16" />
-              </label>
-            </div>
-          </div>
-
-          <h3 class="settings-section-title">Pipeline status</h3>
-          <div class="settings-card">
-            <div class="pipeline-status-row">
-              <div id="statusPill" class="status-pill" data-stage="idle">Idle</div>
-              <p id="statusDetail" class="status-detail">Ready.</p>
-            </div>
-            <div class="latency-grid" aria-live="polite">
-              <p><span>STT</span><strong id="sttLatency">-</strong></p>
-              <p><span>AI</span><strong id="aiLatency">-</strong></p>
-              <p><span>TTS</span><strong id="ttsLatency">-</strong></p>
-              <p><span>Total</span><strong id="totalLatency">-</strong></p>
-            </div>
-            <p id="noticeText" class="notice">Ready.</p>
-            <audio id="assistantAudio" controls preload="none"></audio>
-          </div>
-        </section>
-      </section>
-    </div>
-  </div>
-
-  <div class="hidden-runtime-state" aria-hidden="true">
-    <span id="recordTimer">00.0s</span>
-    <button id="recordBtn" class="hidden-record" type="button">Start Recording</button>
-  </div>
-`;
 
 function requiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -967,6 +227,8 @@ const captureModeHint = requiredElement<HTMLElement>("#captureModeHint");
 const noticeText = requiredElement<HTMLParagraphElement>("#noticeText");
 const activityDate = requiredElement<HTMLElement>("#activityDate");
 const metricWords = requiredElement<HTMLElement>("#metricWords");
+const metricSpeakingTime = requiredElement<HTMLElement>("#metricSpeakingTime");
+const metricSessions = requiredElement<HTMLElement>("#metricSessions");
 const metricWpm = requiredElement<HTMLElement>("#metricWpm");
 
 function syncSidebarHoverTitles(collapsed: boolean): void {
@@ -989,23 +251,17 @@ const dictionaryList = requiredElement<HTMLDivElement>("#dictionaryList");
 const dictionaryForm = requiredElement<HTMLFormElement>("#dictionaryForm");
 const dictionarySourceInput = requiredElement<HTMLInputElement>("#dictionarySourceInput");
 const dictionaryTargetInput = requiredElement<HTMLInputElement>("#dictionaryTargetInput");
-const dictionarySharedInput = requiredElement<HTMLInputElement>("#dictionarySharedInput");
 const dictionaryAddBtn = requiredElement<HTMLButtonElement>("#dictionaryAddBtn");
 const dictionaryAddBtnTop = requiredElement<HTMLButtonElement>("#dictionaryAddBtnTop");
-const dictionaryFilterButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>("[data-dictionary-filter]"),
-);
+
 
 const snippetsList = requiredElement<HTMLDivElement>("#snippetsList");
 const snippetForm = requiredElement<HTMLFormElement>("#snippetForm");
 const snippetTriggerInput = requiredElement<HTMLInputElement>("#snippetTriggerInput");
 const snippetExpansionInput = requiredElement<HTMLInputElement>("#snippetExpansionInput");
-const snippetSharedInput = requiredElement<HTMLInputElement>("#snippetSharedInput");
 const snippetAddBtn = requiredElement<HTMLButtonElement>("#snippetAddBtn");
 const snippetsAddBtnTop = requiredElement<HTMLButtonElement>("#snippetsAddBtnTop");
-const snippetFilterButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>("[data-snippet-filter]"),
-);
+
 
 const notesList = requiredElement<HTMLDivElement>("#notesList");
 const settingsVersionText = requiredElement<HTMLParagraphElement>("#settingsVersionText");
@@ -1146,6 +402,9 @@ const cloneCoquiVoiceBtn = requiredElement<HTMLButtonElement>("#cloneCoquiVoiceB
 const testCoquiVoiceBtn = requiredElement<HTMLButtonElement>("#testCoquiVoiceBtn");
 const recordBtn = requiredElement<HTMLButtonElement>("#recordBtn");
 const clearHistoryBtn = requiredElement<HTMLButtonElement>("#clearHistoryBtn");
+const clearHistoryBtnFull = requiredElement<HTMLButtonElement>("#clearHistoryBtnFull");
+const viewFullHistoryBtn = requiredElement<HTMLButtonElement>("#viewFullHistoryBtn");
+const clearStatsBtn = requiredElement<HTMLButtonElement>("#clearStatsBtn");
 const notesQuickMicBtn = requiredElement<HTMLButtonElement>("#notesQuickMicBtn");
 
 const toggleHotkeyEditorBtn = requiredElement<HTMLButtonElement>("#toggleHotkeyEditorBtn");
@@ -1162,6 +421,7 @@ const totalLatency = requiredElement<HTMLElement>("#totalLatency");
 const transcriptText = requiredElement<HTMLParagraphElement>("#transcriptText");
 const assistantText = requiredElement<HTMLParagraphElement>("#assistantText");
 const conversationLog = requiredElement<HTMLDivElement>("#conversationLog");
+const fullHistoryLog = requiredElement<HTMLDivElement>("#fullHistoryLog");
 const assistantAudio = requiredElement<HTMLAudioElement>("#assistantAudio");
 const coquiVoicePreview = requiredElement<HTMLAudioElement>("#coquiVoicePreview");
 const coquiCloneStatus = requiredElement<HTMLParagraphElement>("#coquiCloneStatus");
@@ -1208,8 +468,7 @@ const commandHotkeyCaptureModifiers = {
   alt: false,
   meta: false,
 };
-let activeDictionaryFilter: "all" | TeamScope = "all";
-let activeSnippetFilter: "all" | TeamScope = "all";
+
 let dictionaryTerms = loadDictionaryTerms();
 let snippets = loadSnippets();
 let quickNotes = loadQuickNotes();
@@ -1726,10 +985,12 @@ window.addEventListener("beforeunload", () => {
 
 toggleHotkeyEditorBtn.addEventListener("click", () => {
   hotkeyEditor.hidden = !hotkeyEditor.hidden;
+  toggleHotkeyEditorBtn.textContent = hotkeyEditor.hidden ? "Change" : "Done";
 });
 
 toggleMicEditorBtn.addEventListener("click", () => {
   microphoneEditor.hidden = !microphoneEditor.hidden;
+  toggleMicEditorBtn.textContent = microphoneEditor.hidden ? "Change" : "Done";
 });
 
 apiKeyInput.addEventListener("input", handleSettingsChange);
@@ -1872,15 +1133,7 @@ dictionaryAddBtnTop.addEventListener("click", () => {
   }
 });
 
-for (const button of dictionaryFilterButtons) {
-  button.addEventListener("click", () => {
-    const value = button.dataset.dictionaryFilter;
-    if (value === "all" || value === "personal" || value === "shared") {
-      activeDictionaryFilter = value;
-      renderDictionaryList();
-    }
-  });
-}
+
 
 snippetForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -1896,15 +1149,7 @@ snippetsAddBtnTop.addEventListener("click", () => {
   }
 });
 
-for (const button of snippetFilterButtons) {
-  button.addEventListener("click", () => {
-    const value = button.dataset.snippetFilter;
-    if (value === "all" || value === "personal" || value === "shared") {
-      activeSnippetFilter = value;
-      renderSnippetsList();
-    }
-  });
-}
+
 
 notesQuickMicBtn.addEventListener("click", () => {
   if (settings.captureMode === "push-to-talk") {
@@ -2026,11 +1271,31 @@ applyModelToSttBtn.addEventListener("click", () => {
 });
 
 clearHistoryBtn.addEventListener("click", () => {
+  clearAllHistory();
+});
+
+clearHistoryBtnFull.addEventListener("click", () => {
+  clearAllHistory();
+});
+
+viewFullHistoryBtn.addEventListener("click", () => {
+  setActivePage("history");
+});
+
+clearStatsBtn.addEventListener("click", () => {
+  usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
+  persistUsageStats();
+  updateUsageMetrics();
+  setNotice("Statistics have been reset.");
+});
+
+function clearAllHistory(): void {
   homeHistoryEntries = [];
   persistHomeHistory();
   renderHomeHistory();
+  renderFullHistory();
   recentTurns.length = 0;
-});
+}
 
 navigator.mediaDevices?.addEventListener?.("devicechange", () => {
   void refreshMicrophones(false);
@@ -2086,7 +1351,7 @@ async function bootstrap(): Promise<void> {
 }
 
 function asMainPage(value: string | undefined): MainPage | null {
-  if (value === "home" || value === "dictionary" || value === "snippets" || value === "notes") {
+  if (value === "home" || value === "history" || value === "dictionary" || value === "snippets" || value === "notes") {
     return value;
   }
 
@@ -2121,6 +1386,12 @@ function setActivePage(next: MainPage): void {
     const current = panel.dataset.page === next;
     panel.classList.toggle("is-active", current);
     panel.hidden = !current;
+  }
+
+  if (next === "home") {
+    renderHomeHistory();
+  } else if (next === "history") {
+    renderFullHistory();
   }
 }
 
@@ -2343,9 +1614,9 @@ function loadSettings(): PersistedSettings {
       dictationLanguageAllowList,
       styleProfile: asStyleProfile(parsed.styleProfile),
       systemPrompt:
-        String(parsed.systemPrompt ?? defaults.systemPrompt).trim() || defaults.systemPrompt,
+        parsed.systemPrompt !== undefined ? String(parsed.systemPrompt) : defaults.systemPrompt,
       temperature: coerceNumber(parsed.temperature, defaults.temperature, 0, 1.2),
-      maxTokens: coerceInteger(parsed.maxTokens, defaults.maxTokens, 64, 1024),
+      maxTokens: coerceInteger(parsed.maxTokens, defaults.maxTokens, 64, 4096),
       launchAtLogin: coerceBoolean(parsed.launchAtLogin, defaults.launchAtLogin),
       showFlowBar: fromLegacyOnly
         ? false
@@ -2354,7 +1625,7 @@ function loadSettings(): PersistedSettings {
       commandMode: coerceBoolean(parsed.commandMode, defaults.commandMode),
       wakeWordEnabled: coerceBoolean(parsed.wakeWordEnabled, defaults.wakeWordEnabled),
       assistantName:
-        String(parsed.assistantName ?? defaults.assistantName).trim() || defaults.assistantName,
+        parsed.assistantName !== undefined ? String(parsed.assistantName) : defaults.assistantName,
       autoPasteDictation: coerceBoolean(parsed.autoPasteDictation, defaults.autoPasteDictation),
       contextAwareness: coerceBoolean(parsed.contextAwareness, defaults.contextAwareness),
       copyToClipboard: coerceBoolean(parsed.copyToClipboard, defaults.copyToClipboard),
@@ -2573,15 +1844,15 @@ function readSettingsFromForm(): PersistedSettings {
     dictationLanguageMode,
     dictationLanguageAllowList,
     styleProfile: asStyleProfile(styleProfileSelect.value),
-    systemPrompt: systemPromptInput.value.trim() || DEFAULT_SYSTEM_PROMPT,
+    systemPrompt: systemPromptInput.value,
     temperature: coerceNumber(Number(temperatureInput.value), DEFAULT_TEMPERATURE, 0, 1.2),
-    maxTokens: coerceInteger(Number(maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 1024),
+    maxTokens: coerceInteger(Number(maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 4096),
     launchAtLogin: launchAtLoginToggle.checked,
     showFlowBar: showFlowBarToggle.checked,
     showAppInDock: showAppInDockToggle.checked,
     commandMode: commandModeToggle.checked,
     wakeWordEnabled: wakeWordEnabledToggle.checked,
-    assistantName: assistantNameInput.value.trim() || DEFAULT_ASSISTANT_NAME,
+    assistantName: assistantNameInput.value,
     autoPasteDictation: autoPasteDictationToggle.checked,
     contextAwareness: contextAwarenessToggle.checked,
     copyToClipboard: copyToClipboardToggle.checked,
@@ -2610,6 +1881,10 @@ function applySettingsToForm(next: PersistedSettings): void {
   localOllamaModelInput.value = next.localOllamaModel;
   localSttModelInput.value = next.localSttModel;
   rememberApiKeyInput.checked = next.rememberApiKey;
+  // Bug fix: explicitly sync microphone selection to avoid UI desync on startup
+  if (next.microphoneDeviceId) {
+    microphoneSelect.value = next.microphoneDeviceId;
+  }
   piperPathInput.value = next.piperPath;
   ttsEngineSelect.value = effectiveTtsEngine;
   piperSpeedInput.value = next.piperSpeed.toFixed(2);
@@ -3316,17 +2591,17 @@ async function toggleWindowMaximize(appWindow = getCurrentWindow()): Promise<voi
 }
 
 async function syncTitlebarMaximizeState(appWindow = getCurrentWindow()): Promise<void> {
-  if (!isTauriEnvironment()) {
-    windowMaximizeGlyph.textContent = "□";
-    return;
-  }
-
   try {
-    const maximized = await appWindow.isMaximized();
-    windowMaximizeGlyph.textContent = maximized ? "❐" : "□";
+    const maximized = isTauriEnvironment() ? await appWindow.isMaximized() : false;
     windowMaximizeBtn.setAttribute("aria-label", maximized ? "Restore" : "Maximize");
+
+    if (maximized) {
+      windowMaximizeGlyph.innerHTML = '<rect x="8" y="4" width="12" height="12" rx="1" ry="1"></rect><path d="M4 8V20H16V16"></path>';
+    } else {
+      windowMaximizeGlyph.innerHTML = '<rect x="4" y="4" width="16" height="16" rx="1" ry="1"></rect>';
+    }
   } catch {
-    windowMaximizeGlyph.textContent = "□";
+    windowMaximizeGlyph.innerHTML = '<rect x="4" y="4" width="16" height="16" rx="1" ry="1"></rect>';
   }
 }
 
@@ -3595,7 +2870,7 @@ const GLOBAL_SHORTCUT_KEY_MAP: Record<string, string> = {
   numpadadd: "NumpadAdd",
   numpadsubtract: "NumpadSubtract",
   numpadmultiply: "NumpadMultiply",
-  numpaddivide: "NumpadDivide",
+  numpaddivide: "Numpaddivide",
   numpaddecimal: "NumpadDecimal",
   numpadenter: "NumpadEnter",
 };
@@ -4145,14 +3420,12 @@ function loadDictionaryTerms(): DictionaryTerm[] {
         id: createId(),
         source: "whispr",
         target: "Wispr",
-        scope: "personal",
         createdAt: Date.now(),
       },
       {
         id: createId(),
         source: "slashy",
         target: "Slasshy",
-        scope: "shared",
         createdAt: Date.now(),
       },
     ];
@@ -4178,14 +3451,12 @@ function loadSnippets(): SnippetEntry[] {
         id: createId(),
         trigger: "intro email",
         expansion: "Hey, would love to find some time to chat later.",
-        scope: "personal",
         createdAt: Date.now(),
       },
       {
         id: createId(),
         trigger: "my calendly link",
         expansion: "https://calendly.com/you/invite-name",
-        scope: "shared",
         createdAt: Date.now(),
       },
     ];
@@ -4224,7 +3495,7 @@ function persistQuickNotes(): void {
 function loadUsageStats(): UsageStats {
   const raw = localStorage.getItem(USAGE_STORAGE_KEY);
   if (!raw) {
-    return { sessions: 0, words: 0, avgWpm: 0 };
+    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
   }
 
   try {
@@ -4233,9 +3504,10 @@ function loadUsageStats(): UsageStats {
       sessions: coerceInteger(parsed.sessions, 0, 0, 999_999),
       words: coerceInteger(parsed.words, 0, 0, 99_999_999),
       avgWpm: coerceNumber(parsed.avgWpm, 0, 0, 600),
+      speakingSeconds: coerceInteger(parsed.speakingSeconds, 0, 0, 99_999_999),
     };
   } catch {
-    return { sessions: 0, words: 0, avgWpm: 0 };
+    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
   }
 }
 
@@ -4293,7 +3565,24 @@ function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
   contentEl.className = "entry-content";
   contentEl.textContent = entry.content;
 
-  row.append(timeEl, speakerEl, contentEl);
+  const actionsEl = document.createElement("div");
+  actionsEl.className = "entry-actions";
+
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.className = "entry-action";
+  copyBtn.textContent = "Copy";
+  copyBtn.onclick = () => {
+    navigator.clipboard.writeText(entry.content);
+    const originalText = copyBtn.textContent;
+    copyBtn.textContent = "Copied!";
+    setTimeout(() => {
+      copyBtn.textContent = originalText;
+    }, 2000);
+  };
+
+  actionsEl.append(copyBtn);
+  row.append(timeEl, speakerEl, contentEl, actionsEl);
   return row;
 }
 
@@ -4310,10 +3599,30 @@ function renderHomeHistory(): void {
 
   conversationLog.innerHTML = "";
   const fragment = document.createDocumentFragment();
-  for (const entry of homeHistoryEntries) {
+  const recent = homeHistoryEntries.slice(0, 5);
+  for (const entry of recent) {
     fragment.append(createConversationEntryElement(entry));
   }
   conversationLog.append(fragment);
+}
+
+function renderFullHistory(): void {
+  if (settings.incognitoMode) {
+    fullHistoryLog.innerHTML = '<p class="empty-hint">Incognito mode enabled. History is hidden.</p>';
+    return;
+  }
+
+  if (homeHistoryEntries.length === 0) {
+    fullHistoryLog.innerHTML = `<p class="empty-hint">${EMPTY_HISTORY_HINT}</p>`;
+    return;
+  }
+
+  fullHistoryLog.innerHTML = "";
+  const fragment = document.createDocumentFragment();
+  for (const entry of homeHistoryEntries) {
+    fragment.append(createConversationEntryElement(entry));
+  }
+  fullHistoryLog.append(fragment);
 }
 
 function loadDockLayout(): DockLayout | null {
@@ -4478,16 +3787,18 @@ async function resolveDockStartPosition(dockWidth: number, dockHeight: number): 
 }
 
 function renderDictionaryList(): void {
-  for (const button of dictionaryFilterButtons) {
-    button.classList.toggle("is-active", button.dataset.dictionaryFilter === activeDictionaryFilter);
-  }
-
-  const filtered = dictionaryTerms.filter(
-    (term) => activeDictionaryFilter === "all" || term.scope === activeDictionaryFilter,
-  );
+  const filtered = dictionaryTerms;
 
   if (filtered.length === 0) {
-    dictionaryList.innerHTML = "<p>No dictionary terms in this view.</p>";
+    dictionaryList.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
+        </div>
+        <h4>No terms yet</h4>
+        <p>Your dictionary is currently empty. Start by adding a term above.</p>
+      </div>
+    `;
     return;
   }
 
@@ -4505,9 +3816,7 @@ function renderDictionaryList(): void {
     spanEl.textContent = term.target;
     mainEl.append(strongEl, spanEl);
 
-    const metaEl = document.createElement("span");
-    metaEl.className = "managed-row-meta";
-    metaEl.textContent = term.scope === "shared" ? "Shared" : "Personal";
+
 
     const actionsEl = document.createElement("div");
     actionsEl.className = "managed-row-actions";
@@ -4523,7 +3832,7 @@ function renderDictionaryList(): void {
     });
     actionsEl.append(deleteBtn);
 
-    row.append(mainEl, metaEl, actionsEl);
+    row.append(mainEl, actionsEl);
     fragment.append(row);
   }
   dictionaryList.append(fragment);
@@ -4541,30 +3850,31 @@ function addDictionaryTerm(): void {
     id: createId(),
     source,
     target,
-    scope: dictionarySharedInput.checked ? "shared" : "personal",
     createdAt: Date.now(),
   });
   persistDictionaryTerms();
   renderDictionaryList();
   dictionarySourceInput.value = "";
   dictionaryTargetInput.value = "";
-  dictionarySharedInput.checked = false;
+
   dictionaryForm.classList.add("is-collapsed");
   dictionaryAddBtnTop.textContent = "Add new";
   setNotice(`Dictionary term added: ${source} → ${target}`);
 }
 
 function renderSnippetsList(): void {
-  for (const button of snippetFilterButtons) {
-    button.classList.toggle("is-active", button.dataset.snippetFilter === activeSnippetFilter);
-  }
-
-  const filtered = snippets.filter(
-    (item) => activeSnippetFilter === "all" || item.scope === activeSnippetFilter,
-  );
+  const filtered = snippets;
 
   if (filtered.length === 0) {
-    snippetsList.innerHTML = "<p>No snippets in this view.</p>";
+    snippetsList.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+        </div>
+        <h4>No snippets yet</h4>
+        <p>Save time by creating your first text expansion shortcut.</p>
+      </div>
+    `;
     return;
   }
 
@@ -4582,9 +3892,7 @@ function renderSnippetsList(): void {
     spanEl.textContent = snippet.expansion;
     mainEl.append(strongEl, spanEl);
 
-    const metaEl = document.createElement("span");
-    metaEl.className = "managed-row-meta";
-    metaEl.textContent = snippet.scope === "shared" ? "Shared" : "Personal";
+
 
     const actionsEl = document.createElement("div");
     actionsEl.className = "managed-row-actions";
@@ -4600,7 +3908,7 @@ function renderSnippetsList(): void {
     });
     actionsEl.append(deleteBtn);
 
-    row.append(mainEl, metaEl, actionsEl);
+    row.append(mainEl, actionsEl);
     fragment.append(row);
   }
   snippetsList.append(fragment);
@@ -4618,14 +3926,13 @@ function addSnippetEntry(): void {
     id: createId(),
     trigger,
     expansion,
-    scope: snippetSharedInput.checked ? "shared" : "personal",
     createdAt: Date.now(),
   });
   persistSnippets();
   renderSnippetsList();
   snippetTriggerInput.value = "";
   snippetExpansionInput.value = "";
-  snippetSharedInput.checked = false;
+
   snippetForm.classList.add("is-collapsed");
   snippetsAddBtnTop.textContent = "Add new";
   setNotice(`Snippet added: ${trigger}`);
@@ -4692,9 +3999,26 @@ function renderNotesList(): void {
   notesList.append(fragment);
 }
 
+function formatSpeakingTime(totalSeconds: number): string {
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+
+  if (hours <= 0) {
+    return `${minutes}m`;
+  }
+
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
 function updateUsageMetrics(): void {
   metricWords.textContent = `${usageStats.words} words`;
-  metricWpm.textContent = `${Math.round(usageStats.avgWpm)} WPM`;
+  metricSpeakingTime.textContent = formatSpeakingTime(usageStats.speakingSeconds);
+  metricSessions.textContent = `${usageStats.sessions}`;
+  metricWpm.innerHTML = `${Math.round(usageStats.avgWpm)} <span class="stat-unit">wpm</span>`;
 }
 
 function trackUsage(transcript: string): void {
@@ -4702,6 +4026,7 @@ function trackUsage(transcript: string): void {
   usageStats.sessions += 1;
   usageStats.words += words;
   const seconds = Math.max((Date.now() - recordingStartedAt) / 1000, 1);
+  usageStats.speakingSeconds += Math.round(seconds);
   const currentWpm = (words / seconds) * 60;
   if (usageStats.sessions <= 1) {
     usageStats.avgWpm = currentWpm;
@@ -5855,7 +5180,7 @@ async function activateSelectedLocalSttModel(): Promise<void> {
       setNotice("Model loaded.");
     } else {
       localSttDownloadNotice.textContent = "Unable to load model.";
-      showOfflineModeDiagnostic('load-timeout', { model, waitTime: '30+ seconds' });
+      showOfflineModeDiagnostic('load-timeout', { model });
     }
   } catch (error) {
     const message = asErrorMessage(error);
@@ -7266,6 +6591,11 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
           setNotice("Dictation copied and pasted.");
         }
       }
+      // Bug fix: also copy dictation to clipboard when copyToClipboard is enabled
+      // and autoPaste is disabled (previously transcriptions were silently lost)
+      if (!dictationPasted && activeSettings.copyToClipboard && !response.selectionPending && !selectionPopupOpened) {
+        await copyToClipboard(response.assistantResponse);
+      }
     } else if (activeSettings.copyToClipboard && !response.selectionPending && !selectionPopupOpened) {
       await copyToClipboard(response.assistantResponse);
     }
@@ -7349,14 +6679,15 @@ function appendConversationEntry(
       timestamp: Date.now(),
     };
 
-    const emptyHint = conversationLog.querySelector(".empty-hint");
-    if (emptyHint) {
-      emptyHint.remove();
-    }
-
-    conversationLog.prepend(createConversationEntryElement(historyEntry));
     homeHistoryEntries.unshift(historyEntry);
+    while (homeHistoryEntries.length > MAX_HISTORY_ITEMS) {
+      homeHistoryEntries.pop();
+    }
     persistHomeHistory();
+    renderHomeHistory();
+    if (activePage === "history") {
+      renderFullHistory();
+    }
   }
 
   recentTurns.unshift({ speaker, content });
@@ -8121,8 +7452,8 @@ async function ensureVoiceIndicatorWindow(): Promise<WebviewWindow> {
     }
   }
 
-  const dockWidth = 190;
-  const dockHeight = 40;
+  const dockWidth = 126;
+  const dockHeight = 48;
   const dockPosition = await resolveDockStartPosition(dockWidth, dockHeight);
 
   const created = new WebviewWindow("voice_indicator", {
@@ -9037,9 +8368,9 @@ function asErrorMessage(error: unknown): string {
 /**
  * Checks if a model file exists on disk
  */
-async function checkModelFileExists(model: string): Promise<boolean> {
+async function checkModelFileExists(_model: string): Promise<boolean> {
   try {
-    const status = await invoke<LocalSttRuntimeStateResponse>("get_local_stt_runtime_state");
+    await invoke<LocalSttRuntimeStateResponse>("get_local_stt_runtime_state");
     // If runtime state returns successfully but model not loaded, file likely missing
     return true; // Backend will handle file existence check during warmup
   } catch (error) {
@@ -9079,8 +8410,8 @@ async function checkAvailableMemory(model: string): Promise<{ sufficient: boolea
     });
 
     // Parakeet v3 needs ~600MB, v2 needs ~500MB
-    const requiredMB = model.includes("parakeet-tdt-0.6b") ? 600 : 500;
-    const availableMB = advice.totalRamGb * 1024; // Convert GB to MB
+    // const requiredMB = model.includes("parakeet-tdt-0.6b") ? 600 : 500;
+    // const availableMB = advice.totalRamGb * 1024; // Convert GB to MB
 
     // Consider sufficient if at least 1GB free (conservative)
     return {
@@ -9138,10 +8469,10 @@ function showOfflineModeDiagnostic(issue: string, details?: {
       <p style="margin: 0; color: var(--text-secondary, #aaa); font-size: 14px; line-height: 1.5;">${diagnostics.description}</p>
     </div>
 
-    ${details.model ? `
+    ${details?.model ? `
     <div style="background: var(--surface-raised, #2a2a2a); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
       <div style="font-size: 12px; color: var(--text-muted, #888); margin-bottom: 4px;">Model</div>
-      <div style="font-family: monospace; font-size: 13px; color: var(--text-primary, #fff); word-break: break-all;">${escapeHtml(details.model)}</div>
+      <div style="font-family: monospace; font-size: 13px; color: var(--text-primary, #fff); word-break: break-all;">${escapeHtml(details?.model)}</div>
     </div>
     ` : ''}
 
@@ -9183,13 +8514,13 @@ function showOfflineModeDiagnostic(issue: string, details?: {
   buttons.forEach(btn => {
     btn.addEventListener('mouseenter', () => {
       if (!btn.textContent?.includes('Cancel')) {
-        btn.style.transform = 'translateY(-1px)';
-        btn.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.3)';
+        (btn as HTMLElement).style.transform = 'translateY(-1px)';
+        (btn as HTMLElement).style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.3)';
       }
     });
     btn.addEventListener('mouseleave', () => {
-      btn.style.transform = 'translateY(0)';
-      btn.style.boxShadow = 'none';
+      (btn as HTMLElement).style.transform = 'translateY(0)';
+      (btn as HTMLElement).style.boxShadow = 'none';
     });
   });
 
@@ -9306,7 +8637,7 @@ function getOfflineDiagnosticData(issue: string, details?: any): {
       return {
         icon: '❌',
         title: 'Model File Not Found',
-        description: `The selected model file appears to be missing or incomplete.${details.model ? `\n\nExpected: ${details.model}` : ''}`,
+        description: `The selected model file appears to be missing or incomplete.${details?.model ? `\n\nExpected: ${details?.model}` : ''}`,
         steps: [
           'The model may not have been downloaded yet',
           'Download was interrupted or corrupted',
