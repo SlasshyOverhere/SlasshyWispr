@@ -988,10 +988,12 @@ window.addEventListener("beforeunload", () => {
 
 toggleHotkeyEditorBtn.addEventListener("click", () => {
   hotkeyEditor.hidden = !hotkeyEditor.hidden;
+  toggleHotkeyEditorBtn.textContent = hotkeyEditor.hidden ? "Change" : "Done";
 });
 
 toggleMicEditorBtn.addEventListener("click", () => {
   microphoneEditor.hidden = !microphoneEditor.hidden;
+  toggleMicEditorBtn.textContent = microphoneEditor.hidden ? "Change" : "Done";
 });
 
 apiKeyInput.addEventListener("input", handleSettingsChange);
@@ -1624,9 +1626,9 @@ function loadSettings(): PersistedSettings {
       dictationLanguageAllowList,
       styleProfile: asStyleProfile(parsed.styleProfile),
       systemPrompt:
-        String(parsed.systemPrompt ?? defaults.systemPrompt).trim() || defaults.systemPrompt,
+        parsed.systemPrompt !== undefined ? String(parsed.systemPrompt) : defaults.systemPrompt,
       temperature: coerceNumber(parsed.temperature, defaults.temperature, 0, 1.2),
-      maxTokens: coerceInteger(parsed.maxTokens, defaults.maxTokens, 64, 1024),
+      maxTokens: coerceInteger(parsed.maxTokens, defaults.maxTokens, 64, 4096),
       launchAtLogin: coerceBoolean(parsed.launchAtLogin, defaults.launchAtLogin),
       showFlowBar: fromLegacyOnly
         ? false
@@ -1635,7 +1637,7 @@ function loadSettings(): PersistedSettings {
       commandMode: coerceBoolean(parsed.commandMode, defaults.commandMode),
       wakeWordEnabled: coerceBoolean(parsed.wakeWordEnabled, defaults.wakeWordEnabled),
       assistantName:
-        String(parsed.assistantName ?? defaults.assistantName).trim() || defaults.assistantName,
+        parsed.assistantName !== undefined ? String(parsed.assistantName) : defaults.assistantName,
       autoPasteDictation: coerceBoolean(parsed.autoPasteDictation, defaults.autoPasteDictation),
       contextAwareness: coerceBoolean(parsed.contextAwareness, defaults.contextAwareness),
       copyToClipboard: coerceBoolean(parsed.copyToClipboard, defaults.copyToClipboard),
@@ -1854,15 +1856,15 @@ function readSettingsFromForm(): PersistedSettings {
     dictationLanguageMode,
     dictationLanguageAllowList,
     styleProfile: asStyleProfile(styleProfileSelect.value),
-    systemPrompt: systemPromptInput.value.trim() || DEFAULT_SYSTEM_PROMPT,
+    systemPrompt: systemPromptInput.value,
     temperature: coerceNumber(Number(temperatureInput.value), DEFAULT_TEMPERATURE, 0, 1.2),
-    maxTokens: coerceInteger(Number(maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 1024),
+    maxTokens: coerceInteger(Number(maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 4096),
     launchAtLogin: launchAtLoginToggle.checked,
     showFlowBar: showFlowBarToggle.checked,
     showAppInDock: showAppInDockToggle.checked,
     commandMode: commandModeToggle.checked,
     wakeWordEnabled: wakeWordEnabledToggle.checked,
-    assistantName: assistantNameInput.value.trim() || DEFAULT_ASSISTANT_NAME,
+    assistantName: assistantNameInput.value,
     autoPasteDictation: autoPasteDictationToggle.checked,
     contextAwareness: contextAwarenessToggle.checked,
     copyToClipboard: copyToClipboardToggle.checked,
@@ -1891,6 +1893,10 @@ function applySettingsToForm(next: PersistedSettings): void {
   localOllamaModelInput.value = next.localOllamaModel;
   localSttModelInput.value = next.localSttModel;
   rememberApiKeyInput.checked = next.rememberApiKey;
+  // Bug fix: explicitly sync microphone selection to avoid UI desync on startup
+  if (next.microphoneDeviceId) {
+    microphoneSelect.value = next.microphoneDeviceId;
+  }
   piperPathInput.value = next.piperPath;
   ttsEngineSelect.value = effectiveTtsEngine;
   piperSpeedInput.value = next.piperSpeed.toFixed(2);
@@ -6566,6 +6572,11 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
         if (dictationPasted) {
           setNotice("Dictation copied and pasted.");
         }
+      }
+      // Bug fix: also copy dictation to clipboard when copyToClipboard is enabled
+      // and autoPaste is disabled (previously transcriptions were silently lost)
+      if (!dictationPasted && activeSettings.copyToClipboard && !response.selectionPending && !selectionPopupOpened) {
+        await copyToClipboard(response.assistantResponse);
       }
     } else if (activeSettings.copyToClipboard && !response.selectionPending && !selectionPopupOpened) {
       await copyToClipboard(response.assistantResponse);

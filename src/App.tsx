@@ -304,7 +304,11 @@ export function App() {
   <div id="settingsOverlay" className="settings-overlay" hidden>
     <div className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsPaneTitle">
       <aside className="settings-sidebar">
-        <p className="settings-kicker">Settings</p>
+        <div className="settings-sidebar-top">
+          <p className="settings-kicker">Settings</p>
+          <h3 className="settings-sidebar-title">Control Center</h3>
+          <p className="settings-sidebar-copy">Shape how SlasshyWispr listens, responds, and fits into your daily workflow.</p>
+        </div>
         <nav className="settings-nav" aria-label="Settings sections">
           <button className="settings-nav-item is-active" data-settings-pane-nav="general" type="button">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
@@ -324,12 +328,19 @@ export function App() {
           </button>
         </nav>
 
-        <p id="settingsVersionText" className="settings-version">SlasshyWispr</p>
+        <div className="settings-sidebar-footer">
+          <span className="settings-sidebar-badge">Live preferences</span>
+          <p id="settingsVersionText" className="settings-version">SlasshyWispr</p>
+        </div>
       </aside>
 
       <section className="settings-main">
         <header className="settings-header">
-          <h2 id="settingsPaneTitle">General</h2>
+          <div>
+            <p className="settings-header-kicker">Workspace controls</p>
+            <h2 id="settingsPaneTitle">General</h2>
+            <p className="settings-header-copy">Review shortcuts, behavior, models, and pipeline controls in one place.</p>
+          </div>
           <button id="closeSettingsBtn" className="close-settings" type="button" aria-label="Close settings">✕</button>
         </header>
 
