@@ -1,5 +1,6 @@
 
 import "./style.css";
+import "./settings.css";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
