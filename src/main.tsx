@@ -3790,7 +3790,15 @@ function renderDictionaryList(): void {
   const filtered = dictionaryTerms;
 
   if (filtered.length === 0) {
-    dictionaryList.innerHTML = "<p>No dictionary terms in this view.</p>";
+    dictionaryList.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
+        </div>
+        <h4>No terms yet</h4>
+        <p>Your dictionary is currently empty. Start by adding a term above.</p>
+      </div>
+    `;
     return;
   }
 
@@ -3858,7 +3866,15 @@ function renderSnippetsList(): void {
   const filtered = snippets;
 
   if (filtered.length === 0) {
-    snippetsList.innerHTML = "<p>No snippets in this view.</p>";
+    snippetsList.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+        </div>
+        <h4>No snippets yet</h4>
+        <p>Save time by creating your first text expansion shortcut.</p>
+      </div>
+    `;
     return;
   }
 
