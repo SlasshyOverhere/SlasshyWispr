@@ -30,7 +30,6 @@ export function SettingsSidebar() {
       </nav>
 
       <div className="settings-sidebar-footer">
-        <span className="settings-sidebar-badge">Live preferences</span>
         <p id="settingsVersionText" className="settings-version">SlasshyWispr</p>
       </div>
     </aside>
