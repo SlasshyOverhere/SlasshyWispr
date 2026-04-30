@@ -30,7 +30,6 @@ export function App() {
       <div className="brand-row">
         <img src="/logo.png" alt="" className="brand-logo" style={{ width: "24px", height: "24px", objectFit: "contain" }} />
         <strong>SlasshyWispr</strong>
-        <span className="brand-plan">Basic</span>
       </div>
 
       <nav className="nav-main" aria-label="Main navigation">
