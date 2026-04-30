@@ -395,12 +395,19 @@ body.sidebar-collapsed .brand-plan {
   content: "";
   position: absolute;
   left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 4px;
-  height: 4px;
+  top: 25%;
+  bottom: 25%;
+  width: 3px;
   background: var(--accent);
-  border-radius: 50%;
+  border-radius: 0 4px 4px 0;
+  box-shadow: 2px 0 8px hsl(var(--primary) / 0.4);
+  animation: indicator-slide 400ms var(--transition-main);
+  transform-origin: center;
+}
+
+@keyframes indicator-slide {
+  from { transform: scaleY(0); opacity: 0; }
+  to { transform: scaleY(1); opacity: 1; }
 }
 
 .nav-glyph,
