@@ -106,8 +106,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 36px;
-        height: 36px;
+        width: 44px;
+        height: 44px;
       }
 
       .mic-btn {
@@ -125,6 +125,7 @@
         z-index: 2;
         position: relative;
         box-shadow: 0 0 15px var(--primary-glow);
+        overflow: hidden;
       }
 
       .mic-btn:hover {
@@ -134,45 +135,33 @@
 
       .mic-ring {
         position: absolute;
-        width: 100%;
-        height: 100%;
+        width: 34px;
+        height: 34px;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
         border-radius: 50%;
-        border: 1px solid var(--accent);
+        background: conic-gradient(from 0deg, transparent 30%, var(--accent) 100%);
+        mask: radial-gradient(transparent 58%, black 60%);
+        -webkit-mask: radial-gradient(transparent 58%, black 60%);
+        filter: blur(0.5px);
         opacity: 0;
         pointer-events: none;
         z-index: 1;
-        box-shadow: 0 0 15px var(--primary-glow);
-      }
-
-      .dock-shell[data-stage="recording"] .mic-ring {
-        animation: ring-pulse 1.8s infinite cubic-bezier(0.4, 0, 0.2, 1);
-      }
-
-      @keyframes ring-pulse {
-        0% { transform: scale(0.95); opacity: 0.8; }
-        100% { transform: scale(1.8); opacity: 0; }
-      }
-
-      /* Inner Rotating Circle Animation */
-      .mic-btn::after {
-        content: "";
-        position: absolute;
-        inset: 2px;
-        border-radius: 50%;
-        border: 1.5px dashed var(--background);
-        opacity: 0;
         transition: opacity 300ms ease;
       }
 
-      .dock-shell[data-stage="recording"] .mic-btn::after {
-        opacity: 0.5;
-        animation: rotate 4s linear infinite;
+      .dock-shell[data-stage="recording"] .mic-ring {
+        opacity: 1;
+        animation: spin-glow-centered 1s linear infinite;
       }
 
-      @keyframes rotate {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
+      @keyframes spin-glow-centered {
+        from { transform: translate(-50%, -50%) rotate(0deg); }
+        to { transform: translate(-50%, -50%) rotate(360deg); }
       }
+
+
 
       .viz-wrap {
         display: flex;
@@ -244,7 +233,7 @@
       <div class="mic-wrap" data-tauri-drag-region>
         <div class="mic-ring"></div>
         <button class="mic-btn" id="micBtn" type="button" aria-label="Toggle dictation" style="background: transparent; box-shadow: none;">
-          <img src="logo.png" alt="SlasshyWispr" style="width: 28px; height: 28px; object-fit: contain; position: relative; z-index: 10;" />
+          <img src="logo.png" alt="SlasshyWispr" style="width: 34px; height: 34px; object-fit: contain; transform: scale(2.0) translate(-9%, -3%); transform-origin: center; position: relative; z-index: 10;" />
         </button>
       </div>
 

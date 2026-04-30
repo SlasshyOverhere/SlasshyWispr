@@ -184,11 +184,10 @@ button, input, select, textarea {
 }
 
 .app-titlebar-name {
-  font-family: var(--font-mono);
+  font-family: "Inter", var(--font-main);
   font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--text-secondary);
 }
 
@@ -304,6 +303,7 @@ body.sidebar-collapsed .flow-shell {
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   height: 48px;
+  overflow: hidden;
 }
 
 .brand-mark {
@@ -421,18 +421,16 @@ body.sidebar-collapsed .brand-plan {
   font-size: 18px;
 }
 
-body.sidebar-collapsed .nav-item span:not(.nav-glyph),
-body.sidebar-collapsed .secondary-link span:not(.secondary-glyph) {
-  opacity: 0;
-  width: 0;
-  margin: 0;
-  pointer-events: none;
-}
-
 body.sidebar-collapsed .nav-item,
 body.sidebar-collapsed .secondary-link {
   justify-content: center;
   padding: 10px 0;
+  gap: 0;
+}
+
+body.sidebar-collapsed .nav-item span:not(.nav-glyph),
+body.sidebar-collapsed .secondary-link span:not(.secondary-glyph) {
+  display: none;
 }
 
 /* Phase 2.4: Content Area */
@@ -526,6 +524,7 @@ body.sidebar-collapsed .secondary-link {
   justify-content: center;
   flex-shrink: 0;
   color: var(--text-secondary);
+  overflow: hidden;
 }
 
 .overview-title {
