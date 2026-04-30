@@ -745,7 +745,7 @@ body.sidebar-collapsed .secondary-link {
 
 .full-history-log {
   flex: 1;
-  overflow-y: auto;
+  overflow-y: auto !important;
 }
 
 /* Activity Log */
@@ -825,6 +825,7 @@ body.sidebar-collapsed .secondary-link {
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--border-subtle);
   transition: background-color 150ms ease;
+  position: relative;
 }
 
 .entry:last-child {
@@ -833,6 +834,40 @@ body.sidebar-collapsed .secondary-link {
 
 .entry:hover {
   background: hsl(var(--secondary) / 0.3);
+}
+
+.entry-actions {
+  opacity: 0;
+  transition: opacity 200ms;
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-5);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.entry:hover .entry-actions {
+  opacity: 1;
+}
+
+.entry-action {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: hsl(var(--secondary) / 0.5);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 150ms ease;
+}
+
+.entry-action:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-color: var(--accent);
 }
 
 .entry-content {

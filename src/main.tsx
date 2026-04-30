@@ -3584,7 +3584,24 @@ function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
   contentEl.className = "entry-content";
   contentEl.textContent = entry.content;
 
-  row.append(timeEl, speakerEl, contentEl);
+  const actionsEl = document.createElement("div");
+  actionsEl.className = "entry-actions";
+
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.className = "entry-action";
+  copyBtn.textContent = "Copy";
+  copyBtn.onclick = () => {
+    navigator.clipboard.writeText(entry.content);
+    const originalText = copyBtn.textContent;
+    copyBtn.textContent = "Copied!";
+    setTimeout(() => {
+      copyBtn.textContent = originalText;
+    }, 2000);
+  };
+
+  actionsEl.append(copyBtn);
+  row.append(timeEl, speakerEl, contentEl, actionsEl);
   return row;
 }
 
@@ -6684,6 +6701,9 @@ function appendConversationEntry(
     };
 
     homeHistoryEntries.unshift(historyEntry);
+    while (homeHistoryEntries.length > MAX_HISTORY_ITEMS) {
+      homeHistoryEntries.pop();
+    }
     persistHomeHistory();
     renderHomeHistory();
     if (activePage === "history") {
