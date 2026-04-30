@@ -1936,7 +1936,14 @@ textarea:focus-visible {
 
 /* Page Headers */
 .page-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: var(--space-8);
+}
+
+.page-header-row .dark-action {
+  margin-top: 6px;
 }
 
 .page-header-row h1 {
