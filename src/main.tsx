@@ -2614,17 +2614,17 @@ async function toggleWindowMaximize(appWindow = getCurrentWindow()): Promise<voi
 }
 
 async function syncTitlebarMaximizeState(appWindow = getCurrentWindow()): Promise<void> {
-  if (!isTauriEnvironment()) {
-    windowMaximizeGlyph.textContent = "□";
-    return;
-  }
-
   try {
-    const maximized = await appWindow.isMaximized();
-    windowMaximizeGlyph.textContent = maximized ? "❐" : "□";
+    const maximized = isTauriEnvironment() ? await appWindow.isMaximized() : false;
     windowMaximizeBtn.setAttribute("aria-label", maximized ? "Restore" : "Maximize");
+
+    if (maximized) {
+      windowMaximizeGlyph.innerHTML = '<rect x="8" y="4" width="12" height="12" rx="1" ry="1"></rect><path d="M4 8V20H16V16"></path>';
+    } else {
+      windowMaximizeGlyph.innerHTML = '<rect x="4" y="4" width="16" height="16" rx="1" ry="1"></rect>';
+    }
   } catch {
-    windowMaximizeGlyph.textContent = "□";
+    windowMaximizeGlyph.innerHTML = '<rect x="4" y="4" width="16" height="16" rx="1" ry="1"></rect>';
   }
 }
 
