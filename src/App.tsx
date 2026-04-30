@@ -28,7 +28,7 @@ export function App() {
       </div>
 
       <div className="brand-row">
-        <div className="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+        <img src="/logo.png" alt="" className="brand-logo" style={{ width: "24px", height: "24px", objectFit: "contain" }} />
         <strong>SlasshyWispr</strong>
         <span className="brand-plan">Basic</span>
       </div>
@@ -52,7 +52,7 @@ export function App() {
         <div className="flow-page-inner home-page">
           <header className="overview-header">
             <div className="overview-icon-wrap">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
+              <img src="/logo.png" alt="" style={{ width: "24px", height: "24px", objectFit: "contain" }} />
             </div>
             <div>
               <h1 className="overview-title">Overview</h1>

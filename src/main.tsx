@@ -7432,8 +7432,8 @@ async function ensureVoiceIndicatorWindow(): Promise<WebviewWindow> {
     }
   }
 
-  const dockWidth = 190;
-  const dockHeight = 40;
+  const dockWidth = 126;
+  const dockHeight = 48;
   const dockPosition = await resolveDockStartPosition(dockWidth, dockHeight);
 
   const created = new WebviewWindow("voice_indicator", {

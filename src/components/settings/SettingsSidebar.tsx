@@ -2,6 +2,7 @@ export function SettingsSidebar() {
   return (
     <aside className="settings-sidebar">
       <div className="settings-sidebar-top">
+        <img src="/logo.png" alt="" style={{ width: "24px", height: "24px", marginBottom: "12px", objectFit: "contain" }} />
         <p className="settings-kicker">Settings</p>
         <h3 className="settings-sidebar-title">Control Center</h3>
         <p className="settings-sidebar-copy">
