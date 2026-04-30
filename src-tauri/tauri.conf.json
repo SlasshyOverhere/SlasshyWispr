@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "SlasshyWispr",
   "version": "0.1.6",
-  "identifier": "online.slasshy.desktop.assistant",
+  "identifier": "online.slasshy.slasshywispr",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",

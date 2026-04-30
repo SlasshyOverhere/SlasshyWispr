@@ -1296,9 +1296,10 @@ async fn download_and_install_app_update(
 
 const KEYRING_SERVICE: &str = "SlasshyWispr";
 const KEYRING_USER: &str = "api_key";
-const KEYRING_SERVICE_ALIASES: [&str; 4] = [
+const KEYRING_SERVICE_ALIASES: [&str; 5] = [
     "SlasshyWispr Desktop Assistant",
     "Slasshy Desktop Assistant",
+    "online.slasshy.slasshywispr",
     "online.slasshy.desktop.assistant",
     "slasshy-desktop-assistant",
 ];
