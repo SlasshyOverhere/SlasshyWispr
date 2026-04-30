@@ -1417,3 +1417,9 @@ textarea:focus-visible {
   to { opacity: 0; transform: scale(0.98); }
 }
 
+
+.stat-clear-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  background: hsl(var(--secondary) / 0.5);
+}

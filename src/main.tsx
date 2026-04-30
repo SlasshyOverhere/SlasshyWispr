@@ -410,6 +410,7 @@ const recordBtn = requiredElement<HTMLButtonElement>("#recordBtn");
 const clearHistoryBtn = requiredElement<HTMLButtonElement>("#clearHistoryBtn");
 const clearHistoryBtnFull = requiredElement<HTMLButtonElement>("#clearHistoryBtnFull");
 const viewFullHistoryBtn = requiredElement<HTMLButtonElement>("#viewFullHistoryBtn");
+const clearStatsBtn = requiredElement<HTMLButtonElement>("#clearStatsBtn");
 const notesQuickMicBtn = requiredElement<HTMLButtonElement>("#notesQuickMicBtn");
 
 const toggleHotkeyEditorBtn = requiredElement<HTMLButtonElement>("#toggleHotkeyEditorBtn");
@@ -1302,6 +1303,13 @@ clearHistoryBtnFull.addEventListener("click", () => {
 
 viewFullHistoryBtn.addEventListener("click", () => {
   setActivePage("history");
+});
+
+clearStatsBtn.addEventListener("click", () => {
+  usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
+  persistUsageStats();
+  updateUsageMetrics();
+  setNotice("Statistics have been reset.");
 });
 
 function clearAllHistory(): void {

@@ -60,6 +60,16 @@ export function App() {
             </div>
           </header>
 
+          <div className="section-head">
+            <div>
+              <h3 id="statsTitle">Productivity Trends</h3>
+              <p className="section-sub">Real-time metrics from your dictation sessions.</p>
+            </div>
+            <div className="section-actions">
+              <button id="clearStatsBtn" className="inline-link" type="button">Clear Stats</button>
+            </div>
+          </div>
+
           <div className="stat-cards-grid">
             <article className="stat-card">
               <div className="stat-card-header">
