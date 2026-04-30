@@ -14,7 +14,7 @@
   --popover: 240 6% 7%;
   --popover-foreground: 0 0% 98%;
 
-  --primary: 235 86% 65%;         /* Rich Indigo/Blue Accent */
+  --primary: 240 5% 75%;           /* Neutral silver-gray */
   --primary-foreground: 0 0% 100%;
 
   --secondary: 240 4% 16%;
@@ -23,7 +23,7 @@
   --muted: 240 5% 20%;
   --muted-foreground: 240 5% 65%;
 
-  --accent: 235 86% 65%;
+  --accent: 240 5% 75%;
   --accent-foreground: 0 0% 100%;
 
   --destructive: 0 84% 60%;
@@ -61,9 +61,9 @@
   --text-secondary: #9090a0;
   --text-muted: #606070;
   
-  --accent: #7a7aff;
-  --accent-foreground: #ffffff;
-  --accent-muted: rgba(122, 122, 255, 0.15);
+  --accent: #c8c8d0;
+  --accent-foreground: #0a0a0c;
+  --accent-muted: rgba(200, 200, 208, 0.12);
 
   /* Typography Scale */
   --font-main: "Sora", "Inter", system-ui, sans-serif;
@@ -88,9 +88,9 @@
   --radius-container: 20px;
 
   /* Premium Shadows */
-  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.32);
   --shadow-modal: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.1) inset;
-  --shadow-popover: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-popover: 0 8px 32px rgba(0, 0, 0, 0.32);
 
   /* Layout */
   --titlebar-height: 38px;
@@ -110,7 +110,7 @@
   --text-secondary: hsl(var(--muted-foreground));
   --text-muted: hsl(var(--muted-foreground) / 0.7);
 
-  --accent: hsl(var(--primary));
+  --accent: #c8c8d0;
 }
 
 [hidden] {
@@ -131,7 +131,9 @@ body,
   height: 100%;
   overflow: hidden;
   user-select: none;
-  background: var(--bg-app);
+  background-color: var(--bg-app);
+  background-image: radial-gradient(circle, #2a2a32 1px, transparent 1px);
+  background-size: 24px 24px;
   color: var(--text-primary);
   font-family: var(--font-main);
   font-size: 14px;
@@ -180,7 +182,7 @@ button, input, select, textarea {
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 4px rgba(122, 122, 255, 0.1);
+  box-shadow: 0 0 0 4px rgba(200, 200, 208, 0.1);
 }
 
 .app-titlebar-name {
@@ -392,8 +394,8 @@ body.sidebar-collapsed .brand-plan {
 }
 
 .nav-item.is-active {
-  background: rgba(122, 122, 255, 0.1);
-  color: var(--accent);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
 }
 
 .nav-item.is-active::before {
@@ -684,8 +686,8 @@ body.sidebar-collapsed .secondary-link {
   align-items: center;
   justify-content: center;
   white-space: nowrap;
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
+  background: var(--accent);
+  color: var(--accent-foreground);
   border: 0;
   padding: 8px 16px;
   border-radius: var(--radius-button);
@@ -697,12 +699,12 @@ body.sidebar-collapsed .secondary-link {
 }
 
 .dark-action:hover {
-  background: hsl(var(--primary) / 0.9);
+  background: #e0e0e8;
 }
 
 .dark-action:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring));
+  box-shadow: 0 0 0 2px var(--bg-app), 0 0 0 4px var(--accent);
 }
 
 .dark-action:active {
@@ -752,7 +754,7 @@ body.sidebar-collapsed .secondary-link {
 }
 
 .view-full-history:hover {
-  color: hsl(var(--primary));
+  color: var(--text-primary);
 }
 
 /* Activity Log */
@@ -893,7 +895,7 @@ body.sidebar-collapsed .secondary-link {
 }
 
 .entry-action:hover {
-  color: hsl(var(--primary));
+  color: var(--text-primary);
 }
 
 .home-output-card {
@@ -1080,12 +1082,12 @@ textarea:focus-visible {
   place-items: center;
   cursor: pointer;
   transition: all var(--transition-main);
-  box-shadow: 0 4px 12px rgba(122, 122, 255, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .notes-mic-btn:hover {
   transform: scale(1.05);
-  box-shadow: 0 6px 16px rgba(122, 122, 255, 0.5);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
 }
 
 .notes-mic-btn[data-stage="recording"] {
@@ -1093,9 +1095,9 @@ textarea:focus-visible {
 }
 
 @keyframes pulse-recording {
-  0% { box-shadow: 0 0 0 0 rgba(122, 122, 255, 0.7); }
-  70% { box-shadow: 0 0 0 15px rgba(122, 122, 255, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(122, 122, 255, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(200, 200, 208, 0.5); }
+  70% { box-shadow: 0 0 0 15px rgba(200, 200, 208, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(200, 200, 208, 0); }
 }
 
 .notes-list {
@@ -1184,8 +1186,8 @@ textarea:focus-visible {
 }
 
 .settings-nav-item.is-active {
-  background: rgba(122, 122, 255, 0.1);
-  color: var(--accent);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
 }
 
 .settings-main {
@@ -1354,8 +1356,8 @@ textarea:focus-visible {
 }
 
 .notice {
-  background: rgba(122, 122, 255, 0.05);
-  border: 1px solid rgba(122, 122, 255, 0.2);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   padding: 12px;
   border-radius: 8px;
@@ -1387,9 +1389,9 @@ textarea:focus-visible {
   border: 1px solid var(--border-subtle);
 }
 
-.status-pill[data-stage="recording"] { color: #ff4444; border-color: #ff4444; }
-.status-pill[data-stage="processing"] { color: var(--accent); border-color: var(--accent); }
-.status-pill[data-stage="speaking"] { color: #00ee88; border-color: #00ee88; }
+.status-pill[data-stage="recording"] { color: var(--text-primary); border-color: var(--border-strong); }
+.status-pill[data-stage="processing"] { color: var(--text-secondary); border-color: var(--border-subtle); }
+.status-pill[data-stage="speaking"] { color: var(--accent); border-color: var(--accent); }
 
 .latency-grid {
   display: grid;
@@ -1499,7 +1501,7 @@ textarea:focus-visible {
 }
 
 .dark-action:hover {
-  box-shadow: 0 4px 12px rgba(122, 122, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* Skeleton Loading Shimmer */
@@ -1665,7 +1667,7 @@ textarea:focus-visible {
 .empty-state-action {
   margin-top: var(--space-4);
   background: var(--accent);
-  color: white;
+  color: var(--accent-foreground);
   border: 0;
   padding: 10px 20px;
   border-radius: var(--radius-button);
@@ -1676,7 +1678,7 @@ textarea:focus-visible {
 
 .empty-state-action:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px var(--accent-muted);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
 /* Final Polish and Animations */
