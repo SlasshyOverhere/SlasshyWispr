@@ -19,6 +19,14 @@ import {
 import {
   buildAgentOperatingCorePrompt,
   captureModeLabel,
+  expandSnippetsInText,
+  normalizeDictionaryEntries,
+  normalizeSnippetEntries,
+  validateApiBaseUrl,
+  validateAssistantName,
+  validateDictionaryEntry,
+  validateQuickNote,
+  validateSnippetEntry,
 } from "./utils";
 
 import {
@@ -419,8 +427,6 @@ const aiLatency = requiredElement<HTMLElement>("#aiLatency");
 const ttsLatency = requiredElement<HTMLElement>("#ttsLatency");
 const totalLatency = requiredElement<HTMLElement>("#totalLatency");
 
-const transcriptText = requiredElement<HTMLParagraphElement>("#transcriptText");
-const assistantText = requiredElement<HTMLParagraphElement>("#assistantText");
 const conversationLog = requiredElement<HTMLDivElement>("#conversationLog");
 const fullHistoryLog = requiredElement<HTMLDivElement>("#fullHistoryLog");
 const assistantAudio = requiredElement<HTMLAudioElement>("#assistantAudio");
@@ -1159,6 +1165,7 @@ snippetsAddBtnTop.addEventListener("click", () => {
 
 notesQuickMicBtn.addEventListener("click", () => {
   if (settings.captureMode === "push-to-talk") {
+    setNotice("Hold the note button while speaking in push-to-talk mode.");
     return;
   }
 
@@ -1166,6 +1173,7 @@ notesQuickMicBtn.addEventListener("click", () => {
 });
 
 bindPushToTalkPointerHold(notesQuickMicBtn, "notes-button");
+bindPushToTalkKeyboardHold(notesQuickMicBtn, "notes-button");
 
 refreshMicsBtn.addEventListener("click", () => {
   void refreshMicrophones(true);
@@ -1277,11 +1285,15 @@ applyModelToSttBtn.addEventListener("click", () => {
 });
 
 clearHistoryBtn.addEventListener("click", () => {
-  clearAllHistory();
+  if (confirmDestructiveAction("Clear all transcription history from this device?")) {
+    clearAllHistory();
+  }
 });
 
 clearHistoryBtnFull.addEventListener("click", () => {
-  clearAllHistory();
+  if (confirmDestructiveAction("Clear all transcription history from this device?")) {
+    clearAllHistory();
+  }
 });
 
 viewFullHistoryBtn.addEventListener("click", () => {
@@ -1289,6 +1301,9 @@ viewFullHistoryBtn.addEventListener("click", () => {
 });
 
 clearStatsBtn.addEventListener("click", () => {
+  if (!confirmDestructiveAction("Reset all usage statistics for this device?")) {
+    return;
+  }
   usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
   persistUsageStats();
   updateUsageMetrics();
@@ -1301,6 +1316,7 @@ function clearAllHistory(): void {
   renderHomeHistory();
   renderFullHistory();
   recentTurns.length = 0;
+  setNotice("History cleared.");
 }
 
 navigator.mediaDevices?.addEventListener?.("devicechange", () => {
@@ -1873,6 +1889,19 @@ function readSettingsFromForm(): PersistedSettings {
   };
 }
 
+function applyInputValidationState(
+  input: HTMLInputElement | HTMLTextAreaElement,
+  error: string | null,
+): void {
+  input.setCustomValidity(error ?? "");
+  input.toggleAttribute("aria-invalid", Boolean(error));
+}
+
+function applySettingsValidation(next: PersistedSettings): void {
+  applyInputValidationState(apiBaseUrlInput, validateApiBaseUrl(next.apiBaseUrl));
+  applyInputValidationState(assistantNameInput, validateAssistantName(next.assistantName));
+}
+
 function applySettingsToForm(next: PersistedSettings): void {
   const effectiveTtsEngine: TtsEngine = ZERO_PYTHON_MODE ? "piper" : next.ttsEngine;
   apiKeyInput.value = next.apiKey;
@@ -1982,6 +2011,7 @@ function handleSettingsChange(): void {
     ttsEngineSelect.value = "piper";
   }
 
+  applySettingsValidation(next);
   settings = next;
   cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
   const previousDiagnosticsSignature = [
@@ -3421,25 +3451,12 @@ function updateMicrophoneSummary(): void {
 function loadDictionaryTerms(): DictionaryTerm[] {
   const raw = localStorage.getItem(DICTIONARY_STORAGE_KEY);
   if (!raw) {
-    return [
-      {
-        id: createId(),
-        source: "whispr",
-        target: "Wispr",
-        createdAt: Date.now(),
-      },
-      {
-        id: createId(),
-        source: "slashy",
-        target: "Slasshy",
-        createdAt: Date.now(),
-      },
-    ];
+    return [];
   }
 
   try {
     const parsed = JSON.parse(raw) as DictionaryTerm[];
-    return parsed.filter((item) => item && item.source && item.target);
+    return normalizeDictionaryEntries(parsed);
   } catch {
     return [];
   }
@@ -3452,25 +3469,12 @@ function persistDictionaryTerms(): void {
 function loadSnippets(): SnippetEntry[] {
   const raw = localStorage.getItem(SNIPPETS_STORAGE_KEY);
   if (!raw) {
-    return [
-      {
-        id: createId(),
-        trigger: "intro email",
-        expansion: "Hey, would love to find some time to chat later.",
-        createdAt: Date.now(),
-      },
-      {
-        id: createId(),
-        trigger: "my calendly link",
-        expansion: "https://calendly.com/you/invite-name",
-        createdAt: Date.now(),
-      },
-    ];
+    return [];
   }
 
   try {
     const parsed = JSON.parse(raw) as SnippetEntry[];
-    return parsed.filter((item) => item && item.trigger && item.expansion);
+    return normalizeSnippetEntries(parsed);
   } catch {
     return [];
   }
@@ -3832,6 +3836,9 @@ function renderDictionaryList(): void {
     deleteBtn.dataset.dictionaryDelete = term.id;
     deleteBtn.textContent = "Delete";
     deleteBtn.addEventListener("click", () => {
+      if (!confirmDestructiveAction(`Delete dictionary term "${term.source}"?`)) {
+        return;
+      }
       dictionaryTerms = dictionaryTerms.filter((entry) => entry.id !== term.id);
       persistDictionaryTerms();
       renderDictionaryList();
@@ -3847,17 +3854,23 @@ function renderDictionaryList(): void {
 function addDictionaryTerm(): void {
   const source = dictionarySourceInput.value.trim();
   const target = dictionaryTargetInput.value.trim();
-  if (!source || !target) {
-    setNotice("Dictionary requires both spoken and corrected term.", true);
+  const validationError = validateDictionaryEntry(source, target);
+  if (validationError) {
+    setNotice(validationError, true);
     return;
   }
 
-  dictionaryTerms.unshift({
-    id: createId(),
-    source,
-    target,
-    createdAt: Date.now(),
-  });
+  dictionaryTerms = normalizeDictionaryEntries([
+    {
+      id: createId(),
+      source,
+      target,
+      createdAt: Date.now(),
+    },
+    ...dictionaryTerms.filter(
+      (entry) => entry.source.trim().toLocaleLowerCase() !== source.toLocaleLowerCase(),
+    ),
+  ]);
   persistDictionaryTerms();
   renderDictionaryList();
   dictionarySourceInput.value = "";
@@ -3908,6 +3921,9 @@ function renderSnippetsList(): void {
     deleteBtn.dataset.snippetDelete = snippet.id;
     deleteBtn.textContent = "Delete";
     deleteBtn.addEventListener("click", () => {
+      if (!confirmDestructiveAction(`Delete snippet "${snippet.trigger}"?`)) {
+        return;
+      }
       snippets = snippets.filter((entry) => entry.id !== snippet.id);
       persistSnippets();
       renderSnippetsList();
@@ -3923,17 +3939,23 @@ function renderSnippetsList(): void {
 function addSnippetEntry(): void {
   const trigger = snippetTriggerInput.value.trim();
   const expansion = snippetExpansionInput.value.trim();
-  if (!trigger || !expansion) {
-    setNotice("Snippet requires both trigger and expansion text.", true);
+  const validationError = validateSnippetEntry(trigger, expansion);
+  if (validationError) {
+    setNotice(validationError, true);
     return;
   }
 
-  snippets.unshift({
-    id: createId(),
-    trigger,
-    expansion,
-    createdAt: Date.now(),
-  });
+  snippets = normalizeSnippetEntries([
+    {
+      id: createId(),
+      trigger,
+      expansion,
+      createdAt: Date.now(),
+    },
+    ...snippets.filter(
+      (entry) => entry.trigger.trim().toLocaleLowerCase() !== trigger.toLocaleLowerCase(),
+    ),
+  ]);
   persistSnippets();
   renderSnippetsList();
   snippetTriggerInput.value = "";
@@ -3946,7 +3968,11 @@ function addSnippetEntry(): void {
 
 function addQuickNote(text: string): void {
   const clean = text.trim();
-  if (!clean || settings.incognitoMode) {
+  const validationError = validateQuickNote(clean);
+  if (validationError || settings.incognitoMode) {
+    if (validationError && !settings.incognitoMode) {
+      setNotice(validationError, true);
+    }
     return;
   }
 
@@ -3958,6 +3984,9 @@ function addQuickNote(text: string): void {
   quickNotes = quickNotes.slice(0, 50);
   persistQuickNotes();
   renderNotesList();
+  if (quickNotes.length >= 50) {
+    setNotice("Quick note saved. The list keeps the 50 most recent notes.");
+  }
 }
 
 function renderNotesList(): void {
@@ -3993,6 +4022,9 @@ function renderNotesList(): void {
     deleteBtn.dataset.noteDelete = note.id;
     deleteBtn.textContent = "Delete";
     deleteBtn.addEventListener("click", () => {
+      if (!confirmDestructiveAction("Delete this quick note?")) {
+        return;
+      }
       quickNotes = quickNotes.filter((entry) => entry.id !== note.id);
       persistQuickNotes();
       renderNotesList();
@@ -4024,7 +4056,11 @@ function updateUsageMetrics(): void {
   metricWords.textContent = `${usageStats.words} words`;
   metricSpeakingTime.textContent = formatSpeakingTime(usageStats.speakingSeconds);
   metricSessions.textContent = `${usageStats.sessions}`;
-  metricWpm.innerHTML = `${Math.round(usageStats.avgWpm)} <span class="stat-unit">wpm</span>`;
+  metricWpm.textContent = `${Math.round(usageStats.avgWpm)} `;
+  const unit = document.createElement("span");
+  unit.className = "stat-unit";
+  unit.textContent = "wpm";
+  metricWpm.append(unit);
 }
 
 function trackUsage(transcript: string): void {
@@ -4138,6 +4174,10 @@ async function triggerAutoPaste(text?: string): Promise<boolean> {
     setNotice(`Auto paste failed: ${asErrorMessage(error)}`, true);
     return false;
   }
+}
+
+function confirmDestructiveAction(message: string): boolean {
+  return window.confirm(message);
 }
 
 async function captureSelectedTextForRewrite(options: { silent?: boolean } = {}): Promise<string> {
@@ -6561,9 +6601,17 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       },
     });
 
-    renderPipelineResponse(response);
+    const resolvedResponse =
+      response.mode === "dictation"
+        ? {
+            ...response,
+            assistantResponse: expandSnippetsInText(response.assistantResponse, snippets),
+          }
+        : response;
+
+    renderPipelineResponse(resolvedResponse);
     let playbackCompleted = true;
-    const selectionPopupPayload = buildSelectionPopupPayload(response);
+    const selectionPopupPayload = buildSelectionPopupPayload(resolvedResponse);
     if (!selectionPopupPayload) {
       latestSelectionPopupPayload = null;
       if (selectionAssistantWindow) {
@@ -6585,25 +6633,38 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       ? await showSelectionAssistantPopup(selectionPopupPayload)
       : false;
 
-    if (!selectionPopupOpened && response.mode === "assistant" && response.audioBase64.trim()) {
-      playbackCompleted = await playGeneratedAudio(response.audioBase64, pipelineTtsEngine);
+    if (
+      !selectionPopupOpened &&
+      resolvedResponse.mode === "assistant" &&
+      resolvedResponse.audioBase64.trim()
+    ) {
+      playbackCompleted = await playGeneratedAudio(resolvedResponse.audioBase64, pipelineTtsEngine);
     }
 
     let dictationPasted = false;
-    if (response.mode === "dictation") {
+    if (resolvedResponse.mode === "dictation") {
       if (activeSettings.autoPasteDictation) {
-        dictationPasted = await triggerAutoPaste(response.assistantResponse);
+        dictationPasted = await triggerAutoPaste(resolvedResponse.assistantResponse);
         if (dictationPasted) {
           setNotice("Dictation copied and pasted.");
         }
       }
       // Bug fix: also copy dictation to clipboard when copyToClipboard is enabled
       // and autoPaste is disabled (previously transcriptions were silently lost)
-      if (!dictationPasted && activeSettings.copyToClipboard && !response.selectionPending && !selectionPopupOpened) {
-        await copyToClipboard(response.assistantResponse);
+      if (
+        !dictationPasted &&
+        activeSettings.copyToClipboard &&
+        !resolvedResponse.selectionPending &&
+        !selectionPopupOpened
+      ) {
+        await copyToClipboard(resolvedResponse.assistantResponse);
       }
-    } else if (activeSettings.copyToClipboard && !response.selectionPending && !selectionPopupOpened) {
-      await copyToClipboard(response.assistantResponse);
+    } else if (
+      activeSettings.copyToClipboard &&
+      !resolvedResponse.selectionPending &&
+      !selectionPopupOpened
+    ) {
+      await copyToClipboard(resolvedResponse.assistantResponse);
     }
 
     commandModeArmed = false;
@@ -6611,7 +6672,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
     publishDockState();
 
     if (stage !== "recording") {
-      if (response.mode === "dictation") {
+      if (resolvedResponse.mode === "dictation") {
         if (dictationPasted) {
           // Notice already set above.
         } else {
@@ -6638,12 +6699,6 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
 }
 
 function renderPipelineResponse(response: AssistantPipelineResponse): void {
-  transcriptText.textContent = response.transcript;
-  transcriptText.classList.remove("muted");
-
-  assistantText.textContent = response.assistantResponse;
-  assistantText.classList.remove("muted");
-
   sttLatency.textContent = formatLatency(response.sttLatencyMs);
   aiLatency.textContent = formatLatency(response.aiLatencyMs);
   ttsLatency.textContent = formatLatency(response.ttsLatencyMs);
@@ -7996,6 +8051,43 @@ function bindPushToTalkPointerHold(button: HTMLButtonElement, source: HoldSource
   button.addEventListener("pointerup", release);
   button.addEventListener("pointercancel", release);
   button.addEventListener("lostpointercapture", () => {
+    releasePushToTalk(source);
+  });
+}
+
+function bindPushToTalkKeyboardHold(button: HTMLButtonElement, source: HoldSource): void {
+  let keyboardHoldActive = false;
+
+  button.addEventListener("keydown", (event) => {
+    if (settings.captureMode !== "push-to-talk") {
+      return;
+    }
+    if (event.repeat || (event.key !== " " && event.key !== "Enter")) {
+      return;
+    }
+
+    event.preventDefault();
+    if (keyboardHoldActive) {
+      return;
+    }
+    keyboardHoldActive = true;
+    void engagePushToTalk(source);
+  });
+
+  button.addEventListener("keyup", (event) => {
+    if (!keyboardHoldActive || (event.key !== " " && event.key !== "Enter")) {
+      return;
+    }
+    event.preventDefault();
+    keyboardHoldActive = false;
+    releasePushToTalk(source);
+  });
+
+  button.addEventListener("blur", () => {
+    if (!keyboardHoldActive) {
+      return;
+    }
+    keyboardHoldActive = false;
     releasePushToTalk(source);
   });
 }

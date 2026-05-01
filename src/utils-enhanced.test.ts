@@ -3,6 +3,11 @@ import {
   buildAgentOperatingCorePrompt,
   captureModeLabel,
   type CaptureMode,
+  expandSnippetsInText,
+  normalizeDictionaryEntries,
+  normalizeSnippetEntries,
+  validateApiBaseUrl,
+  validateAssistantName,
 } from "./utils";
 
 describe("Utils: Capture Mode Label", () => {
@@ -220,6 +225,18 @@ describe("Validation: Quick Note", () => {
 });
 
 describe("Security: Settings Validation", () => {
+  it("should reject invalid API base URL via shared validator", () => {
+    expect(validateApiBaseUrl("not-a-url")).toContain("valid API base URL");
+  });
+
+  it("should accept a valid API base URL via shared validator", () => {
+    expect(validateApiBaseUrl("https://api.example.com/v1")).toBeNull();
+  });
+
+  it("should enforce assistant name length via shared validator", () => {
+    expect(validateAssistantName("A".repeat(81))).toContain("80 characters or less");
+  });
+
   interface MockSettings {
     apiKey: string;
     apiBaseUrl: string;
@@ -310,6 +327,37 @@ describe("Security: Settings Validation", () => {
   it("should accept empty settings object", () => {
     const result = validateSettings({});
     expect(result.valid).toBe(true);
+  });
+});
+
+describe("Data Normalization", () => {
+  it("deduplicates dictionary entries case-insensitively", () => {
+    const normalized = normalizeDictionaryEntries([
+      { id: "1", source: "slashy", target: "Slasshy", createdAt: 1 },
+      { id: "2", source: "Slashy", target: "Duplicate", createdAt: 2 },
+    ]);
+
+    expect(normalized).toHaveLength(1);
+    expect(normalized[0].target).toBe("Slasshy");
+  });
+
+  it("deduplicates snippets case-insensitively", () => {
+    const normalized = normalizeSnippetEntries([
+      { id: "1", trigger: "/sig", expansion: "One", createdAt: 1 },
+      { id: "2", trigger: "/SIG", expansion: "Two", createdAt: 2 },
+    ]);
+
+    expect(normalized).toHaveLength(1);
+    expect(normalized[0].expansion).toBe("One");
+  });
+
+  it("expands snippets in dictation text", () => {
+    const expanded = expandSnippetsInText("Please add /sig here.", [
+      { id: "1", trigger: "/sig", expansion: "Kind regards,\nSlasshy", createdAt: 1 },
+    ]);
+
+    expect(expanded).toContain("Kind regards,");
+    expect(expanded).not.toContain("/sig");
   });
 });
 

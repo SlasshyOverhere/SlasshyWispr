@@ -4946,7 +4946,7 @@ async fn run_assistant_pipeline(
         );
     }
 
-    let piper_path = if use_coqui {
+    let mut piper_path = if use_coqui {
         None
     } else {
         match resolve_piper_path(&app, request.piper_path.as_deref()) {
@@ -4958,7 +4958,7 @@ async fn run_assistant_pipeline(
         }
     };
 
-    let piper_model_path = if use_coqui {
+    let mut piper_model_path = if use_coqui {
         None
     } else {
         match voice_paths(&app) {
@@ -4976,6 +4976,43 @@ async fn run_assistant_pipeline(
             }
         }
     };
+
+    if !use_coqui {
+        let piper_binary_missing = piper_path
+            .as_deref()
+            .map(|path| !file_exists_with_content(Path::new(path)))
+            .unwrap_or(true);
+        let piper_voice_missing = piper_model_path
+            .as_ref()
+            .map(|path| !file_exists_with_content(path))
+            .unwrap_or(true);
+
+        if piper_binary_missing || piper_voice_missing {
+            warn!(
+                "[pipeline] piper assets missing/stale; attempting runtime auto-repair binary_missing={} voice_missing={}",
+                piper_binary_missing,
+                piper_voice_missing
+            );
+
+            match ensure_piper_binary(&app, &state.http).await {
+                Ok(path) => {
+                    piper_path = Some(path.to_string_lossy().into_owned());
+                }
+                Err(error) => {
+                    warn!("[pipeline] piper auto-repair failed for binary: {}", error);
+                }
+            }
+
+            match ensure_voice_files(&app, &state.http).await {
+                Ok((model_path, _config_path)) => {
+                    piper_model_path = Some(model_path);
+                }
+                Err(error) => {
+                    warn!("[pipeline] piper auto-repair failed for voice files: {}", error);
+                }
+            }
+        }
+    }
 
     let audio_bytes = BASE64_STANDARD
         .decode(request.audio_base64.as_bytes())
@@ -7777,7 +7814,9 @@ fn resolve_piper_path(app: &AppHandle, requested_path: Option<&str>) -> Result<S
         .filter(|path| !path.is_empty())
     {
         validate_piper_binary_path(path)?;
-        return Ok(path.to_string());
+        if file_exists_with_content(Path::new(path)) {
+            return Ok(path.to_string());
+        }
     }
 
     if let Some(installed_path) = discover_installed_piper_path(app)? {
@@ -7786,7 +7825,10 @@ fn resolve_piper_path(app: &AppHandle, requested_path: Option<&str>) -> Result<S
         return Ok(installed);
     }
 
-    Err("Piper is not configured. Click 'Auto Setup Runtime' inside the app first.".to_string())
+    Err(
+        "Piper is not configured or the saved Piper path is stale. Click 'Auto Setup Runtime' inside the app first."
+            .to_string(),
+    )
 }
 
 fn resolve_user_home_dir() -> Option<PathBuf> {

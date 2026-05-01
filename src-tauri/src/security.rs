@@ -7,14 +7,16 @@ type HmacSha256 = Hmac<Sha256>;
 
 /// Validates that a path is within an allowed directory and canonicalizes it
 pub fn validate_path_within_directory(path: &Path, allowed_root: &Path) -> Result<PathBuf, String> {
+    let canonical_root = allowed_root.canonicalize()
+        .map_err(|e| format!("Invalid allowed root {}: {}", allowed_root.display(), e))?;
     let canonical = path.canonicalize()
         .map_err(|e| format!("Invalid path {}: {}", path.display(), e))?;
 
-    if !canonical.starts_with(allowed_root) {
+    if !canonical.starts_with(&canonical_root) {
         return Err(format!(
             "Path traversal detected: {} is not within {}",
             canonical.display(),
-            allowed_root.display()
+            canonical_root.display()
         ));
     }
 
@@ -45,7 +47,9 @@ pub fn validate_executable_path(path: &Path, allowed_dirs: &[&str]) -> Result<Pa
     // Check against allowed directories
     for allowed_dir in allowed_dirs {
         let allowed_path = Path::new(allowed_dir);
-        if canonical.starts_with(allowed_path) {
+        let canonical_allowed = allowed_path.canonicalize()
+            .map_err(|e| format!("Cannot resolve allowed directory {}: {}", allowed_path.display(), e))?;
+        if canonical.starts_with(&canonical_allowed) {
             return Ok(canonical);
         }
     }
