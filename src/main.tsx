@@ -852,6 +852,9 @@ document.addEventListener("keydown", (event) => {
         event.repeat,
       )}`,
     );
+    if (shouldBypassLocalShortcutHandling(commandShortcutToken)) {
+      return;
+    }
     if (shouldIgnoreLocalShortcutFromRecentGlobal(commandShortcutToken, "pressed")) {
       return;
     }
@@ -881,6 +884,9 @@ document.addEventListener("keydown", (event) => {
       event.repeat,
     )}`,
   );
+  if (shouldBypassLocalShortcutHandling(pushShortcutToken)) {
+    return;
+  }
   if (shouldIgnoreLocalShortcutFromRecentGlobal(pushShortcutToken, "pressed")) {
     return;
   }
@@ -927,6 +933,9 @@ document.addEventListener("keyup", (event) => {
   logClientEvent(
     `[hotkey.local.push] keyup shortcut=${pushShortcutToken} capture=${settings.captureMode}`,
   );
+  if (shouldBypassLocalShortcutHandling(pushShortcutToken)) {
+    return;
+  }
   if (shouldIgnoreLocalShortcutFromRecentGlobal(pushShortcutToken, "released")) {
     return;
   }
@@ -2954,6 +2963,20 @@ function markGlobalShortcutHandled(shortcutToken: string, state: "pressed" | "re
   lastGlobalShortcutToken = shortcutToken;
   lastGlobalShortcutState = state;
   lastGlobalShortcutHandledAt = Date.now();
+}
+
+function shouldBypassLocalShortcutHandling(shortcutToken: string): boolean {
+  if (!globalShortcutsActive || !shortcutToken) {
+    return false;
+  }
+
+  const registeredPush = normalizeShortcutToken(registeredPushShortcut);
+  const registeredCommand = normalizeShortcutToken(registeredCommandShortcut);
+  const shouldBypass = shortcutToken === registeredPush || shortcutToken === registeredCommand;
+  if (shouldBypass) {
+    logClientEvent(`[hotkey.local.bypass] delegated to global shortcut=${shortcutToken}`);
+  }
+  return shouldBypass;
 }
 
 function shouldIgnoreLocalShortcutFromRecentGlobal(
@@ -5813,10 +5836,12 @@ function writeAscii(view: DataView, offset: number, text: string): void {
   }
 }
 
-function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
-  const numChannels = audioBuffer.numberOfChannels;
-  const sampleRate = audioBuffer.sampleRate;
-  const frameCount = audioBuffer.length;
+function pcmSamplesToWavBlob(
+  channels: readonly Float32Array[],
+  sampleRate: number,
+): Blob {
+  const numChannels = channels.length;
+  const frameCount = channels[0]?.length ?? 0;
   const bitsPerSample = 16;
   const bytesPerSample = bitsPerSample / 8;
   const dataSize = frameCount * numChannels * bytesPerSample;
@@ -5836,11 +5861,6 @@ function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
   view.setUint16(34, bitsPerSample, true);
   writeAscii(view, 36, "data");
   view.setUint32(40, dataSize, true);
-
-  const channels: Float32Array[] = [];
-  for (let channel = 0; channel < numChannels; channel += 1) {
-    channels.push(audioBuffer.getChannelData(channel));
-  }
 
   // Optimization: use Int16Array view on the same buffer for faster PCM writing
   // Offset 44 is where the data chunk starts.
@@ -5881,6 +5901,29 @@ function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
   }
 
   return new Blob([wavBuffer], { type: "audio/wav" });
+}
+
+function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
+  const channels: Float32Array[] = [];
+  for (let channel = 0; channel < audioBuffer.numberOfChannels; channel += 1) {
+    channels.push(audioBuffer.getChannelData(channel));
+  }
+  return pcmSamplesToWavBlob(channels, audioBuffer.sampleRate);
+}
+
+function shouldOptimizeOnlineSttUpload(settings: PersistedSettings): boolean {
+  return (
+    settings.sttRuntimeMode === "online" &&
+    settings.sttModelName.trim().toLocaleLowerCase().includes("whisper")
+  );
+}
+
+function resolvePreferredOnlineSttBitrate(settings: PersistedSettings): number | null {
+  if (!shouldOptimizeOnlineSttUpload(settings)) {
+    return null;
+  }
+
+  return 48_000;
 }
 
 function withWavExtension(fileName: string): string {
@@ -6170,6 +6213,13 @@ async function handleRecordToggle(): Promise<void> {
       pipelineRunning,
     )} holdCount=${pushToTalkHoldSources.size}`,
   );
+  if (settings.captureMode === "push-to-talk") {
+    logClientEvent("[record.toggle] ignored because capture mode is push-to-talk");
+    if (stage !== "recording") {
+      setNotice("Push-to-talk is enabled. Hold the hotkey or mic button while speaking.");
+    }
+    return;
+  }
   if (stage === "recording") {
     logClientEvent("[record.toggle] stage is recording -> stopRecording()");
     stopRecording();
@@ -6197,6 +6247,11 @@ async function handleRecordToggle(): Promise<void> {
 
 async function handleDockMicToggle(): Promise<void> {
   if (hotkeyCaptureActive || commandHotkeyCaptureActive) {
+    return;
+  }
+
+  if (settings.captureMode === "push-to-talk") {
+    setNotice("Push-to-talk is enabled. Hold the hotkey or mic button while speaking.");
     return;
   }
 
@@ -6268,18 +6323,18 @@ async function startRecording(): Promise<void> {
     return;
   }
 
-  const recorderOptions: MediaRecorderOptions = {
-    audioBitsPerSecond: 96_000,
-  };
+  const recorderOptions: MediaRecorderOptions = {};
 
   const preferredMimeType = pickBestRecorderMimeType();
   if (preferredMimeType) {
     recorderOptions.mimeType = preferredMimeType;
   }
+  const preferredBitrate = resolvePreferredOnlineSttBitrate(activeSettings);
+  recorderOptions.audioBitsPerSecond = preferredBitrate ?? 96_000;
   logClientEvent(
     `[record.start] opening microphone device=${
       activeSettings.microphoneDeviceId || "default"
-    } preferredMime=${preferredMimeType || "auto"}`,
+    } preferredMime=${preferredMimeType || "auto"} bitrate=${recorderOptions.audioBitsPerSecond}`,
   );
 
   try {
@@ -6454,6 +6509,10 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       } catch (error) {
         logClientEvent(`local.stt wav conversion skipped: ${asErrorMessage(error)}`);
       }
+    } else if (shouldOptimizeOnlineSttUpload(activeSettings)) {
+      logClientEvent(
+        `online.stt optimized transport bytes=${audioBlob.size} mime=${audioMimeType || "unknown"} bitrate=${resolvePreferredOnlineSttBitrate(activeSettings) ?? "default"}`,
+      );
     }
 
     const audioBase64 = await blobToBase64(pipelineAudioBlob);
@@ -7919,15 +7978,22 @@ async function engagePushToTalk(source: HoldSource): Promise<void> {
     return;
   }
 
-  if (await shouldBlockAssistantInputFromForegroundApp()) {
-    logClientEvent("[record.ptt.engage] blocked by foreground app policy");
-    return;
-  }
-
   const holdStartedAt = Date.now();
   pushToTalkHoldSources.add(source);
   pushToTalkHoldStartedAt.set(source, holdStartedAt);
   logClientEvent(`[record.ptt.engage] hold added source=${source} holds=${pushToTalkHoldSources.size}`);
+
+  if (await shouldBlockAssistantInputFromForegroundApp()) {
+    pushToTalkHoldSources.delete(source);
+    pushToTalkHoldStartedAt.delete(source);
+    logClientEvent("[record.ptt.engage] blocked by foreground app policy");
+    return;
+  }
+
+  if (!pushToTalkHoldSources.has(source)) {
+    logClientEvent("[record.ptt.engage] hold was released before capture could begin");
+    return;
+  }
 
   const interruptedPlayback = interruptTtsPlaybackForCaptureIntent();
   if (interruptedPlayback) {
