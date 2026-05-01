@@ -144,17 +144,6 @@ export function App() {
                   </article>
                 </div>
 
-                <section className="home-output" id="homeOutputSection" style={{ display: "none" }}>
-                  <article className="home-output-card">
-                    <h3>Transcript</h3>
-                    <p id="transcriptText" className="output-text muted">Your transcribed speech will appear here.</p>
-                  </article>
-                  <article className="home-output-card">
-                    <h3>Assistant Response</h3>
-                    <p id="assistantText" className="output-text muted">The AI response will appear here.</p>
-                  </article>
-                </section>
-
                 <section className="home-log">
                   <div className="section-head">
                     <div>

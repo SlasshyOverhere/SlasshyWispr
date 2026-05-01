@@ -2206,7 +2206,9 @@ async fn configure_launch_at_login(enabled: bool) -> Result<(), String> {
                  $name='{value_name}'; \
                  $value='\"' + $exe.Replace('\"','\"\"') + '\" {STARTUP_ARG_START_IN_TRAY}'; \
                  New-Item -Path $runKey -Force | Out-Null; \
-                 Set-ItemProperty -Path $runKey -Name $name -Value $value -Type String;"
+                 New-ItemProperty -Path $runKey -Name $name -Value $value -PropertyType String -Force | Out-Null; \
+                 $written=(Get-ItemProperty -Path $runKey -Name $name -ErrorAction Stop).$name; \
+                 if ($written -ne $value) {{ throw ('Startup registry value mismatch. expected=' + $value + ' actual=' + [string]$written) }};"
             );
             let output = run_powershell_script(&script, Some(&exe_text))?;
             if !output.status.success() {
@@ -4945,7 +4947,7 @@ async fn run_assistant_pipeline(
         );
     }
 
-    let piper_path = if use_coqui {
+    let mut piper_path = if use_coqui {
         None
     } else {
         match resolve_piper_path(&app, request.piper_path.as_deref()) {
@@ -4957,7 +4959,7 @@ async fn run_assistant_pipeline(
         }
     };
 
-    let piper_model_path = if use_coqui {
+    let mut piper_model_path = if use_coqui {
         None
     } else {
         match voice_paths(&app) {
@@ -4975,6 +4977,43 @@ async fn run_assistant_pipeline(
             }
         }
     };
+
+    if !use_coqui {
+        let piper_binary_missing = piper_path
+            .as_deref()
+            .map(|path| !file_exists_with_content(Path::new(path)))
+            .unwrap_or(true);
+        let piper_voice_missing = piper_model_path
+            .as_ref()
+            .map(|path| !file_exists_with_content(path))
+            .unwrap_or(true);
+
+        if piper_binary_missing || piper_voice_missing {
+            warn!(
+                "[pipeline] piper assets missing/stale; attempting runtime auto-repair binary_missing={} voice_missing={}",
+                piper_binary_missing,
+                piper_voice_missing
+            );
+
+            match ensure_piper_binary(&app, &state.http).await {
+                Ok(path) => {
+                    piper_path = Some(path.to_string_lossy().into_owned());
+                }
+                Err(error) => {
+                    warn!("[pipeline] piper auto-repair failed for binary: {}", error);
+                }
+            }
+
+            match ensure_voice_files(&app, &state.http).await {
+                Ok((model_path, _config_path)) => {
+                    piper_model_path = Some(model_path);
+                }
+                Err(error) => {
+                    warn!("[pipeline] piper auto-repair failed for voice files: {}", error);
+                }
+            }
+        }
+    }
 
     let audio_bytes = BASE64_STANDARD
         .decode(request.audio_base64.as_bytes())
@@ -5508,6 +5547,8 @@ async fn run_assistant_pipeline(
         }
     }
 
+    assistant_response = normalize_assistant_response_text(&assistant_response);
+
     if assistant_response.trim().is_empty() {
         return Err("AI model returned an empty response".to_string());
     }
@@ -5990,10 +6031,9 @@ async fn generate_assistant_response_online(
     temperature: f32,
     max_tokens: u32,
 ) -> Result<String, String> {
-    let payload = json!({
+    let mut payload = json!({
       "model": ai_model,
       "temperature": temperature,
-      "max_tokens": max_tokens,
       "stream": false,
       "messages": [
         {
@@ -6006,6 +6046,14 @@ async fn generate_assistant_response_online(
         }
       ]
     });
+    if online_ai_model_defaults_to_reasoning(ai_model) {
+        payload["include_reasoning"] = Value::Bool(false);
+        payload["reasoning_effort"] = Value::String("low".to_string());
+        payload["max_completion_tokens"] =
+            Value::from(effective_online_ai_completion_tokens(ai_model, max_tokens));
+    } else {
+        payload["max_tokens"] = Value::from(max_tokens);
+    }
 
     let mut last_error = String::new();
     for attempt in 0..2 {
@@ -6440,6 +6488,138 @@ fn strip_wrapped_markdown_block(input: &str) -> String {
         return inner.trim().to_string();
     }
     trimmed.to_string()
+}
+
+fn extract_braced_latex_segment(input: &str) -> Option<(String, usize)> {
+    let mut depth = 0usize;
+    let mut content = String::new();
+
+    for (index, ch) in input.char_indices() {
+        if index == 0 {
+            if ch != '{' {
+                return None;
+            }
+            depth = 1;
+            continue;
+        }
+
+        match ch {
+            '{' => {
+                depth += 1;
+                content.push(ch);
+            }
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some((content, index + ch.len_utf8()));
+                }
+                content.push(ch);
+            }
+            _ => content.push(ch),
+        }
+    }
+
+    None
+}
+
+fn replace_latex_fractions(input: &str) -> String {
+    let mut output = String::new();
+    let mut cursor = 0usize;
+
+    while let Some(relative_index) = input[cursor..].find("\\frac") {
+        let start = cursor + relative_index;
+        output.push_str(&input[cursor..start]);
+        let mut tail = &input[start + "\\frac".len()..];
+        let trimmed_tail = tail.trim_start();
+        let whitespace_offset = tail.len().saturating_sub(trimmed_tail.len());
+        tail = trimmed_tail;
+
+        let Some((numerator, numerator_end)) = extract_braced_latex_segment(tail) else {
+            output.push_str("\\frac");
+            cursor = start + "\\frac".len();
+            continue;
+        };
+        let denominator_tail = &tail[numerator_end..];
+        let denominator_trimmed = denominator_tail.trim_start();
+        let denominator_whitespace =
+            denominator_tail.len().saturating_sub(denominator_trimmed.len());
+        let Some((denominator, denominator_end)) = extract_braced_latex_segment(denominator_trimmed)
+        else {
+            output.push_str("\\frac");
+            cursor = start + "\\frac".len();
+            continue;
+        };
+
+        output.push('(');
+        output.push_str(normalize_assistant_response_text(&numerator).trim());
+        output.push_str(") / (");
+        output.push_str(normalize_assistant_response_text(&denominator).trim());
+        output.push(')');
+
+        cursor = start
+            + "\\frac".len()
+            + whitespace_offset
+            + numerator_end
+            + denominator_whitespace
+            + denominator_end;
+    }
+
+    output.push_str(&input[cursor..]);
+    output
+}
+
+fn normalize_assistant_response_text(input: &str) -> String {
+    let mut normalized = strip_wrapped_markdown_block(input);
+    if normalized.is_empty() {
+        return normalized;
+    }
+
+    normalized = replace_latex_fractions(&normalized);
+
+    for (from, to) in [
+        ("\\(", ""),
+        ("\\)", ""),
+        ("\\[", ""),
+        ("\\]", ""),
+        ("\\left", ""),
+        ("\\right", ""),
+        ("\\times", " x "),
+        ("\\cdot", " * "),
+        ("\\div", " / "),
+        ("\\Longrightarrow", " => "),
+        ("\\Rightarrow", " => "),
+        ("\\rightarrow", " -> "),
+        ("\\to", " -> "),
+        ("\\geq", " >= "),
+        ("\\leq", " <= "),
+        ("\\neq", " != "),
+        ("\\approx", " approx "),
+        ("\\;", " "),
+        ("\\,", " "),
+        ("\\!", ""),
+        ("**", ""),
+        ("__", ""),
+    ] {
+        normalized = normalized.replace(from, to);
+    }
+
+    let mut cleaned_lines = Vec::new();
+    let mut previous_blank = false;
+    for line in normalized.lines() {
+        let compact = line.split_whitespace().collect::<Vec<_>>().join(" ");
+        let trimmed = compact.trim();
+        if trimmed.is_empty() {
+            if !previous_blank {
+                cleaned_lines.push(String::new());
+            }
+            previous_blank = true;
+            continue;
+        }
+        cleaned_lines.push(trimmed.to_string());
+        previous_blank = false;
+    }
+
+    cleaned_lines.join("\n").trim().to_string()
 }
 
 fn normalize_ascii_words(input: &str) -> String {
@@ -7776,7 +7956,9 @@ fn resolve_piper_path(app: &AppHandle, requested_path: Option<&str>) -> Result<S
         .filter(|path| !path.is_empty())
     {
         validate_piper_binary_path(path)?;
-        return Ok(path.to_string());
+        if file_exists_with_content(Path::new(path)) {
+            return Ok(path.to_string());
+        }
     }
 
     if let Some(installed_path) = discover_installed_piper_path(app)? {
@@ -7785,7 +7967,23 @@ fn resolve_piper_path(app: &AppHandle, requested_path: Option<&str>) -> Result<S
         return Ok(installed);
     }
 
-    Err("Piper is not configured. Click 'Auto Setup Runtime' inside the app first.".to_string())
+    Err(
+        "Piper is not configured or the saved Piper path is stale. Click 'Auto Setup Runtime' inside the app first."
+            .to_string(),
+    )
+}
+
+fn online_ai_model_defaults_to_reasoning(ai_model: &str) -> bool {
+    let normalized = ai_model.trim().to_ascii_lowercase();
+    normalized == "openai/gpt-oss-20b" || normalized == "openai/gpt-oss-120b"
+}
+
+fn effective_online_ai_completion_tokens(ai_model: &str, max_tokens: u32) -> u32 {
+    if online_ai_model_defaults_to_reasoning(ai_model) {
+        return max_tokens.saturating_add(384).clamp(640, 4096);
+    }
+
+    max_tokens
 }
 
 fn resolve_user_home_dir() -> Option<PathBuf> {
@@ -12645,6 +12843,29 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_latex_heavy_assistant_responses() {
+        let input = r#"\(x = 37.5\)
+
+Explanation:
+
+\[
+\left(\frac{x}{3}\right) \times 4 + 90 - 40 = 100
+\]
+
+\[
+\frac{4x}{3} + 50 = 100 \;\Longrightarrow\; \frac{4x}{3} = 50 \;\Longrightarrow\; x = 37.5
+\]"#;
+        let normalized = normalize_assistant_response_text(input);
+
+        assert!(normalized.contains("x = 37.5"));
+        assert!(normalized.contains("((x) / (3)) x 4 + 90 - 40 = 100"));
+        assert!(normalized.contains("(4x) / (3) + 50 = 100 => (4x) / (3) = 50 => x = 37.5"));
+        assert!(!normalized.contains("\\["));
+        assert!(!normalized.contains("\\frac"));
+        assert!(!normalized.contains("\\Longrightarrow"));
+    }
+
+    #[test]
     fn keeps_punctuation_after_numeric_tokens() {
         let input = "Result: 4,999,800. Next: 6.67, then 30.";
         let normalized = normalize_piper_text_for_tts(input);
@@ -12915,6 +13136,30 @@ mod tests {
         assert_eq!(
             extract_chat_content(&payload).as_deref(),
             Some("I cannot help with that request.")
+        );
+    }
+
+    #[test]
+    fn online_ai_model_defaults_to_reasoning_only_for_gpt_oss_models() {
+        assert!(online_ai_model_defaults_to_reasoning("openai/gpt-oss-20b"));
+        assert!(online_ai_model_defaults_to_reasoning(" openai/gpt-oss-120b "));
+        assert!(!online_ai_model_defaults_to_reasoning("llama-3.3-70b-versatile"));
+        assert!(!online_ai_model_defaults_to_reasoning("gpt-4o-mini"));
+    }
+
+    #[test]
+    fn effective_online_ai_completion_tokens_adds_headroom_for_gpt_oss_models() {
+        assert_eq!(
+            effective_online_ai_completion_tokens("openai/gpt-oss-120b", 320),
+            704
+        );
+        assert_eq!(
+            effective_online_ai_completion_tokens("openai/gpt-oss-20b", 64),
+            640
+        );
+        assert_eq!(
+            effective_online_ai_completion_tokens("llama-3.3-70b-versatile", 320),
+            320
         );
     }
 
