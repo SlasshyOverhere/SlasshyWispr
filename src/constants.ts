@@ -85,7 +85,6 @@ export const LOCAL_STT_MODEL_SIZE_LABELS: Record<string, string> = {
   "FunAudioLLM/SenseVoiceSmall": "SenseVoice (160 MB)",
 };
 export const MAX_COQUI_REFERENCE_SECONDS = 30;
-export const MAX_RECORDING_MS = 45_000;
 export const ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS = 1_000;
 export const MAX_HISTORY_ITEMS = 100;
 export const FOREGROUND_BLOCK_CHECK_CACHE_MS = 320;

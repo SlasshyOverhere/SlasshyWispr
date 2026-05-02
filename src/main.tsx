@@ -75,7 +75,6 @@ import {
   DICTATION_LANGUAGE_LABELS,
   LOCAL_STT_MODEL_SIZE_LABELS,
   MAX_COQUI_REFERENCE_SECONDS,
-  MAX_RECORDING_MS,
   ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS,
   MAX_HISTORY_ITEMS,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
@@ -8269,11 +8268,6 @@ function beginRecordingTicker(): void {
   recordingTickerId = window.setInterval(() => {
     const elapsedMs = Date.now() - recordingStartedAt;
     recordTimer.textContent = formatTimer(elapsedMs);
-
-    if (settings.captureMode !== "push-to-talk" && elapsedMs >= MAX_RECORDING_MS) {
-      setNotice("Recording auto-stopped at 45 seconds.");
-      stopRecording();
-    }
   }, 100);
 }
 

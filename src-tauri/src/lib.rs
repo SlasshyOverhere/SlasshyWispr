@@ -13508,7 +13508,17 @@ pub fn run() {
     let start_in_tray =
         std::env::args().any(|arg| arg.eq_ignore_ascii_case(STARTUP_ARG_START_IN_TRAY));
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            info!("[app.single-instance] prevented secondary launch and focused existing window");
+            show_main_window(app);
+        }));
+    }
+
+    builder
         .manage(app_state)
         .manage(tts_setup_state)
         .setup(move |app| {
