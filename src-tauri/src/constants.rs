@@ -35,6 +35,7 @@ pub const TRAY_MENU_DASHBOARD_ID: &str = "dashboard";
 pub const TRAY_MENU_QUIT_ID: &str = "quit";
 pub const STARTUP_ARG_START_IN_TRAY: &str = "--start-in-tray";
 pub const APP_EVENT_MAIN_WINDOW_VISIBILITY: &str = "slasshy://main-window-visibility";
+pub const APP_EVENT_UPDATE_INSTALL_PROGRESS: &str = "slasshy://update-install-progress";
 pub const LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS: u64 = 90;
 pub const LOCAL_STT_DAEMON_IDLE_TIMEOUT_SECS: u64 = 15 * 60;
 pub const LOCAL_STT_DAEMON_SWEEP_INTERVAL_SECS: u64 = 15;

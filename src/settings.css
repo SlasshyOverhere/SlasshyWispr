@@ -598,6 +598,40 @@
   background: rgba(255, 255, 255, 0.025);
 }
 
+.update-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.update-progress-bar-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.update-progress-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(158, 211, 106, 0.85), rgba(126, 240, 177, 0.95));
+  transition: width 180ms ease;
+}
+
+.update-progress-text {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 @media (max-width: 700px) {
   .settings-modal {
     grid-template-columns: 1fr;

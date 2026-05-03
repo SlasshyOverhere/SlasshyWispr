@@ -17,6 +17,12 @@ export function UpdateSecuritySettingsPane() {
           <button id="checkUpdatesBtn" className="ghost-action" type="button">Check for updates</button>
           <button id="installUpdateBtn" className="dark-action" type="button" disabled>Download & install</button>
         </div>
+        <div id="updateInstallProgressWrap" className="update-progress" hidden>
+          <div className="update-progress-bar-track" aria-hidden="true">
+            <span id="updateInstallProgressBar" className="update-progress-bar-fill" style={{ width: "0%" }}></span>
+          </div>
+          <p id="updateInstallProgressText" className="update-progress-text">Waiting to start update download.</p>
+        </div>
       </div>
 
       <h3 className="settings-section-title">Security</h3>
