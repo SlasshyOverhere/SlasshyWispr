@@ -1,15 +1,17 @@
-use std::path::{Path, PathBuf};
-use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
+use sha2::{Digest, Sha256};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 type HmacSha256 = Hmac<Sha256>;
 
 /// Validates that a path is within an allowed directory and canonicalizes it
 pub fn validate_path_within_directory(path: &Path, allowed_root: &Path) -> Result<PathBuf, String> {
-    let canonical_root = allowed_root.canonicalize()
+    let canonical_root = allowed_root
+        .canonicalize()
         .map_err(|e| format!("Invalid allowed root {}: {}", allowed_root.display(), e))?;
-    let canonical = path.canonicalize()
+    let canonical = path
+        .canonicalize()
         .map_err(|e| format!("Invalid path {}: {}", path.display(), e))?;
 
     if !canonical.starts_with(&canonical_root) {
@@ -41,14 +43,20 @@ pub fn validate_executable_path(path: &Path, allowed_dirs: &[&str]) -> Result<Pa
     }
 
     // Canonicalize and validate
-    let canonical = path.canonicalize()
+    let canonical = path
+        .canonicalize()
         .map_err(|e| format!("Cannot resolve path: {}", e))?;
 
     // Check against allowed directories
     for allowed_dir in allowed_dirs {
         let allowed_path = Path::new(allowed_dir);
-        let canonical_allowed = allowed_path.canonicalize()
-            .map_err(|e| format!("Cannot resolve allowed directory {}: {}", allowed_path.display(), e))?;
+        let canonical_allowed = allowed_path.canonicalize().map_err(|e| {
+            format!(
+                "Cannot resolve allowed directory {}: {}",
+                allowed_path.display(),
+                e
+            )
+        })?;
         if canonical.starts_with(&canonical_allowed) {
             return Ok(canonical);
         }
@@ -83,17 +91,29 @@ pub fn sha256_hash(data: &str) -> String {
 }
 
 /// Validates input length and content
-pub fn validate_text_input(text: &str, max_length: usize, field_name: &str) -> Result<String, String> {
+pub fn validate_text_input(
+    text: &str,
+    max_length: usize,
+    field_name: &str,
+) -> Result<String, String> {
     if text.len() > max_length {
         return Err(format!(
             "{} exceeds maximum length of {} characters (got {})",
-            field_name, max_length, text.len()
+            field_name,
+            max_length,
+            text.len()
         ));
     }
 
     // Reject control characters except newline and tab
-    if text.chars().any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r') {
-        return Err(format!("{} contains invalid control characters", field_name));
+    if text
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r')
+    {
+        return Err(format!(
+            "{} contains invalid control characters",
+            field_name
+        ));
     }
 
     Ok(text.trim().to_string())
@@ -136,14 +156,13 @@ pub fn create_secure_temp_file(
     use std::io::Write;
 
     // Ensure directory exists with proper permissions
-    fs::create_dir_all(dir)
-        .map_err(|e| format!("Failed to create temp directory: {}", e))?;
+    fs::create_dir_all(dir).map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let metadata = fs::metadata(dir)
-            .map_err(|e| format!("Cannot read directory metadata: {}", e))?;
+        let metadata =
+            fs::metadata(dir).map_err(|e| format!("Cannot read directory metadata: {}", e))?;
         let mut perms = metadata.permissions();
         perms.set_mode(0o700); // Owner-only access
         fs::set_permissions(dir, perms)
@@ -154,8 +173,8 @@ pub fn create_secure_temp_file(
     let temp_path = dir.join(format!("{}_{}.{}", prefix, uuid::Uuid::new_v4(), suffix));
 
     // Write data
-    let mut file = fs::File::create(&temp_path)
-        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+    let mut file =
+        fs::File::create(&temp_path).map_err(|e| format!("Failed to create temp file: {}", e))?;
 
     file.write_all(data)
         .map_err(|e| format!("Failed to write temp file: {}", e))?;
@@ -186,15 +205,13 @@ pub fn cleanup_old_temp_files(dir: &Path, max_age_hours: u64) -> Result<usize, S
         .ok_or("Failed to calculate time cutoff")?;
 
     let mut cleaned = 0;
-    for entry in fs::read_dir(dir)
-        .map_err(|e| format!("Failed to read temp directory: {}", e))?
-    {
+    for entry in fs::read_dir(dir).map_err(|e| format!("Failed to read temp directory: {}", e))? {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
         let path = entry.path();
 
         if path.is_file() {
-            let metadata = fs::metadata(&path)
-                .map_err(|e| format!("Cannot read file metadata: {}", e))?;
+            let metadata =
+                fs::metadata(&path).map_err(|e| format!("Cannot read file metadata: {}", e))?;
 
             if let Ok(modified) = metadata.modified() {
                 if modified < cutoff {

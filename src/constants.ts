@@ -26,6 +26,8 @@ export const DOCK_LAYOUT_STORAGE_KEY = "slasshy-wispr-dock-layout-v2";
 export const HOME_HISTORY_STORAGE_KEY = "slasshy-wispr-home-history-v1";
 export const SIDEBAR_COLLAPSED_STORAGE_KEY = "slasshy-wispr-sidebar-collapsed-v1";
 export const LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY = "slasshy-wispr-local-stt-hardware-advisor-v1";
+export const APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY = "slasshy-wispr-app-update-last-checked-at-v1";
+export const APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY = "slasshy-wispr-app-update-last-notified-version-v1";
 export const EMPTY_HISTORY_HINT = "No turns yet. Start dictating to see your recent activity.";
 export const LEGACY_DEFAULT_SYSTEM_PROMPT =
   "You are SlasshyWispr, a helpful desktop voice assistant. Keep replies concise and easy to speak aloud.";
@@ -85,7 +87,6 @@ export const LOCAL_STT_MODEL_SIZE_LABELS: Record<string, string> = {
   "FunAudioLLM/SenseVoiceSmall": "SenseVoice (160 MB)",
 };
 export const MAX_COQUI_REFERENCE_SECONDS = 30;
-export const MAX_RECORDING_MS = 45_000;
 export const ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS = 1_000;
 export const MAX_HISTORY_ITEMS = 100;
 export const FOREGROUND_BLOCK_CHECK_CACHE_MS = 320;

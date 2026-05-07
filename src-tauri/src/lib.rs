@@ -38,13 +38,13 @@ use transcribe_rs::{
     TranscriptionEngine,
 };
 #[cfg(target_os = "windows")]
-use zip::ZipArchive;
+use windows_sys::Win32::Foundation::LocalFree;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Security::Cryptography::{
     CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
 };
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::Foundation::LocalFree;
+use zip::ZipArchive;
 
 pub mod constants;
 pub mod security;
@@ -346,8 +346,7 @@ struct NativeParakeetRuntime {
 }
 
 static COQUI_DAEMONS: OnceLock<Mutex<HashMap<String, CoquiBridgeDaemon>>> = OnceLock::new();
-static LOCAL_STT_DAEMONS: OnceLock<Mutex<HashMap<String, LocalSttBridgeDaemon>>> =
-    OnceLock::new();
+static LOCAL_STT_DAEMONS: OnceLock<Mutex<HashMap<String, LocalSttBridgeDaemon>>> = OnceLock::new();
 static LOCAL_STT_RUNTIME_PYTHON_CACHE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static LOCAL_STT_DAEMON_SWEEPER_STARTED: OnceLock<()> = OnceLock::new();
 static LOCAL_STT_NATIVE_PARAKEET_RUNTIME: OnceLock<Mutex<Option<NativeParakeetRuntime>>> =
@@ -872,6 +871,18 @@ struct AppUpdateCheckResponse {
     installer_asset_name: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppUpdateInstallProgressEvent {
+    stage: String,
+    message: String,
+    downloaded_bytes: u64,
+    total_bytes: u64,
+    progress_percent: f64,
+    completed: bool,
+    success: bool,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct InstallAppUpdateRequest {
@@ -988,13 +999,11 @@ impl TtsSetupState {
             progress.success = false;
             progress.stage = "Preparing setup...".to_string();
             progress.logs.clear();
-            progress
-                .logs
-                .push(if zero_python_mode_enabled() {
-                    "Starting TTS bootstrap for Piper runtime (zero-Python mode).".to_string()
-                } else {
-                    "Starting TTS bootstrap for Piper + Coqui runtime.".to_string()
-                });
+            progress.logs.push(if zero_python_mode_enabled() {
+                "Starting TTS bootstrap for Piper runtime (zero-Python mode).".to_string()
+            } else {
+                "Starting TTS bootstrap for Piper + Coqui runtime.".to_string()
+            });
         });
     }
 
@@ -1173,30 +1182,6 @@ async fn download_and_install_app_update(
             ));
         }
 
-        let response = state
-            .http
-            .get(download_url)
-            .header(USER_AGENT, UPDATE_HTTP_USER_AGENT)
-            .send()
-            .await
-            .map_err(|error| format!("Failed to download update installer: {error}"))?;
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(format!(
-                "Installer download failed with status {}: {}",
-                status,
-                clip_text(&single_line(&body), 280)
-            ));
-        }
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|error| format!("Failed to read installer bytes: {error}"))?;
-        if bytes.is_empty() {
-            return Err("Installer download returned an empty file.".to_string());
-        }
-
         let updates_dir = app
             .path()
             .app_data_dir()
@@ -1211,8 +1196,141 @@ async fn download_and_install_app_update(
             app.package_info().version.to_string().as_str(),
         );
         let installer_path = updates_dir.join(installer_name);
-        fs::write(&installer_path, &bytes)
-            .map_err(|error| format!("Failed to write installer file: {error}"))?;
+        emit_update_install_progress(
+            &app,
+            "starting",
+            "Preparing update download...",
+            0,
+            0,
+            false,
+            false,
+        );
+
+        let response = state
+            .http
+            .get(download_url)
+            .header(USER_AGENT, UPDATE_HTTP_USER_AGENT)
+            .send()
+            .await
+            .map_err(|error| {
+                let message = format!("Failed to download update installer: {error}");
+                emit_update_install_progress(&app, "error", &message, 0, 0, true, false);
+                message
+            })?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            let message = format!(
+                "Installer download failed with status {}: {}",
+                status,
+                clip_text(&single_line(&body), 280)
+            );
+            emit_update_install_progress(&app, "error", &message, 0, 0, true, false);
+            return Err(message);
+        }
+
+        let total_bytes = response.content_length().unwrap_or(0);
+        let mut downloaded_bytes = 0_u64;
+        let mut installer_file = fs::File::create(&installer_path).map_err(|error| {
+            let message = format!("Failed to create installer file: {error}");
+            emit_update_install_progress(
+                &app,
+                "error",
+                &message,
+                downloaded_bytes,
+                total_bytes,
+                true,
+                false,
+            );
+            message
+        })?;
+
+        emit_update_install_progress(
+            &app,
+            "downloading",
+            "Downloading update installer...",
+            downloaded_bytes,
+            total_bytes,
+            false,
+            false,
+        );
+
+        let mut response = response;
+        while let Some(chunk) = response.chunk().await.map_err(|error| {
+            let message = format!("Failed while reading installer download: {error}");
+            emit_update_install_progress(
+                &app,
+                "error",
+                &message,
+                downloaded_bytes,
+                total_bytes,
+                true,
+                false,
+            );
+            message
+        })? {
+            installer_file.write_all(&chunk).map_err(|error| {
+                let message = format!("Failed to write installer file: {error}");
+                emit_update_install_progress(
+                    &app,
+                    "error",
+                    &message,
+                    downloaded_bytes,
+                    total_bytes,
+                    true,
+                    false,
+                );
+                message
+            })?;
+            downloaded_bytes = downloaded_bytes.saturating_add(chunk.len() as u64);
+            emit_update_install_progress(
+                &app,
+                "downloading",
+                "Downloading update installer...",
+                downloaded_bytes,
+                total_bytes,
+                false,
+                false,
+            );
+        }
+
+        installer_file.flush().map_err(|error| {
+            let message = format!("Failed to finalize installer file: {error}");
+            emit_update_install_progress(
+                &app,
+                "error",
+                &message,
+                downloaded_bytes,
+                total_bytes,
+                true,
+                false,
+            );
+            message
+        })?;
+
+        if downloaded_bytes == 0 {
+            let message = "Installer download returned an empty file.".to_string();
+            emit_update_install_progress(
+                &app,
+                "error",
+                &message,
+                downloaded_bytes,
+                total_bytes,
+                true,
+                false,
+            );
+            return Err(message);
+        }
+
+        emit_update_install_progress(
+            &app,
+            "downloaded",
+            "Download complete. Launching installer...",
+            downloaded_bytes,
+            total_bytes.max(downloaded_bytes),
+            false,
+            false,
+        );
 
         let installer_kind = installer_path
             .file_name()
@@ -1246,10 +1364,20 @@ async fn download_and_install_app_update(
         };
         apply_no_window(&mut command);
         let installer_child = command.spawn().map_err(|error| {
-            format!(
+            let message = format!(
                 "Failed to launch installer '{}': {error}",
                 installer_path.display()
-            )
+            );
+            emit_update_install_progress(
+                &app,
+                "error",
+                &message,
+                downloaded_bytes,
+                total_bytes.max(downloaded_bytes),
+                true,
+                false,
+            );
+            message
         })?;
         let installer_pid = installer_child.id();
         let app_exe_path = std::env::current_exe()
@@ -1260,6 +1388,15 @@ async fn download_and_install_app_update(
             installer_path.display(),
             request.silent.unwrap_or(true),
             installer_pid
+        );
+        emit_update_install_progress(
+            &app,
+            "installing",
+            "Installer launched. Closing app so the update can finish.",
+            downloaded_bytes,
+            total_bytes.max(downloaded_bytes),
+            true,
+            true,
         );
         match schedule_app_relaunch_after_installer(installer_pid, &app_exe_path) {
             Ok(()) => {
@@ -1350,7 +1487,9 @@ fn known_keyring_targets() -> Vec<(&'static str, &'static str)> {
 fn write_api_key_to_primary_keyring(api_key: &str) -> Result<(), String> {
     let normalized_api_key = normalize_api_key_secret(api_key);
     if normalized_api_key.is_empty() {
-        return Err("failed to save API key to keyring: key is empty after normalization".to_string());
+        return Err(
+            "failed to save API key to keyring: key is empty after normalization".to_string(),
+        );
     }
 
     let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER)
@@ -1508,8 +1647,11 @@ fn secure_settings_payload(payload: &str) -> Result<String, String> {
 
     if let Some(obj) = parsed.as_object_mut() {
         let mut remember_api_key = obj.get("rememberApiKey").and_then(Value::as_bool);
-        let api_key =
-            normalize_api_key_secret(obj.get("apiKey").and_then(Value::as_str).unwrap_or_default());
+        let api_key = normalize_api_key_secret(
+            obj.get("apiKey")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        );
         let fingerprint = api_key_fingerprint(&api_key);
 
         if remember_api_key.is_none() && !api_key.is_empty() {
@@ -1592,8 +1734,11 @@ fn restore_settings_payload(payload: &str) -> Result<String, String> {
 
     if let Some(obj) = parsed.as_object_mut() {
         let remember_field = obj.get("rememberApiKey").and_then(Value::as_bool);
-        let file_api_key =
-            normalize_api_key_secret(obj.get("apiKey").and_then(Value::as_str).unwrap_or_default());
+        let file_api_key = normalize_api_key_secret(
+            obj.get("apiKey")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        );
         let file_api_present = !file_api_key.is_empty();
         let encrypted_api_key = obj
             .get(SETTINGS_API_KEY_ENCRYPTED_FIELD)
@@ -1670,7 +1815,9 @@ fn restore_settings_payload(payload: &str) -> Result<String, String> {
                     resolved_api_key = keyring_api_key.clone();
                     resolved_source = "keyring";
                     resolved_fingerprint_match = true;
-                } else if encrypted_decrypted_present && encrypted_fingerprint == expected_fingerprint {
+                } else if encrypted_decrypted_present
+                    && encrypted_fingerprint == expected_fingerprint
+                {
                     resolved_api_key = decrypted_fallback_api_key.clone();
                     resolved_source = "encrypted-file";
                     resolved_fingerprint_match = true;
@@ -1723,7 +1870,8 @@ fn restore_settings_payload(payload: &str) -> Result<String, String> {
 
             let resolved_fingerprint = api_key_fingerprint(&resolved_api_key);
             if !resolved_fingerprint.is_empty() {
-                if !expected_fingerprint.is_empty() && resolved_fingerprint == expected_fingerprint {
+                if !expected_fingerprint.is_empty() && resolved_fingerprint == expected_fingerprint
+                {
                     resolved_fingerprint_match = true;
                 }
                 obj.insert(
@@ -1917,20 +2065,20 @@ fn start_local_stt_boot_warmup(app: AppHandle) {
         let app_for_worker = app.clone();
         let model_for_worker = model.clone();
         let provider_for_worker = provider.clone();
-        let warmup_result = tauri::async_runtime::spawn_blocking(move || {
-            match provider_for_worker.as_str() {
-                "parakeet" => {
-                    warmup_local_stt_parakeet_model_blocking(&app_for_worker, "", &model_for_worker)
-                }
-                "whisper" | "moonshine" | "sensevoice" => {
-                    if zero_python_mode_enabled() {
-                        return Err(ZERO_PYTHON_STT_NOTICE.to_string());
-                    }
-                    let python_path = setup_local_stt_runtime_blocking(&app_for_worker, "python")?;
-                    warmup_local_stt_hf_model_blocking(&app_for_worker, &python_path, &model_for_worker)
-                }
-                _ => Ok("Warmup skipped (unsupported provider).".to_string()),
+        let warmup_result = tauri::async_runtime::spawn_blocking(move || match provider_for_worker
+            .as_str()
+        {
+            "parakeet" => {
+                warmup_local_stt_parakeet_model_blocking(&app_for_worker, "", &model_for_worker)
             }
+            "whisper" | "moonshine" | "sensevoice" => {
+                if zero_python_mode_enabled() {
+                    return Err(ZERO_PYTHON_STT_NOTICE.to_string());
+                }
+                let python_path = setup_local_stt_runtime_blocking(&app_for_worker, "python")?;
+                warmup_local_stt_hf_model_blocking(&app_for_worker, &python_path, &model_for_worker)
+            }
+            _ => Ok("Warmup skipped (unsupported provider).".to_string()),
         })
         .await
         .map_err(|error| format!("Local STT startup warmup worker failed: {error}"))
@@ -2628,7 +2776,11 @@ fn is_allowed_fullscreen_process_name(process_name: &str) -> bool {
         .any(|prefix| base.starts_with(prefix))
 }
 
-fn is_likely_fullscreen_game_window(process_name: &str, window_title: &str, fullscreen: bool) -> bool {
+fn is_likely_fullscreen_game_window(
+    process_name: &str,
+    window_title: &str,
+    fullscreen: bool,
+) -> bool {
     if !fullscreen || is_allowed_fullscreen_process_name(process_name) {
         return false;
     }
@@ -2734,6 +2886,38 @@ fn emit_main_window_visibility(app: &AppHandle, hidden: bool) {
     }
 }
 
+fn emit_update_install_progress(
+    app: &AppHandle,
+    stage: &str,
+    message: &str,
+    downloaded_bytes: u64,
+    total_bytes: u64,
+    completed: bool,
+    success: bool,
+) {
+    let progress_percent = if total_bytes == 0 {
+        if completed {
+            100.0
+        } else {
+            0.0
+        }
+    } else {
+        ((downloaded_bytes as f64 / total_bytes as f64) * 100.0).clamp(0.0, 100.0)
+    };
+    let payload = AppUpdateInstallProgressEvent {
+        stage: stage.to_string(),
+        message: message.to_string(),
+        downloaded_bytes,
+        total_bytes,
+        progress_percent,
+        completed,
+        success,
+    };
+    if let Err(error) = app.emit(APP_EVENT_UPDATE_INSTALL_PROGRESS, payload) {
+        warn!("[updater] failed to emit install progress event: {error}");
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn probe_foreground_window_windows() -> Result<ForegroundWindowProbeResult, String> {
     let script = r#"$ErrorActionPreference='Stop';
@@ -2821,16 +3005,8 @@ if ($monitor -ne [IntPtr]::Zero -and [ForegroundWindowProbe]::GetWindowRect($hwn
 
     let mut parts = raw.splitn(3, "||");
     Ok(ForegroundWindowProbeResult {
-        process_name: parts
-            .next()
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase(),
-        window_title: parts
-            .next()
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase(),
+        process_name: parts.next().unwrap_or_default().trim().to_ascii_lowercase(),
+        window_title: parts.next().unwrap_or_default().trim().to_ascii_lowercase(),
         fullscreen: parts.next().unwrap_or_default().trim() == "1",
     })
 }
@@ -2840,8 +3016,11 @@ async fn get_foreground_input_block_status() -> Result<ForegroundInputBlockStatu
     #[cfg(target_os = "windows")]
     {
         let probe = probe_foreground_window_windows()?;
-        let reason =
-            foreground_input_block_reason(&probe.process_name, &probe.window_title, probe.fullscreen);
+        let reason = foreground_input_block_reason(
+            &probe.process_name,
+            &probe.window_title,
+            probe.fullscreen,
+        );
         return Ok(ForegroundInputBlockStatus {
             blocked: reason.is_some(),
             process_name: probe.process_name,
@@ -3183,7 +3362,9 @@ async fn download_local_stt_model(
     }
     let allowed_models = built_in_local_stt_model_catalog();
     if !allowed_models.iter().any(|item| item == &model) {
-        return Err("Unsupported local STT model. Select one from the built-in catalog.".to_string());
+        return Err(
+            "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
+        );
     }
     let status_snapshot = state.snapshot_local_stt_download_status()?;
     if status_snapshot.active {
@@ -3432,28 +3613,26 @@ async fn download_local_stt_model(
                                 );
                             }
                             Err(warmup_error) => {
-                                let _ = state_for_task.update_local_stt_download_status(
-                                    |status| {
-                                        status.active = false;
-                                        status.completed = true;
-                                        status.success = true;
-                                        status.model = model_for_task.clone();
-                                        status.repo_id = repo_id_for_task.clone();
-                                        status.stage = "Download complete (warmup warning)."
-                                            .to_string();
-                                        status.message = format!(
-                                            "{download_details} Native Parakeet warmup skipped: {}",
-                                            clip_text(&single_line(&warmup_error), 360)
-                                        );
-                                        status.current_file.clear();
-                                        if status.total_bytes > 0 {
-                                            status.downloaded_bytes = status.total_bytes;
-                                        }
-                                        if status.files_total > 0 {
-                                            status.files_completed = status.files_total;
-                                        }
-                                    },
-                                );
+                                let _ = state_for_task.update_local_stt_download_status(|status| {
+                                    status.active = false;
+                                    status.completed = true;
+                                    status.success = true;
+                                    status.model = model_for_task.clone();
+                                    status.repo_id = repo_id_for_task.clone();
+                                    status.stage =
+                                        "Download complete (warmup warning).".to_string();
+                                    status.message = format!(
+                                        "{download_details} Native Parakeet warmup skipped: {}",
+                                        clip_text(&single_line(&warmup_error), 360)
+                                    );
+                                    status.current_file.clear();
+                                    if status.total_bytes > 0 {
+                                        status.downloaded_bytes = status.total_bytes;
+                                    }
+                                    if status.files_total > 0 {
+                                        status.files_completed = status.files_total;
+                                    }
+                                });
                             }
                         }
                     } else {
@@ -3536,11 +3715,16 @@ async fn delete_local_stt_model(
     }
     let allowed_models = built_in_local_stt_model_catalog();
     if !allowed_models.iter().any(|item| item == &model) {
-        return Err("Unsupported local STT model. Select one from the built-in catalog.".to_string());
+        return Err(
+            "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
+        );
     }
     let active_status = state.snapshot_local_stt_download_status()?;
     if active_status.active && active_status.model == model {
-        return Err("This model is currently downloading. Wait for it to finish before deleting.".to_string());
+        return Err(
+            "This model is currently downloading. Wait for it to finish before deleting."
+                .to_string(),
+        );
     }
 
     let provider = infer_local_stt_provider_from_model(&model);
@@ -3628,7 +3812,9 @@ async fn open_local_stt_model_path(
     }
     let allowed_models = built_in_local_stt_model_catalog();
     if !allowed_models.iter().any(|item| item == &model) {
-        return Err("Unsupported local STT model. Select one from the built-in catalog.".to_string());
+        return Err(
+            "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
+        );
     }
 
     let provider = infer_local_stt_provider_from_model(&model);
@@ -3665,7 +3851,9 @@ async fn warmup_local_stt_model(
     }
     let allowed_models = built_in_local_stt_model_catalog();
     if !allowed_models.iter().any(|item| item == &model) {
-        return Err("Unsupported local STT model. Select one from the built-in catalog.".to_string());
+        return Err(
+            "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
+        );
     }
 
     let provider = infer_local_stt_provider_from_model(&model);
@@ -3682,8 +3870,8 @@ async fn warmup_local_stt_model(
     let app_for_worker = app.clone();
     let model_for_worker = model.clone();
     let provider_for_worker = provider.clone();
-    let warmup_result = tauri::async_runtime::spawn_blocking(move || {
-        match provider_for_worker.as_str() {
+    let warmup_result =
+        tauri::async_runtime::spawn_blocking(move || match provider_for_worker.as_str() {
             "parakeet" => {
                 warmup_local_stt_parakeet_model_blocking(&app_for_worker, "", &model_for_worker)
             }
@@ -3695,10 +3883,9 @@ async fn warmup_local_stt_model(
                 warmup_local_stt_hf_model_blocking(&app_for_worker, &python_path, &model_for_worker)
             }
             _ => Ok("Warmup skipped (unsupported provider).".to_string()),
-        }
-    })
-    .await
-    .map_err(|error| format!("Local STT warmup task failed: {error}"));
+        })
+        .await
+        .map_err(|error| format!("Local STT warmup task failed: {error}"));
 
     match warmup_result {
         Ok(Ok(details)) => {
@@ -3739,7 +3926,9 @@ async fn deactivate_local_stt_model(
     } else {
         let allowed_models = built_in_local_stt_model_catalog();
         if !allowed_models.iter().any(|item| item == &model) {
-            return Err("Unsupported local STT model. Select one from the built-in catalog.".to_string());
+            return Err(
+                "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
+            );
         }
         let provider = infer_local_stt_provider_from_model(&model);
         (model, provider)
@@ -3759,7 +3948,8 @@ async fn deactivate_local_stt_model(
     .await
     .map_err(|error| format!("Local STT deactivate task failed: {error}"))??;
     let (trimmed_count, stopped_during_trim, fully_stopped, native_unloaded) = worker_result;
-    let deactivated = trimmed_count > 0 || stopped_during_trim > 0 || fully_stopped > 0 || native_unloaded;
+    let deactivated =
+        trimmed_count > 0 || stopped_during_trim > 0 || fully_stopped > 0 || native_unloaded;
 
     let details = if deactivated {
         if model_for_response.is_empty() {
@@ -4709,7 +4899,8 @@ fn assistant_name_token_matches(expected: &str, actual: &str) -> bool {
 
     let expected_normalized = expected.to_ascii_lowercase();
     let actual_normalized = actual.to_ascii_lowercase();
-    if expected_normalized.len() <= 5 && within_n_edits_ascii(&expected_normalized, &actual_normalized, 2)
+    if expected_normalized.len() <= 5
+        && within_n_edits_ascii(&expected_normalized, &actual_normalized, 2)
     {
         return true;
     }
@@ -4869,9 +5060,8 @@ fn resolve_pipeline_mode(request: &AssistantPipelineRequest) -> Result<PipelineM
     };
 
     let stt = if stt_local_mode {
-        let stt_model = canonical_local_stt_model_id(&normalize_model_name(
-            request.local_stt_model.as_deref(),
-        ));
+        let stt_model =
+            canonical_local_stt_model_id(&normalize_model_name(request.local_stt_model.as_deref()));
         if stt_model.is_empty() {
             return Err(
                 "Local STT model is required when STT runtime is local. Open Settings > Models and select a model."
@@ -4942,9 +5132,7 @@ async fn run_assistant_pipeline(
     let coqui_requested = requested_engine == "coqui";
     let use_coqui = coqui_requested && !zero_python_mode_enabled();
     if coqui_requested && zero_python_mode_enabled() {
-        warn!(
-            "[pipeline] coqui requested but disabled in zero-python mode; falling back to piper"
-        );
+        warn!("[pipeline] coqui requested but disabled in zero-python mode; falling back to piper");
     }
 
     let mut piper_path = if use_coqui {
@@ -4953,7 +5141,10 @@ async fn run_assistant_pipeline(
         match resolve_piper_path(&app, request.piper_path.as_deref()) {
             Ok(path) => Some(path),
             Err(error) => {
-                warn!("[pipeline] piper path resolution deferred/skipped: {}", error);
+                warn!(
+                    "[pipeline] piper path resolution deferred/skipped: {}",
+                    error
+                );
                 None
             }
         }
@@ -5009,7 +5200,10 @@ async fn run_assistant_pipeline(
                     piper_model_path = Some(model_path);
                 }
                 Err(error) => {
-                    warn!("[pipeline] piper auto-repair failed for voice files: {}", error);
+                    warn!(
+                        "[pipeline] piper auto-repair failed for voice files: {}",
+                        error
+                    );
                 }
             }
         }
@@ -5069,11 +5263,12 @@ async fn run_assistant_pipeline(
     let overall_start = Instant::now();
 
     let stt_start = Instant::now();
-    let effective_language_hint = normalize_stt_language_hint(request.language.as_deref()).or_else(|| {
-        normalize_stt_allowed_languages(request.allowed_languages.as_deref())
-            .first()
-            .cloned()
-    });
+    let effective_language_hint =
+        normalize_stt_language_hint(request.language.as_deref()).or_else(|| {
+            normalize_stt_allowed_languages(request.allowed_languages.as_deref())
+                .first()
+                .cloned()
+        });
     let transcript_raw = match &pipeline_mode.stt {
         SttModeConfig::Online {
             api_key,
@@ -5112,9 +5307,8 @@ async fn run_assistant_pipeline(
             if let Some(duration_secs) = estimate_wav_duration_seconds(&audio_bytes) {
                 let transcript_chars = transcript_raw.chars().count();
                 let cps = transcript_chars as f64 / duration_secs.max(0.001);
-                let likely_hallucination =
-                    (transcript_chars >= 120 && cps > 55.0)
-                        || (duration_secs <= 0.8 && transcript_chars >= 32 && cps > 80.0);
+                let likely_hallucination = (transcript_chars >= 120 && cps > 55.0)
+                    || (duration_secs <= 0.8 && transcript_chars >= 32 && cps > 80.0);
                 if likely_hallucination {
                     warn!(
                         "[pipeline] rejected implausible local transcript provider={} chars={} duration_secs={:.3} cps={:.1}",
@@ -5260,8 +5454,10 @@ async fn run_assistant_pipeline(
         state.set_recent_selection_context(selected.clone())?;
     }
     let selected_context_available = selected_text.is_some();
-    let selection_control_mode =
-        selected_context_available || command_mode || pending_rewrite_present || selection_intent_active;
+    let selection_control_mode = selected_context_available
+        || command_mode
+        || pending_rewrite_present
+        || selection_intent_active;
     let selection_context_used = selected_context_available || pending_rewrite_present;
     let selected_chars = selected_text
         .as_ref()
@@ -5608,13 +5804,8 @@ async fn run_assistant_pipeline(
     } else {
         match (piper_path, piper_model_path) {
             (Some(rpp), Some(rmp)) => {
-                synthesize_with_piper(
-                    rpp,
-                    rmp,
-                    assistant_response.clone(),
-                    request.piper.as_ref(),
-                )
-                .await
+                synthesize_with_piper(rpp, rmp, assistant_response.clone(), request.piper.as_ref())
+                    .await
             }
             _ => Err("Piper runtime or voice model files are missing.".to_string()),
         }
@@ -5830,8 +6021,8 @@ async fn transcribe_audio_local_hf_asr(
     let model = canonical_local_stt_model_id(&local.stt_model);
     let provider = infer_local_stt_provider_from_model(&model);
     let allowed_language_hints = normalize_stt_allowed_languages(allowed_languages);
-    let language_hint = normalize_stt_language_hint(language)
-        .or_else(|| allowed_language_hints.first().cloned());
+    let language_hint =
+        normalize_stt_language_hint(language).or_else(|| allowed_language_hints.first().cloned());
     let (repo_id, model_dir) = resolve_local_stt_repo_and_dir(app, &provider, &model)?;
     if !model_dir.exists() {
         return Err(format!(
@@ -6248,7 +6439,8 @@ async fn generate_assistant_response_ollama(
             .filter(|value| !value.is_empty())
             .map(str::to_string);
 
-        return content.ok_or_else(|| "Local Ollama response is missing message.content".to_string());
+        return content
+            .ok_or_else(|| "Local Ollama response is missing message.content".to_string());
     }
 
     if last_error.is_empty() {
@@ -6541,9 +6733,11 @@ fn replace_latex_fractions(input: &str) -> String {
         };
         let denominator_tail = &tail[numerator_end..];
         let denominator_trimmed = denominator_tail.trim_start();
-        let denominator_whitespace =
-            denominator_tail.len().saturating_sub(denominator_trimmed.len());
-        let Some((denominator, denominator_end)) = extract_braced_latex_segment(denominator_trimmed)
+        let denominator_whitespace = denominator_tail
+            .len()
+            .saturating_sub(denominator_trimmed.len());
+        let Some((denominator, denominator_end)) =
+            extract_braced_latex_segment(denominator_trimmed)
         else {
             output.push_str("\\frac");
             cursor = start + "\\frac".len();
@@ -6720,7 +6914,9 @@ fn seems_like_selection_edit_instruction(command: &str) -> bool {
     if normalized.is_empty() {
         return false;
     }
-    let edit_verbs = ["improve", "rewrite", "edit", "rephrase", "fix", "correct", "polish", "refine"];
+    let edit_verbs = [
+        "improve", "rewrite", "edit", "rephrase", "fix", "correct", "polish", "refine",
+    ];
     if edit_verbs
         .iter()
         .any(|phrase| contains_phrase(&normalized, phrase))
@@ -6728,7 +6924,14 @@ fn seems_like_selection_edit_instruction(command: &str) -> bool {
         return true;
     }
 
-    let style_rewrite_cues = ["shorten", "expand", "formal", "professional", "grammar", "typo"];
+    let style_rewrite_cues = [
+        "shorten",
+        "expand",
+        "formal",
+        "professional",
+        "grammar",
+        "typo",
+    ];
     if style_rewrite_cues
         .iter()
         .any(|phrase| contains_phrase(&normalized, phrase))
@@ -7841,7 +8044,15 @@ fn extract_text_from_chat_value(value: &Value) -> Option<String> {
             }
         }
         Value::Object(object) => {
-            for key in ["text", "content", "output_text", "value", "refusal", "message", "delta"] {
+            for key in [
+                "text",
+                "content",
+                "output_text",
+                "value",
+                "refusal",
+                "message",
+                "delta",
+            ] {
                 if let Some(candidate) = object.get(key) {
                     if let Some(text) = extract_text_from_chat_value(candidate) {
                         return Some(text);
@@ -8271,8 +8482,7 @@ fn validate_python_binary_path(path: &str) -> Result<(), String> {
         })
         .unwrap_or(false);
 
-    if !matches!(normalized, "python" | "python3" | "pythonw" | "py") && !is_python3_with_version
-    {
+    if !matches!(normalized, "python" | "python3" | "pythonw" | "py") && !is_python3_with_version {
         return Err(format!(
             "Invalid python binary name '{}'. Expected a python executable name.",
             file_name
@@ -9004,7 +9214,10 @@ fn run_local_stt_bridge_via_daemon(
                 let _ = stale.child.wait();
             }
 
-            info!("[local.stt.daemon] restarting after failure action={}", action);
+            info!(
+                "[local.stt.daemon] restarting after failure action={}",
+                action
+            );
             let mut daemon = spawn_local_stt_bridge_daemon(python_path, script_path, cache_dir)?;
             let retry = send_local_stt_daemon_request(&mut daemon, action, payload);
             match retry {
@@ -9799,9 +10012,12 @@ fn extract_tar_gz_archive(archive_path: &Path, destination: &Path) -> Result<(),
     })?;
     let decoder = GzDecoder::new(archive_file);
     let mut archive = Archive::new(decoder);
-    let entries = archive
-        .entries()
-        .map_err(|error| format!("Invalid tar.gz archive '{}': {error}", archive_path.display()))?;
+    let entries = archive.entries().map_err(|error| {
+        format!(
+            "Invalid tar.gz archive '{}': {error}",
+            archive_path.display()
+        )
+    })?;
 
     for (index, entry_result) in entries.enumerate() {
         let mut entry = entry_result.map_err(|error| {
@@ -9944,7 +10160,11 @@ fn normalize_stt_language_hint(raw: Option<&str>) -> Option<String> {
             value = iso2.to_string();
         }
     }
-    if value.is_empty() { None } else { Some(value) }
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 fn normalize_stt_allowed_languages(raw: Option<&[String]>) -> Vec<String> {
@@ -10077,17 +10297,18 @@ fn estimate_wav_duration_seconds(audio_bytes: &[u8]) -> Option<f64> {
         }
 
         if chunk_id == b"fmt " && chunk_size >= 16 {
-            channels = Some(u16::from_le_bytes([audio_bytes[cursor + 2], audio_bytes[cursor + 3]]) as f64);
+            channels =
+                Some(u16::from_le_bytes([audio_bytes[cursor + 2], audio_bytes[cursor + 3]]) as f64);
             sample_rate = Some(u32::from_le_bytes([
                 audio_bytes[cursor + 4],
                 audio_bytes[cursor + 5],
                 audio_bytes[cursor + 6],
                 audio_bytes[cursor + 7],
             ]) as f64);
-            bits_per_sample = Some(u16::from_le_bytes([
-                audio_bytes[cursor + 14],
-                audio_bytes[cursor + 15],
-            ]) as f64);
+            bits_per_sample =
+                Some(
+                    u16::from_le_bytes([audio_bytes[cursor + 14], audio_bytes[cursor + 15]]) as f64,
+                );
         } else if chunk_id == b"data" {
             data_size_bytes = Some(chunk_size as f64);
         }
@@ -10315,7 +10536,10 @@ fn probe_macos_local_stt_hardware(probe: &mut LocalSttHardwareProbe) {
     let capture = |command_name: &str, args: &[&str]| -> Option<String> {
         let mut command = Command::new(command_name);
         apply_no_window(&mut command);
-        command.args(args).stdout(Stdio::piped()).stderr(Stdio::null());
+        command
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
         let output = command.output().ok()?;
         if !output.status.success() {
             return None;
@@ -10341,7 +10565,10 @@ fn probe_nvidia_gpu_for_local_stt(probe: &mut LocalSttHardwareProbe) {
     let mut command = Command::new("nvidia-smi");
     apply_no_window(&mut command);
     command
-        .args(["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
+        .args([
+            "--query-gpu=name,memory.total",
+            "--format=csv,noheader,nounits",
+        ])
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
 
@@ -10400,7 +10627,11 @@ fn probe_nvidia_gpu_for_local_stt(probe: &mut LocalSttHardwareProbe) {
     }
 }
 
-fn local_stt_performance_tier(probe: &LocalSttHardwareProbe, ram_gb: f64, gpu_vram_gb: f64) -> &'static str {
+fn local_stt_performance_tier(
+    probe: &LocalSttHardwareProbe,
+    ram_gb: f64,
+    gpu_vram_gb: f64,
+) -> &'static str {
     let strong_cpu = probe.logical_cores >= 8;
     let low_cpu = probe.logical_cores > 0 && probe.logical_cores <= 4;
     let ample_ram = ram_gb >= 16.0;
@@ -10430,35 +10661,25 @@ fn local_stt_models_for_tier(
     match tier {
         "performance" => (
             "nvidia/parakeet-tdt_ctc-110m",
-            vec![
-                "nvidia/parakeet-tdt_ctc-110m",
-            ],
-            vec![
-                "nvidia/parakeet-tdt-0.6b-v3",
-            ],
+            vec!["nvidia/parakeet-tdt_ctc-110m"],
+            vec!["nvidia/parakeet-tdt-0.6b-v3"],
         ),
         "balanced" => (
             "nvidia/parakeet-tdt_ctc-110m",
-            vec![
-                "nvidia/parakeet-tdt_ctc-110m",
-            ],
-            vec![
-                "nvidia/parakeet-tdt-0.6b-v3",
-            ],
+            vec!["nvidia/parakeet-tdt_ctc-110m"],
+            vec!["nvidia/parakeet-tdt-0.6b-v3"],
         ),
         _ => (
             "nvidia/parakeet-tdt_ctc-110m",
-            vec![
-                "nvidia/parakeet-tdt_ctc-110m",
-            ],
-            vec![
-                "nvidia/parakeet-tdt-0.6b-v3",
-            ],
+            vec!["nvidia/parakeet-tdt_ctc-110m"],
+            vec!["nvidia/parakeet-tdt-0.6b-v3"],
         ),
     }
 }
 
-fn build_local_stt_hardware_advice(selected_model: Option<String>) -> LocalSttHardwareAdviceResponse {
+fn build_local_stt_hardware_advice(
+    selected_model: Option<String>,
+) -> LocalSttHardwareAdviceResponse {
     let probe = probe_local_stt_hardware();
     let ram_gb_raw = if probe.total_ram_bytes > 0 {
         probe.total_ram_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
@@ -10543,7 +10764,10 @@ fn build_local_stt_hardware_advice(selected_model: Option<String>) -> LocalSttHa
     let caution_suffix = if caution_labels.is_empty() {
         String::new()
     } else {
-        format!(" Heavy models on this hardware: {}.", caution_labels.join(", "))
+        format!(
+            " Heavy models on this hardware: {}.",
+            caution_labels.join(", ")
+        )
     };
     let gpu_summary = if probe.nvidia_gpu_detected {
         if gpu_vram_gb > 0.0 {
@@ -10884,9 +11108,9 @@ fn detect_nvidia_gpu_available() -> bool {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     match command.output() {
-        Ok(output) if output.status.success() => !String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .is_empty(),
+        Ok(output) if output.status.success() => {
+            !String::from_utf8_lossy(&output.stdout).trim().is_empty()
+        }
         _ => false,
     }
 }
@@ -11070,11 +11294,8 @@ fn setup_local_stt_runtime_blocking(
         &["-c", "import nemo.collections.asr"],
         &cache_dir,
     );
-    let probe_faster_whisper = run_local_stt_python_command(
-        &venv_python,
-        &["-c", "import faster_whisper"],
-        &cache_dir,
-    );
+    let probe_faster_whisper =
+        run_local_stt_python_command(&venv_python, &["-c", "import faster_whisper"], &cache_dir);
     if probe_nemo.is_ok() && probe_faster_whisper.is_ok() {
         let _ = try_install_local_stt_cuda_torch(
             &venv_python,
@@ -11082,11 +11303,11 @@ fn setup_local_stt_runtime_blocking(
             &runtime_dir,
             "runtime-ready",
         );
-        let cuda_available = local_stt_torch_cuda_available(&venv_python, &cache_dir).unwrap_or(false);
+        let cuda_available =
+            local_stt_torch_cuda_available(&venv_python, &cache_dir).unwrap_or(false);
         info!(
             "[local.stt.runtime] ready python={} cuda={}",
-            clip_text(&venv_python, 220)
-            ,
+            clip_text(&venv_python, 220),
             cuda_available
         );
         if let Ok(mut guard) = local_stt_runtime_python_cache().lock() {
@@ -11162,17 +11383,21 @@ fn setup_local_stt_runtime_blocking(
 
     let _ = run_local_stt_python_command(
         &venv_python,
-        &["-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"],
+        &[
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "pip",
+            "setuptools",
+            "wheel",
+        ],
         &cache_dir,
     )?;
 
-    let cuda_torch_installed = try_install_local_stt_cuda_torch(
-        &venv_python,
-        &cache_dir,
-        &runtime_dir,
-        "first-install",
-    )
-    .unwrap_or(false);
+    let cuda_torch_installed =
+        try_install_local_stt_cuda_torch(&venv_python, &cache_dir, &runtime_dir, "first-install")
+            .unwrap_or(false);
     if !cuda_torch_installed {
         let torch_install_output = run_local_stt_python_command(
             &venv_python,
@@ -11285,7 +11510,9 @@ fn decode_wav_audio_to_mono_f32(audio_bytes: &[u8]) -> Result<(Vec<f32>, u32), S
     let interleaved: Vec<f32> = match spec.sample_format {
         hound::SampleFormat::Float => reader
             .samples::<f32>()
-            .map(|sample| sample.map_err(|error| format!("Failed to read WAV float sample: {error}")))
+            .map(|sample| {
+                sample.map_err(|error| format!("Failed to read WAV float sample: {error}"))
+            })
             .collect::<Result<Vec<f32>, String>>()?,
         hound::SampleFormat::Int => {
             if spec.bits_per_sample <= 16 {
@@ -11557,10 +11784,12 @@ fn open_path_in_file_explorer(path: &Path) -> Result<(), String> {
     {
         let mut command = Command::new("explorer");
         apply_no_window(&mut command);
-        command
-            .arg(path)
-            .spawn()
-            .map_err(|error| format!("Failed to open '{}' in File Explorer: {error}", path.display()))?;
+        command.arg(path).spawn().map_err(|error| {
+            format!(
+                "Failed to open '{}' in File Explorer: {error}",
+                path.display()
+            )
+        })?;
         return Ok(());
     }
 
@@ -11648,7 +11877,10 @@ fn legacy_huggingface_repo_id_for_model(provider: &str, model: &str) -> Option<S
         return None;
     }
     let normalized_model = model.trim();
-    if normalized_model.to_ascii_lowercase().starts_with("openai/whisper-") {
+    if normalized_model
+        .to_ascii_lowercase()
+        .starts_with("openai/whisper-")
+    {
         Some(normalized_model.to_string())
     } else {
         None
@@ -11787,9 +12019,7 @@ fn preferred_huggingface_primary_file_names(repo_id: &str) -> &'static [&'static
         "openai/whisper-small" => &["model.safetensors"],
         "openai/whisper-large-v3-turbo" => &["model.safetensors"],
         "UsefulSensors/moonshine-base" => &["model.safetensors"],
-        "FunAudioLLM/SenseVoiceSmall" => {
-            &["model.pt", "chn_jpn_yue_eng_ko_spectok.bpe.model"]
-        }
+        "FunAudioLLM/SenseVoiceSmall" => &["model.pt", "chn_jpn_yue_eng_ko_spectok.bpe.model"],
         _ => &[],
     }
 }
@@ -11831,7 +12061,9 @@ fn select_huggingface_stt_download_entries(
                 selected_indices.push(index);
             }
         }
-    } else if selected_indices.is_empty() && repo_id.eq_ignore_ascii_case("FunAudioLLM/SenseVoiceSmall") {
+    } else if selected_indices.is_empty()
+        && repo_id.eq_ignore_ascii_case("FunAudioLLM/SenseVoiceSmall")
+    {
         for (index, (path, _)) in entries.iter().enumerate() {
             if file_name_equals(path, "model.pt")
                 || file_name_equals(path, "chn_jpn_yue_eng_ko_spectok.bpe.model")
@@ -12013,10 +12245,7 @@ fn concatenate_archive_parts(parts: &[PathBuf], destination: &Path) -> Result<()
 
     for part in parts {
         let mut input = fs::File::open(part).map_err(|error| {
-            format!(
-                "Failed to open archive part '{}': {error}",
-                part.display()
-            )
+            format!("Failed to open archive part '{}': {error}", part.display())
         })?;
         std::io::copy(&mut input, &mut output).map_err(|error| {
             format!(
@@ -12039,7 +12268,9 @@ async fn download_archive_parallel_ranges(
     state: &AppState,
 ) -> Result<u64, String> {
     if total_bytes == 0 || chunk_count <= 1 {
-        return Err("Parallel range download requires known content length and >1 chunks.".to_string());
+        return Err(
+            "Parallel range download requires known content length and >1 chunks.".to_string(),
+        );
     }
 
     let chunk_size = ((total_bytes + chunk_count as u64 - 1) / chunk_count as u64).max(1);
@@ -12125,7 +12356,12 @@ async fn download_archive_single_stream(
         .timeout(Duration::from_secs(60 * 60))
         .send()
         .await
-        .map_err(|error| format!("Failed to download archive '{}': {error}", clip_text(url, 220)))?;
+        .map_err(|error| {
+            format!(
+                "Failed to download archive '{}': {error}",
+                clip_text(url, 220)
+            )
+        })?;
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
@@ -12151,11 +12387,12 @@ async fn download_archive_single_stream(
     let mut downloaded_bytes = 0u64;
     let mut last_status_update = Instant::now();
 
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|error| format!("Failed reading archive stream '{}': {error}", clip_text(url, 220)))?
-    {
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        format!(
+            "Failed reading archive stream '{}': {error}",
+            clip_text(url, 220)
+        )
+    })? {
         output_file.write_all(&chunk).map_err(|error| {
             format!(
                 "Failed writing archive chunk '{}': {error}",
@@ -12181,8 +12418,9 @@ async fn download_prepacked_parakeet_model(
     target_dir: &Path,
     state: &AppState,
 ) -> Result<String, String> {
-    let source = local_parakeet_archive_source(repo_id)
-        .ok_or_else(|| format!("No prepacked Parakeet archive source configured for '{repo_id}'."))?;
+    let source = local_parakeet_archive_source(repo_id).ok_or_else(|| {
+        format!("No prepacked Parakeet archive source configured for '{repo_id}'.")
+    })?;
 
     if let Ok(existing_root) = find_local_parakeet_model_root(target_dir) {
         return Ok(format!(
@@ -12294,9 +12532,7 @@ async fn download_prepacked_parakeet_model(
 
     if downloaded_bytes == 0 {
         let _ = fs::remove_file(&temp_archive_path);
-        return Err(format!(
-            "Downloaded archive for '{repo_id}' was empty."
-        ));
+        return Err(format!("Downloaded archive for '{repo_id}' was empty."));
     }
 
     if archive_path.exists() {
@@ -12608,8 +12844,7 @@ async fn download_huggingface_stt_model(
             status.current_file.clear();
             status.message = format!(
                 "Downloaded {}/{} files.",
-                status.files_completed,
-                status.files_total
+                status.files_completed, status.files_total
             );
         })?;
     }
@@ -12678,11 +12913,13 @@ fn now_unix_ms() -> u64 {
 
 fn calculate_local_stt_progress_percent(status: &LocalSttDownloadStatusResponse) -> f64 {
     if status.total_bytes > 0 {
-        return ((status.downloaded_bytes as f64 / status.total_bytes as f64) * 100.0).clamp(0.0, 100.0);
+        return ((status.downloaded_bytes as f64 / status.total_bytes as f64) * 100.0)
+            .clamp(0.0, 100.0);
     }
 
     if status.files_total > 0 {
-        return ((status.files_completed as f64 / status.files_total as f64) * 100.0).clamp(0.0, 100.0);
+        return ((status.files_completed as f64 / status.files_total as f64) * 100.0)
+            .clamp(0.0, 100.0);
     }
 
     if status.completed && status.success {
@@ -12920,13 +13157,19 @@ Explanation:
     #[test]
     fn rejects_script_mismatch_for_latin_language_hint() {
         let transcript = "සාරි සාරි සාරි සාරි සාරි";
-        assert!(looks_like_repetitive_transcript_noise(transcript, Some("en")));
+        assert!(looks_like_repetitive_transcript_noise(
+            transcript,
+            Some("en")
+        ));
     }
 
     #[test]
     fn accepts_normal_english_transcript() {
         let transcript = "Hey Lily what do you think about India today";
-        assert!(!looks_like_repetitive_transcript_noise(transcript, Some("en")));
+        assert!(!looks_like_repetitive_transcript_noise(
+            transcript,
+            Some("en")
+        ));
     }
 
     #[test]
@@ -13012,8 +13255,8 @@ Explanation:
 
     #[test]
     fn tolerates_small_wake_prefix_misspelling() {
-        let command = extract_wake_command("He Lily draft a follow up email", "Lily")
-            .unwrap_or_default();
+        let command =
+            extract_wake_command("He Lily draft a follow up email", "Lily").unwrap_or_default();
         assert_eq!(command, "draft a follow up email");
     }
 
@@ -13081,7 +13324,8 @@ Explanation:
 
     #[test]
     fn flags_incomplete_draft_outputs() {
-        let incomplete = "Subject: Sick Leave - Unable to Attend Work Tomorrow\n\nDear [Boss's Name],\n\nI am";
+        let incomplete =
+            "Subject: Sick Leave - Unable to Attend Work Tomorrow\n\nDear [Boss's Name],\n\nI am";
         assert!(looks_like_incomplete_draft_output(incomplete));
 
         let complete = "Subject: Sick Leave Request for Tomorrow\n\nDear Manager,\n\nI am feeling unwell and will not be able to attend work tomorrow. I will monitor urgent messages and hand over critical items before the day starts.\n\nBest regards,\nSuman";
@@ -13104,7 +13348,10 @@ Explanation:
                 }
             ]
         });
-        assert_eq!(extract_chat_content(&payload).as_deref(), Some("Draft complete."));
+        assert_eq!(
+            extract_chat_content(&payload).as_deref(),
+            Some("Draft complete.")
+        );
     }
 
     #[test]
@@ -13142,8 +13389,12 @@ Explanation:
     #[test]
     fn online_ai_model_defaults_to_reasoning_only_for_gpt_oss_models() {
         assert!(online_ai_model_defaults_to_reasoning("openai/gpt-oss-20b"));
-        assert!(online_ai_model_defaults_to_reasoning(" openai/gpt-oss-120b "));
-        assert!(!online_ai_model_defaults_to_reasoning("llama-3.3-70b-versatile"));
+        assert!(online_ai_model_defaults_to_reasoning(
+            " openai/gpt-oss-120b "
+        ));
+        assert!(!online_ai_model_defaults_to_reasoning(
+            "llama-3.3-70b-versatile"
+        ));
         assert!(!online_ai_model_defaults_to_reasoning("gpt-4o-mini"));
     }
 
@@ -13221,8 +13472,12 @@ Explanation:
     fn zero_python_supported_local_stt_provider_flags() {
         assert!(local_stt_provider_supported_in_zero_python_mode("parakeet"));
         assert!(!local_stt_provider_supported_in_zero_python_mode("whisper"));
-        assert!(!local_stt_provider_supported_in_zero_python_mode("moonshine"));
-        assert!(!local_stt_provider_supported_in_zero_python_mode("sensevoice"));
+        assert!(!local_stt_provider_supported_in_zero_python_mode(
+            "moonshine"
+        ));
+        assert!(!local_stt_provider_supported_in_zero_python_mode(
+            "sensevoice"
+        ));
     }
 
     #[test]
@@ -13255,8 +13510,8 @@ Explanation:
                 },
                 GithubReleaseAsset {
                     name: "SlasshyWispr_0.1.1_x64-setup.exe".to_string(),
-                    browser_download_url:
-                        "https://example.com/SlasshyWispr_0.1.1_x64-setup.exe".to_string(),
+                    browser_download_url: "https://example.com/SlasshyWispr_0.1.1_x64-setup.exe"
+                        .to_string(),
                 },
             ],
         };
@@ -13508,7 +13763,17 @@ pub fn run() {
     let start_in_tray =
         std::env::args().any(|arg| arg.eq_ignore_ascii_case(STARTUP_ARG_START_IN_TRAY));
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            info!("[app.single-instance] prevented secondary launch and focused existing window");
+            show_main_window(app);
+        }));
+    }
+
+    builder
         .manage(app_state)
         .manage(tts_setup_state)
         .setup(move |app| {

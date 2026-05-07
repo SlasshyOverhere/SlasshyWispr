@@ -53,7 +53,7 @@
 }
 
 .settings-kicker {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -64,11 +64,12 @@
   font-size: 28px;
   line-height: 1;
   letter-spacing: -0.04em;
+  font-weight: 500;
 }
 
 .settings-sidebar-copy {
   color: rgba(255, 255, 255, 0.62);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
 }
 
@@ -86,8 +87,8 @@
   border: 1px solid rgba(255, 255, 255, 0.04);
   background: rgba(255, 255, 255, 0.02);
   color: rgba(255, 255, 255, 0.68);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 500;
   border-radius: 16px;
   cursor: pointer;
   transition: all var(--transition-main);
@@ -119,7 +120,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -139,7 +140,7 @@
   margin-top: 10px;
   color: rgba(255, 255, 255, 0.78);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 0.04em;
 }
 
@@ -168,7 +169,7 @@
 }
 
 .settings-header-kicker {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -220,7 +221,7 @@
 }
 
 .settings-section-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -253,14 +254,14 @@
 }
 
 .settings-row h3 {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 500;
   margin-bottom: 6px;
   letter-spacing: -0.01em;
 }
 
 .settings-row p {
-  font-size: 13px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.62);
 }
 
@@ -270,8 +271,8 @@
   color: var(--text-primary);
   padding: 10px 16px;
   border-radius: 12px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-main);
 }
@@ -293,8 +294,8 @@
 }
 
 .field span {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: rgba(255, 255, 255, 0.42);
@@ -316,7 +317,7 @@
 
 .switch-row span:first-child,
 .select-row span:first-child {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
 }
@@ -359,7 +360,7 @@
   color: rgba(255, 255, 255, 0.68);
   padding: 12px;
   border-radius: 14px;
-  font-size: 13px;
+  font-size: 14px;
   margin-top: var(--space-2);
 }
 
@@ -426,7 +427,7 @@
 
 .capture-mode-pills > span {
   align-self: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -439,7 +440,7 @@
 }
 
 .dictation-language-multi-label {
-  font-size: 12px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: rgba(255, 255, 255, 0.42);
@@ -519,7 +520,7 @@
 
 .setup-log-item {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.72);
 }
 
@@ -566,7 +567,7 @@
 .model-meta code,
 .latency-grid strong {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.9);
   word-break: break-word;
 }
@@ -574,7 +575,7 @@
 .status-pill {
   padding: 6px 12px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   background: rgba(255, 255, 255, 0.04);
@@ -596,6 +597,40 @@
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.07);
   background: rgba(255, 255, 255, 0.025);
+}
+
+.update-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.update-progress-bar-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.update-progress-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(158, 211, 106, 0.85), rgba(126, 240, 177, 0.95));
+  transition: width 180ms ease;
+}
+
+.update-progress-text {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 @media (max-width: 700px) {

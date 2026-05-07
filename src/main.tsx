@@ -45,6 +45,8 @@ import {
   HOME_HISTORY_STORAGE_KEY,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY,
+  APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
+  APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
   EMPTY_HISTORY_HINT,
   LEGACY_DEFAULT_SYSTEM_PROMPT,
   DEFAULT_SYSTEM_PROMPT,
@@ -75,7 +77,6 @@ import {
   DICTATION_LANGUAGE_LABELS,
   LOCAL_STT_MODEL_SIZE_LABELS,
   MAX_COQUI_REFERENCE_SECONDS,
-  MAX_RECORDING_MS,
   ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS,
   MAX_HISTORY_ITEMS,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
@@ -124,6 +125,7 @@ import type {
   TtsSetupStatusResponse,
   AssistantPipelineResponse,
   AppUpdateCheckResponse,
+  AppUpdateInstallProgressEvent,
   InstallAppUpdateRequest,
   PersistedSettings,
   HotkeySpec,
@@ -239,12 +241,21 @@ const metricWords = requiredElement<HTMLElement>("#metricWords");
 const metricSpeakingTime = requiredElement<HTMLElement>("#metricSpeakingTime");
 const metricSessions = requiredElement<HTMLElement>("#metricSessions");
 const metricWpm = requiredElement<HTMLElement>("#metricWpm");
+const wordsTrend = requiredElement<HTMLElement>("#wordsTrend");
+const timeTrend = requiredElement<HTMLElement>("#timeTrend");
+const sessionsTrend = requiredElement<HTMLElement>("#sessionsTrend");
+const wpmTrend = requiredElement<HTMLElement>("#wpmTrend");
 
 function syncSidebarHoverTitles(collapsed: boolean): void {
   for (const target of sidebarLabeledButtons) {
-    const label = target.dataset.label?.trim();
+    let label = target.dataset.label?.trim();
     if (!label) {
       continue;
+    }
+
+    const hotkey = target.dataset.hotkey?.trim();
+    if (collapsed && hotkey) {
+      label = `${label} (${hotkey})`;
     }
 
     if (collapsed) {
@@ -258,6 +269,9 @@ function syncSidebarHoverTitles(collapsed: boolean): void {
 
 const dictionaryList = requiredElement<HTMLDivElement>("#dictionaryList");
 const dictionaryForm = requiredElement<HTMLFormElement>("#dictionaryForm");
+const dictionaryFormCard = requiredElement<HTMLElement>("#dictionaryFormCard");
+const dictionaryFormCloseBtn = requiredElement<HTMLButtonElement>("#dictionaryFormCloseBtn");
+const dictionaryCount = requiredElement<HTMLSpanElement>("#dictionaryCount");
 const dictionarySourceInput = requiredElement<HTMLInputElement>("#dictionarySourceInput");
 const dictionaryTargetInput = requiredElement<HTMLInputElement>("#dictionaryTargetInput");
 const dictionaryAddBtn = requiredElement<HTMLButtonElement>("#dictionaryAddBtn");
@@ -268,8 +282,11 @@ const snippetsList = requiredElement<HTMLDivElement>("#snippetsList");
 const snippetForm = requiredElement<HTMLFormElement>("#snippetForm");
 const snippetTriggerInput = requiredElement<HTMLInputElement>("#snippetTriggerInput");
 const snippetExpansionInput = requiredElement<HTMLInputElement>("#snippetExpansionInput");
-const snippetAddBtn = requiredElement<HTMLButtonElement>("#snippetAddBtn");
 const snippetsAddBtnTop = requiredElement<HTMLButtonElement>("#snippetsAddBtnTop");
+const snippetsSearchInput = requiredElement<HTMLInputElement>("#snippetsSearchInput");
+const snippetsCountBadge = requiredElement<HTMLSpanElement>("#snippetsCountBadge");
+const snippetFormContainer = requiredElement<HTMLElement>("#snippetFormContainer");
+
 
 
 const notesList = requiredElement<HTMLDivElement>("#notesList");
@@ -374,6 +391,9 @@ const updateLatestVersion = requiredElement<HTMLElement>("#updateLatestVersion")
 const updatePublishedAt = requiredElement<HTMLElement>("#updatePublishedAt");
 const checkUpdatesBtn = requiredElement<HTMLButtonElement>("#checkUpdatesBtn");
 const installUpdateBtn = requiredElement<HTMLButtonElement>("#installUpdateBtn");
+const updateInstallProgressWrap = requiredElement<HTMLDivElement>("#updateInstallProgressWrap");
+const updateInstallProgressBar = requiredElement<HTMLSpanElement>("#updateInstallProgressBar");
+const updateInstallProgressText = requiredElement<HTMLParagraphElement>("#updateInstallProgressText");
 
 const baseUrlValue = requiredElement<HTMLElement>("#baseUrlValue");
 const sttModelValue = requiredElement<HTMLElement>("#sttModelValue");
@@ -437,6 +457,9 @@ let stage: Stage = "idle";
 let pipelineRunning = false;
 let mediaRecorder: MediaRecorder | null = null;
 let mediaStream: MediaStream | null = null;
+let preWarmedStream: MediaStream | null = null;
+let preWarmedStreamDeviceId: string | null = null;
+let preWarmedStreamCreateTime = 0;
 let recorderMimeType = "audio/webm";
 let recordedChunks: Blob[] = [];
 let recordingStartedAt = 0;
@@ -535,7 +558,10 @@ let externalMediaControlInFlight: Promise<void> | null = null;
 let externalMediaControlErrorShown = false;
 let launchAtLoginSyncNonce = 0;
 let updateCheckInFlight = false;
+let updateInstallInFlight = false;
 let cachedUpdateResult: AppUpdateCheckResponse | null = null;
+let updateAutoCheckTimerId: number | null = null;
+let updateInstallProgressUnlisten: (() => void) | null = null;
 let foregroundBlockStatusCache: ForegroundInputBlockStatus = {
   blocked: false,
   processName: "",
@@ -557,6 +583,8 @@ const dockChannel = new BroadcastChannel("slasshywispr-dock");
 const selectionPopupChannel = new BroadcastChannel("slasshywispr-selection-popup");
 const ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION = true;
 const MAIN_WINDOW_VISIBILITY_EVENT = "slasshy://main-window-visibility";
+const UPDATE_INSTALL_PROGRESS_EVENT = "slasshy://update-install-progress";
+const APP_UPDATE_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
 const ACTIVITY_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "long",
@@ -704,6 +732,7 @@ renderHomeHistory();
 refreshRecordButton();
 syncActionAvailability();
 initializeUpdaterPanel();
+void registerUpdateInstallProgressListener();
 setupCustomWindowControls();
 void initializeTrayBackgroundLifecycle();
 hotkeyInput.readOnly = true;
@@ -842,6 +871,32 @@ document.addEventListener("keydown", (event) => {
 
   if (isTypingElement(event.target)) {
     return;
+  }
+
+  if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+    const digit = event.key;
+    if (digit >= "1" && digit <= "5") {
+      const pageIndex = parseInt(digit, 10) - 1;
+      const pages: MainPage[] = ["home", "history", "dictionary", "snippets", "notes"];
+      const page = pages[pageIndex];
+      if (page) {
+        event.preventDefault();
+        setActivePage(page);
+        return;
+      }
+    }
+
+    if (event.key === "b" || event.key === "B") {
+      event.preventDefault();
+      toggleSidebarBtn.click();
+      return;
+    }
+
+    if (event.key === ",") {
+      event.preventDefault();
+      openSettingsBtn.click();
+      return;
+    }
   }
 
   const commandHotkey = parseHotkey(settings.commandHotkey);
@@ -1146,12 +1201,20 @@ dictionaryForm.addEventListener("submit", (event) => {
 });
 
 dictionaryAddBtnTop.addEventListener("click", () => {
-  const nextCollapsed = !dictionaryForm.classList.contains("is-collapsed");
-  dictionaryForm.classList.toggle("is-collapsed", nextCollapsed);
-  dictionaryAddBtnTop.textContent = nextCollapsed ? "Add new" : "Close";
-  if (!nextCollapsed) {
+  const isCollapsed = dictionaryFormCard.classList.contains("is-collapsed");
+  if (isCollapsed) {
+    dictionaryFormCard.classList.remove("is-collapsed");
+    dictionaryAddBtnTop.classList.add("is-active");
     dictionarySourceInput.focus();
+  } else {
+    dictionaryFormCard.classList.add("is-collapsed");
+    dictionaryAddBtnTop.classList.remove("is-active");
   }
+});
+
+dictionaryFormCloseBtn.addEventListener("click", () => {
+  dictionaryFormCard.classList.add("is-collapsed");
+  dictionaryAddBtnTop.classList.remove("is-active");
 });
 
 
@@ -1313,7 +1376,7 @@ clearStatsBtn.addEventListener("click", () => {
   if (!confirmDestructiveAction("Reset all usage statistics for this device?")) {
     return;
   }
-  usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
+  usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
   persistUsageStats();
   updateUsageMetrics();
   setNotice("Statistics have been reset.");
@@ -1330,6 +1393,14 @@ function clearAllHistory(): void {
 
 navigator.mediaDevices?.addEventListener?.("devicechange", () => {
   void refreshMicrophones(false);
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    void releasePreWarmedStream();
+  } else if (stage === "idle") {
+    void preWarmMicrophoneStream(settings.microphoneDeviceId);
+  }
 });
 
 async function bootstrap(): Promise<void> {
@@ -1378,6 +1449,7 @@ async function bootstrap(): Promise<void> {
   }
   syncActionAvailability();
   requestGlobalShortcutSync(true);
+  startAutomaticUpdateChecks();
   logClientEvent("[bootstrap] completed");
 }
 
@@ -2572,15 +2644,32 @@ function isTauriEnvironment(): boolean {
   return "__TAURI_INTERNALS__" in window || "__TAURI__" in window;
 }
 
+function syncUpdaterButtons(): void {
+  if (!isTauriEnvironment()) {
+    checkUpdatesBtn.disabled = true;
+    installUpdateBtn.disabled = true;
+    return;
+  }
+
+  checkUpdatesBtn.disabled = updateCheckInFlight || updateInstallInFlight;
+  installUpdateBtn.disabled =
+    updateCheckInFlight ||
+    updateInstallInFlight ||
+    !cachedUpdateResult?.available ||
+    !cachedUpdateResult.installerDownloadUrl;
+}
+
 function initializeUpdaterPanel(): void {
   updateCurrentVersion.textContent = "-";
   updateLatestVersion.textContent = "-";
   updatePublishedAt.textContent = "-";
+  updateInstallProgressWrap.hidden = true;
+  updateInstallProgressBar.style.width = "0%";
+  updateInstallProgressText.textContent = "Waiting to start update download.";
   setUpdaterStatus("idle", "Check to see if a new version is available.");
+  syncUpdaterButtons();
 
   if (!isTauriEnvironment()) {
-    checkUpdatesBtn.disabled = true;
-    installUpdateBtn.disabled = true;
     setUpdaterStatus("error", "Updater works only inside the desktop app build.");
   }
 }
@@ -2677,48 +2766,137 @@ function formatPublishedDate(raw: string): string {
   return UPDATE_DATE_FORMATTER.format(parsed);
 }
 
-async function handleCheckForUpdates(): Promise<void> {
+function setUpdateInstallProgress(
+  percent: number,
+  message: string,
+  detail = "",
+  visible = true,
+): void {
+  updateInstallProgressWrap.hidden = !visible;
+  const normalizedPercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
+  updateInstallProgressBar.style.width = `${normalizedPercent}%`;
+  updateInstallProgressText.textContent = detail ? `${message} ${detail}` : message;
+}
+
+function openUpdateSettings(reason: string): void {
+  openSettings(reason);
+  setActiveSettingsPane("update-security", reason);
+}
+
+function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "startup" | "interval"): void {
+  const version = result.latestVersion.trim();
+  if (!version) {
+    return;
+  }
+
+  const lastNotifiedVersion = localStorage.getItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY);
+  if (lastNotifiedVersion === version) {
+    return;
+  }
+
+  localStorage.setItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY, version);
+  const message = `Update ${version} is available. Open Updates to download and install it.`;
+  setNotice(message);
+
+  if (typeof Notification === "undefined") {
+    return;
+  }
+
+  const showNotification = (): void => {
+    try {
+      const notification = new Notification("SlasshyWispr update available", {
+        body: message,
+      });
+      notification.onclick = () => {
+        window.focus();
+        openUpdateSettings(`update-notification-${source}`);
+      };
+    } catch {
+      // Ignore notification failures; in-app notice remains visible.
+    }
+  };
+
+  if (Notification.permission === "granted") {
+    showNotification();
+    return;
+  }
+
+  if (Notification.permission !== "default" || notificationPermissionRequested) {
+    return;
+  }
+
+  notificationPermissionRequested = true;
+  void Notification.requestPermission()
+    .then((permission) => {
+      if (permission === "granted") {
+        showNotification();
+      }
+    })
+    .catch(() => {
+      // Ignore notification permission errors.
+    });
+}
+
+function applyUpdateCheckResult(result: AppUpdateCheckResponse, silent: boolean): void {
+  cachedUpdateResult = result;
+  updateCurrentVersion.textContent = result.currentVersion || "-";
+  updateLatestVersion.textContent = result.latestVersion || "-";
+  updatePublishedAt.textContent = formatPublishedDate(result.publishedAt);
+
+  if (result.available && result.installerDownloadUrl) {
+    setUpdaterStatus(
+      "speaking",
+      `Update ${result.latestVersion} is available. Click "Download & install".`,
+    );
+    syncUpdaterButtons();
+    return;
+  }
+
+  if (result.latestVersion && result.latestVersion !== result.currentVersion) {
+    setUpdaterStatus(
+      "error",
+      "A newer release exists, but no Windows installer package was detected for auto-update.",
+    );
+    syncUpdaterButtons();
+    return;
+  }
+
+  setUpdaterStatus(
+    "idle",
+    silent ? "You are already on the latest version." : "You are already on the latest version.",
+  );
+  syncUpdaterButtons();
+}
+
+async function handleCheckForUpdates(options?: {
+  silent?: boolean;
+  source?: "manual" | "startup" | "interval";
+}): Promise<void> {
   if (!isTauriEnvironment() || updateCheckInFlight) {
     return;
   }
 
+  const silent = options?.silent ?? false;
+  const source = options?.source ?? "manual";
   updateCheckInFlight = true;
   cachedUpdateResult = null;
-  checkUpdatesBtn.disabled = true;
-  installUpdateBtn.disabled = true;
-  setUpdaterStatus("processing", "Checking GitHub release channel...");
+  syncUpdaterButtons();
+  if (!silent) {
+    setUpdaterStatus("processing", "Checking GitHub release channel...");
+  }
 
   try {
     const result = await invoke<AppUpdateCheckResponse>("check_for_app_update");
-    cachedUpdateResult = result;
-
-    updateCurrentVersion.textContent = result.currentVersion || "-";
-    updateLatestVersion.textContent = result.latestVersion || "-";
-    updatePublishedAt.textContent = formatPublishedDate(result.publishedAt);
-
-    if (result.available && result.installerDownloadUrl) {
-      installUpdateBtn.disabled = false;
-      setUpdaterStatus(
-        "speaking",
-        `Update ${result.latestVersion} is available. Click "Download & install".`,
-      );
-      return;
+    localStorage.setItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY, String(Date.now()));
+    applyUpdateCheckResult(result, silent);
+    if (result.available && (source === "startup" || source === "interval")) {
+      notifyAppUpdateAvailable(result, source);
     }
-
-    if (result.latestVersion && result.latestVersion !== result.currentVersion) {
-      setUpdaterStatus(
-        "error",
-        "A newer release exists, but no Windows installer package was detected for auto-update.",
-      );
-      return;
-    }
-
-    setUpdaterStatus("idle", "You are already on the latest version.");
   } catch (error) {
     setUpdaterStatus("error", `Update check failed: ${asErrorMessage(error)}`);
   } finally {
     updateCheckInFlight = false;
-    checkUpdatesBtn.disabled = !isTauriEnvironment();
+    syncUpdaterButtons();
   }
 }
 
@@ -2738,17 +2916,79 @@ async function handleInstallUpdate(): Promise<void> {
     silent: true,
   };
 
-  installUpdateBtn.disabled = true;
-  checkUpdatesBtn.disabled = true;
+  updateInstallInFlight = true;
+  syncUpdaterButtons();
+  setUpdateInstallProgress(0, "Preparing update download...", "", true);
   setUpdaterStatus("processing", "Downloading update installer...");
 
   try {
     await invoke("download_and_install_app_update", { request });
     setUpdaterStatus("processing", "Installer started. The app will close now.");
   } catch (error) {
+    updateInstallInFlight = false;
     setUpdaterStatus("error", `Installer launch failed: ${asErrorMessage(error)}`);
-    checkUpdatesBtn.disabled = false;
+    syncUpdaterButtons();
   }
+}
+
+function handleUpdateInstallProgressEvent(payload: AppUpdateInstallProgressEvent): void {
+  const totalBytes = payload.totalBytes > 0 ? payload.totalBytes : payload.downloadedBytes;
+  const detail =
+    totalBytes > 0
+      ? `(${formatBytes(payload.downloadedBytes)} / ${formatBytes(totalBytes)})`
+      : payload.downloadedBytes > 0
+        ? `(${formatBytes(payload.downloadedBytes)})`
+        : "";
+
+  if (payload.stage === "error") {
+    updateInstallInFlight = false;
+    setUpdateInstallProgress(payload.progressPercent, payload.message, detail, true);
+    setUpdaterStatus("error", payload.message);
+    syncUpdaterButtons();
+    return;
+  }
+
+  if (payload.stage === "starting" || payload.stage === "downloading" || payload.stage === "downloaded") {
+    updateInstallInFlight = true;
+    setUpdateInstallProgress(payload.progressPercent, payload.message, detail, true);
+    setUpdaterStatus("processing", payload.message);
+    syncUpdaterButtons();
+    return;
+  }
+
+  if (payload.stage === "installing") {
+    setUpdateInstallProgress(100, payload.message, "", true);
+    setUpdaterStatus("processing", payload.message);
+    syncUpdaterButtons();
+  }
+}
+
+async function registerUpdateInstallProgressListener(): Promise<void> {
+  if (!isTauriEnvironment() || updateInstallProgressUnlisten) {
+    return;
+  }
+
+  updateInstallProgressUnlisten = await listen<AppUpdateInstallProgressEvent>(
+    UPDATE_INSTALL_PROGRESS_EVENT,
+    (event) => {
+      handleUpdateInstallProgressEvent(event.payload);
+    },
+  );
+}
+
+function startAutomaticUpdateChecks(): void {
+  if (!isTauriEnvironment()) {
+    return;
+  }
+
+  if (updateAutoCheckTimerId !== null) {
+    window.clearInterval(updateAutoCheckTimerId);
+  }
+
+  void handleCheckForUpdates({ silent: true, source: "startup" });
+  updateAutoCheckTimerId = window.setInterval(() => {
+    void handleCheckForUpdates({ silent: true, source: "interval" });
+  }, APP_UPDATE_CHECK_INTERVAL_MS);
 }
 
 function requestLaunchAtLoginSync(enabled: boolean): void {
@@ -3528,19 +3768,42 @@ function persistQuickNotes(): void {
 function loadUsageStats(): UsageStats {
   const raw = localStorage.getItem(USAGE_STORAGE_KEY);
   if (!raw) {
-    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
+    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
   }
 
   try {
     const parsed = JSON.parse(raw) as Partial<UsageStats>;
+    const now = Date.now();
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const lastReset = parsed.lastPeriodReset || 0;
+    
+    if (now - lastReset > sevenDaysMs) {
+      return {
+        sessions: coerceInteger(parsed.sessions, 0, 0, 999_999),
+        words: coerceInteger(parsed.words, 0, 0, 99_999_999),
+        avgWpm: coerceNumber(parsed.avgWpm, 0, 0, 600),
+        speakingSeconds: coerceInteger(parsed.speakingSeconds, 0, 0, 99_999_999),
+        prevSessions: coerceInteger(parsed.sessions, 0, 0, 999_999),
+        prevWords: coerceInteger(parsed.words, 0, 0, 99_999_999),
+        prevWpm: coerceNumber(parsed.avgWpm, 0, 0, 600),
+        prevSpeakingSeconds: coerceInteger(parsed.speakingSeconds, 0, 0, 99_999_999),
+        lastPeriodReset: now,
+      };
+    }
+    
     return {
       sessions: coerceInteger(parsed.sessions, 0, 0, 999_999),
       words: coerceInteger(parsed.words, 0, 0, 99_999_999),
       avgWpm: coerceNumber(parsed.avgWpm, 0, 0, 600),
       speakingSeconds: coerceInteger(parsed.speakingSeconds, 0, 0, 99_999_999),
+      prevSessions: coerceInteger(parsed.prevSessions, 0, 0, 999_999),
+      prevWords: coerceInteger(parsed.prevWords, 0, 0, 99_999_999),
+      prevWpm: coerceNumber(parsed.prevWpm, 0, 0, 600),
+      prevSpeakingSeconds: coerceInteger(parsed.prevSpeakingSeconds, 0, 0, 99_999_999),
+      lastPeriodReset: coerceInteger(lastReset, 0, 0, Number.MAX_SAFE_INTEGER),
     };
   } catch {
-    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
+    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
   }
 }
 
@@ -3821,15 +4084,16 @@ async function resolveDockStartPosition(dockWidth: number, dockHeight: number): 
 
 function renderDictionaryList(): void {
   const filtered = dictionaryTerms;
+  dictionaryCount.textContent = `${filtered.length} term${filtered.length === 1 ? "" : "s"}`;
 
   if (filtered.length === 0) {
     dictionaryList.innerHTML = `
       <div class="empty-state">
         <div class="empty-state-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
         </div>
         <h4>No terms yet</h4>
-        <p>Your dictionary is currently empty. Start by adding a term above.</p>
+        <p>Your dictionary is currently empty. Start by adding a term above to improve transcription accuracy.</p>
       </div>
     `;
     return;
@@ -3838,26 +4102,31 @@ function renderDictionaryList(): void {
   dictionaryList.innerHTML = "";
   const fragment = document.createDocumentFragment();
   for (const term of filtered) {
-    const row = document.createElement("div");
-    row.className = "managed-row managed-row-grid";
+    const card = document.createElement("div");
+    card.className = "dictionary-item-card";
 
-    const mainEl = document.createElement("p");
-    mainEl.className = "managed-row-main";
-    const strongEl = document.createElement("strong");
-    strongEl.textContent = term.source;
-    const spanEl = document.createElement("span");
-    spanEl.textContent = term.target;
-    mainEl.append(strongEl, spanEl);
+    card.innerHTML = `
+      <div class="dict-item-content">
+        <div class="dict-term spoken">
+          <span class="term-label">Spoken</span>
+          <span class="term-value">${term.source}</span>
+        </div>
+        <div class="dict-connector">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </div>
+        <div class="dict-term correct">
+          <span class="term-label">Correct</span>
+          <span class="term-value">${term.target}</span>
+        </div>
+      </div>
+      <div class="dict-item-actions">
+        <button type="button" class="icon-delete-btn" title="Delete term" data-dictionary-delete="${term.id}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+        </button>
+      </div>
+    `;
 
-
-
-    const actionsEl = document.createElement("div");
-    actionsEl.className = "managed-row-actions";
-    const deleteBtn = document.createElement("button");
-    deleteBtn.type = "button";
-    deleteBtn.className = "inline-link";
-    deleteBtn.dataset.dictionaryDelete = term.id;
-    deleteBtn.textContent = "Delete";
+    const deleteBtn = card.querySelector(".icon-delete-btn") as HTMLButtonElement;
     deleteBtn.addEventListener("click", () => {
       if (!confirmDestructiveAction(`Delete dictionary term "${term.source}"?`)) {
         return;
@@ -3866,10 +4135,8 @@ function renderDictionaryList(): void {
       persistDictionaryTerms();
       renderDictionaryList();
     });
-    actionsEl.append(deleteBtn);
 
-    row.append(mainEl, actionsEl);
-    fragment.append(row);
+    fragment.append(card);
   }
   dictionaryList.append(fragment);
 }
@@ -3896,11 +4163,12 @@ function addDictionaryTerm(): void {
   ]);
   persistDictionaryTerms();
   renderDictionaryList();
+
   dictionarySourceInput.value = "";
   dictionaryTargetInput.value = "";
 
-  dictionaryForm.classList.add("is-collapsed");
-  dictionaryAddBtnTop.textContent = "Add new";
+  dictionaryFormCard.classList.add("is-collapsed");
+  dictionaryAddBtnTop.classList.remove("is-active");
   setNotice(`Dictionary term added: ${source} → ${target}`);
 }
 
@@ -4084,6 +4352,35 @@ function updateUsageMetrics(): void {
   unit.className = "stat-unit";
   unit.textContent = "wpm";
   metricWpm.append(unit);
+
+  updateTrendIndicator(wordsTrend, usageStats.words, usageStats.prevWords);
+  updateTrendIndicator(timeTrend, usageStats.speakingSeconds, usageStats.prevSpeakingSeconds);
+  updateTrendIndicator(sessionsTrend, usageStats.sessions, usageStats.prevSessions);
+  updateTrendIndicator(wpmTrend, usageStats.avgWpm, usageStats.prevWpm);
+}
+
+function updateTrendIndicator(element: HTMLElement, current: number, previous: number): void {
+  const span = element.querySelector("span");
+  if (!span) return;
+  
+  if (previous === 0 || current === 0) {
+    element.className = "stat-trend stat-trend-neutral";
+    span.textContent = "--";
+    return;
+  }
+  
+  const percentChange = ((current - previous) / previous) * 100;
+  
+  if (percentChange > 0) {
+    element.className = "stat-trend stat-trend-up";
+    span.textContent = `+${Math.round(percentChange)}%`;
+  } else if (percentChange < 0) {
+    element.className = "stat-trend stat-trend-down";
+    span.textContent = `${Math.round(percentChange)}%`;
+  } else {
+    element.className = "stat-trend stat-trend-neutral";
+    span.textContent = "0%";
+  }
 }
 
 function trackUsage(transcript: string): void {
@@ -6393,6 +6690,14 @@ async function startRecording(): Promise<void> {
 }
 
 async function openMicrophoneStream(preferredDeviceId: string): Promise<MediaStream> {
+  if (preWarmedStream && preWarmedStreamDeviceId === preferredDeviceId && preWarmedStream.active) {
+    logClientEvent(`[record.mic] reusing pre-warmed stream age=${Date.now() - preWarmedStreamCreateTime}ms`);
+    const clonedStream = preWarmedStream.clone();
+    return clonedStream;
+  }
+
+  await releasePreWarmedStream();
+
   const baseConstraints: MediaTrackConstraints = {
     channelCount: 1,
     echoCancellation: true,
@@ -6874,6 +7179,7 @@ function renderAssistantInfo(info: AssistantInfoResponse): void {
   latestAssistantInfoDefaults = info;
   const appVersion = info.appVersion?.trim();
   settingsVersionText.textContent = appVersion ? `SlasshyWispr v${appVersion}` : "SlasshyWispr";
+  updateCurrentVersion.textContent = appVersion || "-";
   const sttLocalMode = settings.sttRuntimeMode === "local";
   const aiLocalMode = settings.aiRuntimeMode === "local";
   const configuredBaseUrl =
@@ -7245,6 +7551,10 @@ function setStage(next: Stage, detail: string): void {
   refreshRecordButton();
   publishDockState();
   void syncFloatingIndicatorWindow();
+
+  if (previousStage !== "idle" && next === "idle") {
+    void preWarmMicrophoneStream(settings.microphoneDeviceId);
+  }
 
   if (previousStage !== "recording" && next === "recording") {
     playDictationSoundEffect("start");
@@ -8269,11 +8579,6 @@ function beginRecordingTicker(): void {
   recordingTickerId = window.setInterval(() => {
     const elapsedMs = Date.now() - recordingStartedAt;
     recordTimer.textContent = formatTimer(elapsedMs);
-
-    if (settings.captureMode !== "push-to-talk" && elapsedMs >= MAX_RECORDING_MS) {
-      setNotice("Recording auto-stopped at 45 seconds.");
-      stopRecording();
-    }
   }, 100);
 }
 
@@ -8291,6 +8596,50 @@ function releaseMicrophone(): void {
     track.stop();
   }
   mediaStream = null;
+}
+
+async function releasePreWarmedStream(): Promise<void> {
+  if (!preWarmedStream) return;
+  for (const track of preWarmedStream.getTracks()) {
+    track.stop();
+  }
+  preWarmedStream = null;
+  preWarmedStreamDeviceId = null;
+  preWarmedStreamCreateTime = 0;
+  logClientEvent("[record.prewarm] released pre-warmed stream");
+}
+
+async function preWarmMicrophoneStream(deviceId: string): Promise<void> {
+  if (!navigator.mediaDevices?.getUserMedia) return;
+
+  if (preWarmedStream && preWarmedStreamDeviceId === deviceId && preWarmedStream.active) {
+    return;
+  }
+
+  await releasePreWarmedStream();
+
+  const baseConstraints: MediaTrackConstraints = {
+    channelCount: 1,
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  };
+
+  try {
+    const constraints: MediaStreamConstraints = {
+      audio: deviceId
+        ? { ...baseConstraints, deviceId: { exact: deviceId } }
+        : baseConstraints,
+    };
+    preWarmedStream = await navigator.mediaDevices.getUserMedia(constraints);
+    preWarmedStreamDeviceId = deviceId;
+    preWarmedStreamCreateTime = Date.now();
+    logClientEvent(`[record.prewarm] stream opened deviceId=${deviceId || "default"}`);
+  } catch (error) {
+    logClientEvent(`[record.prewarm] failed: ${asErrorMessage(error)}`);
+    preWarmedStream = null;
+    preWarmedStreamDeviceId = null;
+  }
 }
 
 function formatTimer(elapsedMs: number): string {

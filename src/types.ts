@@ -230,6 +230,16 @@ export interface InstallAppUpdateRequest {
   silent?: boolean;
 }
 
+export interface AppUpdateInstallProgressEvent {
+  stage: string;
+  message: string;
+  downloadedBytes: number;
+  totalBytes: number;
+  progressPercent: number;
+  completed: boolean;
+  success: boolean;
+}
+
 export interface PersistedSettings {
   apiKey: string;
   apiBaseUrl: string;
@@ -322,6 +332,11 @@ export interface UsageStats {
   words: number;
   avgWpm: number;
   speakingSeconds: number;
+  prevSessions: number;
+  prevWords: number;
+  prevWpm: number;
+  prevSpeakingSeconds: number;
+  lastPeriodReset: number;
 }
 
 export interface DockLayout {
