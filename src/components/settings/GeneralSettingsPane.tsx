@@ -1,4 +1,9 @@
-import { DEFAULT_ASSISTANT_NAME, DEFAULT_HOTKEY, DICTATION_LANGUAGE_OPTIONS } from '../../constants';
+import {
+  DEFAULT_ASSISTANT_NAME,
+  DEFAULT_HOTKEY,
+  DICTATION_LANGUAGE_OPTIONS,
+  PUSH_TO_TALK_SOUND_OPTIONS,
+} from '../../constants';
 
 export function GeneralSettingsPane() {
   return (
@@ -145,6 +150,34 @@ export function GeneralSettingsPane() {
           <div className="settings-group-divider" />
           <p className="settings-group-label">Sound</p>
           <label className="switch-row" htmlFor="dictationSoundEffectsToggle"><span>Dictation sound effects</span><input id="dictationSoundEffectsToggle" className="switch-input" type="checkbox" /></label>
+          
+          <div className="s-row ptt-sound-row">
+            <span className="s-row-label">Push-to-talk start sound</span>
+            <div className="ptt-sound-controls">
+              <select id="pushToTalkSoundSelect" className="mini-select">
+                {PUSH_TO_TALK_SOUND_OPTIONS.map(opt => (     
+                  <option key={opt.id} value={opt.id}>{opt.label}</option>
+                ))}
+              </select>
+              <button id="previewPttSoundBtn" className="ghost-action mini" type="button">Preview</button>
+            </div>
+          </div>
+          <div className="s-row ptt-sound-row">
+            <span className="s-row-label">Push-to-talk end sound</span>
+            <div className="ptt-sound-controls">
+              <select id="pushToTalkEndSoundSelect" className="mini-select">
+                {PUSH_TO_TALK_SOUND_OPTIONS.map(opt => (     
+                  <option key={opt.id} value={opt.id}>{opt.label}</option>
+                ))}
+              </select>
+              <button id="previewPttEndSoundBtn" className="ghost-action mini" type="button">Preview</button>
+            </div>
+          </div>
+          <div className="s-row ptt-volume-row">
+            <span className="s-row-label">Sound volume <span className="s-row-hint" id="pttVolumeHint">50%</span></span>
+            <input id="pushToTalkSoundVolumeRange" type="range" min="0" max="100" step="1" className="tts-range-input ptt-volume-slider" />
+          </div>
+
           <label className="switch-row" htmlFor="muteMusicWhileDictatingToggle"><span>Mute music while dictating</span><input id="muteMusicWhileDictatingToggle" className="switch-input" type="checkbox" /></label>
         </div>
       </details>

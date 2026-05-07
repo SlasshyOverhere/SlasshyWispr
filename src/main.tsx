@@ -82,6 +82,10 @@ import {
   MAX_HISTORY_ITEMS,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
   BLOCKED_INPUT_NOTICE_COOLDOWN_MS,
+  DEFAULT_PUSH_TO_TALK_SOUND,
+  DEFAULT_PUSH_TO_TALK_END_SOUND,
+  DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
+  PUSH_TO_TALK_SOUND_OPTIONS,
 } from "./constants";
 
 import type {
@@ -422,6 +426,12 @@ const dictationSoundEffectsToggle = requiredElement<HTMLInputElement>("#dictatio
 const muteMusicWhileDictatingToggle = requiredElement<HTMLInputElement>(
   "#muteMusicWhileDictatingToggle",
 );
+const pushToTalkSoundSelect = requiredElement<HTMLSelectElement>("#pushToTalkSoundSelect");
+const pushToTalkEndSoundSelect = requiredElement<HTMLSelectElement>("#pushToTalkEndSoundSelect");
+const pushToTalkSoundVolumeRange = requiredElement<HTMLInputElement>("#pushToTalkSoundVolumeRange");
+const previewPttSoundBtn = requiredElement<HTMLButtonElement>("#previewPttSoundBtn");
+const previewPttEndSoundBtn = requiredElement<HTMLButtonElement>("#previewPttEndSoundBtn");
+const pttVolumeHint = requiredElement<HTMLSpanElement>("#pttVolumeHint");
 const backtrackToggle = requiredElement<HTMLInputElement>("#backtrackToggle");
 const removeFillersToggle = requiredElement<HTMLInputElement>("#removeFillersToggle");
 const autoPunctuationToggle = requiredElement<HTMLInputElement>("#autoPunctuationToggle");
@@ -1140,6 +1150,18 @@ autoPasteDictationToggle.addEventListener("change", handleSettingsChange);
 incognitoModeToggle.addEventListener("change", handleSettingsChange);
 themeModeSelect.addEventListener("change", handleSettingsChange);
 dictationSoundEffectsToggle.addEventListener("change", handleSettingsChange);
+pushToTalkSoundSelect.addEventListener("change", handleSettingsChange);
+pushToTalkEndSoundSelect.addEventListener("change", handleSettingsChange);
+pushToTalkSoundVolumeRange.addEventListener("input", () => {
+  pttVolumeHint.textContent = `${pushToTalkSoundVolumeRange.value}%`;
+});
+pushToTalkSoundVolumeRange.addEventListener("change", handleSettingsChange);
+previewPttSoundBtn.addEventListener("click", () => {
+  playDictationSoundEffect("start", pushToTalkSoundSelect.value);
+});
+previewPttEndSoundBtn.addEventListener("click", () => {
+  playDictationSoundEffect("stop", pushToTalkEndSoundSelect.value);
+});
 muteMusicWhileDictatingToggle.addEventListener("change", handleSettingsChange);
 backtrackToggle.addEventListener("change", handleSettingsChange);
 removeFillersToggle.addEventListener("change", handleSettingsChange);
@@ -1673,6 +1695,9 @@ function loadSettings(): PersistedSettings {
     coquiEmotion: DEFAULT_COQUI_EMOTION,
     coquiUseGpu: true,
     coquiSplitSentences: false,
+    pushToTalkSound: DEFAULT_PUSH_TO_TALK_SOUND,
+    pushToTalkEndSound: DEFAULT_PUSH_TO_TALK_END_SOUND,
+    pushToTalkSoundVolume: DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
   };
 
   const rawCurrent = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -1777,6 +1802,9 @@ function loadSettings(): PersistedSettings {
       coquiEmotion: asCoquiEmotion(parsed.coquiEmotion),
       coquiUseGpu: coerceBoolean(parsed.coquiUseGpu, defaults.coquiUseGpu),
       coquiSplitSentences: coerceBoolean(parsed.coquiSplitSentences, defaults.coquiSplitSentences),
+      pushToTalkSound: String(parsed.pushToTalkSound ?? defaults.pushToTalkSound),
+      pushToTalkEndSound: String(parsed.pushToTalkEndSound ?? defaults.pushToTalkEndSound),
+      pushToTalkSoundVolume: coerceNumber(parsed.pushToTalkSoundVolume, defaults.pushToTalkSoundVolume, 0, 1),
     };
   } catch {
     return defaults;
@@ -1985,6 +2013,9 @@ function readSettingsFromForm(): PersistedSettings {
     removeFillers: removeFillersToggle.checked,
     autoPunctuation: autoPunctuationToggle.checked,
     numberedLists: numberedListsToggle.checked,
+    pushToTalkSound: pushToTalkSoundSelect.value,
+    pushToTalkEndSound: pushToTalkEndSoundSelect.value,
+    pushToTalkSoundVolume: coerceNumber(Number(pushToTalkSoundVolumeRange.value) / 100, DEFAULT_PUSH_TO_TALK_SOUND_VOLUME, 0, 1),
   };
 }
 
@@ -2062,6 +2093,10 @@ function applySettingsToForm(next: PersistedSettings): void {
   removeFillersToggle.checked = next.removeFillers;
   autoPunctuationToggle.checked = next.autoPunctuation;
   numberedListsToggle.checked = next.numberedLists;
+  pushToTalkSoundSelect.value = next.pushToTalkSound;
+  pushToTalkEndSoundSelect.value = next.pushToTalkEndSound;
+  pushToTalkSoundVolumeRange.value = String(Math.round(next.pushToTalkSoundVolume * 100));
+  pttVolumeHint.textContent = `${Math.round(next.pushToTalkSoundVolume * 100)}%`;
   temperatureValue.textContent = next.temperature.toFixed(2);
 
   const displayHotkey = formatHotkeyForDisplay(next.pushToTalkHotkey);
@@ -7227,8 +7262,8 @@ function renderAssistantInfo(info: AssistantInfoResponse): void {
   updateTtsSetupGate();
 }
 
-function playDictationSoundEffect(kind: "start" | "stop" | "error"): void {
-  if (!settings.dictationSoundEffects) {
+function playDictationSoundEffect(kind: "start" | "stop" | "error", previewSoundId?: string): void {
+  if (!previewSoundId && !settings.dictationSoundEffects) {
     return;
   }
 
@@ -7247,12 +7282,58 @@ function playDictationSoundEffect(kind: "start" | "stop" | "error"): void {
     });
   }
 
-  const profile =
-    kind === "start"
-      ? { frequencies: [680, 920], durations: [0.06, 0.08], type: "sine" as OscillatorType }
-      : kind === "stop"
-        ? { frequencies: [580], durations: [0.1], type: "triangle" as OscillatorType }
-        : { frequencies: [260, 190], durations: [0.1, 0.12], type: "square" as OscillatorType };
+  const soundIdToPlay = previewSoundId || (kind === "start" ? settings.pushToTalkSound : kind === "stop" ? settings.pushToTalkEndSound : "error");
+
+  let profile: { frequencies: number[], durations: number[], type: OscillatorType };
+
+  switch (soundIdToPlay) {
+    case "beep-start":
+      profile = { frequencies: [680, 920], durations: [0.06, 0.08], type: "sine" };
+      break;
+    case "beep-end":
+      profile = { frequencies: [580], durations: [0.1], type: "triangle" };
+      break;
+    case "click":
+      profile = { frequencies: [1000], durations: [0.03], type: "square" };
+      break;
+    case "pop":
+      profile = { frequencies: [400], durations: [0.05], type: "sine" };
+      break;
+    case "ding":
+      profile = { frequencies: [880], durations: [0.2], type: "sine" };
+      break;
+    case "chirp":
+      profile = { frequencies: [400, 800], durations: [0.05, 0.05], type: "sine" };
+      break;
+    case "blip":
+      profile = { frequencies: [1200], durations: [0.05], type: "square" };
+      break;
+    case "thud":
+      profile = { frequencies: [150], durations: [0.08], type: "sine" };
+      break;
+    case "whoosh":
+      profile = { frequencies: [200, 100], durations: [0.06, 0.06], type: "sine" };
+      break;
+    case "chime":
+      profile = { frequencies: [523, 659], durations: [0.07, 0.08], type: "sine" };
+      break;
+    case "buzz":
+      profile = { frequencies: [180], durations: [0.1], type: "sawtooth" };
+      break;
+    case "ping":
+      profile = { frequencies: [2000], durations: [0.04], type: "sine" };
+      break;
+    case "error":
+      profile = { frequencies: [260, 190], durations: [0.1, 0.12], type: "square" };
+      break;
+    default:
+      profile = { frequencies: [680, 920], durations: [0.06, 0.08], type: "sine" };
+      break;
+  }
+
+  const baseVolume = previewSoundId ? 
+    (Number(pushToTalkSoundVolumeRange.value) / 100) * 0.14 : 
+    settings.pushToTalkSoundVolume * 0.14;
 
   let offset = 0;
   for (let index = 0; index < profile.frequencies.length; index += 1) {
@@ -7267,7 +7348,7 @@ function playDictationSoundEffect(kind: "start" | "stop" | "error"): void {
     oscillator.frequency.setValueAtTime(frequency, startAt);
 
     gain.gain.setValueAtTime(0.0001, startAt);
-    gain.gain.exponentialRampToValueAtTime(0.07, startAt + 0.014);
+    gain.gain.exponentialRampToValueAtTime(baseVolume, startAt + 0.014);
     gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
 
     oscillator.connect(gain);

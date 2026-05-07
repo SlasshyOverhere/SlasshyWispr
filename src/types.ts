@@ -294,6 +294,9 @@ export interface PersistedSettings {
   coquiEmotion: CoquiEmotion;
   coquiUseGpu: boolean;
   coquiSplitSentences: boolean;
+  pushToTalkSound: string;
+  pushToTalkEndSound: string;
+  pushToTalkSoundVolume: number;
 }
 
 export interface HotkeySpec {
