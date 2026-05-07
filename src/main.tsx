@@ -165,6 +165,49 @@ flushSync(() => {
   createRoot(appRoot).render(<App />);
 });
 
+const BASE_WINDOW_WIDTH = 1280;
+const BASE_WINDOW_HEIGHT = 832;
+const BASE_DPI = 96;
+
+async function initializeDpiAwareWindowSize(): Promise<void> {
+  if (!isTauriEnvironment()) {
+    return;
+  }
+
+  try {
+    const monitor = await currentMonitor();
+    if (!monitor) {
+      return;
+    }
+
+    const dpi = monitor.scaleFactor * BASE_DPI;
+    const scaleFactor = dpi / BASE_DPI;
+
+    const appWindow = getCurrentWindow();
+    const size = new LogicalSize(
+      Math.round(BASE_WINDOW_WIDTH * scaleFactor),
+      Math.round(BASE_WINDOW_HEIGHT * scaleFactor),
+    );
+
+    await appWindow.setSize(size);
+
+    const monitors = await availableMonitors();
+    const isPrimary = monitors.some((m) => m.position.x === 0 && m.position.y === 0 && m.size.width === monitor.size.width && m.size.height === monitor.size.height);
+    if (isPrimary) {
+      const x = Math.round((monitor.size.width - size.width) / 2);
+      const y = Math.round((monitor.size.height - size.height) / 2);
+      const { x: curX, y: curY } = await appWindow.outerPosition();
+      if (curX !== x || curY !== y) {
+        await appWindow.setPosition({ type: "Physical", x, y });
+      }
+    }
+  } catch (error) {
+    console.warn("[dpi] failed to adjust window size:", error);
+  }
+}
+
+void initializeDpiAwareWindowSize();
+
 
 function requiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
