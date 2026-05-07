@@ -6,6 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   LogicalSize,
+  PhysicalPosition,
   availableMonitors,
   currentMonitor,
   getCurrentWindow,
@@ -198,7 +199,7 @@ async function initializeDpiAwareWindowSize(): Promise<void> {
       const y = Math.round((monitor.size.height - size.height) / 2);
       const { x: curX, y: curY } = await appWindow.outerPosition();
       if (curX !== x || curY !== y) {
-        await appWindow.setPosition({ type: "Physical", x, y });
+        await appWindow.setPosition(new PhysicalPosition(x, y));
       }
     }
   } catch (error) {
@@ -254,10 +255,10 @@ const ttsProfilesArea = requiredElement<HTMLDivElement>("#ttsProfilesArea");
 const ttsSetupStatus = requiredElement<HTMLParagraphElement>("#ttsSetupStatus");
 const ttsSetupLogs = requiredElement<HTMLDivElement>("#ttsSetupLogs");
 const setupAllTtsBtn = requiredElement<HTMLButtonElement>("#setupAllTtsBtn");
-const ttsProfilePiperTab = requiredElement<HTMLButtonElement>("#ttsProfilePiperTab");
-const ttsProfileCoquiTab = requiredElement<HTMLButtonElement>("#ttsProfileCoquiTab");
 const ttsProfilePiperPanel = requiredElement<HTMLDivElement>("#ttsProfilePiperPanel");
 const ttsProfileCoquiPanel = requiredElement<HTMLDivElement>("#ttsProfileCoquiPanel");
+const ttsProfilePiperTab = requiredElement<HTMLButtonElement>("#ttsProfilePiperTab");
+const ttsProfileCoquiTab = requiredElement<HTMLButtonElement>("#ttsProfileCoquiTab");
 const appTitlebarDrag = requiredElement<HTMLDivElement>("#appTitlebarDrag");
 const windowMinimizeBtn = requiredElement<HTMLButtonElement>("#windowMinimizeBtn");
 const windowMaximizeBtn = requiredElement<HTMLButtonElement>("#windowMaximizeBtn");
@@ -325,10 +326,8 @@ const snippetsList = requiredElement<HTMLDivElement>("#snippetsList");
 const snippetForm = requiredElement<HTMLFormElement>("#snippetForm");
 const snippetTriggerInput = requiredElement<HTMLInputElement>("#snippetTriggerInput");
 const snippetExpansionInput = requiredElement<HTMLInputElement>("#snippetExpansionInput");
+const snippetAddBtn = requiredElement<HTMLButtonElement>("#snippetAddBtn");
 const snippetsAddBtnTop = requiredElement<HTMLButtonElement>("#snippetsAddBtnTop");
-const snippetsSearchInput = requiredElement<HTMLInputElement>("#snippetsSearchInput");
-const snippetsCountBadge = requiredElement<HTMLSpanElement>("#snippetsCountBadge");
-const snippetFormContainer = requiredElement<HTMLElement>("#snippetFormContainer");
 
 
 
@@ -800,28 +799,6 @@ for (const navButton of settingsNavButtons) {
     setActiveSettingsPane(pane);
   });
 }
-
-ttsProfilePiperTab.addEventListener("click", () => {
-  if (ttsEngineSelect.value !== "piper") {
-    ttsEngineSelect.value = "piper";
-    handleSettingsChange();
-    return;
-  }
-  setActiveTtsProfile("piper");
-});
-
-ttsProfileCoquiTab.addEventListener("click", () => {
-  if (ZERO_PYTHON_MODE) {
-    setNotice(ZERO_PYTHON_TTS_NOTICE, true);
-    return;
-  }
-  if (ttsEngineSelect.value !== "coqui") {
-    ttsEngineSelect.value = "coqui";
-    handleSettingsChange();
-    return;
-  }
-  setActiveTtsProfile("coqui");
-});
 
 toggleSidebarBtn.addEventListener("click", () => {
   const collapsed = !document.body.classList.contains("sidebar-collapsed");
@@ -1589,8 +1566,6 @@ function enforceZeroPythonUi(): void {
   if (ttsEngineSelect.value === "coqui") {
     ttsEngineSelect.value = "piper";
   }
-  ttsProfileCoquiTab.hidden = true;
-  ttsProfileCoquiTab.disabled = true;
   coquiStatusValue.textContent = "Disabled";
   coquiPythonValue.textContent = "-";
   coquiVersionValue.textContent = "-";
@@ -8197,8 +8172,6 @@ function syncActionAvailability(): void {
   cloneCoquiVoiceBtn.disabled = busy;
   testCoquiVoiceBtn.disabled = busy;
   setupAllTtsBtn.disabled = busy;
-  ttsProfilePiperTab.disabled = busy;
-  ttsProfileCoquiTab.disabled = busy;
   clearHistoryBtn.disabled = busy;
   fetchProviderModelsBtn.disabled = busy;
   applyModelToAiBtn.disabled = busy;
