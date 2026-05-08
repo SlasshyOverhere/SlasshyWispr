@@ -13,7 +13,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fs;
 #[cfg(target_os = "windows")]
 use std::io;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -349,6 +349,7 @@ static COQUI_DAEMONS: OnceLock<Mutex<HashMap<String, CoquiBridgeDaemon>>> = Once
 static LOCAL_STT_DAEMONS: OnceLock<Mutex<HashMap<String, LocalSttBridgeDaemon>>> = OnceLock::new();
 static LOCAL_STT_RUNTIME_PYTHON_CACHE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static LOCAL_STT_DAEMON_SWEEPER_STARTED: OnceLock<()> = OnceLock::new();
+static LOCAL_STT_NATIVE_PARAKEET_OP_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static LOCAL_STT_NATIVE_PARAKEET_RUNTIME: OnceLock<Mutex<Option<NativeParakeetRuntime>>> =
     OnceLock::new();
 static PIPER_TUNING_SUPPORT: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
@@ -371,6 +372,10 @@ fn local_stt_runtime_python_cache() -> &'static Mutex<Option<String>> {
 
 fn local_stt_native_parakeet_runtime() -> &'static Mutex<Option<NativeParakeetRuntime>> {
     LOCAL_STT_NATIVE_PARAKEET_RUNTIME.get_or_init(|| Mutex::new(None))
+}
+
+fn local_stt_native_parakeet_op_lock() -> &'static Mutex<()> {
+    LOCAL_STT_NATIVE_PARAKEET_OP_LOCK.get_or_init(|| Mutex::new(()))
 }
 
 fn coqui_daemon_key(python_path: &str, script_path: &Path) -> String {
@@ -625,6 +630,17 @@ struct LocalSttOpenPathResponse {
     repo_id: String,
     local_path: String,
     opened: bool,
+    details: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalSttModelStatusResponse {
+    model: String,
+    provider: String,
+    repo_id: String,
+    local_path: String,
+    exists: bool,
     details: String,
 }
 
@@ -1342,12 +1358,36 @@ async fn download_and_install_app_update(
                     installer_path.display()
                 )
             })?;
+        if let Err(error) = validate_downloaded_installer_file(&installer_path, installer_kind) {
+            emit_update_install_progress(
+                &app,
+                "error",
+                &error,
+                downloaded_bytes,
+                total_bytes.max(downloaded_bytes),
+                true,
+                false,
+            );
+            let _ = fs::remove_file(&installer_path);
+            return Err(error);
+        }
 
         let mut command = match installer_kind {
             WindowsInstallerKind::Exe => {
                 let mut command = Command::new(&installer_path);
-                if request.silent.unwrap_or(true) {
+                let installer_file_name = installer_path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default();
+                if request.silent.unwrap_or(true)
+                    && exe_installer_supports_silent_mode(installer_file_name)
+                {
                     command.arg("/S");
+                } else if request.silent.unwrap_or(true) {
+                    warn!(
+                        "[updater] skipped EXE silent flag because installer name '{}' is not recognized as setup-like",
+                        clip_text(installer_file_name, 160)
+                    );
                 }
                 command
             }
@@ -3732,6 +3772,7 @@ async fn delete_local_stt_model(
     if provider.eq_ignore_ascii_case("parakeet") {
         let _ = unload_native_parakeet_runtime("delete-model");
         stop_all_local_stt_bridge_daemons();
+        let _ = state.set_local_stt_runtime_loaded(false);
     }
     let models_dir = stt_models_dir(&app)?;
     let target_dir = models_dir.join(sanitize_model_cache_dir_name(&repo_id));
@@ -3836,6 +3877,41 @@ async fn open_local_stt_model_path(
         local_path: target_dir.to_string_lossy().into_owned(),
         opened: true,
         details: "Opened local model directory in file explorer.".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn get_local_stt_model_status(
+    app: AppHandle,
+    request: LocalSttDeleteRequest,
+) -> Result<LocalSttModelStatusResponse, String> {
+    let model = canonical_local_stt_model_id(&normalize_model_name(Some(&request.model)));
+    if model.is_empty() {
+        return Err("STT model name is required.".to_string());
+    }
+    let allowed_models = built_in_local_stt_model_catalog();
+    if !allowed_models.iter().any(|item| item == &model) {
+        return Err(
+            "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
+        );
+    }
+
+    let provider = infer_local_stt_provider_from_model(&model);
+    let (repo_id, target_dir) = resolve_local_stt_repo_and_dir(&app, &provider, &model)?;
+    let exists = target_dir.exists();
+    let details = if exists {
+        "Model files are available in local cache.".to_string()
+    } else {
+        "Model files are not downloaded yet.".to_string()
+    };
+
+    Ok(LocalSttModelStatusResponse {
+        model,
+        provider,
+        repo_id,
+        local_path: target_dir.to_string_lossy().into_owned(),
+        exists,
+        details,
     })
 }
 
@@ -9715,6 +9791,11 @@ fn windows_installer_kind_from_name(name: &str) -> Option<WindowsInstallerKind> 
     None
 }
 
+fn exe_installer_supports_silent_mode(name: &str) -> bool {
+    let lower = name.trim().to_ascii_lowercase();
+    lower.contains("setup") || lower.contains("installer") || lower.contains("nsis")
+}
+
 fn select_latest_stable_release<'a>(
     releases: &'a [GithubLatestReleaseResponse],
 ) -> Option<&'a GithubLatestReleaseResponse> {
@@ -9727,13 +9808,20 @@ fn is_windows_installer_asset(name: &str) -> bool {
     windows_installer_kind_from_name(name).is_some()
 }
 
-fn windows_installer_score(name: &str) -> u8 {
+fn windows_installer_score(name: &str, release_version: &str) -> i32 {
     let lower = name.to_ascii_lowercase();
-    let mut score = 0_u8;
+    let mut score = 0_i32;
     match windows_installer_kind_from_name(name) {
         Some(WindowsInstallerKind::Exe) => score += 8,
         Some(WindowsInstallerKind::Msi) => score += 5,
         None => {}
+    }
+    if lower.contains("slasshywispr") {
+        score += 10;
+    }
+    let normalized_version = normalize_release_version(release_version).to_ascii_lowercase();
+    if !normalized_version.is_empty() && lower.contains(&normalized_version) {
+        score += 8;
     }
     if lower.contains("setup") {
         score += 6;
@@ -9750,6 +9838,12 @@ fn windows_installer_score(name: &str) -> u8 {
     if lower.contains("x64") || lower.contains("amd64") {
         score += 1;
     }
+    if lower.contains("portable") || lower.contains("debug") || lower.contains("symbols") {
+        score -= 8;
+    }
+    if lower.contains("arm64") || lower.contains("aarch64") || lower.contains("x86") || lower.contains("ia32") {
+        score -= 6;
+    }
     score
 }
 
@@ -9760,30 +9854,74 @@ fn select_windows_installer_asset<'a>(
         .assets
         .iter()
         .filter(|asset| is_windows_installer_asset(&asset.name))
-        .max_by_key(|asset| (windows_installer_score(&asset.name), asset.name.len()))
+        .max_by_key(|asset| {
+            (
+                windows_installer_score(&asset.name, &release.tag_name),
+                asset.name.len(),
+            )
+        })
 }
 
-fn parse_version_triplet(version: &str) -> Option<(u64, u64, u64)> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedVersion {
+    numeric_parts: Vec<u64>,
+    prerelease: Option<String>,
+}
+
+fn parse_version_triplet(version: &str) -> Option<ParsedVersion> {
     let normalized = normalize_release_version(version);
-    let core = normalized
-        .split(['-', '+'])
-        .next()
-        .unwrap_or_default()
-        .trim();
-    let mut parts = core.split('.');
-    let major = parts.next()?.trim().parse::<u64>().ok()?;
-    let minor = parts.next()?.trim().parse::<u64>().ok()?;
-    let patch = parts.next()?.trim().parse::<u64>().ok()?;
-    Some((major, minor, patch))
+    let without_build = normalized.split_once('+').map(|(value, _)| value).unwrap_or(&normalized);
+    let (core, prerelease) = without_build
+        .split_once('-')
+        .map(|(value, tag)| (value.trim(), Some(tag.trim().to_ascii_lowercase())))
+        .unwrap_or((without_build.trim(), None));
+    if core.is_empty() {
+        return None;
+    }
+
+    let mut numeric_parts = Vec::new();
+    for part in core.split('.') {
+        let trimmed = part.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        numeric_parts.push(trimmed.parse::<u64>().ok()?);
+    }
+    if numeric_parts.is_empty() {
+        return None;
+    }
+
+    Some(ParsedVersion {
+        numeric_parts,
+        prerelease: prerelease.filter(|value| !value.is_empty()),
+    })
 }
 
 fn is_newer_version(current: &str, latest: &str) -> bool {
-    match (
-        parse_version_triplet(current),
-        parse_version_triplet(latest),
-    ) {
-        (Some(current_parts), Some(latest_parts)) => latest_parts > current_parts,
-        _ => normalize_release_version(latest) != normalize_release_version(current),
+    match (parse_version_triplet(current), parse_version_triplet(latest)) {
+        (Some(current_parts), Some(latest_parts)) => {
+            let max_len = current_parts
+                .numeric_parts
+                .len()
+                .max(latest_parts.numeric_parts.len());
+            for index in 0..max_len {
+                let current_part = current_parts.numeric_parts.get(index).copied().unwrap_or(0);
+                let latest_part = latest_parts.numeric_parts.get(index).copied().unwrap_or(0);
+                match latest_part.cmp(&current_part) {
+                    std::cmp::Ordering::Greater => return true,
+                    std::cmp::Ordering::Less => return false,
+                    std::cmp::Ordering::Equal => {}
+                }
+            }
+
+            match (&current_parts.prerelease, &latest_parts.prerelease) {
+                (Some(_), None) => true,
+                (None, Some(_)) => false,
+                (Some(current_tag), Some(latest_tag)) => latest_tag > current_tag,
+                (None, None) => false,
+            }
+        }
+        _ => false,
     }
 }
 
@@ -9830,6 +9968,51 @@ fn resolve_installer_file_name(
 
     let normalized_version = normalize_release_version(current_version);
     format!("SlasshyWispr-{normalized_version}-update.exe")
+}
+
+fn validate_downloaded_installer_file(
+    installer_path: &Path,
+    installer_kind: WindowsInstallerKind,
+) -> Result<(), String> {
+    let metadata = fs::metadata(installer_path)
+        .map_err(|error| format!("Failed to read downloaded installer metadata: {error}"))?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "Downloaded update path '{}' is not a file.",
+            installer_path.display()
+        ));
+    }
+    if metadata.len() == 0 {
+        return Err("Downloaded installer file is empty.".to_string());
+    }
+
+    let mut file = fs::File::open(installer_path)
+        .map_err(|error| format!("Failed to open downloaded installer: {error}"))?;
+    let mut header = [0_u8; 8];
+    let bytes_read = file
+        .read(&mut header)
+        .map_err(|error| format!("Failed to read downloaded installer header: {error}"))?;
+    match installer_kind {
+        WindowsInstallerKind::Exe => {
+            if bytes_read < 2 || &header[..2] != b"MZ" {
+                return Err(format!(
+                    "Downloaded file '{}' is not a valid Windows executable.",
+                    installer_path.display()
+                ));
+            }
+        }
+        WindowsInstallerKind::Msi => {
+            const MSI_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+            if bytes_read < MSI_MAGIC.len() || header != MSI_MAGIC {
+                return Err(format!(
+                    "Downloaded file '{}' is not a valid Windows MSI package.",
+                    installer_path.display()
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn merge_process_output(stdout: &[u8], stderr: &[u8]) -> String {
@@ -11630,6 +11813,9 @@ fn decode_local_stt_audio_to_mono_f32(
 }
 
 fn get_or_load_native_parakeet_runtime(model_root: &Path) -> Result<bool, String> {
+    let _op_guard = local_stt_native_parakeet_op_lock()
+        .lock()
+        .map_err(|_| "Native Parakeet operation lock poisoned.".to_string())?;
     let model_key = normalize_native_parakeet_model_key(model_root);
     let runtime = local_stt_native_parakeet_runtime();
     let mut guard = runtime
@@ -11644,6 +11830,7 @@ fn get_or_load_native_parakeet_runtime(model_root: &Path) -> Result<bool, String
         let _ = current.engine.unload_model();
         *guard = None;
     }
+    drop(guard);
 
     let mut engine = ParakeetEngine::new();
     engine
@@ -11656,6 +11843,17 @@ fn get_or_load_native_parakeet_runtime(model_root: &Path) -> Result<bool, String
             )
         })?;
 
+    let mut guard = runtime
+        .lock()
+        .map_err(|_| "Native Parakeet runtime lock poisoned.".to_string())?;
+    if let Some(current) = guard.as_mut() {
+        if current.model_key == model_key {
+            current.last_used = Instant::now();
+            return Ok(true);
+        }
+        let _ = current.engine.unload_model();
+        *guard = None;
+    }
     *guard = Some(NativeParakeetRuntime {
         model_key,
         engine,
@@ -11665,6 +11863,9 @@ fn get_or_load_native_parakeet_runtime(model_root: &Path) -> Result<bool, String
 }
 
 fn unload_native_parakeet_runtime(reason: &str) -> Result<bool, String> {
+    let _op_guard = local_stt_native_parakeet_op_lock()
+        .lock()
+        .map_err(|_| "Native Parakeet operation lock poisoned.".to_string())?;
     let runtime = local_stt_native_parakeet_runtime();
     let mut guard = runtime
         .lock()
@@ -11684,9 +11885,10 @@ fn unload_native_parakeet_runtime(reason: &str) -> Result<bool, String> {
 
 fn native_parakeet_runtime_loaded() -> bool {
     let runtime = local_stt_native_parakeet_runtime();
-    let guard = match runtime.lock() {
+    let guard = match runtime.try_lock() {
         Ok(guard) => guard,
-        Err(_) => return false,
+        Err(std::sync::TryLockError::WouldBlock) => return true,
+        Err(std::sync::TryLockError::Poisoned(_)) => return false,
     };
     guard.is_some()
 }
@@ -12737,152 +12939,206 @@ async fn download_huggingface_stt_model(
         ));
     }
 
-    let mut downloaded_files = 0usize;
-    let mut downloaded_bytes = 0u64;
+    let download_progress = Arc::new(AtomicU64::new(0));
+    let completed_files = Arc::new(AtomicU64::new(0));
+    let parallel_limit = usize::min(4, usize::max(1, to_download.len()));
+    let mut next_index = 0usize;
+    let mut active_tasks = Vec::new();
 
-    for (relative_path, output_path, size_hint) in to_download {
-        if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent).map_err(|error| {
-                format!(
-                    "Failed to create model directory '{}': {error}",
-                    parent.display()
-                )
-            })?;
-        }
-
-        let current_file = relative_path.display().to_string();
-        state.update_local_stt_download_status(|status| {
-            status.current_file = current_file.clone();
-            status.stage = "Downloading file...".to_string();
-            status.message = format!(
-                "Downloading file {} of {}",
-                status.files_completed + 1,
-                status.files_total
-            );
-        })?;
-
-        let mut download_url = Url::parse(&format!(
-            "https://huggingface.co/{repo_id}/resolve/main/"
-        ))
-        .map_err(|error| format!("Invalid HuggingFace download URL for '{repo_id}': {error}"))?;
-        {
-            let mut segments = download_url
-                .path_segments_mut()
-                .map_err(|_| "Failed to build HuggingFace download path.".to_string())?;
-            segments.pop_if_empty();
-            for component in relative_path.components() {
-                if let std::path::Component::Normal(segment) = component {
-                    let value = segment.to_string_lossy();
-                    segments.push(value.as_ref());
-                }
-            }
-        }
-        download_url
-            .query_pairs_mut()
-            .append_pair("download", "true");
-
-        let mut response = apply_optional_bearer_auth(client.get(download_url.clone()), token)
-            .timeout(Duration::from_secs(60 * 60))
-            .send()
-            .await
-            .map_err(|error| {
-                format!(
-                    "Failed to download HuggingFace file '{}': {error}",
-                    relative_path.display()
-                )
-            })?;
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(format!(
-                "HuggingFace file download failed '{}' ({status}): {}",
-                relative_path.display(),
-                clip_text(&single_line(&body), 320)
-            ));
-        }
-
-        if size_hint.is_none() {
-            if let Some(content_length) = response.content_length() {
-                total_bytes = total_bytes.saturating_add(content_length);
-                state.update_local_stt_download_status(|status| {
-                    status.total_bytes = total_bytes;
+    let spawn_file_download = |
+        relative_path: PathBuf,
+        output_path: PathBuf,
+        size_hint: Option<u64>,
+    | {
+        let client = client.clone();
+        let token = token.map(str::to_string);
+        let repo_id = repo_id.to_string();
+        let progress = Arc::clone(&download_progress);
+        let completed = Arc::clone(&completed_files);
+        tauri::async_runtime::spawn(async move {
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    format!(
+                        "Failed to create model directory '{}': {error}",
+                        parent.display()
+                    )
                 })?;
             }
-        }
 
-        let temp_path = output_path.with_extension("partial");
-        if temp_path.exists() {
-            let _ = fs::remove_file(&temp_path);
-        }
+            let mut download_url = Url::parse(&format!(
+                "https://huggingface.co/{repo_id}/resolve/main/"
+            ))
+            .map_err(|error| format!("Invalid HuggingFace download URL for '{repo_id}': {error}"))?;
+            {
+                let mut segments = download_url
+                    .path_segments_mut()
+                    .map_err(|_| "Failed to build HuggingFace download path.".to_string())?;
+                segments.pop_if_empty();
+                for component in relative_path.components() {
+                    if let std::path::Component::Normal(segment) = component {
+                        let value = segment.to_string_lossy();
+                        segments.push(value.as_ref());
+                    }
+                }
+            }
+            download_url
+                .query_pairs_mut()
+                .append_pair("download", "true");
 
-        let mut output_file = fs::File::create(&temp_path).map_err(|error| {
-            format!(
-                "Failed to create temporary model file '{}': {error}",
-                temp_path.display()
-            )
-        })?;
-        let mut bytes_for_file = 0u64;
-        let mut last_status_update = Instant::now();
-        while let Some(chunk) = response.chunk().await.map_err(|error| {
-            format!(
-                "Failed reading HuggingFace download stream '{}': {error}",
-                relative_path.display()
-            )
-        })? {
-            output_file.write_all(&chunk).map_err(|error| {
+            let token_ref = token.as_deref();
+            let mut response = apply_optional_bearer_auth(client.get(download_url.clone()), token_ref)
+                .timeout(Duration::from_secs(60 * 60))
+                .send()
+                .await
+                .map_err(|error| {
+                    format!(
+                        "Failed to download HuggingFace file '{}': {error}",
+                        relative_path.display()
+                    )
+                })?;
+            let status = response.status();
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                return Err(format!(
+                    "HuggingFace file download failed '{}' ({status}): {}",
+                    relative_path.display(),
+                    clip_text(&single_line(&body), 320)
+                ));
+            }
+
+            let discovered_content_length = if size_hint.is_none() {
+                response.content_length()
+            } else {
+                None
+            };
+
+            let temp_path = output_path.with_extension("partial");
+            if temp_path.exists() {
+                let _ = fs::remove_file(&temp_path);
+            }
+
+            let mut output_file = fs::File::create(&temp_path).map_err(|error| {
                 format!(
-                    "Failed writing HuggingFace file chunk '{}': {error}",
+                    "Failed to create temporary model file '{}': {error}",
                     temp_path.display()
                 )
             })?;
-            let chunk_size = u64::try_from(chunk.len()).unwrap_or(u64::MAX);
-            bytes_for_file = bytes_for_file.saturating_add(chunk_size);
-            downloaded_bytes = downloaded_bytes.saturating_add(chunk_size);
+            let mut bytes_for_file = 0u64;
 
-            if last_status_update.elapsed() >= Duration::from_millis(160) {
-                let current_file = relative_path.display().to_string();
-                state.update_local_stt_download_status(|status| {
-                    status.current_file = current_file;
-                    status.downloaded_bytes = downloaded_bytes;
-                })?;
-                last_status_update = Instant::now();
-            }
-        }
-        drop(output_file);
-
-        if bytes_for_file == 0 {
-            let _ = fs::remove_file(&temp_path);
-            return Err(format!(
-                "Downloaded file '{}' was empty.",
-                relative_path.display()
-            ));
-        }
-
-        if output_path.exists() {
-            fs::remove_file(&output_path).map_err(|error| {
+            while let Some(chunk) = response.chunk().await.map_err(|error| {
                 format!(
-                    "Failed to replace existing model file '{}': {error}",
+                    "Failed reading HuggingFace download stream '{}': {error}",
+                    relative_path.display()
+                )
+            })? {
+                output_file.write_all(&chunk).map_err(|error| {
+                    format!(
+                        "Failed writing HuggingFace file chunk '{}': {error}",
+                        temp_path.display()
+                    )
+                })?;
+                let chunk_size = u64::try_from(chunk.len()).unwrap_or(u64::MAX);
+                bytes_for_file = bytes_for_file.saturating_add(chunk_size);
+                progress.fetch_add(chunk_size, Ordering::Relaxed);
+            }
+            drop(output_file);
+
+            if bytes_for_file == 0 {
+                let _ = fs::remove_file(&temp_path);
+                return Err(format!(
+                    "Downloaded file '{}' was empty.",
+                    relative_path.display()
+                ));
+            }
+
+            if output_path.exists() {
+                fs::remove_file(&output_path).map_err(|error| {
+                    format!(
+                        "Failed to replace existing model file '{}': {error}",
+                        output_path.display()
+                    )
+                })?;
+            }
+            fs::rename(&temp_path, &output_path).map_err(|error| {
+                format!(
+                    "Failed to finalize model file '{}': {error}",
                     output_path.display()
                 )
             })?;
-        }
-        fs::rename(&temp_path, &output_path).map_err(|error| {
-            format!(
-                "Failed to finalize model file '{}': {error}",
-                output_path.display()
-            )
-        })?;
 
-        downloaded_files += 1;
-        state.update_local_stt_download_status(|status| {
-            status.downloaded_bytes = downloaded_bytes;
-            status.files_completed = downloaded_files;
-            status.current_file.clear();
-            status.message = format!(
-                "Downloaded {}/{} files.",
-                status.files_completed, status.files_total
-            );
-        })?;
+            completed.fetch_add(1, Ordering::Relaxed);
+            Ok::<(String, u64, Option<u64>), String>((
+                relative_path.display().to_string(),
+                bytes_for_file,
+                discovered_content_length,
+            ))
+        })
+    };
+
+    while next_index < to_download.len() && active_tasks.len() < parallel_limit {
+        let (relative_path, output_path, size_hint) = to_download[next_index].clone();
+        active_tasks.push(spawn_file_download(relative_path, output_path, size_hint));
+        next_index += 1;
+    }
+
+    let mut downloaded_files = 0usize;
+    let mut downloaded_bytes = 0u64;
+    let mut last_status_update = Instant::now();
+
+    while !active_tasks.is_empty() {
+        let task = active_tasks.remove(0);
+        let result = task
+            .await
+            .map_err(|error| format!("Parallel file download worker failed: {error}"))?;
+        match result {
+            Ok((current_file, bytes_for_file, discovered_content_length)) => {
+                downloaded_files += 1;
+                downloaded_bytes = download_progress.load(Ordering::Relaxed);
+                if let Some(content_length) = discovered_content_length {
+                    total_bytes = total_bytes.saturating_add(content_length);
+                }
+                state.update_local_stt_download_status(|status| {
+                    status.current_file = current_file;
+                    status.stage = if parallel_limit > 1 {
+                        "Downloading model files in parallel...".to_string()
+                    } else {
+                        "Downloading file...".to_string()
+                    };
+                    status.total_bytes = total_bytes;
+                    status.downloaded_bytes = downloaded_bytes;
+                    status.files_completed = downloaded_files;
+                    status.message = format!(
+                        "Downloaded {}/{} files.",
+                        status.files_completed, status.files_total
+                    );
+                })?;
+                let _ = bytes_for_file;
+            }
+            Err(error) => {
+                return Err(error);
+            }
+        }
+
+        while next_index < to_download.len() && active_tasks.len() < parallel_limit {
+          let (relative_path, output_path, size_hint) = to_download[next_index].clone();
+          active_tasks.push(spawn_file_download(relative_path, output_path, size_hint));
+          next_index += 1;
+        }
+
+        if last_status_update.elapsed() >= Duration::from_millis(120) {
+            let progress_bytes = download_progress.load(Ordering::Relaxed);
+            let completed_count = completed_files.load(Ordering::Relaxed) as usize;
+            state.update_local_stt_download_status(|status| {
+                status.stage = if parallel_limit > 1 {
+                    format!("Downloading model files with {parallel_limit} parallel workers...")
+                } else {
+                    "Downloading model files...".to_string()
+                };
+                status.downloaded_bytes = progress_bytes;
+                status.files_completed = completed_count;
+            })?;
+            last_status_update = Instant::now();
+        }
     }
 
     if downloaded_files == 0 && skipped_files == 0 {
@@ -13558,6 +13814,62 @@ Explanation:
     }
 
     #[test]
+    fn select_windows_installer_asset_avoids_portable_or_mismatched_builds() {
+        let release = GithubLatestReleaseResponse {
+            tag_name: "v1.0.1".to_string(),
+            name: Some("v1.0.1".to_string()),
+            body: None,
+            draft: false,
+            prerelease: false,
+            published_at: None,
+            html_url: None,
+            assets: vec![
+                GithubReleaseAsset {
+                    name: "SlasshyWispr_1.0.1_portable.exe".to_string(),
+                    browser_download_url: "https://example.com/SlasshyWispr_1.0.1_portable.exe"
+                        .to_string(),
+                },
+                GithubReleaseAsset {
+                    name: "helper-installer.exe".to_string(),
+                    browser_download_url: "https://example.com/helper-installer.exe".to_string(),
+                },
+                GithubReleaseAsset {
+                    name: "SlasshyWispr_1.0.1_x64-setup.exe".to_string(),
+                    browser_download_url:
+                        "https://example.com/SlasshyWispr_1.0.1_x64-setup.exe".to_string(),
+                },
+            ],
+        };
+
+        let selected = select_windows_installer_asset(&release)
+            .expect("expected installer asset to be selected");
+        assert_eq!(selected.name, "SlasshyWispr_1.0.1_x64-setup.exe");
+    }
+
+    #[test]
+    fn compares_versions_without_false_positive_fallbacks() {
+        assert!(is_newer_version("1.0.0", "1.0.1"));
+        assert!(is_newer_version("1.0.0-beta.1", "1.0.0"));
+        assert!(!is_newer_version("1.0.1", "1.0.0"));
+        assert!(!is_newer_version("1.0.0", "1.0.0-beta.1"));
+        assert!(!is_newer_version("1.0.0", "release-candidate"));
+    }
+
+    #[test]
+    fn validates_downloaded_installer_header_magic() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let exe_path = temp_dir.path().join("installer.exe");
+        std::fs::write(&exe_path, b"MZ\x90\0\x03\0\0\0payload").expect("write exe");
+        assert!(validate_downloaded_installer_file(&exe_path, WindowsInstallerKind::Exe).is_ok());
+
+        let bad_exe_path = temp_dir.path().join("bad-installer.exe");
+        std::fs::write(&bad_exe_path, b"<!DOCTYPE html>").expect("write bad exe");
+        assert!(
+            validate_downloaded_installer_file(&bad_exe_path, WindowsInstallerKind::Exe).is_err()
+        );
+    }
+
+    #[test]
     fn resolve_installer_file_name_keeps_supported_extension() {
         let from_asset = resolve_installer_file_name(
             Some("SlasshyWispr_0.1.2_x64.msi"),
@@ -13872,6 +14184,7 @@ pub fn run() {
             get_local_stt_download_status,
             delete_local_stt_model,
             open_local_stt_model_path,
+            get_local_stt_model_status,
             warmup_local_stt_model,
             deactivate_local_stt_model,
             get_local_stt_runtime_state,

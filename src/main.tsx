@@ -17,6 +17,7 @@ import {
   unregisterAll as unregisterAllGlobalShortcuts,
   type ShortcutEvent,
 } from "@tauri-apps/plugin-global-shortcut";
+import { open as openExternalUrl } from "@tauri-apps/plugin-shell";
 import {
   buildAgentOperatingCorePrompt,
   captureModeLabel,
@@ -46,6 +47,7 @@ import {
   HOME_HISTORY_STORAGE_KEY,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY,
+  APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
   EMPTY_HISTORY_HINT,
@@ -119,6 +121,7 @@ import type {
   LocalSttDownloadResponse,
   LocalSttDeleteResponse,
   LocalSttOpenPathResponse,
+  LocalSttModelStatusResponse,
   LocalSttWarmupResponse,
   LocalSttDeactivateResponse,
   LocalSttRuntimeStateResponse,
@@ -230,6 +233,9 @@ function applySidebarCollapsed(collapsed: boolean): void {
   syncSidebarHoverTitles(collapsed);
 }
 
+const ACTIVE_PAGE_STORAGE_KEY = "slasshy-wispr-active-page-v1";
+const ACTIVE_SETTINGS_PANE_STORAGE_KEY = "slasshy-wispr-active-settings-pane-v1";
+
 const settingsOverlay = requiredElement<HTMLDivElement>("#settingsOverlay");
 const toggleSidebarBtn = requiredElement<HTMLButtonElement>("#toggleSidebarBtn");
 const openSettingsBtn = requiredElement<HTMLButtonElement>("#openSettingsBtn");
@@ -240,10 +246,6 @@ const sttLoadOverlay = requiredElement<HTMLDivElement>("#sttLoadOverlay");
 const sttLoadModel = requiredElement<HTMLParagraphElement>("#sttLoadModel");
 const sttLoadDetail = requiredElement<HTMLParagraphElement>("#sttLoadDetail");
 const sttHardwareAdvisorOverlay = requiredElement<HTMLDivElement>("#sttHardwareAdvisorOverlay");
-const sttHardwareAdvisorHardware = requiredElement<HTMLParagraphElement>("#sttHardwareAdvisorHardware");
-const sttHardwareAdvisorSuggestion = requiredElement<HTMLParagraphElement>("#sttHardwareAdvisorSuggestion");
-const sttHardwareAdvisorWarning = requiredElement<HTMLParagraphElement>("#sttHardwareAdvisorWarning");
-const sttHardwareAdvisorList = requiredElement<HTMLParagraphElement>("#sttHardwareAdvisorList");
 const sttHardwareAdvisorUseSuggestionBtn = requiredElement<HTMLButtonElement>(
   "#sttHardwareAdvisorUseSuggestionBtn",
 );
@@ -253,6 +255,7 @@ const sttHardwareAdvisorContinueBtn = requiredElement<HTMLButtonElement>(
 const sttHardwareAdvisorCancelBtn = requiredElement<HTMLButtonElement>("#sttHardwareAdvisorCancelBtn");
 const closeSettingsBtn = requiredElement<HTMLButtonElement>("#closeSettingsBtn");
 const settingsPaneTitle = requiredElement<HTMLElement>("#settingsPaneTitle");
+const settingsMain = requiredElement<HTMLElement>(".settings-main");
 const ttsBootstrapCard = requiredElement<HTMLDivElement>("#ttsBootstrapCard");
 const ttsProfilesArea = requiredElement<HTMLDivElement>("#ttsProfilesArea");
 const ttsSetupStatus = requiredElement<HTMLParagraphElement>("#ttsSetupStatus");
@@ -326,6 +329,7 @@ const dictionaryAddBtnTop = requiredElement<HTMLButtonElement>("#dictionaryAddBt
 
 
 const snippetsList = requiredElement<HTMLDivElement>("#snippetsList");
+const snippetFormContainer = requiredElement<HTMLElement>("#snippetFormContainer");
 const snippetForm = requiredElement<HTMLFormElement>("#snippetForm");
 const snippetTriggerInput = requiredElement<HTMLInputElement>("#snippetTriggerInput");
 const snippetExpansionInput = requiredElement<HTMLInputElement>("#snippetExpansionInput");
@@ -402,6 +406,7 @@ const maxTokensInput = requiredElement<HTMLInputElement>("#maxTokensInput");
 
 const launchAtLoginToggle = requiredElement<HTMLInputElement>("#launchAtLoginToggle");
 const showFlowBarToggle = requiredElement<HTMLInputElement>("#showFlowBarToggle");
+const showDockAlwaysToggle = requiredElement<HTMLInputElement>("#showDockAlwaysToggle");
 const commandModeToggle = requiredElement<HTMLInputElement>("#commandModeToggle");
 const wakeWordEnabledToggle = requiredElement<HTMLInputElement>("#wakeWordEnabledToggle");
 const assistantNameInput = requiredElement<HTMLInputElement>("#assistantNameInput");
@@ -412,6 +417,8 @@ const aiRuntimeModeOnlineInput = requiredElement<HTMLInputElement>("#aiRuntimeMo
 const aiRuntimeModeOfflineInput = requiredElement<HTMLInputElement>("#aiRuntimeModeOffline");
 const runtimeModeNotice = requiredElement<HTMLParagraphElement>("#runtimeModeNotice");
 const ollamaStatusNotice = requiredElement<HTMLParagraphElement>("#ollamaStatusNotice");
+const localSttStatusBadge = requiredElement<HTMLSpanElement>("#localSttStatusBadge");
+const localSttStatusDetail = requiredElement<HTMLParagraphElement>("#localSttStatusDetail");
 const localSttDownloadNotice = requiredElement<HTMLParagraphElement>("#localSttDownloadNotice");
 const localSttDownloadProgressBar = requiredElement<HTMLSpanElement>("#localSttDownloadProgressBar");
 const localSttDownloadProgressText = requiredElement<HTMLParagraphElement>("#localSttDownloadProgressText");
@@ -439,9 +446,16 @@ const updateStatusText = requiredElement<HTMLParagraphElement>("#updateStatusTex
 const updateCurrentVersion = requiredElement<HTMLElement>("#updateCurrentVersion");
 const updateLatestVersion = requiredElement<HTMLElement>("#updateLatestVersion");
 const updatePublishedAt = requiredElement<HTMLElement>("#updatePublishedAt");
+const updateLastCheckedText = requiredElement<HTMLParagraphElement>("#updateLastCheckedText");
+const autoCheckUpdatesToggle = requiredElement<HTMLInputElement>("#autoCheckUpdatesToggle");
 const checkUpdatesBtn = requiredElement<HTMLButtonElement>("#checkUpdatesBtn");
 const installUpdateBtn = requiredElement<HTMLButtonElement>("#installUpdateBtn");
+const updateReleaseCard = requiredElement<HTMLDivElement>("#updateReleaseCard");
+const updateReleaseName = requiredElement<HTMLParagraphElement>("#updateReleaseName");
+const updateReleaseNotes = requiredElement<HTMLParagraphElement>("#updateReleaseNotes");
+const updateReleaseLink = requiredElement<HTMLAnchorElement>("#updateReleaseLink");
 const updateInstallProgressWrap = requiredElement<HTMLDivElement>("#updateInstallProgressWrap");
+const updateInstallProgressTrack = requiredElement<HTMLDivElement>("#updateInstallProgressTrack");
 const updateInstallProgressBar = requiredElement<HTMLSpanElement>("#updateInstallProgressBar");
 const updateInstallProgressText = requiredElement<HTMLParagraphElement>("#updateInstallProgressText");
 
@@ -557,7 +571,12 @@ let homeHistoryEntries = loadHomeHistory();
 let commandModeArmed = false;
 let commandSelectionSnapshot: string | null = null;
 const recentTurns: Array<{ speaker: string; content: string }> = [];
-let activePage: MainPage = "home";
+let activePage: MainPage = loadPersistedMainPage();
+let activeSettingsPane: SettingsPane = loadPersistedSettingsPane();
+let homeHistoryNeedsRender = true;
+let fullHistoryNeedsRender = true;
+let settingsCloseTimer: number | null = null;
+let settingsPaneTransitionTimer: number | null = null;
 let globalShortcutsActive = false;
 let shortcutsSuppressedByBlockedApp = false;
 let registeredPushShortcut = "";
@@ -589,15 +608,28 @@ let localSttDownloadStatusPollInFlight = false;
 let localSttWarmupInFlight = false;
 let lastWarmedLocalSttModel = "";
 let localSttRuntimeLoaded = false;
+let localSttSelectedModelDownloaded = false;
+let localSttStatusChecked = false;
 let localSttRuntimeStateInFlight = false;
 let runtimeModeSyncInFlight = false;
 let pendingRuntimeModeSyncTarget: RuntimeMode | null = null;
 let pendingRuntimeModeSyncShowLoadOverlay = false;
 let localSttLoadOverlayTickerId: number | null = null;
 let localSttLoadOverlayStartedAt = 0;
+let localSttDownloadOverlay: HTMLDivElement | null = null;
+let lastLocalSttDownloadStatus: LocalSttDownloadStatusResponse | null = null;
+
+function syncLocalSttDownloadOverlayVisibility(): void {
+  if (!localSttDownloadOverlay) {
+    return;
+  }
+  const shouldShow =
+    lastLocalSttDownloadStatus !== null &&
+    lastLocalSttDownloadStatus.active &&
+    !isSettingsOpen();
+  localSttDownloadOverlay.hidden = !shouldShow;
+}
 let localSttHardwareAdvisorOpen = false;
-let localSttHardwareAdvisorSelectedModel = "";
-let localSttHardwareAdvisorSuggestionModel = "";
 let localSttHardwareAdvisorResolver: ((choice: LocalSttHardwareAdvisorChoice) => void) | null = null;
 let ttsSetupPollingId: number | null = null;
 let ttsSetupRunning = false;
@@ -611,6 +643,7 @@ let updateCheckInFlight = false;
 let updateInstallInFlight = false;
 let cachedUpdateResult: AppUpdateCheckResponse | null = null;
 let updateAutoCheckTimerId: number | null = null;
+let updateAutoCheckTimeoutId: number | null = null;
 let updateInstallProgressUnlisten: (() => void) | null = null;
 let foregroundBlockStatusCache: ForegroundInputBlockStatus = {
   blocked: false,
@@ -637,6 +670,7 @@ const ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION = true;
 const MAIN_WINDOW_VISIBILITY_EVENT = "slasshy://main-window-visibility";
 const UPDATE_INSTALL_PROGRESS_EVENT = "slasshy://update-install-progress";
 const APP_UPDATE_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
+const DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED = true;
 
 const ACTIVITY_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "long",
@@ -697,6 +731,13 @@ dockChannel.onmessage = (event: MessageEvent<unknown>) => {
 
   if (payload.action === "toggle-mic") {
     void handleDockMicToggle();
+  } else if (payload.action === "open-app") {
+    void (async () => {
+      const win = getCurrentWindow();
+      await win.show();
+      await win.unminimize();
+      await win.setFocus();
+    })();
   }
 };
 
@@ -774,13 +815,12 @@ if (systemThemeMediaQuery) {
   systemThemeMediaQuery.addEventListener("change", handleSystemThemeChange);
 }
 
-setActivePage("home");
-setActiveSettingsPane("general");
+setActivePage(activePage, { forceRender: true });
+setActiveSettingsPane(activeSettingsPane);
 renderDictionaryList();
 renderSnippetsList();
 renderNotesList();
 updateUsageMetrics();
-renderHomeHistory();
 refreshRecordButton();
 syncActionAvailability();
 initializeUpdaterPanel();
@@ -818,18 +858,34 @@ toggleSidebarBtn.addEventListener("click", () => {
 
 openSettingsBtn.addEventListener("click", () => {
   openSettings("user-click-settings-button");
-  setActiveSettingsPane("general", "user-click-settings-button");
 });
 
 sidebarToggleLocalSttBtn.addEventListener("click", () => {
   void (async () => {
     const activeSettings = readSettingsFromForm();
     if (activeSettings.sttRuntimeMode !== "local") {
-      await syncLocalSttRuntimeForMode("online");
+      try {
+        await syncLocalSttRuntimeForMode("online");
+      } catch (error) {
+        setNotice(`Unable to switch local STT runtime: ${asErrorMessage(error)}`, true);
+        return;
+      }
       const onlineSttModel = activeSettings.sttModelName.trim() || "the configured online STT model";
       setNotice(
         `STT runtime is Online. Using ${onlineSttModel}. Switch STT to Offline in Settings > Models to load a local STT model.`,
       );
+      return;
+    }
+
+    const selectedModel = await ensureSelectedLocalSttModel({ quiet: true });
+    if (!selectedModel) {
+      showOfflineModeDiagnostic('no-model-downloaded');
+      return;
+    }
+
+    const modelDownloaded = await refreshSelectedLocalSttModelAvailability({ quiet: true });
+    if (!modelDownloaded) {
+      await downloadLocalSttModel();
       return;
     }
 
@@ -847,8 +903,36 @@ checkUpdatesBtn.addEventListener("click", () => {
   void handleCheckForUpdates();
 });
 
+autoCheckUpdatesToggle.addEventListener("change", () => {
+  localStorage.setItem(
+    APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
+    autoCheckUpdatesToggle.checked ? "1" : "0",
+  );
+  startAutomaticUpdateChecks();
+  setNotice(
+    autoCheckUpdatesToggle.checked
+      ? "Automatic update checks enabled."
+      : "Automatic update checks disabled.",
+  );
+});
+
 installUpdateBtn.addEventListener("click", () => {
   void handleInstallUpdate();
+});
+
+window.addEventListener("beforeunload", () => {
+  if (updateAutoCheckTimerId !== null) {
+    window.clearInterval(updateAutoCheckTimerId);
+    updateAutoCheckTimerId = null;
+  }
+  if (updateAutoCheckTimeoutId !== null) {
+    window.clearTimeout(updateAutoCheckTimeoutId);
+    updateAutoCheckTimeoutId = null;
+  }
+  if (updateInstallProgressUnlisten) {
+    updateInstallProgressUnlisten();
+    updateInstallProgressUnlisten = null;
+  }
 });
 
 closeSettingsBtn.addEventListener("click", () => {
@@ -922,7 +1006,13 @@ document.addEventListener("keydown", (event) => {
       return;
     }
 
-    if (event.key === ",") {
+    if (event.key === "d" || event.key === "D") {
+      event.preventDefault();
+      sidebarToggleLocalSttBtn.click();
+      return;
+    }
+
+    if (event.key === "s" || event.key === "S") {
       event.preventDefault();
       openSettingsBtn.click();
       return;
@@ -1137,8 +1227,9 @@ captureModePushToTalkInput.addEventListener("change", handleSettingsChange);
 launchAtLoginToggle.addEventListener("change", handleSettingsChange);
 showFlowBarToggle.addEventListener("change", handleSettingsChange);
 commandModeToggle.addEventListener("change", handleSettingsChange);
-wakeWordEnabledToggle.addEventListener("change", handleSettingsChange);
-assistantNameInput.addEventListener("input", handleSettingsChange);
+  wakeWordEnabledToggle.addEventListener("change", handleSettingsChange);
+  showDockAlwaysToggle.addEventListener("change", handleSettingsChange);
+  assistantNameInput.addEventListener("input", handleSettingsChange);
 sttRuntimeModeOnlineInput.addEventListener("change", handleSettingsChange);
 sttRuntimeModeOfflineInput.addEventListener("change", handleSettingsChange);
 aiRuntimeModeOnlineInput.addEventListener("change", handleSettingsChange);
@@ -1193,10 +1284,16 @@ localOllamaModelCatalogSelect.addEventListener("change", () => {
 localSttModelCatalogSelect.addEventListener("change", () => {
   const selected = localSttModelCatalogSelect.value.trim();
   if (!selected) {
+    localSttSelectedModelDownloaded = false;
+    localSttStatusChecked = true;
+    renderSidebarLocalSttToggle();
+    renderLocalSttSettingsStatus();
     return;
   }
   localSttModelInput.value = selected;
+  localSttStatusChecked = false;
   handleSettingsChange();
+  void refreshSelectedLocalSttModelAvailability({ quiet: true });
 });
 
 coquiModelCatalogSelect.addEventListener("change", () => {
@@ -1266,11 +1363,16 @@ snippetForm.addEventListener("submit", (event) => {
 });
 
 snippetsAddBtnTop.addEventListener("click", () => {
-  const nextCollapsed = !snippetForm.classList.contains("is-collapsed");
-  snippetForm.classList.toggle("is-collapsed", nextCollapsed);
-  snippetsAddBtnTop.textContent = nextCollapsed ? "Add new" : "Close";
-  if (!nextCollapsed) {
+  const isCollapsed = snippetFormContainer.classList.contains("is-collapsed");
+  if (isCollapsed) {
+    snippetFormContainer.classList.remove("is-collapsed");
+    snippetsAddBtnTop.classList.add("is-active");
+    snippetsAddBtnTop.textContent = "Close";
     snippetTriggerInput.focus();
+  } else {
+    snippetFormContainer.classList.add("is-collapsed");
+    snippetsAddBtnTop.classList.remove("is-active");
+    snippetsAddBtnTop.textContent = "Add new";
   }
 });
 
@@ -1397,14 +1499,14 @@ applyModelToSttBtn.addEventListener("click", () => {
   setNotice(`STT model set to "${selected}".`);
 });
 
-clearHistoryBtn.addEventListener("click", () => {
-  if (confirmDestructiveAction("Clear all transcription history from this device?")) {
+clearHistoryBtn.addEventListener("click", async () => {
+  if (await confirmDestructiveAction("Clear all transcription history from this device?")) {
     clearAllHistory();
   }
 });
 
-clearHistoryBtnFull.addEventListener("click", () => {
-  if (confirmDestructiveAction("Clear all transcription history from this device?")) {
+clearHistoryBtnFull.addEventListener("click", async () => {
+  if (await confirmDestructiveAction("Clear all transcription history from this device?")) {
     clearAllHistory();
   }
 });
@@ -1413,8 +1515,87 @@ viewFullHistoryBtn.addEventListener("click", () => {
   setActivePage("history");
 });
 
-clearStatsBtn.addEventListener("click", () => {
-  if (!confirmDestructiveAction("Reset all usage statistics for this device?")) {
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const filter = btn.getAttribute("data-filter") as "all" | "day" | "week" | "month";
+    renderFullHistory(filter);
+  });
+});
+
+const datePickerBtn = requiredElement<HTMLElement>("#datePickerBtn");
+const customDatePicker = requiredElement<HTMLDivElement>("#customDatePicker");
+const datePickerDays = requiredElement<HTMLDivElement>("#datePickerDays");
+const currentMonthYear = requiredElement<HTMLElement>("#currentMonthYear");
+const prevMonthBtn = requiredElement<HTMLElement>("#prevMonthBtn");
+const nextMonthBtn = requiredElement<HTMLElement>("#nextMonthBtn");
+
+let currentPickerDate = new Date();
+let selectedDate: string | null = null;
+
+datePickerBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  customDatePicker.hidden = !customDatePicker.hidden;
+  renderDatePicker();
+});
+
+document.addEventListener("click", (e) => {
+  if (!customDatePicker.contains(e.target as Node) && e.target !== datePickerBtn) {
+    customDatePicker.hidden = true;
+  }
+});
+
+prevMonthBtn.addEventListener("click", () => {
+  currentPickerDate = new Date(currentPickerDate.getFullYear(), currentPickerDate.getMonth() - 1, 1);
+  renderDatePicker();
+});
+
+nextMonthBtn.addEventListener("click", () => {
+  currentPickerDate = new Date(currentPickerDate.getFullYear(), currentPickerDate.getMonth() + 1, 1);
+  renderDatePicker();
+});
+
+function renderDatePicker(): void {
+  const year = currentPickerDate.getFullYear();
+  const month = currentPickerDate.getMonth();
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  currentMonthYear.textContent = `${monthNames[month]} ${year}`;
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+  let html = "";
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div class="date-picker-day empty"></div>';
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const isSelected = selectedDate === dateStr;
+    const isToday = dateStr === todayStr;
+    const classes = ["date-picker-day"];
+    if (isSelected) classes.push("selected");
+    if (isToday) classes.push("today");
+    html += `<div class="${classes.join(" ")}" data-date="${dateStr}">${day}</div>`;
+  }
+  datePickerDays.innerHTML = html;
+
+  datePickerDays.querySelectorAll(".date-picker-day:not(.empty)").forEach(dayEl => {
+    dayEl.addEventListener("click", () => {
+      selectedDate = dayEl.getAttribute("data-date");
+      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+      datePickerBtn.classList.add("active");
+      renderFullHistory("all", selectedDate!);
+      customDatePicker.hidden = true;
+      renderDatePicker();
+    });
+  });
+}
+
+clearStatsBtn.addEventListener("click", async () => {
+  if (!await confirmDestructiveAction("Reset all usage statistics for this device?")) {
     return;
   }
   usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
@@ -1426,8 +1607,13 @@ clearStatsBtn.addEventListener("click", () => {
 function clearAllHistory(): void {
   homeHistoryEntries = [];
   persistHomeHistory();
-  renderHomeHistory();
-  renderFullHistory();
+  invalidateHistoryViews();
+  if (activePage === "home") {
+    renderHomeHistory();
+  }
+  if (activePage === "history") {
+    renderFullHistory();
+  }
   recentTurns.length = 0;
   setNotice("History cleared.");
 }
@@ -1483,9 +1669,14 @@ async function bootstrap(): Promise<void> {
   }
   await refreshOllamaStatus({ quiet: true });
   await fetchOllamaModels({ quiet: true, autoSelect: true });
-  await fetchLocalSttModels({ quiet: true });
+  await fetchLocalSttModels({ quiet: true, autoSelect: true });
+  await refreshSelectedLocalSttModelAvailability({ quiet: true });
   await pollLocalSttDownloadStatusOnce({ quiet: true });
-  await syncLocalSttRuntimeForMode(settings.sttRuntimeMode);
+  try {
+    await syncLocalSttRuntimeForMode(settings.sttRuntimeMode);
+  } catch (error) {
+    setNotice(`Unable to initialize local STT runtime: ${asErrorMessage(error)}`, true);
+  }
   try {
     await pollTtsSetupStatusOnce();
   } catch {
@@ -1521,8 +1712,10 @@ function asSettingsPane(value: string | undefined): SettingsPane | null {
   return null;
 }
 
-function setActivePage(next: MainPage): void {
+function setActivePage(next: MainPage, options: { forceRender?: boolean } = {}): void {
+  const forceRender = options.forceRender ?? false;
   activePage = next;
+  localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, next);
   for (const navButton of pageNavButtons) {
     const current = navButton.dataset.pageNav === next;
     navButton.classList.toggle("is-active", current);
@@ -1536,9 +1729,13 @@ function setActivePage(next: MainPage): void {
   }
 
   if (next === "home") {
-    renderHomeHistory();
+    if (forceRender || homeHistoryNeedsRender) {
+      renderHomeHistory();
+    }
   } else if (next === "history") {
-    renderFullHistory();
+    if (forceRender || fullHistoryNeedsRender) {
+      renderFullHistory();
+    }
   }
 }
 
@@ -1550,6 +1747,9 @@ function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void
   logClientEvent(
     `[ui.settings.pane] requested=${next} resolved=${resolved} reason=${reason}`,
   );
+  const previousPane = activeSettingsPane;
+  activeSettingsPane = resolved;
+  localStorage.setItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY, resolved);
 
   const titleMap: Record<SettingsPane, string> = {
     general: "General",
@@ -1569,10 +1769,40 @@ function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void
     navButton.setAttribute("aria-current", current ? "page" : "false");
   }
 
+  if (settingsPaneTransitionTimer !== null) {
+    window.clearTimeout(settingsPaneTransitionTimer);
+    settingsPaneTransitionTimer = null;
+  }
+
+  settingsMain.classList.remove("is-pane-switching", "is-switching-forward", "is-switching-backward");
+  for (const panel of settingsPanels) {
+    panel.classList.remove("is-transitioning-in", "is-transitioning-forward", "is-transitioning-backward");
+  }
+
+  const previousIndex = settingsPanels.findIndex((panel) => panel.dataset.settingsPane === previousPane);
+  const nextIndex = settingsPanels.findIndex((panel) => panel.dataset.settingsPane === resolved);
+  const shouldAnimate = previousPane !== resolved && previousIndex >= 0 && nextIndex >= 0;
+
   for (const panel of settingsPanels) {
     const current = panel.dataset.settingsPane === resolved;
     panel.classList.toggle("is-active", current);
     panel.hidden = !current;
+    if (current && shouldAnimate) {
+      const directionClass = nextIndex > previousIndex ? "is-transitioning-forward" : "is-transitioning-backward";
+      panel.classList.add("is-transitioning-in", directionClass);
+    }
+  }
+
+  if (shouldAnimate) {
+    const switchDirectionClass = nextIndex > previousIndex ? "is-switching-forward" : "is-switching-backward";
+    settingsMain.classList.add("is-pane-switching", switchDirectionClass);
+    settingsPaneTransitionTimer = window.setTimeout(() => {
+      settingsMain.classList.remove("is-pane-switching", "is-switching-forward", "is-switching-backward");
+      for (const panel of settingsPanels) {
+        panel.classList.remove("is-transitioning-in", "is-transitioning-forward", "is-transitioning-backward");
+      }
+      settingsPaneTransitionTimer = null;
+    }, 180);
   }
 }
 
@@ -1625,12 +1855,15 @@ function updateTtsSetupGate(): void {
 
 function openSettings(reason = "unspecified"): void {
   logClientEvent(`[ui.settings.open] reason=${reason}`);
-  settingsOverlay.hidden = false;
-  settingsOverlay.classList.add("is-open");
-  settingsOverlay.scrollTop = 0;
-  for (const panel of settingsPanels) {
-    panel.scrollTop = 0;
+  if (settingsCloseTimer !== null) {
+    window.clearTimeout(settingsCloseTimer);
+    settingsCloseTimer = null;
   }
+  settingsOverlay.hidden = false;
+  settingsOverlay.classList.remove("is-closing");
+  void settingsOverlay.offsetWidth;
+  settingsOverlay.classList.add("is-open");
+  syncLocalSttDownloadOverlayVisibility();
 }
 
 function closeSettings(): void {
@@ -1639,7 +1872,20 @@ function closeSettings(): void {
     activeElement.blur();
   }
   settingsOverlay.classList.remove("is-open");
-  settingsOverlay.hidden = true;
+  settingsOverlay.classList.add("is-closing");
+  if (settingsCloseTimer !== null) {
+    window.clearTimeout(settingsCloseTimer);
+  }
+  settingsCloseTimer = window.setTimeout(() => {
+    settingsOverlay.hidden = true;
+    settingsOverlay.classList.remove("is-closing");
+    settingsCloseTimer = null;
+  }, 180);
+  syncLocalSttDownloadOverlayVisibility();
+}
+
+function isSettingsOpen(): boolean {
+  return !settingsOverlay.hidden && settingsOverlay.classList.contains("is-open");
 }
 
 function loadSettings(): PersistedSettings {
@@ -1669,6 +1915,7 @@ function loadSettings(): PersistedSettings {
     maxTokens: DEFAULT_MAX_TOKENS,
     launchAtLogin: true,
     showFlowBar: false,
+    showDockAlways: false,
     commandMode: true,
     wakeWordEnabled: true,
     assistantName: DEFAULT_ASSISTANT_NAME,
@@ -1768,6 +2015,7 @@ function loadSettings(): PersistedSettings {
       showFlowBar: fromLegacyOnly
         ? false
         : coerceBoolean(parsed.showFlowBar, defaults.showFlowBar),
+      showDockAlways: coerceBoolean(parsed.showDockAlways, defaults.showDockAlways),
       commandMode: coerceBoolean(parsed.commandMode, defaults.commandMode),
       wakeWordEnabled: coerceBoolean(parsed.wakeWordEnabled, defaults.wakeWordEnabled),
       assistantName:
@@ -1998,6 +2246,7 @@ function readSettingsFromForm(): PersistedSettings {
     maxTokens: coerceInteger(Number(maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 4096),
     launchAtLogin: launchAtLoginToggle.checked,
     showFlowBar: showFlowBarToggle.checked,
+    showDockAlways: showDockAlwaysToggle.checked,
     commandMode: commandModeToggle.checked,
     wakeWordEnabled: wakeWordEnabledToggle.checked,
     assistantName: assistantNameInput.value,
@@ -2076,6 +2325,7 @@ function applySettingsToForm(next: PersistedSettings): void {
   captureModePushToTalkInput.checked = next.captureMode === "push-to-talk";
   launchAtLoginToggle.checked = next.launchAtLogin;
   showFlowBarToggle.checked = next.showFlowBar;
+  showDockAlwaysToggle.checked = next.showDockAlways;
   commandModeToggle.checked = next.commandMode;
   wakeWordEnabledToggle.checked = next.wakeWordEnabled;
   assistantNameInput.value = next.assistantName;
@@ -2106,27 +2356,21 @@ function applySettingsToForm(next: PersistedSettings): void {
   syncHybridRuntimeFieldVisibility(next.sttRuntimeMode, next.aiRuntimeMode);
 }
 
-function handleSettingsChange(): void {
-  const previousSettings = settings;
-  const previousMode = settings.captureMode;
+async function handleSettingsChange(): Promise<void> {
+  const previousSettings = { ...settings };
+  const previousMicrophoneDeviceId = settings.microphoneDeviceId;
+  const previousShowFlowBar = settings.showFlowBar;
   const previousIncognito = settings.incognitoMode;
+  const previousMuteMusicWhileDictating = settings.muteMusicWhileDictating;
   const previousTtsEngine = settings.ttsEngine;
   const previousSttRuntimeMode = settings.sttRuntimeMode;
   const previousAiRuntimeMode = settings.aiRuntimeMode;
-  const previousMuteMusicWhileDictating = settings.muteMusicWhileDictating;
   const previousLaunchAtLogin = settings.launchAtLogin;
-  const previousMicrophoneDeviceId = settings.microphoneDeviceId;
-  const previousShowFlowBar = settings.showFlowBar;
   const previousShortcutSignature = buildShortcutSyncSignature(settings);
+  const previousMode = settings.captureMode;
+
   const next = readSettingsFromForm();
-  if (settingsOverlay.hidden && next.captureMode !== previousSettings.captureMode) {
-    logClientEvent(
-      `[settings.captureMode] ignored hidden-overlay flip from=${previousSettings.captureMode} to=${next.captureMode}`,
-    );
-    next.captureMode = previousSettings.captureMode;
-    captureModeSingleInput.checked = next.captureMode === "single-tap";
-    captureModePushToTalkInput.checked = next.captureMode === "push-to-talk";
-  }
+
   const parsed = parseHotkey(next.pushToTalkHotkey);
   const commandParsed = parseHotkey(next.commandHotkey);
 
@@ -2415,6 +2659,165 @@ function pickDefaultLocalOllamaModelFromCatalog(): string {
   return firstNonEmbeddingModel || localOllamaModelCatalog[0] || "";
 }
 
+const LOCAL_STT_RUNTIME_STATE_TIMEOUT_MS = 4000;
+const LOCAL_STT_COMMAND_TIMEOUT_MS = 12000;
+const LOCAL_STT_WARMUP_TIMEOUT_MS = 90000;
+
+function invokeWithTimeout<T>(
+  command: string,
+  args: Record<string, unknown> | undefined,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    void invoke<T>(command, args)
+      .then((result) => {
+        window.clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+function inferLocalSttProviderFromModel(model: string): string {
+  const normalized = model.trim().toLowerCase();
+  if (normalized.startsWith("nvidia/") || normalized.includes("parakeet")) {
+    return "parakeet";
+  }
+  if (normalized.includes("sensevoice")) {
+    return "sensevoice";
+  }
+  if (normalized.includes("moonshine")) {
+    return "moonshine";
+  }
+  return normalized ? "whisper" : "";
+}
+
+function getLocalSttActionBlockReason(): string | null {
+  if (pipelineRunning) {
+    return "Finish the current pipeline run first.";
+  }
+  if (stage === "recording") {
+    return "Stop recording before changing offline STT setup.";
+  }
+  if (localSttDownloadInFlight || localSttDownloadActive) {
+    return "A local STT download is already running.";
+  }
+  if (localSttDeleteInFlight) {
+    return "A local STT delete is already running.";
+  }
+  if (localSttDeactivateInFlight) {
+    return "Local STT is currently unloading.";
+  }
+  if (localSttWarmupInFlight) {
+    return "Local STT is currently loading.";
+  }
+  if (localSttRuntimeStateInFlight) {
+    return "Local STT status is still refreshing.";
+  }
+  if (localSttHardwareAdvisorOpen) {
+    return "Close the hardware advisor before continuing.";
+  }
+  return null;
+}
+
+function reportBlockedLocalSttAction(action: string): boolean {
+  const reason = getLocalSttActionBlockReason();
+  if (!reason) {
+    return false;
+  }
+  setNotice(`${action} unavailable right now. ${reason}`, true);
+  return true;
+}
+
+async function getLocalSttModelStatus(
+  model: string,
+  options: { quiet?: boolean } = {},
+): Promise<LocalSttModelStatusResponse | null> {
+  const normalizedModel = model.trim();
+  if (!normalizedModel) {
+    localSttSelectedModelDownloaded = false;
+    localSttStatusChecked = true;
+    renderSidebarLocalSttToggle();
+    return null;
+  }
+
+  try {
+    const response = await invokeWithTimeout<LocalSttModelStatusResponse>(
+      "get_local_stt_model_status",
+      { request: { model: normalizedModel } },
+      LOCAL_STT_COMMAND_TIMEOUT_MS,
+      `Timed out while checking local STT files for \"${normalizedModel}\".`,
+    );
+    localSttSelectedModelDownloaded = response.exists;
+    return response;
+  } catch (error) {
+    localSttSelectedModelDownloaded = false;
+    if (!options.quiet) {
+      setNotice(`Unable to inspect local STT model files: ${asErrorMessage(error)}`, true);
+    }
+    return null;
+  } finally {
+    localSttStatusChecked = true;
+    renderSidebarLocalSttToggle();
+  }
+}
+
+async function refreshSelectedLocalSttModelAvailability(
+  options: { quiet?: boolean } = {},
+): Promise<boolean> {
+  const model = getSelectedLocalSttModel();
+  const response = await getLocalSttModelStatus(model, options);
+  localSttSelectedModelDownloaded = response?.exists === true;
+  renderLocalSttSettingsStatus();
+  return localSttSelectedModelDownloaded;
+}
+
+async function ensureSelectedLocalSttModel(options: { quiet?: boolean } = {}): Promise<string> {
+  const quiet = options.quiet === true;
+  let activeSettings = readSettingsFromForm();
+  let selected = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  if (selected) {
+    return selected;
+  }
+
+  if (localSttModelCatalog.length === 0) {
+    await fetchLocalSttModels({ quiet: true, autoSelect: true });
+    selected = readSettingsFromForm().localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+    if (selected) {
+      return selected;
+    }
+  }
+
+  const fallbackModel = pickDefaultLocalSttModelFromCatalog();
+  if (fallbackModel) {
+    localSttModelInput.value = fallbackModel;
+    if (localSttModelCatalog.includes(fallbackModel)) {
+      localSttModelCatalogSelect.value = fallbackModel;
+    }
+    handleSettingsChange();
+    await refreshSelectedLocalSttModelAvailability({ quiet: true });
+    if (!quiet) {
+      setNotice(`Selected local STT model "${localSttModelLabel(fallbackModel)}".`);
+    }
+    return fallbackModel;
+  }
+
+  if (!quiet) {
+    setNotice("No local STT models are available yet. Open Settings > Models and refresh the catalog.", true);
+    openSettings("local-stt-model-required");
+    setActiveSettingsPane("offline", "local-stt-model-required");
+  }
+  return "";
+}
+
 function requestLocalSttRuntimeSyncForMode(
   targetMode: RuntimeMode,
   options: { showLoadOverlay?: boolean } = {},
@@ -2429,15 +2832,22 @@ function requestLocalSttRuntimeSyncForMode(
 
   runtimeModeSyncInFlight = true;
   void (async () => {
-    while (pendingRuntimeModeSyncTarget) {
-      const nextTarget = pendingRuntimeModeSyncTarget;
-      const nextShowLoadOverlay =
-        nextTarget === "local" && pendingRuntimeModeSyncShowLoadOverlay;
-      pendingRuntimeModeSyncTarget = null;
-      pendingRuntimeModeSyncShowLoadOverlay = false;
-      await syncLocalSttRuntimeForMode(nextTarget, { showLoadOverlay: nextShowLoadOverlay });
+    try {
+      while (pendingRuntimeModeSyncTarget) {
+        const nextTarget = pendingRuntimeModeSyncTarget;
+        const nextShowLoadOverlay =
+          nextTarget === "local" && pendingRuntimeModeSyncShowLoadOverlay;
+        pendingRuntimeModeSyncTarget = null;
+        pendingRuntimeModeSyncShowLoadOverlay = false;
+        try {
+          await syncLocalSttRuntimeForMode(nextTarget, { showLoadOverlay: nextShowLoadOverlay });
+        } catch (error) {
+          setNotice(`Unable to switch local STT runtime: ${asErrorMessage(error)}`, true);
+        }
+      }
+    } finally {
+      runtimeModeSyncInFlight = false;
     }
-    runtimeModeSyncInFlight = false;
   })();
 }
 
@@ -2455,6 +2865,7 @@ async function syncLocalSttRuntimeForMode(
           localSttModelCatalogSelect.value = fallbackModel;
         }
         handleSettingsChange();
+        await refreshSelectedLocalSttModelAvailability({ quiet: true });
         model = fallbackModel;
       }
     }
@@ -2462,7 +2873,7 @@ async function syncLocalSttRuntimeForMode(
     const showLoadOverlay = options.showLoadOverlay === true && Boolean(model);
     if (showLoadOverlay) {
       showLocalSttLoadOverlay(model);
-      localSttDownloadNotice.textContent = `Loading local STT model "${model}"...`;
+      setLocalSttNotice(`Loading local STT model "${model}"...`);
       setNotice(`Loading local STT model "${model}"...`);
     }
 
@@ -2486,6 +2897,11 @@ async function syncLocalSttRuntimeForMode(
           "Local STT runtime is active but no local STT model is selected. Open Settings > Models and select a model, then click Load STT.",
           true,
         );
+      } else if (!(await checkModelFileExists(selectedModel))) {
+        setNotice(
+          `Local STT model "${selectedModel}" is not downloaded yet. Open Settings > Models and download it first.`,
+          true,
+        );
       } else {
         setNotice(
           `Local STT runtime is active but local STT model "${selectedModel}" could not be loaded. Open Settings > Models and click Load STT.`,
@@ -2506,16 +2922,19 @@ async function syncLocalSttRuntimeForMode(
     return;
   }
 
-  const activeSettings = readSettingsFromForm();
+  let activeSettings = readSettingsFromForm();
   const modelToUnload =
     activeSettings.localSttModel.trim() ||
     localSttModelCatalogSelect.value.trim() ||
     lastWarmedLocalSttModel.trim();
   try {
-    const response = await invoke<LocalSttDeactivateResponse>("deactivate_local_stt_model", {
-      request: { model: modelToUnload || null },
-    });
-    localSttDownloadNotice.textContent = response.details;
+    const response = await invokeWithTimeout<LocalSttDeactivateResponse>(
+      "deactivate_local_stt_model",
+      { request: { model: modelToUnload || null } },
+      LOCAL_STT_COMMAND_TIMEOUT_MS,
+      "Local STT unload timed out. You can keep using Online mode and retry unloading later.",
+    );
+    setLocalSttNotice(response.details, response.deactivated ? "normal" : "error");
     if (response.deactivated) {
       lastWarmedLocalSttModel = "";
     }
@@ -2704,6 +3123,12 @@ function isTauriEnvironment(): boolean {
   return "__TAURI_INTERNALS__" in window || "__TAURI__" in window;
 }
 
+function openInSystemBrowser(url: string): void {
+  void openExternalUrl(url).catch((error) => {
+    setNotice(`Failed to open link: ${asErrorMessage(error)}`, true);
+  });
+}
+
 function syncUpdaterButtons(): void {
   if (!isTauriEnvironment()) {
     checkUpdatesBtn.disabled = true;
@@ -2717,15 +3142,34 @@ function syncUpdaterButtons(): void {
     updateInstallInFlight ||
     !cachedUpdateResult?.available ||
     !cachedUpdateResult.installerDownloadUrl;
+  installUpdateBtn.textContent = cachedUpdateResult?.available
+    ? `Download & install ${cachedUpdateResult.latestVersion || "update"}`
+    : "Download & install";
 }
 
 function initializeUpdaterPanel(): void {
   updateCurrentVersion.textContent = "-";
   updateLatestVersion.textContent = "-";
   updatePublishedAt.textContent = "-";
+  updateReleaseCard.hidden = true;
+  updateReleaseName.textContent = "-";
+  updateReleaseNotes.textContent = "Release notes are unavailable for this build.";
+  updateReleaseLink.href = "https://github.com";
+  updateReleaseLink.hidden = true;
+  updateReleaseLink.addEventListener("click", (event) => {
+    if (!isTauriEnvironment()) {
+      return;
+    }
+    event.preventDefault();
+    openInSystemBrowser(updateReleaseLink.href);
+  });
   updateInstallProgressWrap.hidden = true;
   updateInstallProgressBar.style.width = "0%";
+  updateInstallProgressTrack.setAttribute("aria-valuenow", "0");
+  updateInstallProgressTrack.setAttribute("aria-valuetext", "Waiting to start update download.");
   updateInstallProgressText.textContent = "Waiting to start update download.";
+  autoCheckUpdatesToggle.checked = readAppUpdateAutoCheckEnabled();
+  refreshUpdateLastCheckedText();
   setUpdaterStatus("idle", "Check to see if a new version is available.");
   syncUpdaterButtons();
 
@@ -2806,11 +3250,74 @@ function setUpdaterStatus(stage: "idle" | "processing" | "speaking" | "error", m
   } else if (stage === "processing") {
     updateStatusPill.textContent = "Checking";
   } else if (stage === "speaking") {
-    updateStatusPill.textContent = "Update";
+    updateStatusPill.textContent = "Available";
   } else {
     updateStatusPill.textContent = "Error";
   }
   updateStatusText.textContent = message;
+}
+
+function readAppUpdateAutoCheckEnabled(): boolean {
+  const raw = localStorage.getItem(APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY);
+  if (raw === null) {
+    return DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED;
+  }
+  return raw !== "0";
+}
+
+function readLastAppUpdateCheckedAtMs(): number {
+  const raw = localStorage.getItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY);
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return parsed;
+}
+
+function refreshUpdateLastCheckedText(): void {
+  const lastCheckedAt = readLastAppUpdateCheckedAtMs();
+  if (lastCheckedAt <= 0) {
+    updateLastCheckedText.textContent = "Last checked: Never.";
+    return;
+  }
+
+  updateLastCheckedText.textContent = `Last checked: ${new Date(lastCheckedAt).toLocaleString()}.`;
+}
+
+function shouldRunStartupUpdateCheck(): boolean {
+  const lastCheckedAt = readLastAppUpdateCheckedAtMs();
+  if (lastCheckedAt <= 0) {
+    return true;
+  }
+  return Date.now() - lastCheckedAt >= APP_UPDATE_CHECK_INTERVAL_MS;
+}
+
+function msUntilNextAutomaticUpdateCheck(): number {
+  const lastCheckedAt = readLastAppUpdateCheckedAtMs();
+  if (lastCheckedAt <= 0) {
+    return 0;
+  }
+
+  const elapsedMs = Date.now() - lastCheckedAt;
+  if (elapsedMs >= APP_UPDATE_CHECK_INTERVAL_MS) {
+    return 0;
+  }
+
+  return APP_UPDATE_CHECK_INTERVAL_MS - elapsedMs;
+}
+
+function isSafeGithubReleasePageUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "https:" && parsed.hostname === "github.com" && parsed.pathname.includes("/releases/");
+  } catch {
+    return false;
+  }
 }
 
 function formatPublishedDate(raw: string): string {
@@ -2835,7 +3342,10 @@ function setUpdateInstallProgress(
   updateInstallProgressWrap.hidden = !visible;
   const normalizedPercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
   updateInstallProgressBar.style.width = `${normalizedPercent}%`;
-  updateInstallProgressText.textContent = detail ? `${message} ${detail}` : message;
+  const progressText = detail ? `${message} ${detail}` : message;
+  updateInstallProgressTrack.setAttribute("aria-valuenow", String(Math.round(normalizedPercent)));
+  updateInstallProgressTrack.setAttribute("aria-valuetext", progressText);
+  updateInstallProgressText.textContent = progressText;
 }
 
 function openUpdateSettings(reason: string): void {
@@ -2902,6 +3412,19 @@ function applyUpdateCheckResult(result: AppUpdateCheckResponse, silent: boolean)
   updateCurrentVersion.textContent = result.currentVersion || "-";
   updateLatestVersion.textContent = result.latestVersion || "-";
   updatePublishedAt.textContent = formatPublishedDate(result.publishedAt);
+  updateReleaseName.textContent = result.releaseName?.trim() || result.latestVersion || "Release information unavailable";
+  updateReleaseNotes.textContent = result.releaseNotes?.trim() || "Release notes are unavailable for this build.";
+  const hasReleaseDetails = Boolean(
+    result.releaseName?.trim() || result.releaseNotes?.trim() || isSafeGithubReleasePageUrl(result.releaseUrl),
+  );
+  updateReleaseCard.hidden = !hasReleaseDetails;
+  if (isSafeGithubReleasePageUrl(result.releaseUrl)) {
+    updateReleaseLink.href = result.releaseUrl;
+    updateReleaseLink.hidden = false;
+  } else {
+    updateReleaseLink.href = "https://github.com";
+    updateReleaseLink.hidden = true;
+  }
 
   if (result.available && result.installerDownloadUrl) {
     setUpdaterStatus(
@@ -2938,6 +3461,7 @@ async function handleCheckForUpdates(options?: {
 
   const silent = options?.silent ?? false;
   const source = options?.source ?? "manual";
+  const previousCachedUpdateResult = cachedUpdateResult;
   updateCheckInFlight = true;
   cachedUpdateResult = null;
   syncUpdaterButtons();
@@ -2948,11 +3472,13 @@ async function handleCheckForUpdates(options?: {
   try {
     const result = await invoke<AppUpdateCheckResponse>("check_for_app_update");
     localStorage.setItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY, String(Date.now()));
+    refreshUpdateLastCheckedText();
     applyUpdateCheckResult(result, silent);
     if (result.available && (source === "startup" || source === "interval")) {
       notifyAppUpdateAvailable(result, source);
     }
   } catch (error) {
+    cachedUpdateResult = previousCachedUpdateResult;
     setUpdaterStatus("error", `Update check failed: ${asErrorMessage(error)}`);
   } finally {
     updateCheckInFlight = false;
@@ -2975,6 +3501,14 @@ async function handleInstallUpdate(): Promise<void> {
     assetName: cachedUpdateResult.installerAssetName || undefined,
     silent: true,
   };
+
+  const targetVersion = cachedUpdateResult.latestVersion || "the available update";
+  const confirmed = await confirmDestructiveAction(
+    `Install ${targetVersion} now? The installer will download, this app will close, and any unsaved work in the current session may be lost.`,
+  );
+  if (!confirmed) {
+    return;
+  }
 
   updateInstallInFlight = true;
   syncUpdaterButtons();
@@ -3043,12 +3577,33 @@ function startAutomaticUpdateChecks(): void {
 
   if (updateAutoCheckTimerId !== null) {
     window.clearInterval(updateAutoCheckTimerId);
+    updateAutoCheckTimerId = null;
+  }
+  if (updateAutoCheckTimeoutId !== null) {
+    window.clearTimeout(updateAutoCheckTimeoutId);
+    updateAutoCheckTimeoutId = null;
   }
 
-  void handleCheckForUpdates({ silent: true, source: "startup" });
-  updateAutoCheckTimerId = window.setInterval(() => {
+  if (!readAppUpdateAutoCheckEnabled()) {
+    return;
+  }
+
+  const dueInMs = msUntilNextAutomaticUpdateCheck();
+  if (dueInMs <= 0 || shouldRunStartupUpdateCheck()) {
+    void handleCheckForUpdates({ silent: true, source: "startup" });
+    updateAutoCheckTimerId = window.setInterval(() => {
+      void handleCheckForUpdates({ silent: true, source: "interval" });
+    }, APP_UPDATE_CHECK_INTERVAL_MS);
+    return;
+  }
+
+  updateAutoCheckTimeoutId = window.setTimeout(() => {
+    updateAutoCheckTimeoutId = null;
     void handleCheckForUpdates({ silent: true, source: "interval" });
-  }, APP_UPDATE_CHECK_INTERVAL_MS);
+    updateAutoCheckTimerId = window.setInterval(() => {
+      void handleCheckForUpdates({ silent: true, source: "interval" });
+    }, APP_UPDATE_CHECK_INTERVAL_MS);
+  }, dueInMs);
 }
 
 function requestLaunchAtLoginSync(enabled: boolean): void {
@@ -3897,8 +4452,23 @@ function loadHomeHistory(): HomeHistoryEntry[] {
   }
 }
 
+function loadPersistedMainPage(): MainPage {
+  const persisted = localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY);
+  return asMainPage(persisted ?? undefined) ?? "home";
+}
+
+function loadPersistedSettingsPane(): SettingsPane {
+  const persisted = localStorage.getItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY);
+  return asSettingsPane(persisted ?? undefined) ?? "general";
+}
+
 function persistHomeHistory(): void {
   localStorage.setItem(HOME_HISTORY_STORAGE_KEY, JSON.stringify(homeHistoryEntries));
+}
+
+function invalidateHistoryViews(): void {
+  homeHistoryNeedsRender = true;
+  fullHistoryNeedsRender = true;
 }
 
 function formatConversationTime(timestamp: number): string {
@@ -3945,40 +4515,70 @@ function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
 function renderHomeHistory(): void {
   if (settings.incognitoMode) {
     conversationLog.innerHTML = '<p class="empty-hint">Incognito mode enabled. History is hidden.</p>';
+    homeHistoryNeedsRender = false;
     return;
   }
 
-  if (homeHistoryEntries.length === 0) {
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const todayEntries = homeHistoryEntries.filter(e => e.timestamp >= todayStart);
+
+  if (todayEntries.length === 0) {
     conversationLog.innerHTML = `<p class="empty-hint">${EMPTY_HISTORY_HINT}</p>`;
+    homeHistoryNeedsRender = false;
     return;
   }
 
   conversationLog.innerHTML = "";
   const fragment = document.createDocumentFragment();
-  const recent = homeHistoryEntries.slice(0, 5);
-  for (const entry of recent) {
+  for (const entry of todayEntries) {
     fragment.append(createConversationEntryElement(entry));
   }
   conversationLog.append(fragment);
+  homeHistoryNeedsRender = false;
 }
 
-function renderFullHistory(): void {
+function renderFullHistory(filter: "all" | "day" | "week" | "month" = "all", specificDate?: string): void {
   if (settings.incognitoMode) {
     fullHistoryLog.innerHTML = '<p class="empty-hint">Incognito mode enabled. History is hidden.</p>';
+    fullHistoryNeedsRender = false;
     return;
   }
 
-  if (homeHistoryEntries.length === 0) {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dayOfWeek = now.getDay();
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek).getTime();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+  let filteredEntries = homeHistoryEntries;
+  if (specificDate) {
+    const dateParts = specificDate.split("-");
+    const selectedDate = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]));
+    const dateStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate()).getTime();
+    const dateEnd = dateStart + 24 * 60 * 60 * 1000;
+    filteredEntries = homeHistoryEntries.filter(e => e.timestamp >= dateStart && e.timestamp < dateEnd);
+  } else if (filter === "day") {
+    filteredEntries = homeHistoryEntries.filter(e => e.timestamp >= todayStart);
+  } else if (filter === "week") {
+    filteredEntries = homeHistoryEntries.filter(e => e.timestamp >= weekStart);
+  } else if (filter === "month") {
+    filteredEntries = homeHistoryEntries.filter(e => e.timestamp >= monthStart);
+  }
+
+  if (filteredEntries.length === 0) {
     fullHistoryLog.innerHTML = `<p class="empty-hint">${EMPTY_HISTORY_HINT}</p>`;
+    fullHistoryNeedsRender = false;
     return;
   }
 
   fullHistoryLog.innerHTML = "";
   const fragment = document.createDocumentFragment();
-  for (const entry of homeHistoryEntries) {
+  for (const entry of filteredEntries) {
     fragment.append(createConversationEntryElement(entry));
   }
   fullHistoryLog.append(fragment);
+  fullHistoryNeedsRender = false;
 }
 
 function loadDockLayout(): DockLayout | null {
@@ -4187,8 +4787,8 @@ function renderDictionaryList(): void {
     `;
 
     const deleteBtn = card.querySelector(".icon-delete-btn") as HTMLButtonElement;
-    deleteBtn.addEventListener("click", () => {
-      if (!confirmDestructiveAction(`Delete dictionary term "${term.source}"?`)) {
+    deleteBtn.addEventListener("click", async () => {
+      if (!await confirmDestructiveAction(`Delete dictionary term "${term.source}"?`)) {
         return;
       }
       dictionaryTerms = dictionaryTerms.filter((entry) => entry.id !== term.id);
@@ -4235,6 +4835,11 @@ function addDictionaryTerm(): void {
 function renderSnippetsList(): void {
   const filtered = snippets;
 
+  const snippetsCountBadge = document.getElementById("snippetsCountBadge");
+  if (snippetsCountBadge) {
+    snippetsCountBadge.textContent = `${filtered.length} snippet${filtered.length === 1 ? "" : "s"}`;
+  }
+
   if (filtered.length === 0) {
     snippetsList.innerHTML = `
       <div class="empty-state">
@@ -4252,27 +4857,30 @@ function renderSnippetsList(): void {
   const fragment = document.createDocumentFragment();
   for (const snippet of filtered) {
     const row = document.createElement("div");
-    row.className = "managed-row managed-row-grid";
+    row.className = "managed-row snippet-row";
 
-    const mainEl = document.createElement("p");
+    const mainEl = document.createElement("div");
     mainEl.className = "managed-row-main";
-    const strongEl = document.createElement("strong");
-    strongEl.textContent = snippet.trigger;
-    const spanEl = document.createElement("span");
-    spanEl.textContent = snippet.expansion;
-    mainEl.append(strongEl, spanEl);
-
-
+    const triggerEl = document.createElement("strong");
+    triggerEl.className = "snippet-trigger";
+    triggerEl.textContent = snippet.trigger;
+    const expansionEl = document.createElement("span");
+    expansionEl.className = "snippet-expansion";
+    expansionEl.textContent = snippet.expansion;
+    mainEl.append(triggerEl, expansionEl);
 
     const actionsEl = document.createElement("div");
     actionsEl.className = "managed-row-actions";
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
-    deleteBtn.className = "inline-link";
+    deleteBtn.className = "delete-btn";
+    deleteBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+      <span>Delete</span>
+    `;
     deleteBtn.dataset.snippetDelete = snippet.id;
-    deleteBtn.textContent = "Delete";
-    deleteBtn.addEventListener("click", () => {
-      if (!confirmDestructiveAction(`Delete snippet "${snippet.trigger}"?`)) {
+    deleteBtn.addEventListener("click", async () => {
+      if (!await confirmDestructiveAction(`Delete snippet "${snippet.trigger}"?`)) {
         return;
       }
       snippets = snippets.filter((entry) => entry.id !== snippet.id);
@@ -4312,7 +4920,8 @@ function addSnippetEntry(): void {
   snippetTriggerInput.value = "";
   snippetExpansionInput.value = "";
 
-  snippetForm.classList.add("is-collapsed");
+  snippetFormContainer.classList.add("is-collapsed");
+  snippetsAddBtnTop.classList.remove("is-active");
   snippetsAddBtnTop.textContent = "Add new";
   setNotice(`Snippet added: ${trigger}`);
 }
@@ -4372,8 +4981,8 @@ function renderNotesList(): void {
     deleteBtn.className = "inline-link";
     deleteBtn.dataset.noteDelete = note.id;
     deleteBtn.textContent = "Delete";
-    deleteBtn.addEventListener("click", () => {
-      if (!confirmDestructiveAction("Delete this quick note?")) {
+    deleteBtn.addEventListener("click", async () => {
+      if (!await confirmDestructiveAction("Delete this quick note?")) {
         return;
       }
       quickNotes = quickNotes.filter((entry) => entry.id !== note.id);
@@ -4556,8 +5165,57 @@ async function triggerAutoPaste(text?: string): Promise<boolean> {
   }
 }
 
-function confirmDestructiveAction(message: string): boolean {
-  return window.confirm(message);
+async function confirmDestructiveAction(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+      <div class="confirm-modal">
+        <div class="confirm-body">
+          <div class="confirm-icon-wrapper">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+          </div>
+          <h3 class="confirm-title">Confirm Action</h3>
+          <p class="confirm-message">${message}</p>
+        </div>
+        <div class="confirm-actions">
+          <button type="button" class="confirm-btn confirm-btn-cancel">Cancel</button>
+          <button type="button" class="confirm-btn confirm-btn-confirm">Confirm</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const cancelBtn = overlay.querySelector(".confirm-btn-cancel") as HTMLButtonElement;
+    const confirmBtn = overlay.querySelector(".confirm-btn-confirm") as HTMLButtonElement;
+
+    const cleanup = (result: boolean) => {
+      overlay.classList.add("modal-exit");
+      setTimeout(() => {
+        overlay.remove();
+        resolve(result);
+      }, 150);
+    };
+
+    cancelBtn.addEventListener("click", () => cleanup(false));
+    confirmBtn.addEventListener("click", () => cleanup(true));
+
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        document.removeEventListener("keydown", handleEsc);
+        cleanup(false);
+      }
+    };
+    document.addEventListener("keydown", handleEsc);
+
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        document.removeEventListener("keydown", handleEsc);
+        cleanup(false);
+      }
+    });
+  });
 }
 
 async function captureSelectedTextForRewrite(options: { silent?: boolean } = {}): Promise<string> {
@@ -5017,7 +5675,7 @@ async function fetchProviderModels(): Promise<void> {
   if (pipelineRunning || stage === "recording") {
     return;
   }
-  const activeSettings = readSettingsFromForm();
+  let activeSettings = readSettingsFromForm();
   const anyOnlineRuntime =
     activeSettings.sttRuntimeMode === "online" || activeSettings.aiRuntimeMode === "online";
   if (!anyOnlineRuntime) {
@@ -5260,12 +5918,15 @@ async function pullOllamaModel(): Promise<void> {
   }
 }
 
-async function fetchLocalSttModels(options: { quiet?: boolean } = {}): Promise<void> {
+async function fetchLocalSttModels(
+  options: { quiet?: boolean; autoSelect?: boolean } = {},
+): Promise<void> {
   if (pipelineRunning || stage === "recording") {
     return;
   }
-  const activeSettings = readSettingsFromForm();
+  let activeSettings = readSettingsFromForm();
   const quiet = options.quiet === true;
+  const autoSelect = options.autoSelect === true;
 
   if (!quiet) {
     setStage("processing", "Loading local STT model catalog...");
@@ -5273,8 +5934,24 @@ async function fetchLocalSttModels(options: { quiet?: boolean } = {}): Promise<v
   try {
     const response = await invoke<ProviderModelsResponse>("fetch_local_stt_models");
     renderLocalSttModelCatalog(response.models, activeSettings.localSttModel);
-    if (!quiet) {
+    const refreshedSettings = readSettingsFromForm();
+    if (autoSelect && !refreshedSettings.localSttModel.trim() && response.models.length > 0) {
+      const fallback = pickDefaultLocalSttModelFromCatalog();
+      if (fallback) {
+        localSttModelInput.value = fallback;
+        if (localSttModelCatalog.includes(fallback)) {
+          localSttModelCatalogSelect.value = fallback;
+        }
+        handleSettingsChange();
+        if (!quiet) {
+          setNotice(`Auto-selected local STT model "${localSttModelLabel(fallback)}".`);
+        }
+      }
+    } else if (!quiet) {
       setNotice(`Loaded ${response.models.length} local STT models.`);
+    }
+    await refreshSelectedLocalSttModelAvailability({ quiet: true });
+    if (!quiet) {
       setStage("idle", "Local STT model list loaded.");
     }
   } catch (error) {
@@ -5287,50 +5964,131 @@ async function fetchLocalSttModels(options: { quiet?: boolean } = {}): Promise<v
   }
 }
 
+const ICON_DOWNLOAD = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
+const ICON_POWER = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>`;
+const ICON_PLAY = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+
 function renderSidebarLocalSttToggle(): void {
   const activeSettings = readSettingsFromForm();
   const isLocalMode = activeSettings.sttRuntimeMode === "local";
 
-  // Hide the button completely when STT mode is Online
-  if (!isLocalMode) {
+  // Hide the button completely when STT mode is Online or when initial status is not yet checked
+  if (!isLocalMode || !localSttStatusChecked) {
     sidebarToggleLocalSttBtn.hidden = true;
     return;
   }
 
-  // Only show button in Local mode
+  // Only show button in Local mode after status check
   sidebarToggleLocalSttBtn.hidden = false;
+  sidebarToggleLocalSttBtn.dataset.sttState = "ready";
 
   const loaded = isSelectedLocalSttModelLoaded();
   const hasModel = !!activeSettings.localSttModel.trim();
 
-  if (!hasModel) {
-    // No model selected/downloaded
-    sidebarToggleLocalSttGlyph.textContent = "⬇️";
+  if (!hasModel || !localSttSelectedModelDownloaded) {
+    sidebarToggleLocalSttGlyph.innerHTML = ICON_DOWNLOAD;
     sidebarToggleLocalSttLabel.textContent = "Download Model";
     const actionText = "Download offline model first";
     sidebarToggleLocalSttBtn.setAttribute("data-label", actionText);
-    sidebarToggleLocalSttBtn.setAttribute("aria-label", actionText);
-    sidebarToggleLocalSttBtn.title = "No offline model downloaded. Click for instructions.";
-    sidebarToggleLocalSttBtn.style.opacity = "0.7";
+    sidebarToggleLocalSttBtn.setAttribute("aria-label", `${actionText} (Alt+D)`);
+    sidebarToggleLocalSttBtn.title = hasModel
+      ? `Model files missing for ${activeSettings.localSttModel}. Click to download.`
+      : "No offline model selected yet. Click to choose and download one.";
+    sidebarToggleLocalSttBtn.dataset.sttState = "download";
   } else if (loaded) {
     // Model is loaded
-    sidebarToggleLocalSttGlyph.textContent = "⏻";
+    sidebarToggleLocalSttGlyph.innerHTML = ICON_POWER;
     sidebarToggleLocalSttLabel.textContent = "Unload STT";
     const actionText = "Unload local STT model";
     sidebarToggleLocalSttBtn.setAttribute("data-label", actionText);
-    sidebarToggleLocalSttBtn.setAttribute("aria-label", actionText);
+    sidebarToggleLocalSttBtn.setAttribute("aria-label", `${actionText} (Alt+D)`);
     sidebarToggleLocalSttBtn.title = `Local STT model loaded: ${activeSettings.localSttModel}`;
-    sidebarToggleLocalSttBtn.style.opacity = "1";
+    sidebarToggleLocalSttBtn.dataset.sttState = "loaded";
   } else {
     // Model exists but not loaded yet
-    sidebarToggleLocalSttGlyph.textContent = "▶";
+    sidebarToggleLocalSttGlyph.innerHTML = ICON_PLAY;
     sidebarToggleLocalSttLabel.textContent = "Load STT";
     const actionText = "Load local STT model";
     sidebarToggleLocalSttBtn.setAttribute("data-label", actionText);
-    sidebarToggleLocalSttBtn.setAttribute("aria-label", actionText);
+    sidebarToggleLocalSttBtn.setAttribute("aria-label", `${actionText} (Alt+D)`);
     sidebarToggleLocalSttBtn.title = `Load model: ${activeSettings.localSttModel || 'Select from Settings'}`;
-    sidebarToggleLocalSttBtn.style.opacity = "1";
+    sidebarToggleLocalSttBtn.dataset.sttState = "ready";
   }
+}
+
+function setLocalSttNotice(
+  message: string,
+  tone: "normal" | "error" | "success" = "normal",
+): void {
+  localSttDownloadNotice.textContent = message;
+  localSttDownloadNotice.dataset.tone = tone;
+}
+
+function renderLocalSttSettingsStatus(): void {
+  const activeSettings = readSettingsFromForm();
+  const selectedModel = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+
+  if (activeSettings.sttRuntimeMode !== "local") {
+    localSttStatusBadge.dataset.state = "offline";
+    localSttStatusBadge.textContent = "Online mode";
+    localSttStatusDetail.textContent = "Offline STT is disabled because STT runtime mode is currently set to Online.";
+    return;
+  }
+
+  if (localSttDownloadInFlight || localSttDeleteInFlight || localSttDeactivateInFlight || localSttWarmupInFlight || localSttRuntimeStateInFlight || localSttDownloadActive) {
+    localSttStatusBadge.dataset.state = "busy";
+    if (localSttDeleteInFlight) {
+      localSttStatusBadge.textContent = "Deleting";
+      localSttStatusDetail.textContent = selectedModel
+        ? `Removing local files for ${localSttModelLabel(selectedModel)}.`
+        : "Removing local STT model files.";
+      return;
+    }
+    if (localSttDeactivateInFlight) {
+      localSttStatusBadge.textContent = "Unloading";
+      localSttStatusDetail.textContent = selectedModel
+        ? `Unloading ${localSttModelLabel(selectedModel)} from memory.`
+        : "Unloading offline STT runtime from memory.";
+      return;
+    }
+    if (localSttWarmupInFlight || localSttRuntimeStateInFlight) {
+      localSttStatusBadge.textContent = "Loading";
+      localSttStatusDetail.textContent = selectedModel
+        ? `Preparing ${localSttModelLabel(selectedModel)} for offline transcription.`
+        : "Preparing offline STT runtime.";
+      return;
+    }
+    localSttStatusBadge.textContent = "Downloading";
+    localSttStatusDetail.textContent = selectedModel
+      ? `Downloading ${localSttModelLabel(selectedModel)} to local storage.`
+      : "Downloading offline STT model files.";
+    return;
+  }
+
+  if (!selectedModel) {
+    localSttStatusBadge.dataset.state = "idle";
+    localSttStatusBadge.textContent = "Not selected";
+    localSttStatusDetail.textContent = "Select a local STT model to download and use it offline.";
+    return;
+  }
+
+  if (!localSttSelectedModelDownloaded) {
+    localSttStatusBadge.dataset.state = "missing";
+    localSttStatusBadge.textContent = "Not downloaded";
+    localSttStatusDetail.textContent = `${localSttModelLabel(selectedModel)} is selected, but its local files are missing.`;
+    return;
+  }
+
+  if (isSelectedLocalSttModelLoaded()) {
+    localSttStatusBadge.dataset.state = "active";
+    localSttStatusBadge.textContent = "Loaded";
+    localSttStatusDetail.textContent = `${localSttModelLabel(selectedModel)} is downloaded and currently loaded in memory.`;
+    return;
+  }
+
+  localSttStatusBadge.dataset.state = "ready";
+  localSttStatusBadge.textContent = "Downloaded";
+  localSttStatusDetail.textContent = `${localSttModelLabel(selectedModel)} is downloaded locally and ready to load.`;
 }
 
 function getSelectedLocalSttModel(): string {
@@ -5352,17 +6110,6 @@ function localSttModelLabel(model: string): string {
     return "-";
   }
   return LOCAL_STT_MODEL_SIZE_LABELS[normalized] || normalized;
-}
-
-function localSttPerformanceTierLabel(tier: string): string {
-  const normalized = tier.trim().toLowerCase();
-  if (normalized === "performance") {
-    return "Performance";
-  }
-  if (normalized === "balanced") {
-    return "Balanced";
-  }
-  return "Basic";
 }
 
 function hasShownLocalSttHardwareAdvisor(): boolean {
@@ -5408,68 +6155,16 @@ async function suggestLocalSttModelForHardwareIfNeeded(selectedModel: string): P
   }
 
   const suggestionModel = advice.slasshySuggestionModel?.trim() || selectedModel;
-  localSttHardwareAdvisorSelectedModel = selectedModel;
-  localSttHardwareAdvisorSuggestionModel = suggestionModel;
-
-  const cpuLabel = advice.cpuName?.trim() || "Unknown CPU";
-  const ramLabel =
-    advice.totalRamGb > 0 ? `${advice.totalRamGb.toFixed(1)} GB RAM` : "Unknown RAM capacity";
-  const coreLabel =
-    advice.logicalCores > 0 ? `${advice.logicalCores} logical cores` : "Unknown core count";
-  const gpuLabel = advice.nvidiaGpuDetected
-    ? advice.gpuVramGb > 0
-      ? `${advice.gpuName || "NVIDIA GPU"} (${advice.gpuVramGb.toFixed(1)} GB VRAM)`
-      : advice.gpuName || "NVIDIA GPU"
-    : "No NVIDIA GPU detected";
-
-  sttHardwareAdvisorHardware.textContent =
-    `Detected hardware: ${cpuLabel} • ${coreLabel} • ${ramLabel} • ${gpuLabel}. ` +
-    `Tier: ${localSttPerformanceTierLabel(advice.performanceTier)}.`;
-  sttHardwareAdvisorSuggestion.textContent =
-    `SlasshyWispr Suggestion: ${localSttModelLabel(suggestionModel)}`;
-
-  const suggestedLabels = advice.suggestedModels
-    .map((model) => localSttModelLabel(model))
-    .filter((label) => label !== "-");
-  sttHardwareAdvisorList.textContent =
-    suggestedLabels.length > 0
-      ? `Recommended for your hardware: ${suggestedLabels.join(", ")}.`
-      : "Recommended for your hardware: start with smaller models first.";
-
-  const cautionLabels = advice.cautionModels
-    .map((model) => localSttModelLabel(model))
-    .filter((label) => label !== "-");
-  const warningLead =
-    advice.selectedModelWarning?.trim() ||
-    "Warning: Higher models can be system-hungry and can feel slow on basic hardware.";
-  sttHardwareAdvisorWarning.textContent =
-    cautionLabels.length > 0
-      ? `${warningLead} Heavy options on this hardware: ${cautionLabels.join(", ")}.`
-      : warningLead;
-
-  sttHardwareAdvisorUseSuggestionBtn.textContent =
-    `Use suggestion (${localSttModelLabel(suggestionModel)})`;
-  sttHardwareAdvisorContinueBtn.textContent =
-    `Continue selected (${localSttModelLabel(selectedModel)})`;
-
-  localSttHardwareAdvisorOpen = true;
-  sttHardwareAdvisorOverlay.hidden = false;
-  syncActionAvailability();
-
-  const choice = await new Promise<LocalSttHardwareAdvisorChoice>((resolve) => {
-    localSttHardwareAdvisorResolver = resolve;
-  });
   markLocalSttHardwareAdvisorShown();
 
-  if (choice === "cancel") {
-    localSttDownloadNotice.textContent = "Local STT model download canceled.";
-    setNotice("Local STT model download canceled.");
-    return null;
+  if (suggestionModel && suggestionModel !== selectedModel) {
+    setNotice(
+      `Using recommended local STT model for your hardware: ${localSttModelLabel(suggestionModel)}.`,
+    );
+    return suggestionModel;
   }
-  if (choice === "suggestion") {
-    return localSttHardwareAdvisorSuggestionModel || selectedModel;
-  }
-  return localSttHardwareAdvisorSelectedModel || selectedModel;
+
+  return selectedModel;
 }
 
 function updateLocalSttLoadOverlayDetail(): void {
@@ -5507,6 +6202,53 @@ function hideLocalSttLoadOverlay(): void {
   sttLoadOverlay.hidden = true;
 }
 
+function ensureLocalSttDownloadOverlay(): HTMLDivElement {
+  if (localSttDownloadOverlay) {
+    return localSttDownloadOverlay;
+  }
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText =
+    "position:fixed;right:20px;bottom:20px;z-index:10001;width:min(360px,calc(100vw - 32px));" +
+    "padding:14px 16px;border-radius:14px;background:rgba(8, 10, 15, 0.95);color:#fff;" +
+    "box-shadow:0 20px 50px rgba(0, 0, 0, 0.5);border:1px solid rgba(255, 255, 255, 0.1);backdrop-filter:blur(12px);" +
+    "transition: opacity 0.2s ease, transform 0.2s ease;";
+  overlay.hidden = true;
+  document.body.appendChild(overlay);
+  localSttDownloadOverlay = overlay;
+  return overlay;
+}
+
+function showLocalSttDownloadOverlay(status: LocalSttDownloadStatusResponse): void {
+  const overlay = ensureLocalSttDownloadOverlay();
+  const modelLabel = localSttModelLabel(status.model || getSelectedLocalSttModel());
+  const boundedPercent = Math.max(0, Math.min(100, Number(status.progressPercent) || 0));
+  const stage = status.stage?.trim() || "Downloading local STT model...";
+  const detail = status.currentFile?.trim() || status.message?.trim() || "Preparing files...";
+
+  overlay.style.background = "rgba(0, 0, 0, 0.95)";
+  overlay.style.border = "1px solid var(--border-subtle)";
+  overlay.style.boxShadow = "var(--shadow-modal)";
+
+  overlay.innerHTML = `
+    <div style="font-size:11px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Offline STT Download</div>
+    <div style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:4px;">${escapeHtml(modelLabel)}</div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.4;">${escapeHtml(stage)}</div>
+    <div style="height:6px;border-radius:999px;background:rgba(255, 255, 255, 0.08);overflow:hidden;margin-bottom:10px;">
+      <div style="height:100%;width:${boundedPercent.toFixed(1)}%;background:var(--text-secondary);transition:width 0.3s ease-out;"></div>
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(detail)}</div>
+  `;
+
+  syncLocalSttDownloadOverlayVisibility();
+}
+
+function hideLocalSttDownloadOverlay(): void {
+  if (localSttDownloadOverlay) {
+    localSttDownloadOverlay.hidden = true;
+  }
+}
+
 async function refreshLocalSttRuntimeState(options: { quiet?: boolean } = {}): Promise<void> {
   if (localSttRuntimeStateInFlight) {
     return;
@@ -5514,12 +6256,18 @@ async function refreshLocalSttRuntimeState(options: { quiet?: boolean } = {}): P
   localSttRuntimeStateInFlight = true;
   syncActionAvailability();
   try {
-    const response = await invoke<LocalSttRuntimeStateResponse>("get_local_stt_runtime_state");
+    const response = await invokeWithTimeout<LocalSttRuntimeStateResponse>(
+      "get_local_stt_runtime_state",
+      undefined,
+      LOCAL_STT_RUNTIME_STATE_TIMEOUT_MS,
+      "Timed out while checking local STT status.",
+    );
     localSttRuntimeLoaded = response.loaded;
     if (!response.loaded) {
       lastWarmedLocalSttModel = "";
     }
     renderSidebarLocalSttToggle();
+    renderLocalSttSettingsStatus();
   } catch (error) {
     if (!options.quiet) {
       setNotice(`Unable to check local STT runtime state: ${asErrorMessage(error)}`, true);
@@ -5531,20 +6279,11 @@ async function refreshLocalSttRuntimeState(options: { quiet?: boolean } = {}): P
 }
 
 async function activateSelectedLocalSttModel(): Promise<void> {
-  if (
-    pipelineRunning ||
-    stage === "recording" ||
-    localSttDownloadInFlight ||
-    localSttDeleteInFlight ||
-    localSttDeactivateInFlight ||
-    localSttWarmupInFlight ||
-    localSttRuntimeStateInFlight ||
-    localSttDownloadActive
-  ) {
+  if (reportBlockedLocalSttAction("Load STT")) {
     return;
   }
 
-  const activeSettings = readSettingsFromForm();
+  let activeSettings = readSettingsFromForm();
 
   // DIAGNOSTIC #1: Check if STT mode is set to local
   if (activeSettings.sttRuntimeMode !== "local") {
@@ -5555,7 +6294,11 @@ async function activateSelectedLocalSttModel(): Promise<void> {
   }
 
   // Get selected model
-  const model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  let model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  if (!model) {
+    model = await ensureSelectedLocalSttModel({ quiet: true });
+    activeSettings = readSettingsFromForm();
+  }
 
   // DIAGNOSTIC #2: Check if a model is selected
   if (!model) {
@@ -5568,7 +6311,7 @@ async function activateSelectedLocalSttModel(): Promise<void> {
     localSttModelCatalogSelect.value = model;
   }
   handleSettingsChange();
-  localSttDownloadNotice.textContent = "Loading model...";
+  setLocalSttNotice("Loading model...");
   setNotice("Loading model...");
   showLocalSttLoadOverlay(model);
   syncActionAvailability();
@@ -5578,12 +6321,13 @@ async function activateSelectedLocalSttModel(): Promise<void> {
     const modelExists = await checkModelFileExists(model);
     if (!modelExists) {
       hideLocalSttLoadOverlay();
+      setLocalSttNotice(`Model files missing for ${localSttModelLabel(model)}.`, "error");
       showOfflineModeDiagnostic('model-file-missing', { model });
       return;
     }
 
     // DIAGNOSTIC #4: Check Python dependencies
-    const pythonReady = await checkPythonDependencies();
+    const pythonReady = await checkPythonDependencies(model);
     if (!pythonReady) {
       hideLocalSttLoadOverlay();
       showOfflineModeDiagnostic('python-deps-missing', { model });
@@ -5602,19 +6346,34 @@ async function activateSelectedLocalSttModel(): Promise<void> {
     }
 
     // All checks passed, attempt to warmup
-    await warmupActiveLocalSttModel({ quiet: true, force: true, explicit: true });
+    const warmup = await warmupActiveLocalSttModel({ quiet: true, force: true, explicit: true });
     await refreshLocalSttRuntimeState({ quiet: true });
     const selectedModelLoaded = isSelectedLocalSttModelLoaded();
     if (selectedModelLoaded) {
-      localSttDownloadNotice.textContent = "Model loaded.";
+      setLocalSttNotice("Model loaded.", "success");
       setNotice("Model loaded.");
     } else {
-      localSttDownloadNotice.textContent = "Unable to load model.";
-      showOfflineModeDiagnostic('load-timeout', { model });
+      setLocalSttNotice("Unable to load model.", "error");
+      const warmupDetails = warmup?.details || "";
+      const normalizedDetails = warmupDetails.toLowerCase();
+      if (normalizedDetails.includes("not downloaded yet")) {
+        showOfflineModeDiagnostic('model-file-missing', { model });
+      } else if (
+        normalizedDetails.includes("python") ||
+        normalizedDetails.includes("nemo") ||
+        normalizedDetails.includes("module") ||
+        normalizedDetails.includes("zero-python")
+      ) {
+        showOfflineModeDiagnostic('python-deps-missing', { model });
+      } else if (normalizedDetails.includes("timed out") || normalizedDetails.includes("timeout")) {
+        showOfflineModeDiagnostic('load-timeout', { model });
+      } else {
+        showOfflineModeDiagnostic(warmupDetails || 'load-timeout', { model });
+      }
     }
   } catch (error) {
     const message = asErrorMessage(error);
-    localSttDownloadNotice.textContent = `Load failed: ${message}`;
+    setLocalSttNotice(`Load failed: ${message}`, "error");
     showOfflineModeDiagnostic(message, { model });
   } finally {
     hideLocalSttLoadOverlay();
@@ -5624,37 +6383,45 @@ async function activateSelectedLocalSttModel(): Promise<void> {
 
 async function warmupActiveLocalSttModel(
   options: { quiet?: boolean; force?: boolean; explicit?: boolean } = {},
-): Promise<void> {
+): Promise<LocalSttWarmupResponse | null> {
   if (localSttWarmupInFlight) {
-    return;
+    return null;
   }
 
-  const activeSettings = readSettingsFromForm();
+  let activeSettings = readSettingsFromForm();
   const explicit = options.explicit === true;
   if (!explicit && activeSettings.sttRuntimeMode !== "local") {
-    return;
+    return null;
   }
 
-  const model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  let model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
   if (!model) {
-    return;
+    model = await ensureSelectedLocalSttModel({ quiet: true });
+    activeSettings = readSettingsFromForm();
+  }
+  if (!model) {
+    return null;
   }
 
   const force = options.force === true;
   if (!force && localSttRuntimeLoaded && lastWarmedLocalSttModel === model) {
-    return;
+    return null;
   }
 
   localSttWarmupInFlight = true;
   syncActionAvailability();
   const quiet = options.quiet === true;
   try {
-    const response = await invoke<LocalSttWarmupResponse>("warmup_local_stt_model", {
-      request: { model },
-    });
+    const response = await invokeWithTimeout<LocalSttWarmupResponse>(
+      "warmup_local_stt_model",
+      { request: { model } },
+      LOCAL_STT_WARMUP_TIMEOUT_MS,
+      `Local STT model \"${model}\" took too long to load. Switch back to Online mode or retry after checking the model files.`,
+    );
     if (response.warmed) {
       lastWarmedLocalSttModel = response.model;
       localSttRuntimeLoaded = true;
+      localSttSelectedModelDownloaded = true;
       renderSidebarLocalSttToggle();
       if (!quiet) {
         setNotice(response.details || `Local STT model warmed: ${response.model}.`);
@@ -5662,26 +6429,22 @@ async function warmupActiveLocalSttModel(
     } else if (!quiet) {
       setNotice(response.details || `Local STT model warmup skipped: ${response.model}.`, true);
     }
+    return response;
   } catch (error) {
     if (!quiet) {
       setNotice(`Local STT warmup failed: ${asErrorMessage(error)}`, true);
     }
+    throw error;
   } finally {
     localSttWarmupInFlight = false;
     void refreshLocalSttRuntimeState({ quiet: true });
+    void refreshSelectedLocalSttModelAvailability({ quiet: true });
     syncActionAvailability();
   }
 }
 
 async function deactivateLocalSttModel(): Promise<void> {
-  if (
-    pipelineRunning ||
-    stage === "recording" ||
-    localSttDownloadInFlight ||
-    localSttDeleteInFlight ||
-    localSttDeactivateInFlight ||
-    localSttDownloadActive
-  ) {
+  if (reportBlockedLocalSttAction("Unload STT")) {
     return;
   }
 
@@ -5695,17 +6458,20 @@ async function deactivateLocalSttModel(): Promise<void> {
   syncActionAvailability();
   try {
     const request = { model: model || null };
-    const response = await invoke<LocalSttDeactivateResponse>("deactivate_local_stt_model", {
-      request,
-    });
+    const response = await invokeWithTimeout<LocalSttDeactivateResponse>(
+      "deactivate_local_stt_model",
+      { request },
+      LOCAL_STT_COMMAND_TIMEOUT_MS,
+      "Local STT unload timed out. You can keep using Online mode and retry unloading later.",
+    );
     if (response.deactivated) {
       lastWarmedLocalSttModel = "";
       localSttRuntimeLoaded = false;
       renderSidebarLocalSttToggle();
-      localSttDownloadNotice.textContent = response.details;
+      setLocalSttNotice(response.details, "success");
       setNotice(response.details);
     } else {
-      localSttDownloadNotice.textContent = response.details;
+      setLocalSttNotice(response.details, "error");
       setNotice(response.details, true);
     }
   } catch (error) {
@@ -5714,6 +6480,7 @@ async function deactivateLocalSttModel(): Promise<void> {
   } finally {
     localSttDeactivateInFlight = false;
     void refreshLocalSttRuntimeState({ quiet: true });
+    void refreshSelectedLocalSttModelAvailability({ quiet: true });
     syncActionAvailability();
   }
 }
@@ -5734,6 +6501,7 @@ function formatBytes(value: number): string {
 }
 
 function applyLocalSttDownloadStatus(status: LocalSttDownloadStatusResponse): void {
+  lastLocalSttDownloadStatus = status;
   const rawPercent = Number.isFinite(status.progressPercent) ? status.progressPercent : 0;
   const boundedPercent = Math.max(
     0,
@@ -5754,6 +6522,8 @@ function applyLocalSttDownloadStatus(status: LocalSttDownloadStatusResponse): vo
   if (status.active) {
     localSttDownloadProgressText.textContent =
       `${status.stage || "Downloading..."} ${boundedPercent.toFixed(1)}% • ${filesSegment} • ${bytesSegment}`;
+    showLocalSttDownloadOverlay(status);
+    renderLocalSttSettingsStatus();
     return;
   }
 
@@ -5761,11 +6531,15 @@ function applyLocalSttDownloadStatus(status: LocalSttDownloadStatusResponse): vo
     localSttDownloadProgressText.textContent = status.success
       ? "Model loaded."
       : status.message || status.stage || "Download finished.";
+    hideLocalSttDownloadOverlay();
+    renderLocalSttSettingsStatus();
     return;
   }
 
   localSttDownloadProgressText.textContent =
     status.message || "No local STT download in progress.";
+  hideLocalSttDownloadOverlay();
+  renderLocalSttSettingsStatus();
 }
 
 function stopLocalSttDownloadStatusPolling(): void {
@@ -5804,14 +6578,17 @@ async function pollLocalSttDownloadStatusOnce(options: { quiet?: boolean } = {})
     if (justFinished) {
       const completionMessage =
         status.success ? "Model loaded." : status.message || "Local STT model download failed.";
-      localSttDownloadNotice.textContent = completionMessage;
+      setLocalSttNotice(completionMessage, status.success ? "success" : "error");
       if (status.success) {
         if (status.model.trim()) {
           lastWarmedLocalSttModel = status.model.trim();
         }
+        localSttSelectedModelDownloaded = true;
         setNotice(completionMessage);
         await fetchLocalSttModels({ quiet: true });
+        await refreshSelectedLocalSttModelAvailability({ quiet: true });
       } else {
+        localSttSelectedModelDownloaded = false;
         setNotice(completionMessage, true);
       }
     }
@@ -5827,22 +6604,12 @@ async function pollLocalSttDownloadStatusOnce(options: { quiet?: boolean } = {})
 }
 
 async function downloadLocalSttModel(): Promise<void> {
-  if (
-    pipelineRunning ||
-    stage === "recording" ||
-    localSttDownloadInFlight ||
-    localSttDeleteInFlight ||
-    localSttDeactivateInFlight ||
-    localSttDownloadActive ||
-    localSttHardwareAdvisorOpen
-  ) {
+  if (reportBlockedLocalSttAction("Download STT model")) {
     return;
   }
-  const activeSettings = readSettingsFromForm();
-  let model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  let model = await ensureSelectedLocalSttModel({ quiet: true });
   if (!model) {
-    setNotice("Enter or select a local STT model to download.", true);
-    setActiveSettingsPane("offline");
+    showOfflineModeDiagnostic('no-model-downloaded');
     return;
   }
 
@@ -5873,14 +6640,34 @@ async function downloadLocalSttModel(): Promise<void> {
     const response = await invoke<LocalSttDownloadResponse>("download_local_stt_model", { request });
     localSttModelInput.value = response.model;
     handleSettingsChange();
-    localSttDownloadNotice.textContent = "Downloading model...";
-    setNotice("Downloading model...");
+    localSttSelectedModelDownloaded = false;
+    setLocalSttNotice("Downloading model...");
+    if (!isSettingsOpen()) {
+      setNotice("Downloading offline model...");
+    }
+    showLocalSttDownloadOverlay({
+      active: true,
+      completed: false,
+      success: false,
+      model: response.model,
+      repoId: "",
+      stage: "Starting local STT download...",
+      message: response.details || "Preparing download...",
+      currentFile: "",
+      downloadedBytes: 0,
+      totalBytes: 0,
+      filesCompleted: 0,
+      filesTotal: 0,
+      progressPercent: 0,
+      updatedAtMs: Date.now(),
+    });
     startLocalSttDownloadStatusPolling();
     await pollLocalSttDownloadStatusOnce({ quiet: true });
   } catch (error) {
     const message = asErrorMessage(error);
     setNotice(`Unable to download local STT model: ${message}`, true);
-    localSttDownloadNotice.textContent = `Download failed: ${message}`;
+    setLocalSttNotice(`Download failed: ${message}`, "error");
+    hideLocalSttDownloadOverlay();
   } finally {
     localSttDownloadInFlight = false;
     syncActionAvailability();
@@ -5888,22 +6675,13 @@ async function downloadLocalSttModel(): Promise<void> {
 }
 
 async function deleteLocalSttModel(): Promise<void> {
-  if (
-    pipelineRunning ||
-    stage === "recording" ||
-    localSttDownloadInFlight ||
-    localSttDeleteInFlight ||
-    localSttDeactivateInFlight ||
-    localSttDownloadActive
-  ) {
+  if (reportBlockedLocalSttAction("Delete STT model")) {
     return;
   }
 
-  const activeSettings = readSettingsFromForm();
-  const model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  const model = await ensureSelectedLocalSttModel({ quiet: true });
   if (!model) {
-    setNotice("Select a local STT model first.", true);
-    setActiveSettingsPane("offline");
+    showOfflineModeDiagnostic('no-model-downloaded');
     return;
   }
 
@@ -5913,18 +6691,21 @@ async function deleteLocalSttModel(): Promise<void> {
   try {
     const request = { model };
     const response = await invoke<LocalSttDeleteResponse>("delete_local_stt_model", { request });
-    localSttDownloadNotice.textContent = response.details;
+    setLocalSttNotice(response.details, response.removed ? "success" : "error");
     if (response.removed) {
-      if (lastWarmedLocalSttModel === response.model) {
-        lastWarmedLocalSttModel = "";
-      }
+      lastWarmedLocalSttModel = "";
+      localSttRuntimeLoaded = false;
+      renderSidebarLocalSttToggle();
       if (localSttModelInput.value.trim() === model) {
         localSttModelInput.value = "";
         localSttModelCatalogSelect.value = "";
         handleSettingsChange();
       }
+      localSttSelectedModelDownloaded = false;
       setNotice(`Deleted local STT model "${response.model}".`);
-      await fetchLocalSttModels({ quiet: true });
+      await refreshLocalSttRuntimeState({ quiet: true });
+      await fetchLocalSttModels({ quiet: true, autoSelect: true });
+      await refreshSelectedLocalSttModelAvailability({ quiet: true });
     } else {
       setNotice(response.details, true);
     }
@@ -5938,19 +6719,11 @@ async function deleteLocalSttModel(): Promise<void> {
 }
 
 async function openLocalSttModelPath(): Promise<void> {
-  if (
-    pipelineRunning ||
-    stage === "recording" ||
-    localSttDownloadInFlight ||
-    localSttDeleteInFlight ||
-    localSttDeactivateInFlight ||
-    localSttDownloadActive
-  ) {
+  if (reportBlockedLocalSttAction("Open STT model folder")) {
     return;
   }
 
-  const activeSettings = readSettingsFromForm();
-  const model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  const model = await ensureSelectedLocalSttModel({ quiet: true });
 
   // DIAGNOSTIC: Check if a model is selected first
   if (!model) {
@@ -5963,11 +6736,11 @@ async function openLocalSttModelPath(): Promise<void> {
     const response = await invoke<LocalSttOpenPathResponse>("open_local_stt_model_path", { request });
 
     if (response.opened) {
-      localSttDownloadNotice.textContent = `Opened: ${response.localPath}`;
+      setLocalSttNotice(`Opened: ${response.localPath}`, "success");
       setNotice(`✅ Opened model folder successfully!`);
     } else {
       // Model path doesn't exist - offer to download
-      localSttDownloadNotice.textContent = response.details || "Model not found";
+      setLocalSttNotice(response.details || "Model not found", "error");
       showOfflineModeDiagnostic('model-file-missing', {
         model,
         expectedPath: response.localPath
@@ -5975,7 +6748,7 @@ async function openLocalSttModelPath(): Promise<void> {
     }
   } catch (error) {
     const message = asErrorMessage(error);
-    localSttDownloadNotice.textContent = `Failed to open: ${message}`;
+    setLocalSttNotice(`Failed to open: ${message}`, "error");
 
     // Check if it's a backend command not found error
     if (message.includes("command not found") || message.includes("not implemented")) {
@@ -6963,6 +7736,17 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
           selectedLocalSttModel = fallbackLocalSttModel;
         }
       }
+      if (selectedLocalSttModel && !(await checkModelFileExists(selectedLocalSttModel))) {
+        logClientEvent("pipeline.blocked reason=missing-local-stt-files");
+        setNotice(
+          `Local STT model "${localSttModelLabel(selectedLocalSttModel)}" is not downloaded yet. Click Download Model in the sidebar first.`,
+          true,
+        );
+        openSettings("missing-local-stt-files");
+        setActiveSettingsPane("offline", "missing-local-stt-files");
+        setStage("idle", "Local setup required.");
+        return;
+      }
       if (!selectedLocalSttModel) {
         logClientEvent("pipeline.blocked reason=missing-local-stt-model");
         setNotice(
@@ -7222,7 +8006,10 @@ function appendConversationEntry(
       homeHistoryEntries.pop();
     }
     persistHomeHistory();
-    renderHomeHistory();
+    invalidateHistoryViews();
+    if (activePage === "home") {
+      renderHomeHistory();
+    }
     if (activePage === "history") {
       renderFullHistory();
     }
@@ -7594,31 +8381,6 @@ async function closeSelectionAssistantWindowForTray(): Promise<void> {
   }
 }
 
-async function closeVoiceIndicatorWindowForTray(): Promise<void> {
-  if (!voiceIndicatorWindow) {
-    return;
-  }
-
-  try {
-    await persistDockPositionFromWindow(voiceIndicatorWindow);
-  } catch {
-    // Preserve best effort only.
-  }
-
-  try {
-    await voiceIndicatorWindow.close();
-  } catch (error) {
-    logClientEvent(`[tray.background] dock close failed: ${asErrorMessage(error)}`);
-    try {
-      await voiceIndicatorWindow.hide();
-    } catch {
-      // Ignore best-effort cleanup failures while entering tray mode.
-    }
-  } finally {
-    voiceIndicatorWindow = null;
-  }
-}
-
 function stopNonEssentialUiPollingForTray(): void {
   stopTtsSetupPolling();
   stopLocalSttDownloadStatusPolling();
@@ -7640,12 +8402,17 @@ async function applyMainWindowTrayVisibility(hidden: boolean): Promise<void> {
   mainWindowHiddenToTray = hidden;
   if (!hidden) {
     resumeNonEssentialUiPollingAfterTray();
+    // Re-sync the dock so it reappears if showDockAlways is on or a session is active
+    void syncFloatingIndicatorWindow();
     return;
   }
 
   stopNonEssentialUiPollingForTray();
   await closeSelectionAssistantWindowForTray();
-  await closeVoiceIndicatorWindowForTray();
+  // Keep the floating dock alive when minimizing to tray — only close it
+  // if the user explicitly disabled the dock via showFlowBar setting.
+  // Previously this destroyed the dock window which made it disappear
+  // and it was never re-created until the next recording session.
 }
 
 async function initializeTrayBackgroundLifecycle(): Promise<void> {
@@ -7782,6 +8549,9 @@ function logClientEvent(message: string): void {
 function shouldDisplayDock(): boolean {
   if (!settings.showFlowBar) {
     return false;
+  }
+  if (settings.showDockAlways) {
+    return true;
   }
   return (
     stage === "recording" ||
@@ -8158,8 +8928,8 @@ async function ensureVoiceIndicatorWindow(): Promise<WebviewWindow> {
     }
   }
 
-  const dockWidth = 96;
-  const dockHeight = 60;
+  const dockWidth = 160;
+  const dockHeight = 140;
   const dockPosition = await resolveDockStartPosition(dockWidth, dockHeight);
 
   const created = new WebviewWindow("voice_indicator", {
@@ -8340,13 +9110,15 @@ function syncActionAvailability(): void {
     ollamaStatusInFlight ||
     ollamaInstallInFlight ||
     ollamaPullInFlight ||
+    localSttHardwareAdvisorOpen;
+  const localSttBusy =
+    busy ||
     localSttDownloadInFlight ||
     localSttDeleteInFlight ||
     localSttDeactivateInFlight ||
     localSttWarmupInFlight ||
     localSttRuntimeStateInFlight ||
-    localSttHardwareAdvisorOpen;
-  const localSttBusy = busy || localSttDownloadActive;
+    localSttDownloadActive;
   const sttRuntimeIsLocal = settings.sttRuntimeMode === "local";
   refreshMicsBtn.disabled = busy;
   setupRuntimeBtn.disabled = busy;
@@ -8372,8 +9144,8 @@ function syncActionAvailability(): void {
   downloadLocalSttModelBtn.disabled = localSttBusy;
   deleteLocalSttModelBtn.disabled = localSttBusy;
   openLocalSttModelPathBtn.disabled = localSttBusy;
-  sttRuntimeModeOnlineInput.disabled = busy;
-  sttRuntimeModeOfflineInput.disabled = busy;
+  sttRuntimeModeOnlineInput.disabled = pipelineRunning || stage === "recording" || ttsSetupRunning;
+  sttRuntimeModeOfflineInput.disabled = pipelineRunning || stage === "recording" || ttsSetupRunning;
   aiRuntimeModeOnlineInput.disabled = busy;
   aiRuntimeModeOfflineInput.disabled = busy;
   microphoneSelect.disabled = busy;
@@ -8433,6 +9205,7 @@ function syncActionAvailability(): void {
   dictionaryAddBtn.disabled = busy;
   dictionaryAddBtnTop.disabled = busy;
   snippetAddBtn.disabled = busy;
+  renderLocalSttSettingsStatus();
   snippetsAddBtnTop.disabled = busy;
 
   const piperSelected = settings.ttsEngine === "piper";
@@ -9191,33 +9964,41 @@ function asErrorMessage(error: unknown): string {
  * Checks if a model file exists on disk
  */
 async function checkModelFileExists(_model: string): Promise<boolean> {
-  try {
-    await invoke<LocalSttRuntimeStateResponse>("get_local_stt_runtime_state");
-    // If runtime state returns successfully but model not loaded, file likely missing
-    return true; // Backend will handle file existence check during warmup
-  } catch (error) {
-    console.error("Model file check failed:", error);
-    return false;
-  }
+  const response = await getLocalSttModelStatus(_model, { quiet: true });
+  return response?.exists === true;
 }
 
 /**
  * Checks if Python dependencies are installed
  */
-async function checkPythonDependencies(): Promise<boolean> {
-  try {
-    // Try to get local STT hardware advice which requires Python
-    await invoke("get_local_stt_hardware_advice", {
-      request: { selectedModel: null }
-    });
+async function checkPythonDependencies(model: string): Promise<boolean> {
+  const provider = inferLocalSttProviderFromModel(model);
+  if (!provider || provider === "parakeet") {
     return true;
+  }
+  try {
+    const response = await invokeWithTimeout<LocalSttWarmupResponse>(
+      "warmup_local_stt_model",
+      { request: { model } },
+      LOCAL_STT_COMMAND_TIMEOUT_MS,
+      `Timed out while checking local STT runtime dependencies for \"${model}\".`,
+    );
+    if (response.warmed) {
+      return true;
+    }
+    const message = response.details.toLowerCase();
+    return !(
+      message.includes("python") ||
+      message.includes("module") ||
+      message.includes("nemo") ||
+      message.includes("zero-python")
+    );
   } catch (error) {
     const msg = asErrorMessage(error).toLowerCase();
-    // Check for common Python dependency errors
     if (msg.includes("python") || msg.includes("module") || msg.includes("nemo")) {
       return false;
     }
-    return true; // Other errors are not Python-related
+    return true;
   }
 }
 
@@ -9543,7 +10324,7 @@ function getOfflineDiagnosticData(issue: string, details?: any): {
             id: 'guide',
             label: 'Setup Guide',
             handler: () => {
-              window.open('https://github.com/SlasshyOverhere/SlasshyWispr#quick-setup', '_blank');
+              openInSystemBrowser('https://github.com/SlasshyOverhere/SlasshyWispr#quick-setup');
             }
           },
           {

@@ -108,6 +108,15 @@ export function ModelsSettingsPane() {
                 <option value="">Loading built-in model catalog...</option>
               </select>
             </label>
+            <div className="local-stt-status-card" aria-live="polite">
+              <div className="local-stt-status-head">
+                <span className="local-stt-status-label">Offline STT status</span>
+                <span id="localSttStatusBadge" className="local-stt-status-badge" data-state="idle">Not selected</span>
+              </div>
+              <p id="localSttStatusDetail" className="local-stt-status-detail">
+                Select a local STT model to download and use it offline.
+              </p>
+            </div>
             <div className="button-row">
               <button id="downloadLocalSttModelBtn" className="ghost-action" type="button">Download & install selected model</button>
               <button id="deleteLocalSttModelBtn" className="ghost-action" type="button">Delete selected model</button>
@@ -119,7 +128,7 @@ export function ModelsSettingsPane() {
               </div>
               <p id="localSttDownloadProgressText" className="notice">No local STT download in progress.</p>
             </div>
-            <p id="localSttDownloadNotice" className="notice" style={{ display: 'none' }}>
+            <p id="localSttDownloadNotice" className="notice">
               Pick a model from catalog and install it directly from inside the app.
             </p>
             <p className="notice">
