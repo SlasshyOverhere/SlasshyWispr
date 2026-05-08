@@ -1,7 +1,6 @@
 export function UpdateSecuritySettingsPane() {
   return (
     <section className="settings-pane" data-settings-pane="update-security" hidden>
-
       <details className="settings-section" open>
         <summary>Software updates</summary>
         <div className="section-body">
