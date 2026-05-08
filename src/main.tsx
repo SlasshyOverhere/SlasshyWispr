@@ -6,7 +6,6 @@ import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   LogicalSize,
-  PhysicalPosition,
   availableMonitors,
   currentMonitor,
   getCurrentWindow,
@@ -82,9 +81,6 @@ import {
   MAX_HISTORY_ITEMS,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
   BLOCKED_INPUT_NOTICE_COOLDOWN_MS,
-  DEFAULT_PUSH_TO_TALK_SOUND,
-  DEFAULT_PUSH_TO_TALK_END_SOUND,
-  DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
 } from "./constants";
 
 import type {
@@ -169,49 +165,6 @@ flushSync(() => {
   createRoot(appRoot).render(<App />);
 });
 
-const BASE_WINDOW_WIDTH = 1280;
-const BASE_WINDOW_HEIGHT = 832;
-const BASE_DPI = 96;
-
-async function initializeDpiAwareWindowSize(): Promise<void> {
-  if (!isTauriEnvironment()) {
-    return;
-  }
-
-  try {
-    const monitor = await currentMonitor();
-    if (!monitor) {
-      return;
-    }
-
-    const dpi = monitor.scaleFactor * BASE_DPI;
-    const scaleFactor = dpi / BASE_DPI;
-
-    const appWindow = getCurrentWindow();
-    const size = new LogicalSize(
-      Math.round(BASE_WINDOW_WIDTH * scaleFactor),
-      Math.round(BASE_WINDOW_HEIGHT * scaleFactor),
-    );
-
-    await appWindow.setSize(size);
-
-    const monitors = await availableMonitors();
-    const isPrimary = monitors.some((m) => m.position.x === 0 && m.position.y === 0 && m.size.width === monitor.size.width && m.size.height === monitor.size.height);
-    if (isPrimary) {
-      const x = Math.round((monitor.size.width - size.width) / 2);
-      const y = Math.round((monitor.size.height - size.height) / 2);
-      const { x: curX, y: curY } = await appWindow.outerPosition();
-      if (curX !== x || curY !== y) {
-        await appWindow.setPosition(new PhysicalPosition(x, y));
-      }
-    }
-  } catch (error) {
-    console.warn("[dpi] failed to adjust window size:", error);
-  }
-}
-
-void initializeDpiAwareWindowSize();
-
 
 function requiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -258,10 +211,10 @@ const ttsProfilesArea = requiredElement<HTMLDivElement>("#ttsProfilesArea");
 const ttsSetupStatus = requiredElement<HTMLParagraphElement>("#ttsSetupStatus");
 const ttsSetupLogs = requiredElement<HTMLDivElement>("#ttsSetupLogs");
 const setupAllTtsBtn = requiredElement<HTMLButtonElement>("#setupAllTtsBtn");
-const ttsProfilePiperPanel = requiredElement<HTMLDivElement>("#ttsProfilePiperPanel");
-const ttsProfileCoquiPanel = requiredElement<HTMLDivElement>("#ttsProfileCoquiPanel");
 const ttsProfilePiperTab = requiredElement<HTMLButtonElement>("#ttsProfilePiperTab");
 const ttsProfileCoquiTab = requiredElement<HTMLButtonElement>("#ttsProfileCoquiTab");
+const ttsProfilePiperPanel = requiredElement<HTMLDivElement>("#ttsProfilePiperPanel");
+const ttsProfileCoquiPanel = requiredElement<HTMLDivElement>("#ttsProfileCoquiPanel");
 const appTitlebarDrag = requiredElement<HTMLDivElement>("#appTitlebarDrag");
 const windowMinimizeBtn = requiredElement<HTMLButtonElement>("#windowMinimizeBtn");
 const windowMaximizeBtn = requiredElement<HTMLButtonElement>("#windowMaximizeBtn");
@@ -288,21 +241,12 @@ const metricWords = requiredElement<HTMLElement>("#metricWords");
 const metricSpeakingTime = requiredElement<HTMLElement>("#metricSpeakingTime");
 const metricSessions = requiredElement<HTMLElement>("#metricSessions");
 const metricWpm = requiredElement<HTMLElement>("#metricWpm");
-const wordsTrend = requiredElement<HTMLElement>("#wordsTrend");
-const timeTrend = requiredElement<HTMLElement>("#timeTrend");
-const sessionsTrend = requiredElement<HTMLElement>("#sessionsTrend");
-const wpmTrend = requiredElement<HTMLElement>("#wpmTrend");
 
 function syncSidebarHoverTitles(collapsed: boolean): void {
   for (const target of sidebarLabeledButtons) {
-    let label = target.dataset.label?.trim();
+    const label = target.dataset.label?.trim();
     if (!label) {
       continue;
-    }
-
-    const hotkey = target.dataset.hotkey?.trim();
-    if (collapsed && hotkey) {
-      label = `${label} (${hotkey})`;
     }
 
     if (collapsed) {
@@ -316,9 +260,6 @@ function syncSidebarHoverTitles(collapsed: boolean): void {
 
 const dictionaryList = requiredElement<HTMLDivElement>("#dictionaryList");
 const dictionaryForm = requiredElement<HTMLFormElement>("#dictionaryForm");
-const dictionaryFormCard = requiredElement<HTMLElement>("#dictionaryFormCard");
-const dictionaryFormCloseBtn = requiredElement<HTMLButtonElement>("#dictionaryFormCloseBtn");
-const dictionaryCount = requiredElement<HTMLSpanElement>("#dictionaryCount");
 const dictionarySourceInput = requiredElement<HTMLInputElement>("#dictionarySourceInput");
 const dictionaryTargetInput = requiredElement<HTMLInputElement>("#dictionaryTargetInput");
 const dictionaryAddBtn = requiredElement<HTMLButtonElement>("#dictionaryAddBtn");
@@ -331,7 +272,6 @@ const snippetTriggerInput = requiredElement<HTMLInputElement>("#snippetTriggerIn
 const snippetExpansionInput = requiredElement<HTMLInputElement>("#snippetExpansionInput");
 const snippetAddBtn = requiredElement<HTMLButtonElement>("#snippetAddBtn");
 const snippetsAddBtnTop = requiredElement<HTMLButtonElement>("#snippetsAddBtnTop");
-
 
 
 const notesList = requiredElement<HTMLDivElement>("#notesList");
@@ -402,6 +342,7 @@ const maxTokensInput = requiredElement<HTMLInputElement>("#maxTokensInput");
 
 const launchAtLoginToggle = requiredElement<HTMLInputElement>("#launchAtLoginToggle");
 const showFlowBarToggle = requiredElement<HTMLInputElement>("#showFlowBarToggle");
+const showAppInDockToggle = requiredElement<HTMLInputElement>("#showAppInDockToggle");
 const commandModeToggle = requiredElement<HTMLInputElement>("#commandModeToggle");
 const wakeWordEnabledToggle = requiredElement<HTMLInputElement>("#wakeWordEnabledToggle");
 const assistantNameInput = requiredElement<HTMLInputElement>("#assistantNameInput");
@@ -424,12 +365,6 @@ const dictationSoundEffectsToggle = requiredElement<HTMLInputElement>("#dictatio
 const muteMusicWhileDictatingToggle = requiredElement<HTMLInputElement>(
   "#muteMusicWhileDictatingToggle",
 );
-const pushToTalkSoundSelect = requiredElement<HTMLSelectElement>("#pushToTalkSoundSelect");
-const pushToTalkEndSoundSelect = requiredElement<HTMLSelectElement>("#pushToTalkEndSoundSelect");
-const pushToTalkSoundVolumeRange = requiredElement<HTMLInputElement>("#pushToTalkSoundVolumeRange");
-const previewPttSoundBtn = requiredElement<HTMLButtonElement>("#previewPttSoundBtn");
-const previewPttEndSoundBtn = requiredElement<HTMLButtonElement>("#previewPttEndSoundBtn");
-const pttVolumeHint = requiredElement<HTMLSpanElement>("#pttVolumeHint");
 const backtrackToggle = requiredElement<HTMLInputElement>("#backtrackToggle");
 const removeFillersToggle = requiredElement<HTMLInputElement>("#removeFillersToggle");
 const autoPunctuationToggle = requiredElement<HTMLInputElement>("#autoPunctuationToggle");
@@ -507,9 +442,6 @@ let stage: Stage = "idle";
 let pipelineRunning = false;
 let mediaRecorder: MediaRecorder | null = null;
 let mediaStream: MediaStream | null = null;
-let preWarmedStream: MediaStream | null = null;
-let preWarmedStreamDeviceId: string | null = null;
-let preWarmedStreamCreateTime = 0;
 let recorderMimeType = "audio/webm";
 let recordedChunks: Blob[] = [];
 let recordingStartedAt = 0;
@@ -624,8 +556,6 @@ let lastBlockedInputNoticeAt = 0;
 let lastBlockedInputProcess = "";
 let foregroundBlockMonitorId: number | null = null;
 let foregroundBlockMonitorInFlight = false;
-let lastCaptureIntentStartedAt = 0;
-let lastCaptureIntentLabel = "";
 let mainWindowHiddenToTray = false;
 let persistSettingsTimer: number | null = null;
 let pendingSettingsToPersist: PersistedSettings | null = null;
@@ -810,6 +740,28 @@ for (const navButton of settingsNavButtons) {
   });
 }
 
+ttsProfilePiperTab.addEventListener("click", () => {
+  if (ttsEngineSelect.value !== "piper") {
+    ttsEngineSelect.value = "piper";
+    handleSettingsChange();
+    return;
+  }
+  setActiveTtsProfile("piper");
+});
+
+ttsProfileCoquiTab.addEventListener("click", () => {
+  if (ZERO_PYTHON_MODE) {
+    setNotice(ZERO_PYTHON_TTS_NOTICE, true);
+    return;
+  }
+  if (ttsEngineSelect.value !== "coqui") {
+    ttsEngineSelect.value = "coqui";
+    handleSettingsChange();
+    return;
+  }
+  setActiveTtsProfile("coqui");
+});
+
 toggleSidebarBtn.addEventListener("click", () => {
   const collapsed = !document.body.classList.contains("sidebar-collapsed");
   applySidebarCollapsed(collapsed);
@@ -901,32 +853,6 @@ document.addEventListener("keydown", (event) => {
 
   if (isTypingElement(event.target)) {
     return;
-  }
-
-  if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
-    const digit = event.key;
-    if (digit >= "1" && digit <= "5") {
-      const pageIndex = parseInt(digit, 10) - 1;
-      const pages: MainPage[] = ["home", "history", "dictionary", "snippets", "notes"];
-      const page = pages[pageIndex];
-      if (page) {
-        event.preventDefault();
-        setActivePage(page);
-        return;
-      }
-    }
-
-    if (event.key === "b" || event.key === "B") {
-      event.preventDefault();
-      toggleSidebarBtn.click();
-      return;
-    }
-
-    if (event.key === ",") {
-      event.preventDefault();
-      openSettingsBtn.click();
-      return;
-    }
   }
 
   const commandHotkey = parseHotkey(settings.commandHotkey);
@@ -1136,6 +1062,7 @@ captureModeSingleInput.addEventListener("change", handleSettingsChange);
 captureModePushToTalkInput.addEventListener("change", handleSettingsChange);
 launchAtLoginToggle.addEventListener("change", handleSettingsChange);
 showFlowBarToggle.addEventListener("change", handleSettingsChange);
+showAppInDockToggle.addEventListener("change", handleSettingsChange);
 commandModeToggle.addEventListener("change", handleSettingsChange);
 wakeWordEnabledToggle.addEventListener("change", handleSettingsChange);
 assistantNameInput.addEventListener("input", handleSettingsChange);
@@ -1149,18 +1076,6 @@ autoPasteDictationToggle.addEventListener("change", handleSettingsChange);
 incognitoModeToggle.addEventListener("change", handleSettingsChange);
 themeModeSelect.addEventListener("change", handleSettingsChange);
 dictationSoundEffectsToggle.addEventListener("change", handleSettingsChange);
-pushToTalkSoundSelect.addEventListener("change", handleSettingsChange);
-pushToTalkEndSoundSelect.addEventListener("change", handleSettingsChange);
-pushToTalkSoundVolumeRange.addEventListener("input", () => {
-  pttVolumeHint.textContent = `${pushToTalkSoundVolumeRange.value}%`;
-});
-pushToTalkSoundVolumeRange.addEventListener("change", handleSettingsChange);
-previewPttSoundBtn.addEventListener("click", () => {
-  playDictationSoundEffect("start", pushToTalkSoundSelect.value);
-});
-previewPttEndSoundBtn.addEventListener("click", () => {
-  playDictationSoundEffect("stop", pushToTalkEndSoundSelect.value);
-});
 muteMusicWhileDictatingToggle.addEventListener("change", handleSettingsChange);
 backtrackToggle.addEventListener("change", handleSettingsChange);
 removeFillersToggle.addEventListener("change", handleSettingsChange);
@@ -1242,20 +1157,12 @@ dictionaryForm.addEventListener("submit", (event) => {
 });
 
 dictionaryAddBtnTop.addEventListener("click", () => {
-  const isCollapsed = dictionaryFormCard.classList.contains("is-collapsed");
-  if (isCollapsed) {
-    dictionaryFormCard.classList.remove("is-collapsed");
-    dictionaryAddBtnTop.classList.add("is-active");
+  const nextCollapsed = !dictionaryForm.classList.contains("is-collapsed");
+  dictionaryForm.classList.toggle("is-collapsed", nextCollapsed);
+  dictionaryAddBtnTop.textContent = nextCollapsed ? "Add new" : "Close";
+  if (!nextCollapsed) {
     dictionarySourceInput.focus();
-  } else {
-    dictionaryFormCard.classList.add("is-collapsed");
-    dictionaryAddBtnTop.classList.remove("is-active");
   }
-});
-
-dictionaryFormCloseBtn.addEventListener("click", () => {
-  dictionaryFormCard.classList.add("is-collapsed");
-  dictionaryAddBtnTop.classList.remove("is-active");
 });
 
 
@@ -1417,7 +1324,7 @@ clearStatsBtn.addEventListener("click", () => {
   if (!confirmDestructiveAction("Reset all usage statistics for this device?")) {
     return;
   }
-  usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
+  usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
   persistUsageStats();
   updateUsageMetrics();
   setNotice("Statistics have been reset.");
@@ -1434,14 +1341,6 @@ function clearAllHistory(): void {
 
 navigator.mediaDevices?.addEventListener?.("devicechange", () => {
   void refreshMicrophones(false);
-});
-
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    void releasePreWarmedStream();
-  } else if (stage === "idle") {
-    void preWarmMicrophoneStream(settings.microphoneDeviceId);
-  }
 });
 
 async function bootstrap(): Promise<void> {
@@ -1478,9 +1377,6 @@ async function bootstrap(): Promise<void> {
     await refreshCoquiVoices();
   }
   await refreshMicrophones(false);
-  if (stage === "idle") {
-    void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
-  }
   await refreshOllamaStatus({ quiet: true });
   await fetchOllamaModels({ quiet: true, autoSelect: true });
   await fetchLocalSttModels({ quiet: true });
@@ -1590,6 +1486,8 @@ function enforceZeroPythonUi(): void {
   if (ttsEngineSelect.value === "coqui") {
     ttsEngineSelect.value = "piper";
   }
+  ttsProfileCoquiTab.hidden = true;
+  ttsProfileCoquiTab.disabled = true;
   coquiStatusValue.textContent = "Disabled";
   coquiPythonValue.textContent = "-";
   coquiVersionValue.textContent = "-";
@@ -1669,6 +1567,7 @@ function loadSettings(): PersistedSettings {
     maxTokens: DEFAULT_MAX_TOKENS,
     launchAtLogin: true,
     showFlowBar: false,
+    showAppInDock: true,
     commandMode: true,
     wakeWordEnabled: true,
     assistantName: DEFAULT_ASSISTANT_NAME,
@@ -1696,9 +1595,6 @@ function loadSettings(): PersistedSettings {
     coquiEmotion: DEFAULT_COQUI_EMOTION,
     coquiUseGpu: true,
     coquiSplitSentences: false,
-    pushToTalkSound: DEFAULT_PUSH_TO_TALK_SOUND,
-    pushToTalkEndSound: DEFAULT_PUSH_TO_TALK_END_SOUND,
-    pushToTalkSoundVolume: DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
   };
 
   const rawCurrent = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -1768,6 +1664,7 @@ function loadSettings(): PersistedSettings {
       showFlowBar: fromLegacyOnly
         ? false
         : coerceBoolean(parsed.showFlowBar, defaults.showFlowBar),
+      showAppInDock: coerceBoolean(parsed.showAppInDock, defaults.showAppInDock),
       commandMode: coerceBoolean(parsed.commandMode, defaults.commandMode),
       wakeWordEnabled: coerceBoolean(parsed.wakeWordEnabled, defaults.wakeWordEnabled),
       assistantName:
@@ -1802,9 +1699,6 @@ function loadSettings(): PersistedSettings {
       coquiEmotion: asCoquiEmotion(parsed.coquiEmotion),
       coquiUseGpu: coerceBoolean(parsed.coquiUseGpu, defaults.coquiUseGpu),
       coquiSplitSentences: coerceBoolean(parsed.coquiSplitSentences, defaults.coquiSplitSentences),
-      pushToTalkSound: String(parsed.pushToTalkSound ?? defaults.pushToTalkSound),
-      pushToTalkEndSound: String(parsed.pushToTalkEndSound ?? defaults.pushToTalkEndSound),
-      pushToTalkSoundVolume: coerceNumber(parsed.pushToTalkSoundVolume, defaults.pushToTalkSoundVolume, 0, 1),
     };
   } catch {
     return defaults;
@@ -1998,6 +1892,7 @@ function readSettingsFromForm(): PersistedSettings {
     maxTokens: coerceInteger(Number(maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 4096),
     launchAtLogin: launchAtLoginToggle.checked,
     showFlowBar: showFlowBarToggle.checked,
+    showAppInDock: showAppInDockToggle.checked,
     commandMode: commandModeToggle.checked,
     wakeWordEnabled: wakeWordEnabledToggle.checked,
     assistantName: assistantNameInput.value,
@@ -2012,9 +1907,6 @@ function readSettingsFromForm(): PersistedSettings {
     removeFillers: removeFillersToggle.checked,
     autoPunctuation: autoPunctuationToggle.checked,
     numberedLists: numberedListsToggle.checked,
-    pushToTalkSound: pushToTalkSoundSelect.value,
-    pushToTalkEndSound: pushToTalkEndSoundSelect.value,
-    pushToTalkSoundVolume: coerceNumber(Number(pushToTalkSoundVolumeRange.value) / 100, DEFAULT_PUSH_TO_TALK_SOUND_VOLUME, 0, 1),
   };
 }
 
@@ -2076,6 +1968,7 @@ function applySettingsToForm(next: PersistedSettings): void {
   captureModePushToTalkInput.checked = next.captureMode === "push-to-talk";
   launchAtLoginToggle.checked = next.launchAtLogin;
   showFlowBarToggle.checked = next.showFlowBar;
+  showAppInDockToggle.checked = next.showAppInDock;
   commandModeToggle.checked = next.commandMode;
   wakeWordEnabledToggle.checked = next.wakeWordEnabled;
   assistantNameInput.value = next.assistantName;
@@ -2091,10 +1984,6 @@ function applySettingsToForm(next: PersistedSettings): void {
   removeFillersToggle.checked = next.removeFillers;
   autoPunctuationToggle.checked = next.autoPunctuation;
   numberedListsToggle.checked = next.numberedLists;
-  pushToTalkSoundSelect.value = next.pushToTalkSound;
-  pushToTalkEndSoundSelect.value = next.pushToTalkEndSound;
-  pushToTalkSoundVolumeRange.value = String(Math.round(next.pushToTalkSoundVolume * 100));
-  pttVolumeHint.textContent = `${Math.round(next.pushToTalkSoundVolume * 100)}%`;
   temperatureValue.textContent = next.temperature.toFixed(2);
 
   const displayHotkey = formatHotkeyForDisplay(next.pushToTalkHotkey);
@@ -2115,8 +2004,6 @@ function handleSettingsChange(): void {
   const previousAiRuntimeMode = settings.aiRuntimeMode;
   const previousMuteMusicWhileDictating = settings.muteMusicWhileDictating;
   const previousLaunchAtLogin = settings.launchAtLogin;
-  const previousMicrophoneDeviceId = settings.microphoneDeviceId;
-  const previousShowFlowBar = settings.showFlowBar;
   const previousShortcutSignature = buildShortcutSyncSignature(settings);
   const next = readSettingsFromForm();
   if (settingsOverlay.hidden && next.captureMode !== previousSettings.captureMode) {
@@ -2272,13 +2159,6 @@ function handleSettingsChange(): void {
   updateTtsSetupGate();
   publishDockState();
   void syncFloatingIndicatorWindow();
-  if (
-    stage === "idle" &&
-    (previousMicrophoneDeviceId !== settings.microphoneDeviceId ||
-      (!previousShowFlowBar && settings.showFlowBar))
-  ) {
-    void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
-  }
 }
 
 function updateRuntimeModeNotice(sttMode: RuntimeMode, aiMode: RuntimeMode): void {
@@ -3828,42 +3708,19 @@ function persistQuickNotes(): void {
 function loadUsageStats(): UsageStats {
   const raw = localStorage.getItem(USAGE_STORAGE_KEY);
   if (!raw) {
-    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
+    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
   }
 
   try {
     const parsed = JSON.parse(raw) as Partial<UsageStats>;
-    const now = Date.now();
-    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-    const lastReset = parsed.lastPeriodReset || 0;
-    
-    if (now - lastReset > sevenDaysMs) {
-      return {
-        sessions: coerceInteger(parsed.sessions, 0, 0, 999_999),
-        words: coerceInteger(parsed.words, 0, 0, 99_999_999),
-        avgWpm: coerceNumber(parsed.avgWpm, 0, 0, 600),
-        speakingSeconds: coerceInteger(parsed.speakingSeconds, 0, 0, 99_999_999),
-        prevSessions: coerceInteger(parsed.sessions, 0, 0, 999_999),
-        prevWords: coerceInteger(parsed.words, 0, 0, 99_999_999),
-        prevWpm: coerceNumber(parsed.avgWpm, 0, 0, 600),
-        prevSpeakingSeconds: coerceInteger(parsed.speakingSeconds, 0, 0, 99_999_999),
-        lastPeriodReset: now,
-      };
-    }
-    
     return {
       sessions: coerceInteger(parsed.sessions, 0, 0, 999_999),
       words: coerceInteger(parsed.words, 0, 0, 99_999_999),
       avgWpm: coerceNumber(parsed.avgWpm, 0, 0, 600),
       speakingSeconds: coerceInteger(parsed.speakingSeconds, 0, 0, 99_999_999),
-      prevSessions: coerceInteger(parsed.prevSessions, 0, 0, 999_999),
-      prevWords: coerceInteger(parsed.prevWords, 0, 0, 99_999_999),
-      prevWpm: coerceNumber(parsed.prevWpm, 0, 0, 600),
-      prevSpeakingSeconds: coerceInteger(parsed.prevSpeakingSeconds, 0, 0, 99_999_999),
-      lastPeriodReset: coerceInteger(lastReset, 0, 0, Number.MAX_SAFE_INTEGER),
     };
   } catch {
-    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
+    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0 };
   }
 }
 
@@ -4144,16 +4001,15 @@ async function resolveDockStartPosition(dockWidth: number, dockHeight: number): 
 
 function renderDictionaryList(): void {
   const filtered = dictionaryTerms;
-  dictionaryCount.textContent = `${filtered.length} term${filtered.length === 1 ? "" : "s"}`;
 
   if (filtered.length === 0) {
     dictionaryList.innerHTML = `
       <div class="empty-state">
         <div class="empty-state-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
         </div>
         <h4>No terms yet</h4>
-        <p>Your dictionary is currently empty. Start by adding a term above to improve transcription accuracy.</p>
+        <p>Your dictionary is currently empty. Start by adding a term above.</p>
       </div>
     `;
     return;
@@ -4162,31 +4018,26 @@ function renderDictionaryList(): void {
   dictionaryList.innerHTML = "";
   const fragment = document.createDocumentFragment();
   for (const term of filtered) {
-    const card = document.createElement("div");
-    card.className = "dictionary-item-card";
+    const row = document.createElement("div");
+    row.className = "managed-row managed-row-grid";
 
-    card.innerHTML = `
-      <div class="dict-item-content">
-        <div class="dict-term spoken">
-          <span class="term-label">Spoken</span>
-          <span class="term-value">${term.source}</span>
-        </div>
-        <div class="dict-connector">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-        </div>
-        <div class="dict-term correct">
-          <span class="term-label">Correct</span>
-          <span class="term-value">${term.target}</span>
-        </div>
-      </div>
-      <div class="dict-item-actions">
-        <button type="button" class="icon-delete-btn" title="Delete term" data-dictionary-delete="${term.id}">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-        </button>
-      </div>
-    `;
+    const mainEl = document.createElement("p");
+    mainEl.className = "managed-row-main";
+    const strongEl = document.createElement("strong");
+    strongEl.textContent = term.source;
+    const spanEl = document.createElement("span");
+    spanEl.textContent = term.target;
+    mainEl.append(strongEl, spanEl);
 
-    const deleteBtn = card.querySelector(".icon-delete-btn") as HTMLButtonElement;
+
+
+    const actionsEl = document.createElement("div");
+    actionsEl.className = "managed-row-actions";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "inline-link";
+    deleteBtn.dataset.dictionaryDelete = term.id;
+    deleteBtn.textContent = "Delete";
     deleteBtn.addEventListener("click", () => {
       if (!confirmDestructiveAction(`Delete dictionary term "${term.source}"?`)) {
         return;
@@ -4195,8 +4046,10 @@ function renderDictionaryList(): void {
       persistDictionaryTerms();
       renderDictionaryList();
     });
+    actionsEl.append(deleteBtn);
 
-    fragment.append(card);
+    row.append(mainEl, actionsEl);
+    fragment.append(row);
   }
   dictionaryList.append(fragment);
 }
@@ -4223,12 +4076,11 @@ function addDictionaryTerm(): void {
   ]);
   persistDictionaryTerms();
   renderDictionaryList();
-
   dictionarySourceInput.value = "";
   dictionaryTargetInput.value = "";
 
-  dictionaryFormCard.classList.add("is-collapsed");
-  dictionaryAddBtnTop.classList.remove("is-active");
+  dictionaryForm.classList.add("is-collapsed");
+  dictionaryAddBtnTop.textContent = "Add new";
   setNotice(`Dictionary term added: ${source} → ${target}`);
 }
 
@@ -4412,35 +4264,6 @@ function updateUsageMetrics(): void {
   unit.className = "stat-unit";
   unit.textContent = "wpm";
   metricWpm.append(unit);
-
-  updateTrendIndicator(wordsTrend, usageStats.words, usageStats.prevWords);
-  updateTrendIndicator(timeTrend, usageStats.speakingSeconds, usageStats.prevSpeakingSeconds);
-  updateTrendIndicator(sessionsTrend, usageStats.sessions, usageStats.prevSessions);
-  updateTrendIndicator(wpmTrend, usageStats.avgWpm, usageStats.prevWpm);
-}
-
-function updateTrendIndicator(element: HTMLElement, current: number, previous: number): void {
-  const span = element.querySelector("span");
-  if (!span) return;
-  
-  if (previous === 0 || current === 0) {
-    element.className = "stat-trend stat-trend-neutral";
-    span.textContent = "--";
-    return;
-  }
-  
-  const percentChange = ((current - previous) / previous) * 100;
-  
-  if (percentChange > 0) {
-    element.className = "stat-trend stat-trend-up";
-    span.textContent = `+${Math.round(percentChange)}%`;
-  } else if (percentChange < 0) {
-    element.className = "stat-trend stat-trend-down";
-    span.textContent = `${Math.round(percentChange)}%`;
-  } else {
-    element.className = "stat-trend stat-trend-neutral";
-    span.textContent = "0%";
-  }
 }
 
 function trackUsage(transcript: string): void {
@@ -4642,10 +4465,6 @@ async function refreshMicrophones(requestPermission: boolean): Promise<void> {
     settings.microphoneDeviceId = selectedId;
     persistSettings(settings);
     updateMicrophoneSummary();
-
-    if (requestPermission && stage === "idle") {
-      void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
-    }
 
     if (!microphonePermissionGranted && microphones.every((device) => !device.label)) {
       setNotice("Click refresh in Settings > General to grant mic permission and show device names.");
@@ -6603,8 +6422,6 @@ async function handleRecordToggle(): Promise<void> {
   }
 
   logClientEvent("[record.toggle] invoking startRecording()");
-  lastCaptureIntentStartedAt = performance.now();
-  lastCaptureIntentLabel = "toggle";
   await startRecording();
 }
 
@@ -6650,7 +6467,6 @@ function interruptTtsPlaybackForCaptureIntent(): boolean {
 }
 
 async function startRecording(): Promise<void> {
-  const startRequestedAt = performance.now();
   logClientEvent(
     `[record.start] requested stage=${stage} pipelineRunning=${boolFlag(
       pipelineRunning,
@@ -6658,24 +6474,14 @@ async function startRecording(): Promise<void> {
   );
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
     logClientEvent("[record.start] blocked because browser media recording APIs are unavailable");
-    lastCaptureIntentStartedAt = 0;
-    lastCaptureIntentLabel = "";
     clearPushToTalkHolds();
     setNotice("This environment does not support microphone recording.", true);
     setStage("error", "Media APIs unavailable.");
     return;
   }
 
-  const foregroundCheckStartedAt = performance.now();
   if (await shouldBlockAssistantInputFromForegroundApp()) {
-    logClientEvent(
-      `[record.start] blocked by foreground app policy after ${Math.round(
-        performance.now() - foregroundCheckStartedAt,
-      )}ms`,
-    );
     logClientEvent("[record.start] blocked by foreground app policy");
-    lastCaptureIntentStartedAt = 0;
-    lastCaptureIntentLabel = "";
     clearPushToTalkHolds();
     return;
   }
@@ -6692,8 +6498,6 @@ async function startRecording(): Promise<void> {
         activeSettings.rememberApiKey,
       )}`,
     );
-    lastCaptureIntentStartedAt = 0;
-    lastCaptureIntentLabel = "";
     clearPushToTalkHolds();
     showMissingApiKeyNotice("record-start");
     return;
@@ -6714,17 +6518,13 @@ async function startRecording(): Promise<void> {
   );
 
   try {
-    const micOpenStartedAt = performance.now();
     const stream = await openMicrophoneStream(activeSettings.microphoneDeviceId);
     mediaStream = stream;
     microphonePermissionGranted = true;
     logClientEvent(
-      `[record.start] microphone stream opened tracks=${stream.getAudioTracks().length} openMs=${Math.round(
-        performance.now() - micOpenStartedAt,
-      )}`,
+      `[record.start] microphone stream opened tracks=${stream.getAudioTracks().length}`,
     );
 
-    const recorderInitStartedAt = performance.now();
     mediaRecorder = new MediaRecorder(stream, recorderOptions);
     recorderMimeType = mediaRecorder.mimeType || preferredMimeType || "audio/webm";
     recordedChunks = [];
@@ -6751,24 +6551,10 @@ async function startRecording(): Promise<void> {
     });
 
     mediaRecorder.start(180);
-    const recordingReadyLatencyMs = Math.round(performance.now() - startRequestedAt);
-    logClientEvent(
-      `[record.start] media recorder started mime=${recorderMimeType} recorderInitMs=${Math.round(
-        performance.now() - recorderInitStartedAt,
-      )} readyMs=${recordingReadyLatencyMs}`,
-    );
+    logClientEvent(`[record.start] media recorder started mime=${recorderMimeType}`);
     recordingStartedAt = Date.now();
     beginRecordingTicker();
     setStage("recording", "Listening...");
-    if (lastCaptureIntentStartedAt > 0) {
-      logClientEvent(
-        `[record.intent.ready] source=${lastCaptureIntentLabel || "unknown"} totalMs=${Math.round(
-          performance.now() - lastCaptureIntentStartedAt,
-        )}`,
-      );
-      lastCaptureIntentStartedAt = 0;
-      lastCaptureIntentLabel = "";
-    }
     if (settings.captureMode === "push-to-talk") {
       setNotice("Recording started. Release the hotkey or mic button to stop.");
     } else {
@@ -6777,8 +6563,6 @@ async function startRecording(): Promise<void> {
     syncActionAvailability();
   } catch (error) {
     logClientEvent(`[record.start] failed to open microphone: ${asErrorMessage(error)}`);
-    lastCaptureIntentStartedAt = 0;
-    lastCaptureIntentLabel = "";
     clearPushToTalkHolds();
     stopAmplitudeMonitoring();
     releaseMicrophone();
@@ -6789,14 +6573,6 @@ async function startRecording(): Promise<void> {
 }
 
 async function openMicrophoneStream(preferredDeviceId: string): Promise<MediaStream> {
-  if (preWarmedStream && preWarmedStreamDeviceId === preferredDeviceId && preWarmedStream.active) {
-    logClientEvent(`[record.mic] reusing pre-warmed stream age=${Date.now() - preWarmedStreamCreateTime}ms`);
-    const clonedStream = preWarmedStream.clone();
-    return clonedStream;
-  }
-
-  await releasePreWarmedStream();
-
   const baseConstraints: MediaTrackConstraints = {
     channelCount: 1,
     echoCancellation: true,
@@ -6897,7 +6673,6 @@ async function finalizeRecording(): Promise<void> {
 
 async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void> {
   const activeSettings = readSettingsFromForm();
-  const pipelineInvokeStartedAt = performance.now();
 
   pipelineRunning = true;
   syncActionAvailability();
@@ -6920,13 +6695,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       );
     }
 
-    const base64EncodeStartedAt = performance.now();
     const audioBase64 = await blobToBase64(pipelineAudioBlob);
-    logClientEvent(
-      `[pipeline.audio] base64Ms=${Math.round(
-        performance.now() - base64EncodeStartedAt,
-      )} bytes=${pipelineAudioBlob.size} mime=${pipelineAudioMimeType || "unknown"}`,
-    );
     const systemPrompt = buildEffectiveSystemPrompt(activeSettings, commandModeArmed);
     const coquiVoiceId = activeSettings.coquiVoiceId || coquiVoiceSelect.value || "";
     const pipelineTtsEngine: TtsEngine = ZERO_PYTHON_MODE ? "piper" : activeSettings.ttsEngine;
@@ -7070,13 +6839,6 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
             : null,
       },
     });
-    logClientEvent(
-      `[pipeline.invoke] totalMs=${Math.round(
-        performance.now() - pipelineInvokeStartedAt,
-      )} sttMs=${Math.round(response.sttLatencyMs)} aiMs=${Math.round(
-        response.aiLatencyMs,
-      )} ttsMs=${Math.round(response.ttsLatencyMs)} endToEndMs=${Math.round(response.totalLatencyMs)}`,
-    );
 
     const resolvedResponse =
       response.mode === "dictation"
@@ -7322,8 +7084,8 @@ function renderAssistantInfo(info: AssistantInfoResponse): void {
   updateTtsSetupGate();
 }
 
-function playDictationSoundEffect(kind: "start" | "stop" | "error", previewSoundId?: string): void {
-  if (!previewSoundId && !settings.dictationSoundEffects) {
+function playDictationSoundEffect(kind: "start" | "stop" | "error"): void {
+  if (!settings.dictationSoundEffects) {
     return;
   }
 
@@ -7342,58 +7104,12 @@ function playDictationSoundEffect(kind: "start" | "stop" | "error", previewSound
     });
   }
 
-  const soundIdToPlay = previewSoundId || (kind === "start" ? settings.pushToTalkSound : kind === "stop" ? settings.pushToTalkEndSound : "error");
-
-  let profile: { frequencies: number[], durations: number[], type: OscillatorType };
-
-  switch (soundIdToPlay) {
-    case "beep-start":
-      profile = { frequencies: [680, 920], durations: [0.06, 0.08], type: "sine" };
-      break;
-    case "beep-end":
-      profile = { frequencies: [580], durations: [0.1], type: "triangle" };
-      break;
-    case "click":
-      profile = { frequencies: [1000], durations: [0.03], type: "square" };
-      break;
-    case "pop":
-      profile = { frequencies: [400], durations: [0.05], type: "sine" };
-      break;
-    case "ding":
-      profile = { frequencies: [880], durations: [0.2], type: "sine" };
-      break;
-    case "chirp":
-      profile = { frequencies: [400, 800], durations: [0.05, 0.05], type: "sine" };
-      break;
-    case "blip":
-      profile = { frequencies: [1200], durations: [0.05], type: "square" };
-      break;
-    case "thud":
-      profile = { frequencies: [150], durations: [0.08], type: "sine" };
-      break;
-    case "whoosh":
-      profile = { frequencies: [200, 100], durations: [0.06, 0.06], type: "sine" };
-      break;
-    case "chime":
-      profile = { frequencies: [523, 659], durations: [0.07, 0.08], type: "sine" };
-      break;
-    case "buzz":
-      profile = { frequencies: [180], durations: [0.1], type: "sawtooth" };
-      break;
-    case "ping":
-      profile = { frequencies: [2000], durations: [0.04], type: "sine" };
-      break;
-    case "error":
-      profile = { frequencies: [260, 190], durations: [0.1, 0.12], type: "square" };
-      break;
-    default:
-      profile = { frequencies: [680, 920], durations: [0.06, 0.08], type: "sine" };
-      break;
-  }
-
-  const baseVolume = previewSoundId ? 
-    (Number(pushToTalkSoundVolumeRange.value) / 100) * 0.14 : 
-    settings.pushToTalkSoundVolume * 0.14;
+  const profile =
+    kind === "start"
+      ? { frequencies: [680, 920], durations: [0.06, 0.08], type: "sine" as OscillatorType }
+      : kind === "stop"
+        ? { frequencies: [580], durations: [0.1], type: "triangle" as OscillatorType }
+        : { frequencies: [260, 190], durations: [0.1, 0.12], type: "square" as OscillatorType };
 
   let offset = 0;
   for (let index = 0; index < profile.frequencies.length; index += 1) {
@@ -7408,7 +7124,7 @@ function playDictationSoundEffect(kind: "start" | "stop" | "error", previewSound
     oscillator.frequency.setValueAtTime(frequency, startAt);
 
     gain.gain.setValueAtTime(0.0001, startAt);
-    gain.gain.exponentialRampToValueAtTime(baseVolume, startAt + 0.014);
+    gain.gain.exponentialRampToValueAtTime(0.07, startAt + 0.014);
     gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
 
     oscillator.connect(gain);
@@ -7446,16 +7162,6 @@ async function fetchForegroundInputBlockStatus(force = false): Promise<Foregroun
 
   const now = Date.now();
   if (!force && now - foregroundBlockCheckedAt <= FOREGROUND_BLOCK_CHECK_CACHE_MS) {
-    return foregroundBlockStatusCache;
-  }
-
-  if (
-    !force &&
-    foregroundBlockMonitorId !== null &&
-    foregroundBlockCheckedAt > 0 &&
-    now - foregroundBlockCheckedAt <= 1_500
-  ) {
-    void refreshBlockedAppShortcutSuppression();
     return foregroundBlockStatusCache;
   }
 
@@ -7721,10 +7427,6 @@ function setStage(next: Stage, detail: string): void {
   publishDockState();
   void syncFloatingIndicatorWindow();
 
-  if (previousStage !== "idle" && next === "idle") {
-    void preWarmMicrophoneStream(settings.microphoneDeviceId);
-  }
-
   if (previousStage !== "recording" && next === "recording") {
     playDictationSoundEffect("start");
     if (settings.muteMusicWhileDictating) {
@@ -7780,9 +7482,6 @@ function logClientEvent(message: string): void {
 }
 
 function shouldDisplayDock(): boolean {
-  if (!settings.showFlowBar) {
-    return false;
-  }
   return (
     stage === "recording" ||
     stage === "processing" ||
@@ -8158,8 +7857,8 @@ async function ensureVoiceIndicatorWindow(): Promise<WebviewWindow> {
     }
   }
 
-  const dockWidth = 96;
-  const dockHeight = 60;
+  const dockWidth = 126;
+  const dockHeight = 48;
   const dockPosition = await resolveDockStartPosition(dockWidth, dockHeight);
 
   const created = new WebviewWindow("voice_indicator", {
@@ -8262,39 +7961,6 @@ async function showVoiceIndicatorWindow(): Promise<void> {
   }
 }
 
-async function canPreWarmMicrophone(): Promise<boolean> {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    return false;
-  }
-
-  if (microphonePermissionGranted) {
-    return true;
-  }
-
-  if (typeof navigator.permissions?.query !== "function") {
-    return false;
-  }
-
-  try {
-    const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
-    return status.state === "granted";
-  } catch {
-    return false;
-  }
-}
-
-async function primeCaptureReadiness(deviceId: string, shouldPrimeDock: boolean): Promise<void> {
-  if (await canPreWarmMicrophone()) {
-    void preWarmMicrophoneStream(deviceId);
-  }
-
-  if (shouldPrimeDock && isTauriEnvironment() && !voiceIndicatorWindow) {
-    void ensureVoiceIndicatorWindow().catch((error) => {
-      logClientEvent(`[dock.prime] failed: ${asErrorMessage(error)}`);
-    });
-  }
-}
-
 async function hideVoiceIndicatorWindow(): Promise<void> {
   if (dockHideTimerId !== null) {
     window.clearTimeout(dockHideTimerId);
@@ -8359,6 +8025,8 @@ function syncActionAvailability(): void {
   cloneCoquiVoiceBtn.disabled = busy;
   testCoquiVoiceBtn.disabled = busy;
   setupAllTtsBtn.disabled = busy;
+  ttsProfilePiperTab.disabled = busy;
+  ttsProfileCoquiTab.disabled = busy;
   clearHistoryBtn.disabled = busy;
   fetchProviderModelsBtn.disabled = busy;
   applyModelToAiBtn.disabled = busy;
@@ -8523,8 +8191,6 @@ async function engagePushToTalk(source: HoldSource): Promise<void> {
   }
 
   logClientEvent("[record.ptt.engage] invoking startRecording()");
-  lastCaptureIntentStartedAt = performance.now();
-  lastCaptureIntentLabel = source;
   await startRecording();
 
   if (mediaRecorder?.state !== "recording") {
@@ -8801,50 +8467,6 @@ function releaseMicrophone(): void {
     track.stop();
   }
   mediaStream = null;
-}
-
-async function releasePreWarmedStream(): Promise<void> {
-  if (!preWarmedStream) return;
-  for (const track of preWarmedStream.getTracks()) {
-    track.stop();
-  }
-  preWarmedStream = null;
-  preWarmedStreamDeviceId = null;
-  preWarmedStreamCreateTime = 0;
-  logClientEvent("[record.prewarm] released pre-warmed stream");
-}
-
-async function preWarmMicrophoneStream(deviceId: string): Promise<void> {
-  if (!navigator.mediaDevices?.getUserMedia) return;
-
-  if (preWarmedStream && preWarmedStreamDeviceId === deviceId && preWarmedStream.active) {
-    return;
-  }
-
-  await releasePreWarmedStream();
-
-  const baseConstraints: MediaTrackConstraints = {
-    channelCount: 1,
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
-  };
-
-  try {
-    const constraints: MediaStreamConstraints = {
-      audio: deviceId
-        ? { ...baseConstraints, deviceId: { exact: deviceId } }
-        : baseConstraints,
-    };
-    preWarmedStream = await navigator.mediaDevices.getUserMedia(constraints);
-    preWarmedStreamDeviceId = deviceId;
-    preWarmedStreamCreateTime = Date.now();
-    logClientEvent(`[record.prewarm] stream opened deviceId=${deviceId || "default"}`);
-  } catch (error) {
-    logClientEvent(`[record.prewarm] failed: ${asErrorMessage(error)}`);
-    preWarmedStream = null;
-    preWarmedStreamDeviceId = null;
-  }
 }
 
 function formatTimer(elapsedMs: number): string {

@@ -238,36 +238,13 @@ export function ModelsSettingsPane() {
           </div>
 
           <div className="model-meta">
-            <div className="model-meta-grid">
-              <div className="model-meta-item">
-                <span className="model-meta-key">Base URL</span>
-                <code id="baseUrlValue" className="model-meta-val">loading...</code>
-              </div>
-              <div className="model-meta-item">
-                <span className="model-meta-key">STT Model</span>
-                <code id="sttModelValue" className="model-meta-val">loading...</code>
-              </div>
-              <div className="model-meta-item">
-                <span className="model-meta-key">AI Model</span>
-                <code id="aiModelValue" className="model-meta-val">loading...</code>
-              </div>
-              <div className="model-meta-item">
-                <span className="model-meta-key">Piper</span>
-                <code id="piperStatusValue" className="model-meta-val">checking...</code>
-              </div>
-              <div className="model-meta-item">
-                <span className="model-meta-key">Piper Path</span>
-                <code id="piperPathValue" className="model-meta-val">-</code>
-              </div>
-              <div className="model-meta-item">
-                <span className="model-meta-key">Voice</span>
-                <code id="voiceStatusValue" className="model-meta-val">checking...</code>
-              </div>
-              <div className="model-meta-item">
-                <span className="model-meta-key">Voice Path</span>
-                <code id="voicePathValue" className="model-meta-val">-</code>
-              </div>
-            </div>
+            <p><span>Base URL</span><code id="baseUrlValue">loading...</code></p>
+            <p><span>STT Model</span><code id="sttModelValue">loading...</code></p>
+            <p><span>AI Model</span><code id="aiModelValue">loading...</code></p>
+            <p><span>Piper</span><code id="piperStatusValue">checking...</code></p>
+            <p><span>Piper Path</span><code id="piperPathValue">-</code></p>
+            <p><span>Voice</span><code id="voiceStatusValue">checking...</code></p>
+            <p><span>Voice Path</span><code id="voicePathValue">-</code></p>
           </div>
         </div>
 
@@ -305,28 +282,11 @@ export function ModelsSettingsPane() {
             </label>
 
             <div className="model-meta">
-              <div className="model-meta-grid">
-                <div className="model-meta-item">
-                  <span className="model-meta-key">Status</span>
-                  <code id="coquiStatusValue" className="model-meta-val">checking...</code>
-                </div>
-                <div className="model-meta-item">
-                  <span className="model-meta-key">Python</span>
-                  <code id="coquiPythonValue" className="model-meta-val">-</code>
-                </div>
-                <div className="model-meta-item">
-                  <span className="model-meta-key">TTS Version</span>
-                  <code id="coquiVersionValue" className="model-meta-val">-</code>
-                </div>
-                <div className="model-meta-item">
-                  <span className="model-meta-key">CUDA</span>
-                  <code id="coquiCudaValue" className="model-meta-val">-</code>
-                </div>
-                <div className="model-meta-item">
-                  <span className="model-meta-key">Voice Dir</span>
-                  <code id="coquiVoiceDirValue" className="model-meta-val">-</code>
-                </div>
-              </div>
+              <p><span>Status</span><code id="coquiStatusValue">checking...</code></p>
+              <p><span>Python</span><code id="coquiPythonValue">-</code></p>
+              <p><span>TTS Version</span><code id="coquiVersionValue">-</code></p>
+              <p><span>CUDA</span><code id="coquiCudaValue">-</code></p>
+              <p><span>Voice Dir</span><code id="coquiVoiceDirValue">-</code></p>
             </div>
           </div>
 

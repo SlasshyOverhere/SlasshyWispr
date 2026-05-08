@@ -12,10 +12,7 @@ fn test_validate_executable_path_with_valid_exe() {
     let allowed_dirs = vec![temp_dir.path().to_str().unwrap()];
     let result = validate_executable_path(&exe_path, &allowed_dirs);
 
-    assert!(
-        result.is_ok(),
-        "Should accept valid executable in allowed directory"
-    );
+    assert!(result.is_ok(), "Should accept valid executable in allowed directory");
 }
 
 #[test]
@@ -42,10 +39,7 @@ fn test_validate_executable_path_rejects_outside_allowed_dir() {
     let allowed_dirs = vec![temp_dir2.path().to_str().unwrap()];
     let result = validate_executable_path(&exe_path, &allowed_dirs);
 
-    assert!(
-        result.is_err(),
-        "Should reject executables outside allowed directories"
-    );
+    assert!(result.is_err(), "Should reject executables outside allowed directories");
 }
 
 #[test]
@@ -168,10 +162,7 @@ fn test_hmac_fingerprint_differs_with_different_keys() {
     let fingerprint1 = create_api_key_fingerprint(api_key, secret1).unwrap();
     let fingerprint2 = create_api_key_fingerprint(api_key, secret2).unwrap();
 
-    assert_ne!(
-        fingerprint1, fingerprint2,
-        "Different secrets should produce different fingerprints"
-    );
+    assert_ne!(fingerprint1, fingerprint2, "Different secrets should produce different fingerprints");
 }
 
 #[test]
@@ -226,9 +217,8 @@ fn test_multiple_security_layers_work_together() {
         temp_dir.path(),
         "security_test",
         "txt",
-        validated.as_bytes(),
-    )
-    .unwrap();
+        validated.as_bytes()
+    ).unwrap();
 
     assert!(temp_file.exists());
     fs::remove_file(&temp_file).ok();

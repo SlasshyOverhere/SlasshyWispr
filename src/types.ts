@@ -266,6 +266,7 @@ export interface PersistedSettings {
   maxTokens: number;
   launchAtLogin: boolean;
   showFlowBar: boolean;
+  showAppInDock: boolean;
   commandMode: boolean;
   wakeWordEnabled: boolean;
   assistantName: string;
@@ -293,9 +294,6 @@ export interface PersistedSettings {
   coquiEmotion: CoquiEmotion;
   coquiUseGpu: boolean;
   coquiSplitSentences: boolean;
-  pushToTalkSound: string;
-  pushToTalkEndSound: string;
-  pushToTalkSoundVolume: number;
 }
 
 export interface HotkeySpec {
@@ -334,11 +332,6 @@ export interface UsageStats {
   words: number;
   avgWpm: number;
   speakingSeconds: number;
-  prevSessions: number;
-  prevWords: number;
-  prevWpm: number;
-  prevSpeakingSeconds: number;
-  lastPeriodReset: number;
 }
 
 export interface DockLayout {

@@ -91,22 +91,3 @@ export const ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS = 1_000;
 export const MAX_HISTORY_ITEMS = 100;
 export const FOREGROUND_BLOCK_CHECK_CACHE_MS = 320;
 export const BLOCKED_INPUT_NOTICE_COOLDOWN_MS = 2400;
-
-export const DEFAULT_PUSH_TO_TALK_SOUND = "beep-start";
-export const DEFAULT_PUSH_TO_TALK_END_SOUND = "beep-end";
-export const DEFAULT_PUSH_TO_TALK_SOUND_VOLUME = 0.5;
-
-export const PUSH_TO_TALK_SOUND_OPTIONS = [
-  { id: "beep-start", label: "Beep (Start)" },
-  { id: "beep-end", label: "Beep (End)" },
-  { id: "click", label: "Click" },
-  { id: "pop", label: "Pop" },
-  { id: "ding", label: "Ding" },
-  { id: "chirp", label: "Chirp" },
-  { id: "blip", label: "Blip" },
-  { id: "thud", label: "Thud" },
-  { id: "whoosh", label: "Whoosh" },
-  { id: "chime", label: "Chime" },
-  { id: "buzz", label: "Buzz" },
-  { id: "ping", label: "Ping" },
-];
