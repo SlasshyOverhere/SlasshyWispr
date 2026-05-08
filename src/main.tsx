@@ -233,6 +233,9 @@ function applySidebarCollapsed(collapsed: boolean): void {
   syncSidebarHoverTitles(collapsed);
 }
 
+const ACTIVE_PAGE_STORAGE_KEY = "slasshy-wispr-active-page-v1";
+const ACTIVE_SETTINGS_PANE_STORAGE_KEY = "slasshy-wispr-active-settings-pane-v1";
+
 const settingsOverlay = requiredElement<HTMLDivElement>("#settingsOverlay");
 const toggleSidebarBtn = requiredElement<HTMLButtonElement>("#toggleSidebarBtn");
 const openSettingsBtn = requiredElement<HTMLButtonElement>("#openSettingsBtn");
@@ -252,6 +255,7 @@ const sttHardwareAdvisorContinueBtn = requiredElement<HTMLButtonElement>(
 const sttHardwareAdvisorCancelBtn = requiredElement<HTMLButtonElement>("#sttHardwareAdvisorCancelBtn");
 const closeSettingsBtn = requiredElement<HTMLButtonElement>("#closeSettingsBtn");
 const settingsPaneTitle = requiredElement<HTMLElement>("#settingsPaneTitle");
+const settingsMain = requiredElement<HTMLElement>(".settings-main");
 const ttsBootstrapCard = requiredElement<HTMLDivElement>("#ttsBootstrapCard");
 const ttsProfilesArea = requiredElement<HTMLDivElement>("#ttsProfilesArea");
 const ttsSetupStatus = requiredElement<HTMLParagraphElement>("#ttsSetupStatus");
@@ -325,6 +329,7 @@ const dictionaryAddBtnTop = requiredElement<HTMLButtonElement>("#dictionaryAddBt
 
 
 const snippetsList = requiredElement<HTMLDivElement>("#snippetsList");
+const snippetFormContainer = requiredElement<HTMLElement>("#snippetFormContainer");
 const snippetForm = requiredElement<HTMLFormElement>("#snippetForm");
 const snippetTriggerInput = requiredElement<HTMLInputElement>("#snippetTriggerInput");
 const snippetExpansionInput = requiredElement<HTMLInputElement>("#snippetExpansionInput");
@@ -566,7 +571,12 @@ let homeHistoryEntries = loadHomeHistory();
 let commandModeArmed = false;
 let commandSelectionSnapshot: string | null = null;
 const recentTurns: Array<{ speaker: string; content: string }> = [];
-let activePage: MainPage = "home";
+let activePage: MainPage = loadPersistedMainPage();
+let activeSettingsPane: SettingsPane = loadPersistedSettingsPane();
+let homeHistoryNeedsRender = true;
+let fullHistoryNeedsRender = true;
+let settingsCloseTimer: number | null = null;
+let settingsPaneTransitionTimer: number | null = null;
 let globalShortcutsActive = false;
 let shortcutsSuppressedByBlockedApp = false;
 let registeredPushShortcut = "";
@@ -727,8 +737,6 @@ dockChannel.onmessage = (event: MessageEvent<unknown>) => {
       await win.show();
       await win.unminimize();
       await win.setFocus();
-      setActivePage("home");
-      closeSettings();
     })();
   }
 };
@@ -807,13 +815,12 @@ if (systemThemeMediaQuery) {
   systemThemeMediaQuery.addEventListener("change", handleSystemThemeChange);
 }
 
-setActivePage("home");
-setActiveSettingsPane("general");
+setActivePage(activePage, { forceRender: true });
+setActiveSettingsPane(activeSettingsPane);
 renderDictionaryList();
 renderSnippetsList();
 renderNotesList();
 updateUsageMetrics();
-renderHomeHistory();
 refreshRecordButton();
 syncActionAvailability();
 initializeUpdaterPanel();
@@ -851,7 +858,6 @@ toggleSidebarBtn.addEventListener("click", () => {
 
 openSettingsBtn.addEventListener("click", () => {
   openSettings("user-click-settings-button");
-  setActiveSettingsPane("general", "user-click-settings-button");
 });
 
 sidebarToggleLocalSttBtn.addEventListener("click", () => {
@@ -1357,11 +1363,16 @@ snippetForm.addEventListener("submit", (event) => {
 });
 
 snippetsAddBtnTop.addEventListener("click", () => {
-  const nextCollapsed = !snippetForm.classList.contains("is-collapsed");
-  snippetForm.classList.toggle("is-collapsed", nextCollapsed);
-  snippetsAddBtnTop.textContent = nextCollapsed ? "Add new" : "Close";
-  if (!nextCollapsed) {
+  const isCollapsed = snippetFormContainer.classList.contains("is-collapsed");
+  if (isCollapsed) {
+    snippetFormContainer.classList.remove("is-collapsed");
+    snippetsAddBtnTop.classList.add("is-active");
+    snippetsAddBtnTop.textContent = "Close";
     snippetTriggerInput.focus();
+  } else {
+    snippetFormContainer.classList.add("is-collapsed");
+    snippetsAddBtnTop.classList.remove("is-active");
+    snippetsAddBtnTop.textContent = "Add new";
   }
 });
 
@@ -1488,14 +1499,14 @@ applyModelToSttBtn.addEventListener("click", () => {
   setNotice(`STT model set to "${selected}".`);
 });
 
-clearHistoryBtn.addEventListener("click", () => {
-  if (confirmDestructiveAction("Clear all transcription history from this device?")) {
+clearHistoryBtn.addEventListener("click", async () => {
+  if (await confirmDestructiveAction("Clear all transcription history from this device?")) {
     clearAllHistory();
   }
 });
 
-clearHistoryBtnFull.addEventListener("click", () => {
-  if (confirmDestructiveAction("Clear all transcription history from this device?")) {
+clearHistoryBtnFull.addEventListener("click", async () => {
+  if (await confirmDestructiveAction("Clear all transcription history from this device?")) {
     clearAllHistory();
   }
 });
@@ -1504,8 +1515,87 @@ viewFullHistoryBtn.addEventListener("click", () => {
   setActivePage("history");
 });
 
-clearStatsBtn.addEventListener("click", () => {
-  if (!confirmDestructiveAction("Reset all usage statistics for this device?")) {
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const filter = btn.getAttribute("data-filter") as "all" | "day" | "week" | "month";
+    renderFullHistory(filter);
+  });
+});
+
+const datePickerBtn = requiredElement<HTMLElement>("#datePickerBtn");
+const customDatePicker = requiredElement<HTMLDivElement>("#customDatePicker");
+const datePickerDays = requiredElement<HTMLDivElement>("#datePickerDays");
+const currentMonthYear = requiredElement<HTMLElement>("#currentMonthYear");
+const prevMonthBtn = requiredElement<HTMLElement>("#prevMonthBtn");
+const nextMonthBtn = requiredElement<HTMLElement>("#nextMonthBtn");
+
+let currentPickerDate = new Date();
+let selectedDate: string | null = null;
+
+datePickerBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  customDatePicker.hidden = !customDatePicker.hidden;
+  renderDatePicker();
+});
+
+document.addEventListener("click", (e) => {
+  if (!customDatePicker.contains(e.target as Node) && e.target !== datePickerBtn) {
+    customDatePicker.hidden = true;
+  }
+});
+
+prevMonthBtn.addEventListener("click", () => {
+  currentPickerDate = new Date(currentPickerDate.getFullYear(), currentPickerDate.getMonth() - 1, 1);
+  renderDatePicker();
+});
+
+nextMonthBtn.addEventListener("click", () => {
+  currentPickerDate = new Date(currentPickerDate.getFullYear(), currentPickerDate.getMonth() + 1, 1);
+  renderDatePicker();
+});
+
+function renderDatePicker(): void {
+  const year = currentPickerDate.getFullYear();
+  const month = currentPickerDate.getMonth();
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  currentMonthYear.textContent = `${monthNames[month]} ${year}`;
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+  let html = "";
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div class="date-picker-day empty"></div>';
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const isSelected = selectedDate === dateStr;
+    const isToday = dateStr === todayStr;
+    const classes = ["date-picker-day"];
+    if (isSelected) classes.push("selected");
+    if (isToday) classes.push("today");
+    html += `<div class="${classes.join(" ")}" data-date="${dateStr}">${day}</div>`;
+  }
+  datePickerDays.innerHTML = html;
+
+  datePickerDays.querySelectorAll(".date-picker-day:not(.empty)").forEach(dayEl => {
+    dayEl.addEventListener("click", () => {
+      selectedDate = dayEl.getAttribute("data-date");
+      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+      datePickerBtn.classList.add("active");
+      renderFullHistory("all", selectedDate!);
+      customDatePicker.hidden = true;
+      renderDatePicker();
+    });
+  });
+}
+
+clearStatsBtn.addEventListener("click", async () => {
+  if (!await confirmDestructiveAction("Reset all usage statistics for this device?")) {
     return;
   }
   usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
@@ -1517,8 +1607,13 @@ clearStatsBtn.addEventListener("click", () => {
 function clearAllHistory(): void {
   homeHistoryEntries = [];
   persistHomeHistory();
-  renderHomeHistory();
-  renderFullHistory();
+  invalidateHistoryViews();
+  if (activePage === "home") {
+    renderHomeHistory();
+  }
+  if (activePage === "history") {
+    renderFullHistory();
+  }
   recentTurns.length = 0;
   setNotice("History cleared.");
 }
@@ -1617,8 +1712,10 @@ function asSettingsPane(value: string | undefined): SettingsPane | null {
   return null;
 }
 
-function setActivePage(next: MainPage): void {
+function setActivePage(next: MainPage, options: { forceRender?: boolean } = {}): void {
+  const forceRender = options.forceRender ?? false;
   activePage = next;
+  localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, next);
   for (const navButton of pageNavButtons) {
     const current = navButton.dataset.pageNav === next;
     navButton.classList.toggle("is-active", current);
@@ -1632,9 +1729,13 @@ function setActivePage(next: MainPage): void {
   }
 
   if (next === "home") {
-    renderHomeHistory();
+    if (forceRender || homeHistoryNeedsRender) {
+      renderHomeHistory();
+    }
   } else if (next === "history") {
-    renderFullHistory();
+    if (forceRender || fullHistoryNeedsRender) {
+      renderFullHistory();
+    }
   }
 }
 
@@ -1646,6 +1747,9 @@ function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void
   logClientEvent(
     `[ui.settings.pane] requested=${next} resolved=${resolved} reason=${reason}`,
   );
+  const previousPane = activeSettingsPane;
+  activeSettingsPane = resolved;
+  localStorage.setItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY, resolved);
 
   const titleMap: Record<SettingsPane, string> = {
     general: "General",
@@ -1665,10 +1769,40 @@ function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void
     navButton.setAttribute("aria-current", current ? "page" : "false");
   }
 
+  if (settingsPaneTransitionTimer !== null) {
+    window.clearTimeout(settingsPaneTransitionTimer);
+    settingsPaneTransitionTimer = null;
+  }
+
+  settingsMain.classList.remove("is-pane-switching", "is-switching-forward", "is-switching-backward");
+  for (const panel of settingsPanels) {
+    panel.classList.remove("is-transitioning-in", "is-transitioning-forward", "is-transitioning-backward");
+  }
+
+  const previousIndex = settingsPanels.findIndex((panel) => panel.dataset.settingsPane === previousPane);
+  const nextIndex = settingsPanels.findIndex((panel) => panel.dataset.settingsPane === resolved);
+  const shouldAnimate = previousPane !== resolved && previousIndex >= 0 && nextIndex >= 0;
+
   for (const panel of settingsPanels) {
     const current = panel.dataset.settingsPane === resolved;
     panel.classList.toggle("is-active", current);
     panel.hidden = !current;
+    if (current && shouldAnimate) {
+      const directionClass = nextIndex > previousIndex ? "is-transitioning-forward" : "is-transitioning-backward";
+      panel.classList.add("is-transitioning-in", directionClass);
+    }
+  }
+
+  if (shouldAnimate) {
+    const switchDirectionClass = nextIndex > previousIndex ? "is-switching-forward" : "is-switching-backward";
+    settingsMain.classList.add("is-pane-switching", switchDirectionClass);
+    settingsPaneTransitionTimer = window.setTimeout(() => {
+      settingsMain.classList.remove("is-pane-switching", "is-switching-forward", "is-switching-backward");
+      for (const panel of settingsPanels) {
+        panel.classList.remove("is-transitioning-in", "is-transitioning-forward", "is-transitioning-backward");
+      }
+      settingsPaneTransitionTimer = null;
+    }, 180);
   }
 }
 
@@ -1721,12 +1855,14 @@ function updateTtsSetupGate(): void {
 
 function openSettings(reason = "unspecified"): void {
   logClientEvent(`[ui.settings.open] reason=${reason}`);
-  settingsOverlay.hidden = false;
-  settingsOverlay.classList.add("is-open");
-  settingsOverlay.scrollTop = 0;
-  for (const panel of settingsPanels) {
-    panel.scrollTop = 0;
+  if (settingsCloseTimer !== null) {
+    window.clearTimeout(settingsCloseTimer);
+    settingsCloseTimer = null;
   }
+  settingsOverlay.hidden = false;
+  settingsOverlay.classList.remove("is-closing");
+  void settingsOverlay.offsetWidth;
+  settingsOverlay.classList.add("is-open");
   syncLocalSttDownloadOverlayVisibility();
 }
 
@@ -1736,7 +1872,15 @@ function closeSettings(): void {
     activeElement.blur();
   }
   settingsOverlay.classList.remove("is-open");
-  settingsOverlay.hidden = true;
+  settingsOverlay.classList.add("is-closing");
+  if (settingsCloseTimer !== null) {
+    window.clearTimeout(settingsCloseTimer);
+  }
+  settingsCloseTimer = window.setTimeout(() => {
+    settingsOverlay.hidden = true;
+    settingsOverlay.classList.remove("is-closing");
+    settingsCloseTimer = null;
+  }, 180);
   syncLocalSttDownloadOverlayVisibility();
 }
 
@@ -3359,7 +3503,7 @@ async function handleInstallUpdate(): Promise<void> {
   };
 
   const targetVersion = cachedUpdateResult.latestVersion || "the available update";
-  const confirmed = confirmDestructiveAction(
+  const confirmed = await confirmDestructiveAction(
     `Install ${targetVersion} now? The installer will download, this app will close, and any unsaved work in the current session may be lost.`,
   );
   if (!confirmed) {
@@ -4308,8 +4452,23 @@ function loadHomeHistory(): HomeHistoryEntry[] {
   }
 }
 
+function loadPersistedMainPage(): MainPage {
+  const persisted = localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY);
+  return asMainPage(persisted ?? undefined) ?? "home";
+}
+
+function loadPersistedSettingsPane(): SettingsPane {
+  const persisted = localStorage.getItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY);
+  return asSettingsPane(persisted ?? undefined) ?? "general";
+}
+
 function persistHomeHistory(): void {
   localStorage.setItem(HOME_HISTORY_STORAGE_KEY, JSON.stringify(homeHistoryEntries));
+}
+
+function invalidateHistoryViews(): void {
+  homeHistoryNeedsRender = true;
+  fullHistoryNeedsRender = true;
 }
 
 function formatConversationTime(timestamp: number): string {
@@ -4356,40 +4515,70 @@ function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
 function renderHomeHistory(): void {
   if (settings.incognitoMode) {
     conversationLog.innerHTML = '<p class="empty-hint">Incognito mode enabled. History is hidden.</p>';
+    homeHistoryNeedsRender = false;
     return;
   }
 
-  if (homeHistoryEntries.length === 0) {
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const todayEntries = homeHistoryEntries.filter(e => e.timestamp >= todayStart);
+
+  if (todayEntries.length === 0) {
     conversationLog.innerHTML = `<p class="empty-hint">${EMPTY_HISTORY_HINT}</p>`;
+    homeHistoryNeedsRender = false;
     return;
   }
 
   conversationLog.innerHTML = "";
   const fragment = document.createDocumentFragment();
-  const recent = homeHistoryEntries.slice(0, 5);
-  for (const entry of recent) {
+  for (const entry of todayEntries) {
     fragment.append(createConversationEntryElement(entry));
   }
   conversationLog.append(fragment);
+  homeHistoryNeedsRender = false;
 }
 
-function renderFullHistory(): void {
+function renderFullHistory(filter: "all" | "day" | "week" | "month" = "all", specificDate?: string): void {
   if (settings.incognitoMode) {
     fullHistoryLog.innerHTML = '<p class="empty-hint">Incognito mode enabled. History is hidden.</p>';
+    fullHistoryNeedsRender = false;
     return;
   }
 
-  if (homeHistoryEntries.length === 0) {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dayOfWeek = now.getDay();
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek).getTime();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+  let filteredEntries = homeHistoryEntries;
+  if (specificDate) {
+    const dateParts = specificDate.split("-");
+    const selectedDate = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]));
+    const dateStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate()).getTime();
+    const dateEnd = dateStart + 24 * 60 * 60 * 1000;
+    filteredEntries = homeHistoryEntries.filter(e => e.timestamp >= dateStart && e.timestamp < dateEnd);
+  } else if (filter === "day") {
+    filteredEntries = homeHistoryEntries.filter(e => e.timestamp >= todayStart);
+  } else if (filter === "week") {
+    filteredEntries = homeHistoryEntries.filter(e => e.timestamp >= weekStart);
+  } else if (filter === "month") {
+    filteredEntries = homeHistoryEntries.filter(e => e.timestamp >= monthStart);
+  }
+
+  if (filteredEntries.length === 0) {
     fullHistoryLog.innerHTML = `<p class="empty-hint">${EMPTY_HISTORY_HINT}</p>`;
+    fullHistoryNeedsRender = false;
     return;
   }
 
   fullHistoryLog.innerHTML = "";
   const fragment = document.createDocumentFragment();
-  for (const entry of homeHistoryEntries) {
+  for (const entry of filteredEntries) {
     fragment.append(createConversationEntryElement(entry));
   }
   fullHistoryLog.append(fragment);
+  fullHistoryNeedsRender = false;
 }
 
 function loadDockLayout(): DockLayout | null {
@@ -4598,8 +4787,8 @@ function renderDictionaryList(): void {
     `;
 
     const deleteBtn = card.querySelector(".icon-delete-btn") as HTMLButtonElement;
-    deleteBtn.addEventListener("click", () => {
-      if (!confirmDestructiveAction(`Delete dictionary term "${term.source}"?`)) {
+    deleteBtn.addEventListener("click", async () => {
+      if (!await confirmDestructiveAction(`Delete dictionary term "${term.source}"?`)) {
         return;
       }
       dictionaryTerms = dictionaryTerms.filter((entry) => entry.id !== term.id);
@@ -4646,6 +4835,11 @@ function addDictionaryTerm(): void {
 function renderSnippetsList(): void {
   const filtered = snippets;
 
+  const snippetsCountBadge = document.getElementById("snippetsCountBadge");
+  if (snippetsCountBadge) {
+    snippetsCountBadge.textContent = `${filtered.length} snippet${filtered.length === 1 ? "" : "s"}`;
+  }
+
   if (filtered.length === 0) {
     snippetsList.innerHTML = `
       <div class="empty-state">
@@ -4663,27 +4857,30 @@ function renderSnippetsList(): void {
   const fragment = document.createDocumentFragment();
   for (const snippet of filtered) {
     const row = document.createElement("div");
-    row.className = "managed-row managed-row-grid";
+    row.className = "managed-row snippet-row";
 
-    const mainEl = document.createElement("p");
+    const mainEl = document.createElement("div");
     mainEl.className = "managed-row-main";
-    const strongEl = document.createElement("strong");
-    strongEl.textContent = snippet.trigger;
-    const spanEl = document.createElement("span");
-    spanEl.textContent = snippet.expansion;
-    mainEl.append(strongEl, spanEl);
-
-
+    const triggerEl = document.createElement("strong");
+    triggerEl.className = "snippet-trigger";
+    triggerEl.textContent = snippet.trigger;
+    const expansionEl = document.createElement("span");
+    expansionEl.className = "snippet-expansion";
+    expansionEl.textContent = snippet.expansion;
+    mainEl.append(triggerEl, expansionEl);
 
     const actionsEl = document.createElement("div");
     actionsEl.className = "managed-row-actions";
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
-    deleteBtn.className = "inline-link";
+    deleteBtn.className = "delete-btn";
+    deleteBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+      <span>Delete</span>
+    `;
     deleteBtn.dataset.snippetDelete = snippet.id;
-    deleteBtn.textContent = "Delete";
-    deleteBtn.addEventListener("click", () => {
-      if (!confirmDestructiveAction(`Delete snippet "${snippet.trigger}"?`)) {
+    deleteBtn.addEventListener("click", async () => {
+      if (!await confirmDestructiveAction(`Delete snippet "${snippet.trigger}"?`)) {
         return;
       }
       snippets = snippets.filter((entry) => entry.id !== snippet.id);
@@ -4723,7 +4920,8 @@ function addSnippetEntry(): void {
   snippetTriggerInput.value = "";
   snippetExpansionInput.value = "";
 
-  snippetForm.classList.add("is-collapsed");
+  snippetFormContainer.classList.add("is-collapsed");
+  snippetsAddBtnTop.classList.remove("is-active");
   snippetsAddBtnTop.textContent = "Add new";
   setNotice(`Snippet added: ${trigger}`);
 }
@@ -4783,8 +4981,8 @@ function renderNotesList(): void {
     deleteBtn.className = "inline-link";
     deleteBtn.dataset.noteDelete = note.id;
     deleteBtn.textContent = "Delete";
-    deleteBtn.addEventListener("click", () => {
-      if (!confirmDestructiveAction("Delete this quick note?")) {
+    deleteBtn.addEventListener("click", async () => {
+      if (!await confirmDestructiveAction("Delete this quick note?")) {
         return;
       }
       quickNotes = quickNotes.filter((entry) => entry.id !== note.id);
@@ -4967,8 +5165,57 @@ async function triggerAutoPaste(text?: string): Promise<boolean> {
   }
 }
 
-function confirmDestructiveAction(message: string): boolean {
-  return window.confirm(message);
+async function confirmDestructiveAction(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+      <div class="confirm-modal">
+        <div class="confirm-body">
+          <div class="confirm-icon-wrapper">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+          </div>
+          <h3 class="confirm-title">Confirm Action</h3>
+          <p class="confirm-message">${message}</p>
+        </div>
+        <div class="confirm-actions">
+          <button type="button" class="confirm-btn confirm-btn-cancel">Cancel</button>
+          <button type="button" class="confirm-btn confirm-btn-confirm">Confirm</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const cancelBtn = overlay.querySelector(".confirm-btn-cancel") as HTMLButtonElement;
+    const confirmBtn = overlay.querySelector(".confirm-btn-confirm") as HTMLButtonElement;
+
+    const cleanup = (result: boolean) => {
+      overlay.classList.add("modal-exit");
+      setTimeout(() => {
+        overlay.remove();
+        resolve(result);
+      }, 150);
+    };
+
+    cancelBtn.addEventListener("click", () => cleanup(false));
+    confirmBtn.addEventListener("click", () => cleanup(true));
+
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        document.removeEventListener("keydown", handleEsc);
+        cleanup(false);
+      }
+    };
+    document.addEventListener("keydown", handleEsc);
+
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        document.removeEventListener("keydown", handleEsc);
+        cleanup(false);
+      }
+    });
+  });
 }
 
 async function captureSelectedTextForRewrite(options: { silent?: boolean } = {}): Promise<string> {
@@ -7759,7 +8006,10 @@ function appendConversationEntry(
       homeHistoryEntries.pop();
     }
     persistHomeHistory();
-    renderHomeHistory();
+    invalidateHistoryViews();
+    if (activePage === "home") {
+      renderHomeHistory();
+    }
     if (activePage === "history") {
       renderFullHistory();
     }

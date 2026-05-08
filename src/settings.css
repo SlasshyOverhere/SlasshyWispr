@@ -9,6 +9,24 @@
   align-items: center;
   justify-content: center;
   padding: 18px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 160ms ease, visibility 160ms ease;
+}
+
+.settings-overlay.is-open,
+.settings-overlay.is-closing {
+  visibility: visible;
+}
+
+.settings-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.settings-overlay.is-closing {
+  opacity: 0;
 }
 
 .settings-modal {
@@ -26,12 +44,20 @@
   box-shadow:
     0 24px 64px rgba(0, 0, 0, 0.50),
     0 0 0 1px rgba(255, 255, 255, 0.04);
-  animation: modal-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  opacity: 0;
+  transform: scale(0.985) translateY(6px);
+  transition: transform 190ms cubic-bezier(0.22, 1, 0.36, 1), opacity 190ms ease;
+  will-change: transform, opacity;
 }
 
-@keyframes modal-enter {
-  from { opacity: 0; transform: scale(0.97) translateY(6px); }
-  to   { opacity: 1; transform: scale(1)    translateY(0); }
+.settings-overlay.is-open .settings-modal {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.settings-overlay.is-closing .settings-modal {
+  opacity: 0;
+  transform: scale(0.985) translateY(6px);
 }
 
 /* ── Sidebar ── */
@@ -225,6 +251,37 @@
 
 .settings-pane.is-active {
   display: flex;
+}
+
+.settings-main.is-pane-switching #settingsPaneTitle {
+  animation: settings-title-fade 160ms ease-out;
+}
+
+.settings-pane.is-transitioning-in {
+  will-change: opacity, transform;
+}
+
+.settings-pane.is-transitioning-forward {
+  animation: settings-pane-slide-forward 170ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.settings-pane.is-transitioning-backward {
+  animation: settings-pane-slide-backward 170ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes settings-title-fade {
+  from { opacity: 0.55; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes settings-pane-slide-forward {
+  from { opacity: 0.58; transform: translateX(10px) translateY(2px); }
+  to { opacity: 1; transform: translateX(0) translateY(0); }
+}
+
+@keyframes settings-pane-slide-backward {
+  from { opacity: 0.58; transform: translateX(-10px) translateY(2px); }
+  to { opacity: 1; transform: translateX(0) translateY(0); }
 }
 
 .settings-pane::-webkit-scrollbar { width: 5px; }
