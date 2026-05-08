@@ -85,7 +85,6 @@ import {
   DEFAULT_PUSH_TO_TALK_SOUND,
   DEFAULT_PUSH_TO_TALK_END_SOUND,
   DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
-  PUSH_TO_TALK_SOUND_OPTIONS,
 } from "./constants";
 
 import type {
@@ -625,6 +624,8 @@ let lastBlockedInputNoticeAt = 0;
 let lastBlockedInputProcess = "";
 let foregroundBlockMonitorId: number | null = null;
 let foregroundBlockMonitorInFlight = false;
+let lastCaptureIntentStartedAt = 0;
+let lastCaptureIntentLabel = "";
 let mainWindowHiddenToTray = false;
 let persistSettingsTimer: number | null = null;
 let pendingSettingsToPersist: PersistedSettings | null = null;
@@ -1477,6 +1478,9 @@ async function bootstrap(): Promise<void> {
     await refreshCoquiVoices();
   }
   await refreshMicrophones(false);
+  if (stage === "idle") {
+    void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
+  }
   await refreshOllamaStatus({ quiet: true });
   await fetchOllamaModels({ quiet: true, autoSelect: true });
   await fetchLocalSttModels({ quiet: true });
@@ -2111,6 +2115,8 @@ function handleSettingsChange(): void {
   const previousAiRuntimeMode = settings.aiRuntimeMode;
   const previousMuteMusicWhileDictating = settings.muteMusicWhileDictating;
   const previousLaunchAtLogin = settings.launchAtLogin;
+  const previousMicrophoneDeviceId = settings.microphoneDeviceId;
+  const previousShowFlowBar = settings.showFlowBar;
   const previousShortcutSignature = buildShortcutSyncSignature(settings);
   const next = readSettingsFromForm();
   if (settingsOverlay.hidden && next.captureMode !== previousSettings.captureMode) {
@@ -2266,6 +2272,13 @@ function handleSettingsChange(): void {
   updateTtsSetupGate();
   publishDockState();
   void syncFloatingIndicatorWindow();
+  if (
+    stage === "idle" &&
+    (previousMicrophoneDeviceId !== settings.microphoneDeviceId ||
+      (!previousShowFlowBar && settings.showFlowBar))
+  ) {
+    void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
+  }
 }
 
 function updateRuntimeModeNotice(sttMode: RuntimeMode, aiMode: RuntimeMode): void {
@@ -4630,6 +4643,10 @@ async function refreshMicrophones(requestPermission: boolean): Promise<void> {
     persistSettings(settings);
     updateMicrophoneSummary();
 
+    if (requestPermission && stage === "idle") {
+      void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
+    }
+
     if (!microphonePermissionGranted && microphones.every((device) => !device.label)) {
       setNotice("Click refresh in Settings > General to grant mic permission and show device names.");
     }
@@ -6586,6 +6603,8 @@ async function handleRecordToggle(): Promise<void> {
   }
 
   logClientEvent("[record.toggle] invoking startRecording()");
+  lastCaptureIntentStartedAt = performance.now();
+  lastCaptureIntentLabel = "toggle";
   await startRecording();
 }
 
@@ -6631,6 +6650,7 @@ function interruptTtsPlaybackForCaptureIntent(): boolean {
 }
 
 async function startRecording(): Promise<void> {
+  const startRequestedAt = performance.now();
   logClientEvent(
     `[record.start] requested stage=${stage} pipelineRunning=${boolFlag(
       pipelineRunning,
@@ -6638,14 +6658,24 @@ async function startRecording(): Promise<void> {
   );
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
     logClientEvent("[record.start] blocked because browser media recording APIs are unavailable");
+    lastCaptureIntentStartedAt = 0;
+    lastCaptureIntentLabel = "";
     clearPushToTalkHolds();
     setNotice("This environment does not support microphone recording.", true);
     setStage("error", "Media APIs unavailable.");
     return;
   }
 
+  const foregroundCheckStartedAt = performance.now();
   if (await shouldBlockAssistantInputFromForegroundApp()) {
+    logClientEvent(
+      `[record.start] blocked by foreground app policy after ${Math.round(
+        performance.now() - foregroundCheckStartedAt,
+      )}ms`,
+    );
     logClientEvent("[record.start] blocked by foreground app policy");
+    lastCaptureIntentStartedAt = 0;
+    lastCaptureIntentLabel = "";
     clearPushToTalkHolds();
     return;
   }
@@ -6662,6 +6692,8 @@ async function startRecording(): Promise<void> {
         activeSettings.rememberApiKey,
       )}`,
     );
+    lastCaptureIntentStartedAt = 0;
+    lastCaptureIntentLabel = "";
     clearPushToTalkHolds();
     showMissingApiKeyNotice("record-start");
     return;
@@ -6682,13 +6714,17 @@ async function startRecording(): Promise<void> {
   );
 
   try {
+    const micOpenStartedAt = performance.now();
     const stream = await openMicrophoneStream(activeSettings.microphoneDeviceId);
     mediaStream = stream;
     microphonePermissionGranted = true;
     logClientEvent(
-      `[record.start] microphone stream opened tracks=${stream.getAudioTracks().length}`,
+      `[record.start] microphone stream opened tracks=${stream.getAudioTracks().length} openMs=${Math.round(
+        performance.now() - micOpenStartedAt,
+      )}`,
     );
 
+    const recorderInitStartedAt = performance.now();
     mediaRecorder = new MediaRecorder(stream, recorderOptions);
     recorderMimeType = mediaRecorder.mimeType || preferredMimeType || "audio/webm";
     recordedChunks = [];
@@ -6715,10 +6751,24 @@ async function startRecording(): Promise<void> {
     });
 
     mediaRecorder.start(180);
-    logClientEvent(`[record.start] media recorder started mime=${recorderMimeType}`);
+    const recordingReadyLatencyMs = Math.round(performance.now() - startRequestedAt);
+    logClientEvent(
+      `[record.start] media recorder started mime=${recorderMimeType} recorderInitMs=${Math.round(
+        performance.now() - recorderInitStartedAt,
+      )} readyMs=${recordingReadyLatencyMs}`,
+    );
     recordingStartedAt = Date.now();
     beginRecordingTicker();
     setStage("recording", "Listening...");
+    if (lastCaptureIntentStartedAt > 0) {
+      logClientEvent(
+        `[record.intent.ready] source=${lastCaptureIntentLabel || "unknown"} totalMs=${Math.round(
+          performance.now() - lastCaptureIntentStartedAt,
+        )}`,
+      );
+      lastCaptureIntentStartedAt = 0;
+      lastCaptureIntentLabel = "";
+    }
     if (settings.captureMode === "push-to-talk") {
       setNotice("Recording started. Release the hotkey or mic button to stop.");
     } else {
@@ -6727,6 +6777,8 @@ async function startRecording(): Promise<void> {
     syncActionAvailability();
   } catch (error) {
     logClientEvent(`[record.start] failed to open microphone: ${asErrorMessage(error)}`);
+    lastCaptureIntentStartedAt = 0;
+    lastCaptureIntentLabel = "";
     clearPushToTalkHolds();
     stopAmplitudeMonitoring();
     releaseMicrophone();
@@ -6845,6 +6897,7 @@ async function finalizeRecording(): Promise<void> {
 
 async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void> {
   const activeSettings = readSettingsFromForm();
+  const pipelineInvokeStartedAt = performance.now();
 
   pipelineRunning = true;
   syncActionAvailability();
@@ -6867,7 +6920,13 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       );
     }
 
+    const base64EncodeStartedAt = performance.now();
     const audioBase64 = await blobToBase64(pipelineAudioBlob);
+    logClientEvent(
+      `[pipeline.audio] base64Ms=${Math.round(
+        performance.now() - base64EncodeStartedAt,
+      )} bytes=${pipelineAudioBlob.size} mime=${pipelineAudioMimeType || "unknown"}`,
+    );
     const systemPrompt = buildEffectiveSystemPrompt(activeSettings, commandModeArmed);
     const coquiVoiceId = activeSettings.coquiVoiceId || coquiVoiceSelect.value || "";
     const pipelineTtsEngine: TtsEngine = ZERO_PYTHON_MODE ? "piper" : activeSettings.ttsEngine;
@@ -7011,6 +7070,13 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
             : null,
       },
     });
+    logClientEvent(
+      `[pipeline.invoke] totalMs=${Math.round(
+        performance.now() - pipelineInvokeStartedAt,
+      )} sttMs=${Math.round(response.sttLatencyMs)} aiMs=${Math.round(
+        response.aiLatencyMs,
+      )} ttsMs=${Math.round(response.ttsLatencyMs)} endToEndMs=${Math.round(response.totalLatencyMs)}`,
+    );
 
     const resolvedResponse =
       response.mode === "dictation"
@@ -7380,6 +7446,16 @@ async function fetchForegroundInputBlockStatus(force = false): Promise<Foregroun
 
   const now = Date.now();
   if (!force && now - foregroundBlockCheckedAt <= FOREGROUND_BLOCK_CHECK_CACHE_MS) {
+    return foregroundBlockStatusCache;
+  }
+
+  if (
+    !force &&
+    foregroundBlockMonitorId !== null &&
+    foregroundBlockCheckedAt > 0 &&
+    now - foregroundBlockCheckedAt <= 1_500
+  ) {
+    void refreshBlockedAppShortcutSuppression();
     return foregroundBlockStatusCache;
   }
 
@@ -8186,6 +8262,39 @@ async function showVoiceIndicatorWindow(): Promise<void> {
   }
 }
 
+async function canPreWarmMicrophone(): Promise<boolean> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return false;
+  }
+
+  if (microphonePermissionGranted) {
+    return true;
+  }
+
+  if (typeof navigator.permissions?.query !== "function") {
+    return false;
+  }
+
+  try {
+    const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
+    return status.state === "granted";
+  } catch {
+    return false;
+  }
+}
+
+async function primeCaptureReadiness(deviceId: string, shouldPrimeDock: boolean): Promise<void> {
+  if (await canPreWarmMicrophone()) {
+    void preWarmMicrophoneStream(deviceId);
+  }
+
+  if (shouldPrimeDock && isTauriEnvironment() && !voiceIndicatorWindow) {
+    void ensureVoiceIndicatorWindow().catch((error) => {
+      logClientEvent(`[dock.prime] failed: ${asErrorMessage(error)}`);
+    });
+  }
+}
+
 async function hideVoiceIndicatorWindow(): Promise<void> {
   if (dockHideTimerId !== null) {
     window.clearTimeout(dockHideTimerId);
@@ -8414,6 +8523,8 @@ async function engagePushToTalk(source: HoldSource): Promise<void> {
   }
 
   logClientEvent("[record.ptt.engage] invoking startRecording()");
+  lastCaptureIntentStartedAt = performance.now();
+  lastCaptureIntentLabel = source;
   await startRecording();
 
   if (mediaRecorder?.state !== "recording") {

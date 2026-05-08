@@ -5858,7 +5858,31 @@ async fn transcribe_audio(
     allowed_languages: Option<&[String]>,
 ) -> Result<String, String> {
     let normalized_allowed_languages = normalize_stt_allowed_languages(allowed_languages);
+    let effective_language = normalize_stt_language_hint(language)
+        .or_else(|| normalized_allowed_languages.first().cloned());
     let whisper_family = stt_model.trim().to_ascii_lowercase().contains("whisper");
+
+    if whisper_family {
+        let transcript = transcribe_audio_openai_compatible(
+            client,
+            Some(api_key),
+            api_base_url,
+            stt_model,
+            audio_bytes,
+            audio_mime_type,
+            effective_language.as_deref(),
+            "online",
+        )
+        .await?;
+
+        let transcript_trimmed = transcript.trim();
+        let looks_noisy = transcript_trimmed.is_empty()
+            || looks_like_repetitive_transcript_noise(&transcript, effective_language.as_deref());
+        if !looks_noisy || normalized_allowed_languages.len() <= 1 {
+            return Ok(transcript_trimmed.to_string());
+        }
+    }
+
     if whisper_family && normalized_allowed_languages.len() > 1 {
         let mut best_transcript = String::new();
         let mut best_score = 0usize;
@@ -5907,8 +5931,6 @@ async fn transcribe_audio(
         }
     }
 
-    let effective_language = normalize_stt_language_hint(language)
-        .or_else(|| normalized_allowed_languages.first().cloned());
     transcribe_audio_openai_compatible(
         client,
         Some(api_key),
@@ -6116,6 +6138,7 @@ async fn transcribe_audio_openai_compatible(
     language: Option<&str>,
     source_label: &str,
 ) -> Result<String, String> {
+    let request_start = Instant::now();
     let extension = mime_to_extension(audio_mime_type);
     let file_name = format!("recording.{extension}");
 
@@ -6144,12 +6167,25 @@ async fn transcribe_audio_openai_compatible(
         .send()
         .await
         .map_err(|error| format!("Failed to call {source_label} STT endpoint: {error}"))?;
+    let response_headers_ms = elapsed_ms(request_start);
 
     let status = response.status();
     let body = response
         .text()
         .await
         .map_err(|error| format!("Failed to parse {source_label} STT response body: {error}"))?;
+    let response_body_ms = elapsed_ms(request_start);
+
+    info!(
+        "[online.stt.http] source={} status={} bytes={} headers_ms={} total_ms={} model={} base_url={}",
+        source_label,
+        status,
+        body.len(),
+        response_headers_ms,
+        response_body_ms,
+        clip_text(stt_model, 120),
+        clip_text(api_base_url, 180)
+    );
 
     if !status.is_success() {
         return Err(format!(

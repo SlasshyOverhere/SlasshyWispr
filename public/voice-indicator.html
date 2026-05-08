@@ -76,10 +76,18 @@
         0 10px 30px rgba(0, 0, 0, 0.65),
         inset 0 1px 0 rgba(255, 255, 255, 0.04);
       transition:
-        width 400ms cubic-bezier(0.25, 1, 0.5, 1),
-        opacity 250ms ease,
-        transform 250ms ease,
-        box-shadow 300ms ease;
+        width 150ms cubic-bezier(0.25, 1, 0.5, 1),
+        opacity 120ms ease,
+        transform 120ms ease,
+        box-shadow 180ms ease;
+    }
+
+    .dock-shell[data-snap="true"] {
+      transition:
+        width 45ms linear,
+        opacity 45ms linear,
+        transform 45ms linear,
+        box-shadow 60ms linear;
     }
 
     .dock-shell[data-stage="recording"],
@@ -107,6 +115,7 @@
       background:
         radial-gradient(circle at top, rgba(255, 255, 255, 0.035), transparent 58%),
         #000000;
+      pointer-events: none;
     }
 
     .dock-border-glow {
@@ -127,7 +136,7 @@
       );
       opacity: 0;
       pointer-events: none;
-      transition: opacity 300ms ease;
+      transition: opacity 160ms ease;
     }
 
     /* White ring only during transcription (processing) */
@@ -177,7 +186,7 @@
       display: block;
       pointer-events: none;
       filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.18));
-      transition: transform 300ms ease, filter 300ms ease;
+      transition: transform 120ms ease, filter 120ms ease;
     }
 
     .dock-shell[data-stage="recording"] .dock-logo,
@@ -207,7 +216,7 @@
       left: 0;
       top: 50%;
       transform: translateY(-50%);
-      transition: opacity 300ms ease, transform 300ms ease;
+      transition: opacity 100ms ease, transform 100ms ease;
       opacity: 0;
       pointer-events: none;
     }
@@ -323,22 +332,40 @@
     let targetAmplitude = 0;
     let smoothAmplitude = 0;
     let animationFrameId = null;
+    let snapTimerId = null;
+
+    function applySnapTransition() {
+      dock.dataset.snap = "true";
+      if (snapTimerId !== null) {
+        clearTimeout(snapTimerId);
+      }
+      snapTimerId = setTimeout(() => {
+        dock.dataset.snap = "false";
+        snapTimerId = null;
+      }, 120);
+    }
 
     function render(state) {
       if (!state || state.kind !== "state") return;
 
       const oldStage = stage;
+      const wasVisible = dock.dataset.visible === "true";
       stage = state.stage || "idle";
       targetAmplitude = Math.min(Math.max(Number(state.amplitude || 0), 0), 1);
+      const nextVisible = state.visible ? "true" : "false";
+      const isDictating = stage === "recording" || stage === "speaking";
+      const wasDictating = oldStage === "recording" || oldStage === "speaking";
 
-      dock.dataset.visible = state.visible ? "true" : "false";
+      if (nextVisible === "true" && isDictating && (!wasVisible || !wasDictating)) {
+        applySnapTransition();
+      }
+
+      dock.dataset.visible = nextVisible;
       dock.dataset.stage = stage;
 
       const theme = state.theme === "light" ? "light" : "dark";
       dock.dataset.theme = theme;
       document.documentElement.setAttribute("data-theme", theme);
-
-      const isDictating = stage === "recording" || stage === "speaking";
 
       // Note: Visibility and transitions are now handled entirely by CSS using data-stage attributes
     }
