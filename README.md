@@ -15,7 +15,7 @@ Speak naturally, get clean transcription, generate AI responses, and hear replie
 
 ## Key Features
 
-- Fast voice dictation with hotkeys
+- Fast voice dictation with hotkeys (supports Push-to-Talk with customizable sounds)
 - Wake phrase assistant mode (for example: "Hey Jarvis...")
 - Online, Offline, or Hybrid model routing
 - Local STT support (Parakeet models)
@@ -23,6 +23,10 @@ Speak naturally, get clean transcription, generate AI responses, and hear replie
 - Clipboard/paste-friendly dictation workflow
 - TTS playback for assistant responses
 - Live pipeline status with STT/AI/TTS timings
+- Keyboard shortcuts for quick navigation
+- Auto-updates with background checking
+- High-DPI and multi-resolution support
+- Usage dashboard with trend tracking
 
 ## Download
 
