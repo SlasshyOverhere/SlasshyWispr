@@ -14,11 +14,11 @@
       {
         "title": "SlasshyWispr",
         "width": 1280,
-        "height": 920,
-        "minWidth": 980,
-        "minHeight": 860,
+        "height": 832,
         "decorations": false,
-        "resizable": true,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
         "fullscreen": false
       }
     ],

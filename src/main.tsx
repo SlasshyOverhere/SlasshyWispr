@@ -6,6 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   LogicalSize,
+  PhysicalPosition,
   availableMonitors,
   currentMonitor,
   getCurrentWindow,
@@ -81,6 +82,9 @@ import {
   MAX_HISTORY_ITEMS,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
   BLOCKED_INPUT_NOTICE_COOLDOWN_MS,
+  DEFAULT_PUSH_TO_TALK_SOUND,
+  DEFAULT_PUSH_TO_TALK_END_SOUND,
+  DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
 } from "./constants";
 
 import type {
@@ -165,6 +169,49 @@ flushSync(() => {
   createRoot(appRoot).render(<App />);
 });
 
+const BASE_WINDOW_WIDTH = 1280;
+const BASE_WINDOW_HEIGHT = 832;
+const BASE_DPI = 96;
+
+async function initializeDpiAwareWindowSize(): Promise<void> {
+  if (!isTauriEnvironment()) {
+    return;
+  }
+
+  try {
+    const monitor = await currentMonitor();
+    if (!monitor) {
+      return;
+    }
+
+    const dpi = monitor.scaleFactor * BASE_DPI;
+    const scaleFactor = dpi / BASE_DPI;
+
+    const appWindow = getCurrentWindow();
+    const size = new LogicalSize(
+      Math.round(BASE_WINDOW_WIDTH * scaleFactor),
+      Math.round(BASE_WINDOW_HEIGHT * scaleFactor),
+    );
+
+    await appWindow.setSize(size);
+
+    const monitors = await availableMonitors();
+    const isPrimary = monitors.some((m) => m.position.x === 0 && m.position.y === 0 && m.size.width === monitor.size.width && m.size.height === monitor.size.height);
+    if (isPrimary) {
+      const x = Math.round((monitor.size.width - size.width) / 2);
+      const y = Math.round((monitor.size.height - size.height) / 2);
+      const { x: curX, y: curY } = await appWindow.outerPosition();
+      if (curX !== x || curY !== y) {
+        await appWindow.setPosition(new PhysicalPosition(x, y));
+      }
+    }
+  } catch (error) {
+    console.warn("[dpi] failed to adjust window size:", error);
+  }
+}
+
+void initializeDpiAwareWindowSize();
+
 
 function requiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -211,10 +258,10 @@ const ttsProfilesArea = requiredElement<HTMLDivElement>("#ttsProfilesArea");
 const ttsSetupStatus = requiredElement<HTMLParagraphElement>("#ttsSetupStatus");
 const ttsSetupLogs = requiredElement<HTMLDivElement>("#ttsSetupLogs");
 const setupAllTtsBtn = requiredElement<HTMLButtonElement>("#setupAllTtsBtn");
-const ttsProfilePiperTab = requiredElement<HTMLButtonElement>("#ttsProfilePiperTab");
-const ttsProfileCoquiTab = requiredElement<HTMLButtonElement>("#ttsProfileCoquiTab");
 const ttsProfilePiperPanel = requiredElement<HTMLDivElement>("#ttsProfilePiperPanel");
 const ttsProfileCoquiPanel = requiredElement<HTMLDivElement>("#ttsProfileCoquiPanel");
+const ttsProfilePiperTab = requiredElement<HTMLButtonElement>("#ttsProfilePiperTab");
+const ttsProfileCoquiTab = requiredElement<HTMLButtonElement>("#ttsProfileCoquiTab");
 const appTitlebarDrag = requiredElement<HTMLDivElement>("#appTitlebarDrag");
 const windowMinimizeBtn = requiredElement<HTMLButtonElement>("#windowMinimizeBtn");
 const windowMaximizeBtn = requiredElement<HTMLButtonElement>("#windowMaximizeBtn");
@@ -282,10 +329,8 @@ const snippetsList = requiredElement<HTMLDivElement>("#snippetsList");
 const snippetForm = requiredElement<HTMLFormElement>("#snippetForm");
 const snippetTriggerInput = requiredElement<HTMLInputElement>("#snippetTriggerInput");
 const snippetExpansionInput = requiredElement<HTMLInputElement>("#snippetExpansionInput");
+const snippetAddBtn = requiredElement<HTMLButtonElement>("#snippetAddBtn");
 const snippetsAddBtnTop = requiredElement<HTMLButtonElement>("#snippetsAddBtnTop");
-const snippetsSearchInput = requiredElement<HTMLInputElement>("#snippetsSearchInput");
-const snippetsCountBadge = requiredElement<HTMLSpanElement>("#snippetsCountBadge");
-const snippetFormContainer = requiredElement<HTMLElement>("#snippetFormContainer");
 
 
 
@@ -357,7 +402,6 @@ const maxTokensInput = requiredElement<HTMLInputElement>("#maxTokensInput");
 
 const launchAtLoginToggle = requiredElement<HTMLInputElement>("#launchAtLoginToggle");
 const showFlowBarToggle = requiredElement<HTMLInputElement>("#showFlowBarToggle");
-const showAppInDockToggle = requiredElement<HTMLInputElement>("#showAppInDockToggle");
 const commandModeToggle = requiredElement<HTMLInputElement>("#commandModeToggle");
 const wakeWordEnabledToggle = requiredElement<HTMLInputElement>("#wakeWordEnabledToggle");
 const assistantNameInput = requiredElement<HTMLInputElement>("#assistantNameInput");
@@ -380,6 +424,12 @@ const dictationSoundEffectsToggle = requiredElement<HTMLInputElement>("#dictatio
 const muteMusicWhileDictatingToggle = requiredElement<HTMLInputElement>(
   "#muteMusicWhileDictatingToggle",
 );
+const pushToTalkSoundSelect = requiredElement<HTMLSelectElement>("#pushToTalkSoundSelect");
+const pushToTalkEndSoundSelect = requiredElement<HTMLSelectElement>("#pushToTalkEndSoundSelect");
+const pushToTalkSoundVolumeRange = requiredElement<HTMLInputElement>("#pushToTalkSoundVolumeRange");
+const previewPttSoundBtn = requiredElement<HTMLButtonElement>("#previewPttSoundBtn");
+const previewPttEndSoundBtn = requiredElement<HTMLButtonElement>("#previewPttEndSoundBtn");
+const pttVolumeHint = requiredElement<HTMLSpanElement>("#pttVolumeHint");
 const backtrackToggle = requiredElement<HTMLInputElement>("#backtrackToggle");
 const removeFillersToggle = requiredElement<HTMLInputElement>("#removeFillersToggle");
 const autoPunctuationToggle = requiredElement<HTMLInputElement>("#autoPunctuationToggle");
@@ -574,6 +624,8 @@ let lastBlockedInputNoticeAt = 0;
 let lastBlockedInputProcess = "";
 let foregroundBlockMonitorId: number | null = null;
 let foregroundBlockMonitorInFlight = false;
+let lastCaptureIntentStartedAt = 0;
+let lastCaptureIntentLabel = "";
 let mainWindowHiddenToTray = false;
 let persistSettingsTimer: number | null = null;
 let pendingSettingsToPersist: PersistedSettings | null = null;
@@ -757,28 +809,6 @@ for (const navButton of settingsNavButtons) {
     setActiveSettingsPane(pane);
   });
 }
-
-ttsProfilePiperTab.addEventListener("click", () => {
-  if (ttsEngineSelect.value !== "piper") {
-    ttsEngineSelect.value = "piper";
-    handleSettingsChange();
-    return;
-  }
-  setActiveTtsProfile("piper");
-});
-
-ttsProfileCoquiTab.addEventListener("click", () => {
-  if (ZERO_PYTHON_MODE) {
-    setNotice(ZERO_PYTHON_TTS_NOTICE, true);
-    return;
-  }
-  if (ttsEngineSelect.value !== "coqui") {
-    ttsEngineSelect.value = "coqui";
-    handleSettingsChange();
-    return;
-  }
-  setActiveTtsProfile("coqui");
-});
 
 toggleSidebarBtn.addEventListener("click", () => {
   const collapsed = !document.body.classList.contains("sidebar-collapsed");
@@ -1106,7 +1136,6 @@ captureModeSingleInput.addEventListener("change", handleSettingsChange);
 captureModePushToTalkInput.addEventListener("change", handleSettingsChange);
 launchAtLoginToggle.addEventListener("change", handleSettingsChange);
 showFlowBarToggle.addEventListener("change", handleSettingsChange);
-showAppInDockToggle.addEventListener("change", handleSettingsChange);
 commandModeToggle.addEventListener("change", handleSettingsChange);
 wakeWordEnabledToggle.addEventListener("change", handleSettingsChange);
 assistantNameInput.addEventListener("input", handleSettingsChange);
@@ -1120,6 +1149,18 @@ autoPasteDictationToggle.addEventListener("change", handleSettingsChange);
 incognitoModeToggle.addEventListener("change", handleSettingsChange);
 themeModeSelect.addEventListener("change", handleSettingsChange);
 dictationSoundEffectsToggle.addEventListener("change", handleSettingsChange);
+pushToTalkSoundSelect.addEventListener("change", handleSettingsChange);
+pushToTalkEndSoundSelect.addEventListener("change", handleSettingsChange);
+pushToTalkSoundVolumeRange.addEventListener("input", () => {
+  pttVolumeHint.textContent = `${pushToTalkSoundVolumeRange.value}%`;
+});
+pushToTalkSoundVolumeRange.addEventListener("change", handleSettingsChange);
+previewPttSoundBtn.addEventListener("click", () => {
+  playDictationSoundEffect("start", pushToTalkSoundSelect.value);
+});
+previewPttEndSoundBtn.addEventListener("click", () => {
+  playDictationSoundEffect("stop", pushToTalkEndSoundSelect.value);
+});
 muteMusicWhileDictatingToggle.addEventListener("change", handleSettingsChange);
 backtrackToggle.addEventListener("change", handleSettingsChange);
 removeFillersToggle.addEventListener("change", handleSettingsChange);
@@ -1437,6 +1478,9 @@ async function bootstrap(): Promise<void> {
     await refreshCoquiVoices();
   }
   await refreshMicrophones(false);
+  if (stage === "idle") {
+    void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
+  }
   await refreshOllamaStatus({ quiet: true });
   await fetchOllamaModels({ quiet: true, autoSelect: true });
   await fetchLocalSttModels({ quiet: true });
@@ -1546,8 +1590,6 @@ function enforceZeroPythonUi(): void {
   if (ttsEngineSelect.value === "coqui") {
     ttsEngineSelect.value = "piper";
   }
-  ttsProfileCoquiTab.hidden = true;
-  ttsProfileCoquiTab.disabled = true;
   coquiStatusValue.textContent = "Disabled";
   coquiPythonValue.textContent = "-";
   coquiVersionValue.textContent = "-";
@@ -1627,7 +1669,6 @@ function loadSettings(): PersistedSettings {
     maxTokens: DEFAULT_MAX_TOKENS,
     launchAtLogin: true,
     showFlowBar: false,
-    showAppInDock: true,
     commandMode: true,
     wakeWordEnabled: true,
     assistantName: DEFAULT_ASSISTANT_NAME,
@@ -1655,6 +1696,9 @@ function loadSettings(): PersistedSettings {
     coquiEmotion: DEFAULT_COQUI_EMOTION,
     coquiUseGpu: true,
     coquiSplitSentences: false,
+    pushToTalkSound: DEFAULT_PUSH_TO_TALK_SOUND,
+    pushToTalkEndSound: DEFAULT_PUSH_TO_TALK_END_SOUND,
+    pushToTalkSoundVolume: DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
   };
 
   const rawCurrent = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -1724,7 +1768,6 @@ function loadSettings(): PersistedSettings {
       showFlowBar: fromLegacyOnly
         ? false
         : coerceBoolean(parsed.showFlowBar, defaults.showFlowBar),
-      showAppInDock: coerceBoolean(parsed.showAppInDock, defaults.showAppInDock),
       commandMode: coerceBoolean(parsed.commandMode, defaults.commandMode),
       wakeWordEnabled: coerceBoolean(parsed.wakeWordEnabled, defaults.wakeWordEnabled),
       assistantName:
@@ -1759,6 +1802,9 @@ function loadSettings(): PersistedSettings {
       coquiEmotion: asCoquiEmotion(parsed.coquiEmotion),
       coquiUseGpu: coerceBoolean(parsed.coquiUseGpu, defaults.coquiUseGpu),
       coquiSplitSentences: coerceBoolean(parsed.coquiSplitSentences, defaults.coquiSplitSentences),
+      pushToTalkSound: String(parsed.pushToTalkSound ?? defaults.pushToTalkSound),
+      pushToTalkEndSound: String(parsed.pushToTalkEndSound ?? defaults.pushToTalkEndSound),
+      pushToTalkSoundVolume: coerceNumber(parsed.pushToTalkSoundVolume, defaults.pushToTalkSoundVolume, 0, 1),
     };
   } catch {
     return defaults;
@@ -1952,7 +1998,6 @@ function readSettingsFromForm(): PersistedSettings {
     maxTokens: coerceInteger(Number(maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 4096),
     launchAtLogin: launchAtLoginToggle.checked,
     showFlowBar: showFlowBarToggle.checked,
-    showAppInDock: showAppInDockToggle.checked,
     commandMode: commandModeToggle.checked,
     wakeWordEnabled: wakeWordEnabledToggle.checked,
     assistantName: assistantNameInput.value,
@@ -1967,6 +2012,9 @@ function readSettingsFromForm(): PersistedSettings {
     removeFillers: removeFillersToggle.checked,
     autoPunctuation: autoPunctuationToggle.checked,
     numberedLists: numberedListsToggle.checked,
+    pushToTalkSound: pushToTalkSoundSelect.value,
+    pushToTalkEndSound: pushToTalkEndSoundSelect.value,
+    pushToTalkSoundVolume: coerceNumber(Number(pushToTalkSoundVolumeRange.value) / 100, DEFAULT_PUSH_TO_TALK_SOUND_VOLUME, 0, 1),
   };
 }
 
@@ -2028,7 +2076,6 @@ function applySettingsToForm(next: PersistedSettings): void {
   captureModePushToTalkInput.checked = next.captureMode === "push-to-talk";
   launchAtLoginToggle.checked = next.launchAtLogin;
   showFlowBarToggle.checked = next.showFlowBar;
-  showAppInDockToggle.checked = next.showAppInDock;
   commandModeToggle.checked = next.commandMode;
   wakeWordEnabledToggle.checked = next.wakeWordEnabled;
   assistantNameInput.value = next.assistantName;
@@ -2044,6 +2091,10 @@ function applySettingsToForm(next: PersistedSettings): void {
   removeFillersToggle.checked = next.removeFillers;
   autoPunctuationToggle.checked = next.autoPunctuation;
   numberedListsToggle.checked = next.numberedLists;
+  pushToTalkSoundSelect.value = next.pushToTalkSound;
+  pushToTalkEndSoundSelect.value = next.pushToTalkEndSound;
+  pushToTalkSoundVolumeRange.value = String(Math.round(next.pushToTalkSoundVolume * 100));
+  pttVolumeHint.textContent = `${Math.round(next.pushToTalkSoundVolume * 100)}%`;
   temperatureValue.textContent = next.temperature.toFixed(2);
 
   const displayHotkey = formatHotkeyForDisplay(next.pushToTalkHotkey);
@@ -2064,6 +2115,8 @@ function handleSettingsChange(): void {
   const previousAiRuntimeMode = settings.aiRuntimeMode;
   const previousMuteMusicWhileDictating = settings.muteMusicWhileDictating;
   const previousLaunchAtLogin = settings.launchAtLogin;
+  const previousMicrophoneDeviceId = settings.microphoneDeviceId;
+  const previousShowFlowBar = settings.showFlowBar;
   const previousShortcutSignature = buildShortcutSyncSignature(settings);
   const next = readSettingsFromForm();
   if (settingsOverlay.hidden && next.captureMode !== previousSettings.captureMode) {
@@ -2219,6 +2272,13 @@ function handleSettingsChange(): void {
   updateTtsSetupGate();
   publishDockState();
   void syncFloatingIndicatorWindow();
+  if (
+    stage === "idle" &&
+    (previousMicrophoneDeviceId !== settings.microphoneDeviceId ||
+      (!previousShowFlowBar && settings.showFlowBar))
+  ) {
+    void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
+  }
 }
 
 function updateRuntimeModeNotice(sttMode: RuntimeMode, aiMode: RuntimeMode): void {
@@ -4583,6 +4643,10 @@ async function refreshMicrophones(requestPermission: boolean): Promise<void> {
     persistSettings(settings);
     updateMicrophoneSummary();
 
+    if (requestPermission && stage === "idle") {
+      void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
+    }
+
     if (!microphonePermissionGranted && microphones.every((device) => !device.label)) {
       setNotice("Click refresh in Settings > General to grant mic permission and show device names.");
     }
@@ -6539,6 +6603,8 @@ async function handleRecordToggle(): Promise<void> {
   }
 
   logClientEvent("[record.toggle] invoking startRecording()");
+  lastCaptureIntentStartedAt = performance.now();
+  lastCaptureIntentLabel = "toggle";
   await startRecording();
 }
 
@@ -6584,6 +6650,7 @@ function interruptTtsPlaybackForCaptureIntent(): boolean {
 }
 
 async function startRecording(): Promise<void> {
+  const startRequestedAt = performance.now();
   logClientEvent(
     `[record.start] requested stage=${stage} pipelineRunning=${boolFlag(
       pipelineRunning,
@@ -6591,14 +6658,24 @@ async function startRecording(): Promise<void> {
   );
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
     logClientEvent("[record.start] blocked because browser media recording APIs are unavailable");
+    lastCaptureIntentStartedAt = 0;
+    lastCaptureIntentLabel = "";
     clearPushToTalkHolds();
     setNotice("This environment does not support microphone recording.", true);
     setStage("error", "Media APIs unavailable.");
     return;
   }
 
+  const foregroundCheckStartedAt = performance.now();
   if (await shouldBlockAssistantInputFromForegroundApp()) {
+    logClientEvent(
+      `[record.start] blocked by foreground app policy after ${Math.round(
+        performance.now() - foregroundCheckStartedAt,
+      )}ms`,
+    );
     logClientEvent("[record.start] blocked by foreground app policy");
+    lastCaptureIntentStartedAt = 0;
+    lastCaptureIntentLabel = "";
     clearPushToTalkHolds();
     return;
   }
@@ -6615,6 +6692,8 @@ async function startRecording(): Promise<void> {
         activeSettings.rememberApiKey,
       )}`,
     );
+    lastCaptureIntentStartedAt = 0;
+    lastCaptureIntentLabel = "";
     clearPushToTalkHolds();
     showMissingApiKeyNotice("record-start");
     return;
@@ -6635,13 +6714,17 @@ async function startRecording(): Promise<void> {
   );
 
   try {
+    const micOpenStartedAt = performance.now();
     const stream = await openMicrophoneStream(activeSettings.microphoneDeviceId);
     mediaStream = stream;
     microphonePermissionGranted = true;
     logClientEvent(
-      `[record.start] microphone stream opened tracks=${stream.getAudioTracks().length}`,
+      `[record.start] microphone stream opened tracks=${stream.getAudioTracks().length} openMs=${Math.round(
+        performance.now() - micOpenStartedAt,
+      )}`,
     );
 
+    const recorderInitStartedAt = performance.now();
     mediaRecorder = new MediaRecorder(stream, recorderOptions);
     recorderMimeType = mediaRecorder.mimeType || preferredMimeType || "audio/webm";
     recordedChunks = [];
@@ -6668,10 +6751,24 @@ async function startRecording(): Promise<void> {
     });
 
     mediaRecorder.start(180);
-    logClientEvent(`[record.start] media recorder started mime=${recorderMimeType}`);
+    const recordingReadyLatencyMs = Math.round(performance.now() - startRequestedAt);
+    logClientEvent(
+      `[record.start] media recorder started mime=${recorderMimeType} recorderInitMs=${Math.round(
+        performance.now() - recorderInitStartedAt,
+      )} readyMs=${recordingReadyLatencyMs}`,
+    );
     recordingStartedAt = Date.now();
     beginRecordingTicker();
     setStage("recording", "Listening...");
+    if (lastCaptureIntentStartedAt > 0) {
+      logClientEvent(
+        `[record.intent.ready] source=${lastCaptureIntentLabel || "unknown"} totalMs=${Math.round(
+          performance.now() - lastCaptureIntentStartedAt,
+        )}`,
+      );
+      lastCaptureIntentStartedAt = 0;
+      lastCaptureIntentLabel = "";
+    }
     if (settings.captureMode === "push-to-talk") {
       setNotice("Recording started. Release the hotkey or mic button to stop.");
     } else {
@@ -6680,6 +6777,8 @@ async function startRecording(): Promise<void> {
     syncActionAvailability();
   } catch (error) {
     logClientEvent(`[record.start] failed to open microphone: ${asErrorMessage(error)}`);
+    lastCaptureIntentStartedAt = 0;
+    lastCaptureIntentLabel = "";
     clearPushToTalkHolds();
     stopAmplitudeMonitoring();
     releaseMicrophone();
@@ -6798,6 +6897,7 @@ async function finalizeRecording(): Promise<void> {
 
 async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void> {
   const activeSettings = readSettingsFromForm();
+  const pipelineInvokeStartedAt = performance.now();
 
   pipelineRunning = true;
   syncActionAvailability();
@@ -6820,7 +6920,13 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       );
     }
 
+    const base64EncodeStartedAt = performance.now();
     const audioBase64 = await blobToBase64(pipelineAudioBlob);
+    logClientEvent(
+      `[pipeline.audio] base64Ms=${Math.round(
+        performance.now() - base64EncodeStartedAt,
+      )} bytes=${pipelineAudioBlob.size} mime=${pipelineAudioMimeType || "unknown"}`,
+    );
     const systemPrompt = buildEffectiveSystemPrompt(activeSettings, commandModeArmed);
     const coquiVoiceId = activeSettings.coquiVoiceId || coquiVoiceSelect.value || "";
     const pipelineTtsEngine: TtsEngine = ZERO_PYTHON_MODE ? "piper" : activeSettings.ttsEngine;
@@ -6964,6 +7070,13 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
             : null,
       },
     });
+    logClientEvent(
+      `[pipeline.invoke] totalMs=${Math.round(
+        performance.now() - pipelineInvokeStartedAt,
+      )} sttMs=${Math.round(response.sttLatencyMs)} aiMs=${Math.round(
+        response.aiLatencyMs,
+      )} ttsMs=${Math.round(response.ttsLatencyMs)} endToEndMs=${Math.round(response.totalLatencyMs)}`,
+    );
 
     const resolvedResponse =
       response.mode === "dictation"
@@ -7209,8 +7322,8 @@ function renderAssistantInfo(info: AssistantInfoResponse): void {
   updateTtsSetupGate();
 }
 
-function playDictationSoundEffect(kind: "start" | "stop" | "error"): void {
-  if (!settings.dictationSoundEffects) {
+function playDictationSoundEffect(kind: "start" | "stop" | "error", previewSoundId?: string): void {
+  if (!previewSoundId && !settings.dictationSoundEffects) {
     return;
   }
 
@@ -7229,12 +7342,58 @@ function playDictationSoundEffect(kind: "start" | "stop" | "error"): void {
     });
   }
 
-  const profile =
-    kind === "start"
-      ? { frequencies: [680, 920], durations: [0.06, 0.08], type: "sine" as OscillatorType }
-      : kind === "stop"
-        ? { frequencies: [580], durations: [0.1], type: "triangle" as OscillatorType }
-        : { frequencies: [260, 190], durations: [0.1, 0.12], type: "square" as OscillatorType };
+  const soundIdToPlay = previewSoundId || (kind === "start" ? settings.pushToTalkSound : kind === "stop" ? settings.pushToTalkEndSound : "error");
+
+  let profile: { frequencies: number[], durations: number[], type: OscillatorType };
+
+  switch (soundIdToPlay) {
+    case "beep-start":
+      profile = { frequencies: [680, 920], durations: [0.06, 0.08], type: "sine" };
+      break;
+    case "beep-end":
+      profile = { frequencies: [580], durations: [0.1], type: "triangle" };
+      break;
+    case "click":
+      profile = { frequencies: [1000], durations: [0.03], type: "square" };
+      break;
+    case "pop":
+      profile = { frequencies: [400], durations: [0.05], type: "sine" };
+      break;
+    case "ding":
+      profile = { frequencies: [880], durations: [0.2], type: "sine" };
+      break;
+    case "chirp":
+      profile = { frequencies: [400, 800], durations: [0.05, 0.05], type: "sine" };
+      break;
+    case "blip":
+      profile = { frequencies: [1200], durations: [0.05], type: "square" };
+      break;
+    case "thud":
+      profile = { frequencies: [150], durations: [0.08], type: "sine" };
+      break;
+    case "whoosh":
+      profile = { frequencies: [200, 100], durations: [0.06, 0.06], type: "sine" };
+      break;
+    case "chime":
+      profile = { frequencies: [523, 659], durations: [0.07, 0.08], type: "sine" };
+      break;
+    case "buzz":
+      profile = { frequencies: [180], durations: [0.1], type: "sawtooth" };
+      break;
+    case "ping":
+      profile = { frequencies: [2000], durations: [0.04], type: "sine" };
+      break;
+    case "error":
+      profile = { frequencies: [260, 190], durations: [0.1, 0.12], type: "square" };
+      break;
+    default:
+      profile = { frequencies: [680, 920], durations: [0.06, 0.08], type: "sine" };
+      break;
+  }
+
+  const baseVolume = previewSoundId ? 
+    (Number(pushToTalkSoundVolumeRange.value) / 100) * 0.14 : 
+    settings.pushToTalkSoundVolume * 0.14;
 
   let offset = 0;
   for (let index = 0; index < profile.frequencies.length; index += 1) {
@@ -7249,7 +7408,7 @@ function playDictationSoundEffect(kind: "start" | "stop" | "error"): void {
     oscillator.frequency.setValueAtTime(frequency, startAt);
 
     gain.gain.setValueAtTime(0.0001, startAt);
-    gain.gain.exponentialRampToValueAtTime(0.07, startAt + 0.014);
+    gain.gain.exponentialRampToValueAtTime(baseVolume, startAt + 0.014);
     gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
 
     oscillator.connect(gain);
@@ -7287,6 +7446,16 @@ async function fetchForegroundInputBlockStatus(force = false): Promise<Foregroun
 
   const now = Date.now();
   if (!force && now - foregroundBlockCheckedAt <= FOREGROUND_BLOCK_CHECK_CACHE_MS) {
+    return foregroundBlockStatusCache;
+  }
+
+  if (
+    !force &&
+    foregroundBlockMonitorId !== null &&
+    foregroundBlockCheckedAt > 0 &&
+    now - foregroundBlockCheckedAt <= 1_500
+  ) {
+    void refreshBlockedAppShortcutSuppression();
     return foregroundBlockStatusCache;
   }
 
@@ -7611,6 +7780,9 @@ function logClientEvent(message: string): void {
 }
 
 function shouldDisplayDock(): boolean {
+  if (!settings.showFlowBar) {
+    return false;
+  }
   return (
     stage === "recording" ||
     stage === "processing" ||
@@ -7986,8 +8158,8 @@ async function ensureVoiceIndicatorWindow(): Promise<WebviewWindow> {
     }
   }
 
-  const dockWidth = 126;
-  const dockHeight = 48;
+  const dockWidth = 96;
+  const dockHeight = 60;
   const dockPosition = await resolveDockStartPosition(dockWidth, dockHeight);
 
   const created = new WebviewWindow("voice_indicator", {
@@ -8090,6 +8262,39 @@ async function showVoiceIndicatorWindow(): Promise<void> {
   }
 }
 
+async function canPreWarmMicrophone(): Promise<boolean> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return false;
+  }
+
+  if (microphonePermissionGranted) {
+    return true;
+  }
+
+  if (typeof navigator.permissions?.query !== "function") {
+    return false;
+  }
+
+  try {
+    const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
+    return status.state === "granted";
+  } catch {
+    return false;
+  }
+}
+
+async function primeCaptureReadiness(deviceId: string, shouldPrimeDock: boolean): Promise<void> {
+  if (await canPreWarmMicrophone()) {
+    void preWarmMicrophoneStream(deviceId);
+  }
+
+  if (shouldPrimeDock && isTauriEnvironment() && !voiceIndicatorWindow) {
+    void ensureVoiceIndicatorWindow().catch((error) => {
+      logClientEvent(`[dock.prime] failed: ${asErrorMessage(error)}`);
+    });
+  }
+}
+
 async function hideVoiceIndicatorWindow(): Promise<void> {
   if (dockHideTimerId !== null) {
     window.clearTimeout(dockHideTimerId);
@@ -8154,8 +8359,6 @@ function syncActionAvailability(): void {
   cloneCoquiVoiceBtn.disabled = busy;
   testCoquiVoiceBtn.disabled = busy;
   setupAllTtsBtn.disabled = busy;
-  ttsProfilePiperTab.disabled = busy;
-  ttsProfileCoquiTab.disabled = busy;
   clearHistoryBtn.disabled = busy;
   fetchProviderModelsBtn.disabled = busy;
   applyModelToAiBtn.disabled = busy;
@@ -8320,6 +8523,8 @@ async function engagePushToTalk(source: HoldSource): Promise<void> {
   }
 
   logClientEvent("[record.ptt.engage] invoking startRecording()");
+  lastCaptureIntentStartedAt = performance.now();
+  lastCaptureIntentLabel = source;
   await startRecording();
 
   if (mediaRecorder?.state !== "recording") {
