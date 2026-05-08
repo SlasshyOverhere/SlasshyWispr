@@ -266,7 +266,6 @@ export interface PersistedSettings {
   maxTokens: number;
   launchAtLogin: boolean;
   showFlowBar: boolean;
-  showAppInDock: boolean;
   commandMode: boolean;
   wakeWordEnabled: boolean;
   assistantName: string;

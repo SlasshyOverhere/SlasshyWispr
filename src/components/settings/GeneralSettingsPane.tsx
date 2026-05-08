@@ -144,7 +144,6 @@ export function GeneralSettingsPane() {
         <div className="section-body">
           <label className="switch-row" htmlFor="launchAtLoginToggle"><span>Launch at login</span><input id="launchAtLoginToggle" className="switch-input" type="checkbox" /></label>
           <label className="switch-row" htmlFor="showFlowBarToggle"><span>Show floating dock</span><input id="showFlowBarToggle" className="switch-input" type="checkbox" /></label>
-          <label className="switch-row" htmlFor="showAppInDockToggle"><span>Show app in dock</span><input id="showAppInDockToggle" className="switch-input" type="checkbox" /></label>
           <label className="switch-row" htmlFor="incognitoModeToggle"><span>Incognito mode <span className="switch-desc">(no history)</span></span><input id="incognitoModeToggle" className="switch-input" type="checkbox" /></label>
 
           <div className="settings-group-divider" />

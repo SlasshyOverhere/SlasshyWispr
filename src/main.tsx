@@ -403,7 +403,6 @@ const maxTokensInput = requiredElement<HTMLInputElement>("#maxTokensInput");
 
 const launchAtLoginToggle = requiredElement<HTMLInputElement>("#launchAtLoginToggle");
 const showFlowBarToggle = requiredElement<HTMLInputElement>("#showFlowBarToggle");
-const showAppInDockToggle = requiredElement<HTMLInputElement>("#showAppInDockToggle");
 const commandModeToggle = requiredElement<HTMLInputElement>("#commandModeToggle");
 const wakeWordEnabledToggle = requiredElement<HTMLInputElement>("#wakeWordEnabledToggle");
 const assistantNameInput = requiredElement<HTMLInputElement>("#assistantNameInput");
@@ -1136,7 +1135,6 @@ captureModeSingleInput.addEventListener("change", handleSettingsChange);
 captureModePushToTalkInput.addEventListener("change", handleSettingsChange);
 launchAtLoginToggle.addEventListener("change", handleSettingsChange);
 showFlowBarToggle.addEventListener("change", handleSettingsChange);
-showAppInDockToggle.addEventListener("change", handleSettingsChange);
 commandModeToggle.addEventListener("change", handleSettingsChange);
 wakeWordEnabledToggle.addEventListener("change", handleSettingsChange);
 assistantNameInput.addEventListener("input", handleSettingsChange);
@@ -1667,7 +1665,6 @@ function loadSettings(): PersistedSettings {
     maxTokens: DEFAULT_MAX_TOKENS,
     launchAtLogin: true,
     showFlowBar: false,
-    showAppInDock: true,
     commandMode: true,
     wakeWordEnabled: true,
     assistantName: DEFAULT_ASSISTANT_NAME,
@@ -1767,7 +1764,6 @@ function loadSettings(): PersistedSettings {
       showFlowBar: fromLegacyOnly
         ? false
         : coerceBoolean(parsed.showFlowBar, defaults.showFlowBar),
-      showAppInDock: coerceBoolean(parsed.showAppInDock, defaults.showAppInDock),
       commandMode: coerceBoolean(parsed.commandMode, defaults.commandMode),
       wakeWordEnabled: coerceBoolean(parsed.wakeWordEnabled, defaults.wakeWordEnabled),
       assistantName:
@@ -1998,7 +1994,6 @@ function readSettingsFromForm(): PersistedSettings {
     maxTokens: coerceInteger(Number(maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 4096),
     launchAtLogin: launchAtLoginToggle.checked,
     showFlowBar: showFlowBarToggle.checked,
-    showAppInDock: showAppInDockToggle.checked,
     commandMode: commandModeToggle.checked,
     wakeWordEnabled: wakeWordEnabledToggle.checked,
     assistantName: assistantNameInput.value,
@@ -2077,7 +2072,6 @@ function applySettingsToForm(next: PersistedSettings): void {
   captureModePushToTalkInput.checked = next.captureMode === "push-to-talk";
   launchAtLoginToggle.checked = next.launchAtLogin;
   showFlowBarToggle.checked = next.showFlowBar;
-  showAppInDockToggle.checked = next.showAppInDock;
   commandModeToggle.checked = next.commandMode;
   wakeWordEnabledToggle.checked = next.wakeWordEnabled;
   assistantNameInput.value = next.assistantName;
@@ -7710,6 +7704,9 @@ function logClientEvent(message: string): void {
 }
 
 function shouldDisplayDock(): boolean {
+  if (!settings.showFlowBar) {
+    return false;
+  }
   return (
     stage === "recording" ||
     stage === "processing" ||
@@ -8085,8 +8082,8 @@ async function ensureVoiceIndicatorWindow(): Promise<WebviewWindow> {
     }
   }
 
-  const dockWidth = 126;
-  const dockHeight = 48;
+  const dockWidth = 96;
+  const dockHeight = 60;
   const dockPosition = await resolveDockStartPosition(dockWidth, dockHeight);
 
   const created = new WebviewWindow("voice_indicator", {
