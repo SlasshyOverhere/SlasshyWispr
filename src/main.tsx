@@ -121,6 +121,7 @@ import type {
   LocalSttDownloadResponse,
   LocalSttDeleteResponse,
   LocalSttOpenPathResponse,
+  LocalSttModelStatusResponse,
   LocalSttWarmupResponse,
   LocalSttDeactivateResponse,
   LocalSttRuntimeStateResponse,
@@ -242,10 +243,6 @@ const sttLoadOverlay = requiredElement<HTMLDivElement>("#sttLoadOverlay");
 const sttLoadModel = requiredElement<HTMLParagraphElement>("#sttLoadModel");
 const sttLoadDetail = requiredElement<HTMLParagraphElement>("#sttLoadDetail");
 const sttHardwareAdvisorOverlay = requiredElement<HTMLDivElement>("#sttHardwareAdvisorOverlay");
-const sttHardwareAdvisorHardware = requiredElement<HTMLParagraphElement>("#sttHardwareAdvisorHardware");
-const sttHardwareAdvisorSuggestion = requiredElement<HTMLParagraphElement>("#sttHardwareAdvisorSuggestion");
-const sttHardwareAdvisorWarning = requiredElement<HTMLParagraphElement>("#sttHardwareAdvisorWarning");
-const sttHardwareAdvisorList = requiredElement<HTMLParagraphElement>("#sttHardwareAdvisorList");
 const sttHardwareAdvisorUseSuggestionBtn = requiredElement<HTMLButtonElement>(
   "#sttHardwareAdvisorUseSuggestionBtn",
 );
@@ -415,6 +412,8 @@ const aiRuntimeModeOnlineInput = requiredElement<HTMLInputElement>("#aiRuntimeMo
 const aiRuntimeModeOfflineInput = requiredElement<HTMLInputElement>("#aiRuntimeModeOffline");
 const runtimeModeNotice = requiredElement<HTMLParagraphElement>("#runtimeModeNotice");
 const ollamaStatusNotice = requiredElement<HTMLParagraphElement>("#ollamaStatusNotice");
+const localSttStatusBadge = requiredElement<HTMLSpanElement>("#localSttStatusBadge");
+const localSttStatusDetail = requiredElement<HTMLParagraphElement>("#localSttStatusDetail");
 const localSttDownloadNotice = requiredElement<HTMLParagraphElement>("#localSttDownloadNotice");
 const localSttDownloadProgressBar = requiredElement<HTMLSpanElement>("#localSttDownloadProgressBar");
 const localSttDownloadProgressText = requiredElement<HTMLParagraphElement>("#localSttDownloadProgressText");
@@ -599,15 +598,28 @@ let localSttDownloadStatusPollInFlight = false;
 let localSttWarmupInFlight = false;
 let lastWarmedLocalSttModel = "";
 let localSttRuntimeLoaded = false;
+let localSttSelectedModelDownloaded = false;
+let localSttStatusChecked = false;
 let localSttRuntimeStateInFlight = false;
 let runtimeModeSyncInFlight = false;
 let pendingRuntimeModeSyncTarget: RuntimeMode | null = null;
 let pendingRuntimeModeSyncShowLoadOverlay = false;
 let localSttLoadOverlayTickerId: number | null = null;
 let localSttLoadOverlayStartedAt = 0;
+let localSttDownloadOverlay: HTMLDivElement | null = null;
+let lastLocalSttDownloadStatus: LocalSttDownloadStatusResponse | null = null;
+
+function syncLocalSttDownloadOverlayVisibility(): void {
+  if (!localSttDownloadOverlay) {
+    return;
+  }
+  const shouldShow =
+    lastLocalSttDownloadStatus !== null &&
+    lastLocalSttDownloadStatus.active &&
+    !isSettingsOpen();
+  localSttDownloadOverlay.hidden = !shouldShow;
+}
 let localSttHardwareAdvisorOpen = false;
-let localSttHardwareAdvisorSelectedModel = "";
-let localSttHardwareAdvisorSuggestionModel = "";
 let localSttHardwareAdvisorResolver: ((choice: LocalSttHardwareAdvisorChoice) => void) | null = null;
 let ttsSetupPollingId: number | null = null;
 let ttsSetupRunning = false;
@@ -846,11 +858,28 @@ sidebarToggleLocalSttBtn.addEventListener("click", () => {
   void (async () => {
     const activeSettings = readSettingsFromForm();
     if (activeSettings.sttRuntimeMode !== "local") {
-      await syncLocalSttRuntimeForMode("online");
+      try {
+        await syncLocalSttRuntimeForMode("online");
+      } catch (error) {
+        setNotice(`Unable to switch local STT runtime: ${asErrorMessage(error)}`, true);
+        return;
+      }
       const onlineSttModel = activeSettings.sttModelName.trim() || "the configured online STT model";
       setNotice(
         `STT runtime is Online. Using ${onlineSttModel}. Switch STT to Offline in Settings > Models to load a local STT model.`,
       );
+      return;
+    }
+
+    const selectedModel = await ensureSelectedLocalSttModel({ quiet: true });
+    if (!selectedModel) {
+      showOfflineModeDiagnostic('no-model-downloaded');
+      return;
+    }
+
+    const modelDownloaded = await refreshSelectedLocalSttModelAvailability({ quiet: true });
+    if (!modelDownloaded) {
+      await downloadLocalSttModel();
       return;
     }
 
@@ -971,7 +1000,13 @@ document.addEventListener("keydown", (event) => {
       return;
     }
 
-    if (event.key === ",") {
+    if (event.key === "d" || event.key === "D") {
+      event.preventDefault();
+      sidebarToggleLocalSttBtn.click();
+      return;
+    }
+
+    if (event.key === "s" || event.key === "S") {
       event.preventDefault();
       openSettingsBtn.click();
       return;
@@ -1243,10 +1278,16 @@ localOllamaModelCatalogSelect.addEventListener("change", () => {
 localSttModelCatalogSelect.addEventListener("change", () => {
   const selected = localSttModelCatalogSelect.value.trim();
   if (!selected) {
+    localSttSelectedModelDownloaded = false;
+    localSttStatusChecked = true;
+    renderSidebarLocalSttToggle();
+    renderLocalSttSettingsStatus();
     return;
   }
   localSttModelInput.value = selected;
+  localSttStatusChecked = false;
   handleSettingsChange();
+  void refreshSelectedLocalSttModelAvailability({ quiet: true });
 });
 
 coquiModelCatalogSelect.addEventListener("change", () => {
@@ -1533,9 +1574,14 @@ async function bootstrap(): Promise<void> {
   }
   await refreshOllamaStatus({ quiet: true });
   await fetchOllamaModels({ quiet: true, autoSelect: true });
-  await fetchLocalSttModels({ quiet: true });
+  await fetchLocalSttModels({ quiet: true, autoSelect: true });
+  await refreshSelectedLocalSttModelAvailability({ quiet: true });
   await pollLocalSttDownloadStatusOnce({ quiet: true });
-  await syncLocalSttRuntimeForMode(settings.sttRuntimeMode);
+  try {
+    await syncLocalSttRuntimeForMode(settings.sttRuntimeMode);
+  } catch (error) {
+    setNotice(`Unable to initialize local STT runtime: ${asErrorMessage(error)}`, true);
+  }
   try {
     await pollTtsSetupStatusOnce();
   } catch {
@@ -1681,6 +1727,7 @@ function openSettings(reason = "unspecified"): void {
   for (const panel of settingsPanels) {
     panel.scrollTop = 0;
   }
+  syncLocalSttDownloadOverlayVisibility();
 }
 
 function closeSettings(): void {
@@ -1690,6 +1737,11 @@ function closeSettings(): void {
   }
   settingsOverlay.classList.remove("is-open");
   settingsOverlay.hidden = true;
+  syncLocalSttDownloadOverlayVisibility();
+}
+
+function isSettingsOpen(): boolean {
+  return !settingsOverlay.hidden && settingsOverlay.classList.contains("is-open");
 }
 
 function loadSettings(): PersistedSettings {
@@ -2463,6 +2515,165 @@ function pickDefaultLocalOllamaModelFromCatalog(): string {
   return firstNonEmbeddingModel || localOllamaModelCatalog[0] || "";
 }
 
+const LOCAL_STT_RUNTIME_STATE_TIMEOUT_MS = 4000;
+const LOCAL_STT_COMMAND_TIMEOUT_MS = 12000;
+const LOCAL_STT_WARMUP_TIMEOUT_MS = 90000;
+
+function invokeWithTimeout<T>(
+  command: string,
+  args: Record<string, unknown> | undefined,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    void invoke<T>(command, args)
+      .then((result) => {
+        window.clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+function inferLocalSttProviderFromModel(model: string): string {
+  const normalized = model.trim().toLowerCase();
+  if (normalized.startsWith("nvidia/") || normalized.includes("parakeet")) {
+    return "parakeet";
+  }
+  if (normalized.includes("sensevoice")) {
+    return "sensevoice";
+  }
+  if (normalized.includes("moonshine")) {
+    return "moonshine";
+  }
+  return normalized ? "whisper" : "";
+}
+
+function getLocalSttActionBlockReason(): string | null {
+  if (pipelineRunning) {
+    return "Finish the current pipeline run first.";
+  }
+  if (stage === "recording") {
+    return "Stop recording before changing offline STT setup.";
+  }
+  if (localSttDownloadInFlight || localSttDownloadActive) {
+    return "A local STT download is already running.";
+  }
+  if (localSttDeleteInFlight) {
+    return "A local STT delete is already running.";
+  }
+  if (localSttDeactivateInFlight) {
+    return "Local STT is currently unloading.";
+  }
+  if (localSttWarmupInFlight) {
+    return "Local STT is currently loading.";
+  }
+  if (localSttRuntimeStateInFlight) {
+    return "Local STT status is still refreshing.";
+  }
+  if (localSttHardwareAdvisorOpen) {
+    return "Close the hardware advisor before continuing.";
+  }
+  return null;
+}
+
+function reportBlockedLocalSttAction(action: string): boolean {
+  const reason = getLocalSttActionBlockReason();
+  if (!reason) {
+    return false;
+  }
+  setNotice(`${action} unavailable right now. ${reason}`, true);
+  return true;
+}
+
+async function getLocalSttModelStatus(
+  model: string,
+  options: { quiet?: boolean } = {},
+): Promise<LocalSttModelStatusResponse | null> {
+  const normalizedModel = model.trim();
+  if (!normalizedModel) {
+    localSttSelectedModelDownloaded = false;
+    localSttStatusChecked = true;
+    renderSidebarLocalSttToggle();
+    return null;
+  }
+
+  try {
+    const response = await invokeWithTimeout<LocalSttModelStatusResponse>(
+      "get_local_stt_model_status",
+      { request: { model: normalizedModel } },
+      LOCAL_STT_COMMAND_TIMEOUT_MS,
+      `Timed out while checking local STT files for \"${normalizedModel}\".`,
+    );
+    localSttSelectedModelDownloaded = response.exists;
+    return response;
+  } catch (error) {
+    localSttSelectedModelDownloaded = false;
+    if (!options.quiet) {
+      setNotice(`Unable to inspect local STT model files: ${asErrorMessage(error)}`, true);
+    }
+    return null;
+  } finally {
+    localSttStatusChecked = true;
+    renderSidebarLocalSttToggle();
+  }
+}
+
+async function refreshSelectedLocalSttModelAvailability(
+  options: { quiet?: boolean } = {},
+): Promise<boolean> {
+  const model = getSelectedLocalSttModel();
+  const response = await getLocalSttModelStatus(model, options);
+  localSttSelectedModelDownloaded = response?.exists === true;
+  renderLocalSttSettingsStatus();
+  return localSttSelectedModelDownloaded;
+}
+
+async function ensureSelectedLocalSttModel(options: { quiet?: boolean } = {}): Promise<string> {
+  const quiet = options.quiet === true;
+  let activeSettings = readSettingsFromForm();
+  let selected = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  if (selected) {
+    return selected;
+  }
+
+  if (localSttModelCatalog.length === 0) {
+    await fetchLocalSttModels({ quiet: true, autoSelect: true });
+    selected = readSettingsFromForm().localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+    if (selected) {
+      return selected;
+    }
+  }
+
+  const fallbackModel = pickDefaultLocalSttModelFromCatalog();
+  if (fallbackModel) {
+    localSttModelInput.value = fallbackModel;
+    if (localSttModelCatalog.includes(fallbackModel)) {
+      localSttModelCatalogSelect.value = fallbackModel;
+    }
+    handleSettingsChange();
+    await refreshSelectedLocalSttModelAvailability({ quiet: true });
+    if (!quiet) {
+      setNotice(`Selected local STT model "${localSttModelLabel(fallbackModel)}".`);
+    }
+    return fallbackModel;
+  }
+
+  if (!quiet) {
+    setNotice("No local STT models are available yet. Open Settings > Models and refresh the catalog.", true);
+    openSettings("local-stt-model-required");
+    setActiveSettingsPane("offline", "local-stt-model-required");
+  }
+  return "";
+}
+
 function requestLocalSttRuntimeSyncForMode(
   targetMode: RuntimeMode,
   options: { showLoadOverlay?: boolean } = {},
@@ -2477,15 +2688,22 @@ function requestLocalSttRuntimeSyncForMode(
 
   runtimeModeSyncInFlight = true;
   void (async () => {
-    while (pendingRuntimeModeSyncTarget) {
-      const nextTarget = pendingRuntimeModeSyncTarget;
-      const nextShowLoadOverlay =
-        nextTarget === "local" && pendingRuntimeModeSyncShowLoadOverlay;
-      pendingRuntimeModeSyncTarget = null;
-      pendingRuntimeModeSyncShowLoadOverlay = false;
-      await syncLocalSttRuntimeForMode(nextTarget, { showLoadOverlay: nextShowLoadOverlay });
+    try {
+      while (pendingRuntimeModeSyncTarget) {
+        const nextTarget = pendingRuntimeModeSyncTarget;
+        const nextShowLoadOverlay =
+          nextTarget === "local" && pendingRuntimeModeSyncShowLoadOverlay;
+        pendingRuntimeModeSyncTarget = null;
+        pendingRuntimeModeSyncShowLoadOverlay = false;
+        try {
+          await syncLocalSttRuntimeForMode(nextTarget, { showLoadOverlay: nextShowLoadOverlay });
+        } catch (error) {
+          setNotice(`Unable to switch local STT runtime: ${asErrorMessage(error)}`, true);
+        }
+      }
+    } finally {
+      runtimeModeSyncInFlight = false;
     }
-    runtimeModeSyncInFlight = false;
   })();
 }
 
@@ -2503,6 +2721,7 @@ async function syncLocalSttRuntimeForMode(
           localSttModelCatalogSelect.value = fallbackModel;
         }
         handleSettingsChange();
+        await refreshSelectedLocalSttModelAvailability({ quiet: true });
         model = fallbackModel;
       }
     }
@@ -2510,7 +2729,7 @@ async function syncLocalSttRuntimeForMode(
     const showLoadOverlay = options.showLoadOverlay === true && Boolean(model);
     if (showLoadOverlay) {
       showLocalSttLoadOverlay(model);
-      localSttDownloadNotice.textContent = `Loading local STT model "${model}"...`;
+      setLocalSttNotice(`Loading local STT model "${model}"...`);
       setNotice(`Loading local STT model "${model}"...`);
     }
 
@@ -2534,6 +2753,11 @@ async function syncLocalSttRuntimeForMode(
           "Local STT runtime is active but no local STT model is selected. Open Settings > Models and select a model, then click Load STT.",
           true,
         );
+      } else if (!(await checkModelFileExists(selectedModel))) {
+        setNotice(
+          `Local STT model "${selectedModel}" is not downloaded yet. Open Settings > Models and download it first.`,
+          true,
+        );
       } else {
         setNotice(
           `Local STT runtime is active but local STT model "${selectedModel}" could not be loaded. Open Settings > Models and click Load STT.`,
@@ -2554,16 +2778,19 @@ async function syncLocalSttRuntimeForMode(
     return;
   }
 
-  const activeSettings = readSettingsFromForm();
+  let activeSettings = readSettingsFromForm();
   const modelToUnload =
     activeSettings.localSttModel.trim() ||
     localSttModelCatalogSelect.value.trim() ||
     lastWarmedLocalSttModel.trim();
   try {
-    const response = await invoke<LocalSttDeactivateResponse>("deactivate_local_stt_model", {
-      request: { model: modelToUnload || null },
-    });
-    localSttDownloadNotice.textContent = response.details;
+    const response = await invokeWithTimeout<LocalSttDeactivateResponse>(
+      "deactivate_local_stt_model",
+      { request: { model: modelToUnload || null } },
+      LOCAL_STT_COMMAND_TIMEOUT_MS,
+      "Local STT unload timed out. You can keep using Online mode and retry unloading later.",
+    );
+    setLocalSttNotice(response.details, response.deactivated ? "normal" : "error");
     if (response.deactivated) {
       lastWarmedLocalSttModel = "";
     }
@@ -5201,7 +5428,7 @@ async function fetchProviderModels(): Promise<void> {
   if (pipelineRunning || stage === "recording") {
     return;
   }
-  const activeSettings = readSettingsFromForm();
+  let activeSettings = readSettingsFromForm();
   const anyOnlineRuntime =
     activeSettings.sttRuntimeMode === "online" || activeSettings.aiRuntimeMode === "online";
   if (!anyOnlineRuntime) {
@@ -5444,12 +5671,15 @@ async function pullOllamaModel(): Promise<void> {
   }
 }
 
-async function fetchLocalSttModels(options: { quiet?: boolean } = {}): Promise<void> {
+async function fetchLocalSttModels(
+  options: { quiet?: boolean; autoSelect?: boolean } = {},
+): Promise<void> {
   if (pipelineRunning || stage === "recording") {
     return;
   }
-  const activeSettings = readSettingsFromForm();
+  let activeSettings = readSettingsFromForm();
   const quiet = options.quiet === true;
+  const autoSelect = options.autoSelect === true;
 
   if (!quiet) {
     setStage("processing", "Loading local STT model catalog...");
@@ -5457,8 +5687,24 @@ async function fetchLocalSttModels(options: { quiet?: boolean } = {}): Promise<v
   try {
     const response = await invoke<ProviderModelsResponse>("fetch_local_stt_models");
     renderLocalSttModelCatalog(response.models, activeSettings.localSttModel);
-    if (!quiet) {
+    const refreshedSettings = readSettingsFromForm();
+    if (autoSelect && !refreshedSettings.localSttModel.trim() && response.models.length > 0) {
+      const fallback = pickDefaultLocalSttModelFromCatalog();
+      if (fallback) {
+        localSttModelInput.value = fallback;
+        if (localSttModelCatalog.includes(fallback)) {
+          localSttModelCatalogSelect.value = fallback;
+        }
+        handleSettingsChange();
+        if (!quiet) {
+          setNotice(`Auto-selected local STT model "${localSttModelLabel(fallback)}".`);
+        }
+      }
+    } else if (!quiet) {
       setNotice(`Loaded ${response.models.length} local STT models.`);
+    }
+    await refreshSelectedLocalSttModelAvailability({ quiet: true });
+    if (!quiet) {
       setStage("idle", "Local STT model list loaded.");
     }
   } catch (error) {
@@ -5471,50 +5717,131 @@ async function fetchLocalSttModels(options: { quiet?: boolean } = {}): Promise<v
   }
 }
 
+const ICON_DOWNLOAD = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
+const ICON_POWER = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>`;
+const ICON_PLAY = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+
 function renderSidebarLocalSttToggle(): void {
   const activeSettings = readSettingsFromForm();
   const isLocalMode = activeSettings.sttRuntimeMode === "local";
 
-  // Hide the button completely when STT mode is Online
-  if (!isLocalMode) {
+  // Hide the button completely when STT mode is Online or when initial status is not yet checked
+  if (!isLocalMode || !localSttStatusChecked) {
     sidebarToggleLocalSttBtn.hidden = true;
     return;
   }
 
-  // Only show button in Local mode
+  // Only show button in Local mode after status check
   sidebarToggleLocalSttBtn.hidden = false;
+  sidebarToggleLocalSttBtn.dataset.sttState = "ready";
 
   const loaded = isSelectedLocalSttModelLoaded();
   const hasModel = !!activeSettings.localSttModel.trim();
 
-  if (!hasModel) {
-    // No model selected/downloaded
-    sidebarToggleLocalSttGlyph.textContent = "⬇️";
+  if (!hasModel || !localSttSelectedModelDownloaded) {
+    sidebarToggleLocalSttGlyph.innerHTML = ICON_DOWNLOAD;
     sidebarToggleLocalSttLabel.textContent = "Download Model";
     const actionText = "Download offline model first";
     sidebarToggleLocalSttBtn.setAttribute("data-label", actionText);
-    sidebarToggleLocalSttBtn.setAttribute("aria-label", actionText);
-    sidebarToggleLocalSttBtn.title = "No offline model downloaded. Click for instructions.";
-    sidebarToggleLocalSttBtn.style.opacity = "0.7";
+    sidebarToggleLocalSttBtn.setAttribute("aria-label", `${actionText} (Alt+D)`);
+    sidebarToggleLocalSttBtn.title = hasModel
+      ? `Model files missing for ${activeSettings.localSttModel}. Click to download.`
+      : "No offline model selected yet. Click to choose and download one.";
+    sidebarToggleLocalSttBtn.dataset.sttState = "download";
   } else if (loaded) {
     // Model is loaded
-    sidebarToggleLocalSttGlyph.textContent = "⏻";
+    sidebarToggleLocalSttGlyph.innerHTML = ICON_POWER;
     sidebarToggleLocalSttLabel.textContent = "Unload STT";
     const actionText = "Unload local STT model";
     sidebarToggleLocalSttBtn.setAttribute("data-label", actionText);
-    sidebarToggleLocalSttBtn.setAttribute("aria-label", actionText);
+    sidebarToggleLocalSttBtn.setAttribute("aria-label", `${actionText} (Alt+D)`);
     sidebarToggleLocalSttBtn.title = `Local STT model loaded: ${activeSettings.localSttModel}`;
-    sidebarToggleLocalSttBtn.style.opacity = "1";
+    sidebarToggleLocalSttBtn.dataset.sttState = "loaded";
   } else {
     // Model exists but not loaded yet
-    sidebarToggleLocalSttGlyph.textContent = "▶";
+    sidebarToggleLocalSttGlyph.innerHTML = ICON_PLAY;
     sidebarToggleLocalSttLabel.textContent = "Load STT";
     const actionText = "Load local STT model";
     sidebarToggleLocalSttBtn.setAttribute("data-label", actionText);
-    sidebarToggleLocalSttBtn.setAttribute("aria-label", actionText);
+    sidebarToggleLocalSttBtn.setAttribute("aria-label", `${actionText} (Alt+D)`);
     sidebarToggleLocalSttBtn.title = `Load model: ${activeSettings.localSttModel || 'Select from Settings'}`;
-    sidebarToggleLocalSttBtn.style.opacity = "1";
+    sidebarToggleLocalSttBtn.dataset.sttState = "ready";
   }
+}
+
+function setLocalSttNotice(
+  message: string,
+  tone: "normal" | "error" | "success" = "normal",
+): void {
+  localSttDownloadNotice.textContent = message;
+  localSttDownloadNotice.dataset.tone = tone;
+}
+
+function renderLocalSttSettingsStatus(): void {
+  const activeSettings = readSettingsFromForm();
+  const selectedModel = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+
+  if (activeSettings.sttRuntimeMode !== "local") {
+    localSttStatusBadge.dataset.state = "offline";
+    localSttStatusBadge.textContent = "Online mode";
+    localSttStatusDetail.textContent = "Offline STT is disabled because STT runtime mode is currently set to Online.";
+    return;
+  }
+
+  if (localSttDownloadInFlight || localSttDeleteInFlight || localSttDeactivateInFlight || localSttWarmupInFlight || localSttRuntimeStateInFlight || localSttDownloadActive) {
+    localSttStatusBadge.dataset.state = "busy";
+    if (localSttDeleteInFlight) {
+      localSttStatusBadge.textContent = "Deleting";
+      localSttStatusDetail.textContent = selectedModel
+        ? `Removing local files for ${localSttModelLabel(selectedModel)}.`
+        : "Removing local STT model files.";
+      return;
+    }
+    if (localSttDeactivateInFlight) {
+      localSttStatusBadge.textContent = "Unloading";
+      localSttStatusDetail.textContent = selectedModel
+        ? `Unloading ${localSttModelLabel(selectedModel)} from memory.`
+        : "Unloading offline STT runtime from memory.";
+      return;
+    }
+    if (localSttWarmupInFlight || localSttRuntimeStateInFlight) {
+      localSttStatusBadge.textContent = "Loading";
+      localSttStatusDetail.textContent = selectedModel
+        ? `Preparing ${localSttModelLabel(selectedModel)} for offline transcription.`
+        : "Preparing offline STT runtime.";
+      return;
+    }
+    localSttStatusBadge.textContent = "Downloading";
+    localSttStatusDetail.textContent = selectedModel
+      ? `Downloading ${localSttModelLabel(selectedModel)} to local storage.`
+      : "Downloading offline STT model files.";
+    return;
+  }
+
+  if (!selectedModel) {
+    localSttStatusBadge.dataset.state = "idle";
+    localSttStatusBadge.textContent = "Not selected";
+    localSttStatusDetail.textContent = "Select a local STT model to download and use it offline.";
+    return;
+  }
+
+  if (!localSttSelectedModelDownloaded) {
+    localSttStatusBadge.dataset.state = "missing";
+    localSttStatusBadge.textContent = "Not downloaded";
+    localSttStatusDetail.textContent = `${localSttModelLabel(selectedModel)} is selected, but its local files are missing.`;
+    return;
+  }
+
+  if (isSelectedLocalSttModelLoaded()) {
+    localSttStatusBadge.dataset.state = "active";
+    localSttStatusBadge.textContent = "Loaded";
+    localSttStatusDetail.textContent = `${localSttModelLabel(selectedModel)} is downloaded and currently loaded in memory.`;
+    return;
+  }
+
+  localSttStatusBadge.dataset.state = "ready";
+  localSttStatusBadge.textContent = "Downloaded";
+  localSttStatusDetail.textContent = `${localSttModelLabel(selectedModel)} is downloaded locally and ready to load.`;
 }
 
 function getSelectedLocalSttModel(): string {
@@ -5536,17 +5863,6 @@ function localSttModelLabel(model: string): string {
     return "-";
   }
   return LOCAL_STT_MODEL_SIZE_LABELS[normalized] || normalized;
-}
-
-function localSttPerformanceTierLabel(tier: string): string {
-  const normalized = tier.trim().toLowerCase();
-  if (normalized === "performance") {
-    return "Performance";
-  }
-  if (normalized === "balanced") {
-    return "Balanced";
-  }
-  return "Basic";
 }
 
 function hasShownLocalSttHardwareAdvisor(): boolean {
@@ -5592,68 +5908,16 @@ async function suggestLocalSttModelForHardwareIfNeeded(selectedModel: string): P
   }
 
   const suggestionModel = advice.slasshySuggestionModel?.trim() || selectedModel;
-  localSttHardwareAdvisorSelectedModel = selectedModel;
-  localSttHardwareAdvisorSuggestionModel = suggestionModel;
-
-  const cpuLabel = advice.cpuName?.trim() || "Unknown CPU";
-  const ramLabel =
-    advice.totalRamGb > 0 ? `${advice.totalRamGb.toFixed(1)} GB RAM` : "Unknown RAM capacity";
-  const coreLabel =
-    advice.logicalCores > 0 ? `${advice.logicalCores} logical cores` : "Unknown core count";
-  const gpuLabel = advice.nvidiaGpuDetected
-    ? advice.gpuVramGb > 0
-      ? `${advice.gpuName || "NVIDIA GPU"} (${advice.gpuVramGb.toFixed(1)} GB VRAM)`
-      : advice.gpuName || "NVIDIA GPU"
-    : "No NVIDIA GPU detected";
-
-  sttHardwareAdvisorHardware.textContent =
-    `Detected hardware: ${cpuLabel} • ${coreLabel} • ${ramLabel} • ${gpuLabel}. ` +
-    `Tier: ${localSttPerformanceTierLabel(advice.performanceTier)}.`;
-  sttHardwareAdvisorSuggestion.textContent =
-    `SlasshyWispr Suggestion: ${localSttModelLabel(suggestionModel)}`;
-
-  const suggestedLabels = advice.suggestedModels
-    .map((model) => localSttModelLabel(model))
-    .filter((label) => label !== "-");
-  sttHardwareAdvisorList.textContent =
-    suggestedLabels.length > 0
-      ? `Recommended for your hardware: ${suggestedLabels.join(", ")}.`
-      : "Recommended for your hardware: start with smaller models first.";
-
-  const cautionLabels = advice.cautionModels
-    .map((model) => localSttModelLabel(model))
-    .filter((label) => label !== "-");
-  const warningLead =
-    advice.selectedModelWarning?.trim() ||
-    "Warning: Higher models can be system-hungry and can feel slow on basic hardware.";
-  sttHardwareAdvisorWarning.textContent =
-    cautionLabels.length > 0
-      ? `${warningLead} Heavy options on this hardware: ${cautionLabels.join(", ")}.`
-      : warningLead;
-
-  sttHardwareAdvisorUseSuggestionBtn.textContent =
-    `Use suggestion (${localSttModelLabel(suggestionModel)})`;
-  sttHardwareAdvisorContinueBtn.textContent =
-    `Continue selected (${localSttModelLabel(selectedModel)})`;
-
-  localSttHardwareAdvisorOpen = true;
-  sttHardwareAdvisorOverlay.hidden = false;
-  syncActionAvailability();
-
-  const choice = await new Promise<LocalSttHardwareAdvisorChoice>((resolve) => {
-    localSttHardwareAdvisorResolver = resolve;
-  });
   markLocalSttHardwareAdvisorShown();
 
-  if (choice === "cancel") {
-    localSttDownloadNotice.textContent = "Local STT model download canceled.";
-    setNotice("Local STT model download canceled.");
-    return null;
+  if (suggestionModel && suggestionModel !== selectedModel) {
+    setNotice(
+      `Using recommended local STT model for your hardware: ${localSttModelLabel(suggestionModel)}.`,
+    );
+    return suggestionModel;
   }
-  if (choice === "suggestion") {
-    return localSttHardwareAdvisorSuggestionModel || selectedModel;
-  }
-  return localSttHardwareAdvisorSelectedModel || selectedModel;
+
+  return selectedModel;
 }
 
 function updateLocalSttLoadOverlayDetail(): void {
@@ -5691,6 +5955,53 @@ function hideLocalSttLoadOverlay(): void {
   sttLoadOverlay.hidden = true;
 }
 
+function ensureLocalSttDownloadOverlay(): HTMLDivElement {
+  if (localSttDownloadOverlay) {
+    return localSttDownloadOverlay;
+  }
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText =
+    "position:fixed;right:20px;bottom:20px;z-index:10001;width:min(360px,calc(100vw - 32px));" +
+    "padding:14px 16px;border-radius:14px;background:rgba(8, 10, 15, 0.95);color:#fff;" +
+    "box-shadow:0 20px 50px rgba(0, 0, 0, 0.5);border:1px solid rgba(255, 255, 255, 0.1);backdrop-filter:blur(12px);" +
+    "transition: opacity 0.2s ease, transform 0.2s ease;";
+  overlay.hidden = true;
+  document.body.appendChild(overlay);
+  localSttDownloadOverlay = overlay;
+  return overlay;
+}
+
+function showLocalSttDownloadOverlay(status: LocalSttDownloadStatusResponse): void {
+  const overlay = ensureLocalSttDownloadOverlay();
+  const modelLabel = localSttModelLabel(status.model || getSelectedLocalSttModel());
+  const boundedPercent = Math.max(0, Math.min(100, Number(status.progressPercent) || 0));
+  const stage = status.stage?.trim() || "Downloading local STT model...";
+  const detail = status.currentFile?.trim() || status.message?.trim() || "Preparing files...";
+
+  overlay.style.background = "rgba(0, 0, 0, 0.95)";
+  overlay.style.border = "1px solid var(--border-subtle)";
+  overlay.style.boxShadow = "var(--shadow-modal)";
+
+  overlay.innerHTML = `
+    <div style="font-size:11px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Offline STT Download</div>
+    <div style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:4px;">${escapeHtml(modelLabel)}</div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.4;">${escapeHtml(stage)}</div>
+    <div style="height:6px;border-radius:999px;background:rgba(255, 255, 255, 0.08);overflow:hidden;margin-bottom:10px;">
+      <div style="height:100%;width:${boundedPercent.toFixed(1)}%;background:var(--text-secondary);transition:width 0.3s ease-out;"></div>
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(detail)}</div>
+  `;
+
+  syncLocalSttDownloadOverlayVisibility();
+}
+
+function hideLocalSttDownloadOverlay(): void {
+  if (localSttDownloadOverlay) {
+    localSttDownloadOverlay.hidden = true;
+  }
+}
+
 async function refreshLocalSttRuntimeState(options: { quiet?: boolean } = {}): Promise<void> {
   if (localSttRuntimeStateInFlight) {
     return;
@@ -5698,12 +6009,18 @@ async function refreshLocalSttRuntimeState(options: { quiet?: boolean } = {}): P
   localSttRuntimeStateInFlight = true;
   syncActionAvailability();
   try {
-    const response = await invoke<LocalSttRuntimeStateResponse>("get_local_stt_runtime_state");
+    const response = await invokeWithTimeout<LocalSttRuntimeStateResponse>(
+      "get_local_stt_runtime_state",
+      undefined,
+      LOCAL_STT_RUNTIME_STATE_TIMEOUT_MS,
+      "Timed out while checking local STT status.",
+    );
     localSttRuntimeLoaded = response.loaded;
     if (!response.loaded) {
       lastWarmedLocalSttModel = "";
     }
     renderSidebarLocalSttToggle();
+    renderLocalSttSettingsStatus();
   } catch (error) {
     if (!options.quiet) {
       setNotice(`Unable to check local STT runtime state: ${asErrorMessage(error)}`, true);
@@ -5715,20 +6032,11 @@ async function refreshLocalSttRuntimeState(options: { quiet?: boolean } = {}): P
 }
 
 async function activateSelectedLocalSttModel(): Promise<void> {
-  if (
-    pipelineRunning ||
-    stage === "recording" ||
-    localSttDownloadInFlight ||
-    localSttDeleteInFlight ||
-    localSttDeactivateInFlight ||
-    localSttWarmupInFlight ||
-    localSttRuntimeStateInFlight ||
-    localSttDownloadActive
-  ) {
+  if (reportBlockedLocalSttAction("Load STT")) {
     return;
   }
 
-  const activeSettings = readSettingsFromForm();
+  let activeSettings = readSettingsFromForm();
 
   // DIAGNOSTIC #1: Check if STT mode is set to local
   if (activeSettings.sttRuntimeMode !== "local") {
@@ -5739,7 +6047,11 @@ async function activateSelectedLocalSttModel(): Promise<void> {
   }
 
   // Get selected model
-  const model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  let model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  if (!model) {
+    model = await ensureSelectedLocalSttModel({ quiet: true });
+    activeSettings = readSettingsFromForm();
+  }
 
   // DIAGNOSTIC #2: Check if a model is selected
   if (!model) {
@@ -5752,7 +6064,7 @@ async function activateSelectedLocalSttModel(): Promise<void> {
     localSttModelCatalogSelect.value = model;
   }
   handleSettingsChange();
-  localSttDownloadNotice.textContent = "Loading model...";
+  setLocalSttNotice("Loading model...");
   setNotice("Loading model...");
   showLocalSttLoadOverlay(model);
   syncActionAvailability();
@@ -5762,12 +6074,13 @@ async function activateSelectedLocalSttModel(): Promise<void> {
     const modelExists = await checkModelFileExists(model);
     if (!modelExists) {
       hideLocalSttLoadOverlay();
+      setLocalSttNotice(`Model files missing for ${localSttModelLabel(model)}.`, "error");
       showOfflineModeDiagnostic('model-file-missing', { model });
       return;
     }
 
     // DIAGNOSTIC #4: Check Python dependencies
-    const pythonReady = await checkPythonDependencies();
+    const pythonReady = await checkPythonDependencies(model);
     if (!pythonReady) {
       hideLocalSttLoadOverlay();
       showOfflineModeDiagnostic('python-deps-missing', { model });
@@ -5786,19 +6099,34 @@ async function activateSelectedLocalSttModel(): Promise<void> {
     }
 
     // All checks passed, attempt to warmup
-    await warmupActiveLocalSttModel({ quiet: true, force: true, explicit: true });
+    const warmup = await warmupActiveLocalSttModel({ quiet: true, force: true, explicit: true });
     await refreshLocalSttRuntimeState({ quiet: true });
     const selectedModelLoaded = isSelectedLocalSttModelLoaded();
     if (selectedModelLoaded) {
-      localSttDownloadNotice.textContent = "Model loaded.";
+      setLocalSttNotice("Model loaded.", "success");
       setNotice("Model loaded.");
     } else {
-      localSttDownloadNotice.textContent = "Unable to load model.";
-      showOfflineModeDiagnostic('load-timeout', { model });
+      setLocalSttNotice("Unable to load model.", "error");
+      const warmupDetails = warmup?.details || "";
+      const normalizedDetails = warmupDetails.toLowerCase();
+      if (normalizedDetails.includes("not downloaded yet")) {
+        showOfflineModeDiagnostic('model-file-missing', { model });
+      } else if (
+        normalizedDetails.includes("python") ||
+        normalizedDetails.includes("nemo") ||
+        normalizedDetails.includes("module") ||
+        normalizedDetails.includes("zero-python")
+      ) {
+        showOfflineModeDiagnostic('python-deps-missing', { model });
+      } else if (normalizedDetails.includes("timed out") || normalizedDetails.includes("timeout")) {
+        showOfflineModeDiagnostic('load-timeout', { model });
+      } else {
+        showOfflineModeDiagnostic(warmupDetails || 'load-timeout', { model });
+      }
     }
   } catch (error) {
     const message = asErrorMessage(error);
-    localSttDownloadNotice.textContent = `Load failed: ${message}`;
+    setLocalSttNotice(`Load failed: ${message}`, "error");
     showOfflineModeDiagnostic(message, { model });
   } finally {
     hideLocalSttLoadOverlay();
@@ -5808,37 +6136,45 @@ async function activateSelectedLocalSttModel(): Promise<void> {
 
 async function warmupActiveLocalSttModel(
   options: { quiet?: boolean; force?: boolean; explicit?: boolean } = {},
-): Promise<void> {
+): Promise<LocalSttWarmupResponse | null> {
   if (localSttWarmupInFlight) {
-    return;
+    return null;
   }
 
-  const activeSettings = readSettingsFromForm();
+  let activeSettings = readSettingsFromForm();
   const explicit = options.explicit === true;
   if (!explicit && activeSettings.sttRuntimeMode !== "local") {
-    return;
+    return null;
   }
 
-  const model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  let model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
   if (!model) {
-    return;
+    model = await ensureSelectedLocalSttModel({ quiet: true });
+    activeSettings = readSettingsFromForm();
+  }
+  if (!model) {
+    return null;
   }
 
   const force = options.force === true;
   if (!force && localSttRuntimeLoaded && lastWarmedLocalSttModel === model) {
-    return;
+    return null;
   }
 
   localSttWarmupInFlight = true;
   syncActionAvailability();
   const quiet = options.quiet === true;
   try {
-    const response = await invoke<LocalSttWarmupResponse>("warmup_local_stt_model", {
-      request: { model },
-    });
+    const response = await invokeWithTimeout<LocalSttWarmupResponse>(
+      "warmup_local_stt_model",
+      { request: { model } },
+      LOCAL_STT_WARMUP_TIMEOUT_MS,
+      `Local STT model \"${model}\" took too long to load. Switch back to Online mode or retry after checking the model files.`,
+    );
     if (response.warmed) {
       lastWarmedLocalSttModel = response.model;
       localSttRuntimeLoaded = true;
+      localSttSelectedModelDownloaded = true;
       renderSidebarLocalSttToggle();
       if (!quiet) {
         setNotice(response.details || `Local STT model warmed: ${response.model}.`);
@@ -5846,26 +6182,22 @@ async function warmupActiveLocalSttModel(
     } else if (!quiet) {
       setNotice(response.details || `Local STT model warmup skipped: ${response.model}.`, true);
     }
+    return response;
   } catch (error) {
     if (!quiet) {
       setNotice(`Local STT warmup failed: ${asErrorMessage(error)}`, true);
     }
+    throw error;
   } finally {
     localSttWarmupInFlight = false;
     void refreshLocalSttRuntimeState({ quiet: true });
+    void refreshSelectedLocalSttModelAvailability({ quiet: true });
     syncActionAvailability();
   }
 }
 
 async function deactivateLocalSttModel(): Promise<void> {
-  if (
-    pipelineRunning ||
-    stage === "recording" ||
-    localSttDownloadInFlight ||
-    localSttDeleteInFlight ||
-    localSttDeactivateInFlight ||
-    localSttDownloadActive
-  ) {
+  if (reportBlockedLocalSttAction("Unload STT")) {
     return;
   }
 
@@ -5879,17 +6211,20 @@ async function deactivateLocalSttModel(): Promise<void> {
   syncActionAvailability();
   try {
     const request = { model: model || null };
-    const response = await invoke<LocalSttDeactivateResponse>("deactivate_local_stt_model", {
-      request,
-    });
+    const response = await invokeWithTimeout<LocalSttDeactivateResponse>(
+      "deactivate_local_stt_model",
+      { request },
+      LOCAL_STT_COMMAND_TIMEOUT_MS,
+      "Local STT unload timed out. You can keep using Online mode and retry unloading later.",
+    );
     if (response.deactivated) {
       lastWarmedLocalSttModel = "";
       localSttRuntimeLoaded = false;
       renderSidebarLocalSttToggle();
-      localSttDownloadNotice.textContent = response.details;
+      setLocalSttNotice(response.details, "success");
       setNotice(response.details);
     } else {
-      localSttDownloadNotice.textContent = response.details;
+      setLocalSttNotice(response.details, "error");
       setNotice(response.details, true);
     }
   } catch (error) {
@@ -5898,6 +6233,7 @@ async function deactivateLocalSttModel(): Promise<void> {
   } finally {
     localSttDeactivateInFlight = false;
     void refreshLocalSttRuntimeState({ quiet: true });
+    void refreshSelectedLocalSttModelAvailability({ quiet: true });
     syncActionAvailability();
   }
 }
@@ -5918,6 +6254,7 @@ function formatBytes(value: number): string {
 }
 
 function applyLocalSttDownloadStatus(status: LocalSttDownloadStatusResponse): void {
+  lastLocalSttDownloadStatus = status;
   const rawPercent = Number.isFinite(status.progressPercent) ? status.progressPercent : 0;
   const boundedPercent = Math.max(
     0,
@@ -5938,6 +6275,8 @@ function applyLocalSttDownloadStatus(status: LocalSttDownloadStatusResponse): vo
   if (status.active) {
     localSttDownloadProgressText.textContent =
       `${status.stage || "Downloading..."} ${boundedPercent.toFixed(1)}% • ${filesSegment} • ${bytesSegment}`;
+    showLocalSttDownloadOverlay(status);
+    renderLocalSttSettingsStatus();
     return;
   }
 
@@ -5945,11 +6284,15 @@ function applyLocalSttDownloadStatus(status: LocalSttDownloadStatusResponse): vo
     localSttDownloadProgressText.textContent = status.success
       ? "Model loaded."
       : status.message || status.stage || "Download finished.";
+    hideLocalSttDownloadOverlay();
+    renderLocalSttSettingsStatus();
     return;
   }
 
   localSttDownloadProgressText.textContent =
     status.message || "No local STT download in progress.";
+  hideLocalSttDownloadOverlay();
+  renderLocalSttSettingsStatus();
 }
 
 function stopLocalSttDownloadStatusPolling(): void {
@@ -5988,14 +6331,17 @@ async function pollLocalSttDownloadStatusOnce(options: { quiet?: boolean } = {})
     if (justFinished) {
       const completionMessage =
         status.success ? "Model loaded." : status.message || "Local STT model download failed.";
-      localSttDownloadNotice.textContent = completionMessage;
+      setLocalSttNotice(completionMessage, status.success ? "success" : "error");
       if (status.success) {
         if (status.model.trim()) {
           lastWarmedLocalSttModel = status.model.trim();
         }
+        localSttSelectedModelDownloaded = true;
         setNotice(completionMessage);
         await fetchLocalSttModels({ quiet: true });
+        await refreshSelectedLocalSttModelAvailability({ quiet: true });
       } else {
+        localSttSelectedModelDownloaded = false;
         setNotice(completionMessage, true);
       }
     }
@@ -6011,22 +6357,12 @@ async function pollLocalSttDownloadStatusOnce(options: { quiet?: boolean } = {})
 }
 
 async function downloadLocalSttModel(): Promise<void> {
-  if (
-    pipelineRunning ||
-    stage === "recording" ||
-    localSttDownloadInFlight ||
-    localSttDeleteInFlight ||
-    localSttDeactivateInFlight ||
-    localSttDownloadActive ||
-    localSttHardwareAdvisorOpen
-  ) {
+  if (reportBlockedLocalSttAction("Download STT model")) {
     return;
   }
-  const activeSettings = readSettingsFromForm();
-  let model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  let model = await ensureSelectedLocalSttModel({ quiet: true });
   if (!model) {
-    setNotice("Enter or select a local STT model to download.", true);
-    setActiveSettingsPane("offline");
+    showOfflineModeDiagnostic('no-model-downloaded');
     return;
   }
 
@@ -6057,14 +6393,34 @@ async function downloadLocalSttModel(): Promise<void> {
     const response = await invoke<LocalSttDownloadResponse>("download_local_stt_model", { request });
     localSttModelInput.value = response.model;
     handleSettingsChange();
-    localSttDownloadNotice.textContent = "Downloading model...";
-    setNotice("Downloading model...");
+    localSttSelectedModelDownloaded = false;
+    setLocalSttNotice("Downloading model...");
+    if (!isSettingsOpen()) {
+      setNotice("Downloading offline model...");
+    }
+    showLocalSttDownloadOverlay({
+      active: true,
+      completed: false,
+      success: false,
+      model: response.model,
+      repoId: "",
+      stage: "Starting local STT download...",
+      message: response.details || "Preparing download...",
+      currentFile: "",
+      downloadedBytes: 0,
+      totalBytes: 0,
+      filesCompleted: 0,
+      filesTotal: 0,
+      progressPercent: 0,
+      updatedAtMs: Date.now(),
+    });
     startLocalSttDownloadStatusPolling();
     await pollLocalSttDownloadStatusOnce({ quiet: true });
   } catch (error) {
     const message = asErrorMessage(error);
     setNotice(`Unable to download local STT model: ${message}`, true);
-    localSttDownloadNotice.textContent = `Download failed: ${message}`;
+    setLocalSttNotice(`Download failed: ${message}`, "error");
+    hideLocalSttDownloadOverlay();
   } finally {
     localSttDownloadInFlight = false;
     syncActionAvailability();
@@ -6072,22 +6428,13 @@ async function downloadLocalSttModel(): Promise<void> {
 }
 
 async function deleteLocalSttModel(): Promise<void> {
-  if (
-    pipelineRunning ||
-    stage === "recording" ||
-    localSttDownloadInFlight ||
-    localSttDeleteInFlight ||
-    localSttDeactivateInFlight ||
-    localSttDownloadActive
-  ) {
+  if (reportBlockedLocalSttAction("Delete STT model")) {
     return;
   }
 
-  const activeSettings = readSettingsFromForm();
-  const model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  const model = await ensureSelectedLocalSttModel({ quiet: true });
   if (!model) {
-    setNotice("Select a local STT model first.", true);
-    setActiveSettingsPane("offline");
+    showOfflineModeDiagnostic('no-model-downloaded');
     return;
   }
 
@@ -6097,18 +6444,21 @@ async function deleteLocalSttModel(): Promise<void> {
   try {
     const request = { model };
     const response = await invoke<LocalSttDeleteResponse>("delete_local_stt_model", { request });
-    localSttDownloadNotice.textContent = response.details;
+    setLocalSttNotice(response.details, response.removed ? "success" : "error");
     if (response.removed) {
-      if (lastWarmedLocalSttModel === response.model) {
-        lastWarmedLocalSttModel = "";
-      }
+      lastWarmedLocalSttModel = "";
+      localSttRuntimeLoaded = false;
+      renderSidebarLocalSttToggle();
       if (localSttModelInput.value.trim() === model) {
         localSttModelInput.value = "";
         localSttModelCatalogSelect.value = "";
         handleSettingsChange();
       }
+      localSttSelectedModelDownloaded = false;
       setNotice(`Deleted local STT model "${response.model}".`);
-      await fetchLocalSttModels({ quiet: true });
+      await refreshLocalSttRuntimeState({ quiet: true });
+      await fetchLocalSttModels({ quiet: true, autoSelect: true });
+      await refreshSelectedLocalSttModelAvailability({ quiet: true });
     } else {
       setNotice(response.details, true);
     }
@@ -6122,19 +6472,11 @@ async function deleteLocalSttModel(): Promise<void> {
 }
 
 async function openLocalSttModelPath(): Promise<void> {
-  if (
-    pipelineRunning ||
-    stage === "recording" ||
-    localSttDownloadInFlight ||
-    localSttDeleteInFlight ||
-    localSttDeactivateInFlight ||
-    localSttDownloadActive
-  ) {
+  if (reportBlockedLocalSttAction("Open STT model folder")) {
     return;
   }
 
-  const activeSettings = readSettingsFromForm();
-  const model = activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  const model = await ensureSelectedLocalSttModel({ quiet: true });
 
   // DIAGNOSTIC: Check if a model is selected first
   if (!model) {
@@ -6147,11 +6489,11 @@ async function openLocalSttModelPath(): Promise<void> {
     const response = await invoke<LocalSttOpenPathResponse>("open_local_stt_model_path", { request });
 
     if (response.opened) {
-      localSttDownloadNotice.textContent = `Opened: ${response.localPath}`;
+      setLocalSttNotice(`Opened: ${response.localPath}`, "success");
       setNotice(`✅ Opened model folder successfully!`);
     } else {
       // Model path doesn't exist - offer to download
-      localSttDownloadNotice.textContent = response.details || "Model not found";
+      setLocalSttNotice(response.details || "Model not found", "error");
       showOfflineModeDiagnostic('model-file-missing', {
         model,
         expectedPath: response.localPath
@@ -6159,7 +6501,7 @@ async function openLocalSttModelPath(): Promise<void> {
     }
   } catch (error) {
     const message = asErrorMessage(error);
-    localSttDownloadNotice.textContent = `Failed to open: ${message}`;
+    setLocalSttNotice(`Failed to open: ${message}`, "error");
 
     // Check if it's a backend command not found error
     if (message.includes("command not found") || message.includes("not implemented")) {
@@ -7147,6 +7489,17 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
           selectedLocalSttModel = fallbackLocalSttModel;
         }
       }
+      if (selectedLocalSttModel && !(await checkModelFileExists(selectedLocalSttModel))) {
+        logClientEvent("pipeline.blocked reason=missing-local-stt-files");
+        setNotice(
+          `Local STT model "${localSttModelLabel(selectedLocalSttModel)}" is not downloaded yet. Click Download Model in the sidebar first.`,
+          true,
+        );
+        openSettings("missing-local-stt-files");
+        setActiveSettingsPane("offline", "missing-local-stt-files");
+        setStage("idle", "Local setup required.");
+        return;
+      }
       if (!selectedLocalSttModel) {
         logClientEvent("pipeline.blocked reason=missing-local-stt-model");
         setNotice(
@@ -7775,31 +8128,6 @@ async function closeSelectionAssistantWindowForTray(): Promise<void> {
     }
   } finally {
     selectionAssistantWindow = null;
-  }
-}
-
-async function closeVoiceIndicatorWindowForTray(): Promise<void> {
-  if (!voiceIndicatorWindow) {
-    return;
-  }
-
-  try {
-    await persistDockPositionFromWindow(voiceIndicatorWindow);
-  } catch {
-    // Preserve best effort only.
-  }
-
-  try {
-    await voiceIndicatorWindow.close();
-  } catch (error) {
-    logClientEvent(`[tray.background] dock close failed: ${asErrorMessage(error)}`);
-    try {
-      await voiceIndicatorWindow.hide();
-    } catch {
-      // Ignore best-effort cleanup failures while entering tray mode.
-    }
-  } finally {
-    voiceIndicatorWindow = null;
   }
 }
 
@@ -8532,13 +8860,15 @@ function syncActionAvailability(): void {
     ollamaStatusInFlight ||
     ollamaInstallInFlight ||
     ollamaPullInFlight ||
+    localSttHardwareAdvisorOpen;
+  const localSttBusy =
+    busy ||
     localSttDownloadInFlight ||
     localSttDeleteInFlight ||
     localSttDeactivateInFlight ||
     localSttWarmupInFlight ||
     localSttRuntimeStateInFlight ||
-    localSttHardwareAdvisorOpen;
-  const localSttBusy = busy || localSttDownloadActive;
+    localSttDownloadActive;
   const sttRuntimeIsLocal = settings.sttRuntimeMode === "local";
   refreshMicsBtn.disabled = busy;
   setupRuntimeBtn.disabled = busy;
@@ -8564,8 +8894,8 @@ function syncActionAvailability(): void {
   downloadLocalSttModelBtn.disabled = localSttBusy;
   deleteLocalSttModelBtn.disabled = localSttBusy;
   openLocalSttModelPathBtn.disabled = localSttBusy;
-  sttRuntimeModeOnlineInput.disabled = busy;
-  sttRuntimeModeOfflineInput.disabled = busy;
+  sttRuntimeModeOnlineInput.disabled = pipelineRunning || stage === "recording" || ttsSetupRunning;
+  sttRuntimeModeOfflineInput.disabled = pipelineRunning || stage === "recording" || ttsSetupRunning;
   aiRuntimeModeOnlineInput.disabled = busy;
   aiRuntimeModeOfflineInput.disabled = busy;
   microphoneSelect.disabled = busy;
@@ -8625,6 +8955,7 @@ function syncActionAvailability(): void {
   dictionaryAddBtn.disabled = busy;
   dictionaryAddBtnTop.disabled = busy;
   snippetAddBtn.disabled = busy;
+  renderLocalSttSettingsStatus();
   snippetsAddBtnTop.disabled = busy;
 
   const piperSelected = settings.ttsEngine === "piper";
@@ -9383,33 +9714,41 @@ function asErrorMessage(error: unknown): string {
  * Checks if a model file exists on disk
  */
 async function checkModelFileExists(_model: string): Promise<boolean> {
-  try {
-    await invoke<LocalSttRuntimeStateResponse>("get_local_stt_runtime_state");
-    // If runtime state returns successfully but model not loaded, file likely missing
-    return true; // Backend will handle file existence check during warmup
-  } catch (error) {
-    console.error("Model file check failed:", error);
-    return false;
-  }
+  const response = await getLocalSttModelStatus(_model, { quiet: true });
+  return response?.exists === true;
 }
 
 /**
  * Checks if Python dependencies are installed
  */
-async function checkPythonDependencies(): Promise<boolean> {
-  try {
-    // Try to get local STT hardware advice which requires Python
-    await invoke("get_local_stt_hardware_advice", {
-      request: { selectedModel: null }
-    });
+async function checkPythonDependencies(model: string): Promise<boolean> {
+  const provider = inferLocalSttProviderFromModel(model);
+  if (!provider || provider === "parakeet") {
     return true;
+  }
+  try {
+    const response = await invokeWithTimeout<LocalSttWarmupResponse>(
+      "warmup_local_stt_model",
+      { request: { model } },
+      LOCAL_STT_COMMAND_TIMEOUT_MS,
+      `Timed out while checking local STT runtime dependencies for \"${model}\".`,
+    );
+    if (response.warmed) {
+      return true;
+    }
+    const message = response.details.toLowerCase();
+    return !(
+      message.includes("python") ||
+      message.includes("module") ||
+      message.includes("nemo") ||
+      message.includes("zero-python")
+    );
   } catch (error) {
     const msg = asErrorMessage(error).toLowerCase();
-    // Check for common Python dependency errors
     if (msg.includes("python") || msg.includes("module") || msg.includes("nemo")) {
       return false;
     }
-    return true; // Other errors are not Python-related
+    return true;
   }
 }
 

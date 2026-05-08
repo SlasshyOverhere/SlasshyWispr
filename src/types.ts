@@ -123,6 +123,15 @@ export interface LocalSttOpenPathResponse {
   details: string;
 }
 
+export interface LocalSttModelStatusResponse {
+  model: string;
+  provider: string;
+  repoId: string;
+  localPath: string;
+  exists: boolean;
+  details: string;
+}
+
 export interface LocalSttWarmupResponse {
   model: string;
   provider: string;

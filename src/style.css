@@ -399,6 +399,26 @@ body.sidebar-collapsed .brand-plan {
   color: var(--text-primary);
 }
 
+.secondary-link-local-stt {
+  color: var(--text-secondary);
+}
+
+.secondary-link-local-stt:hover {
+  color: var(--text-primary);
+}
+
+.secondary-link-local-stt[data-stt-state="download"] {
+  color: var(--text-secondary);
+}
+
+.secondary-link-local-stt[data-stt-state="ready"] {
+  color: var(--text-secondary);
+}
+
+.secondary-link-local-stt[data-stt-state="loaded"] {
+  color: var(--text-primary);
+}
+
 .nav-item.is-active {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-primary);

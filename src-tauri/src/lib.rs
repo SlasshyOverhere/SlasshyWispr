@@ -349,6 +349,7 @@ static COQUI_DAEMONS: OnceLock<Mutex<HashMap<String, CoquiBridgeDaemon>>> = Once
 static LOCAL_STT_DAEMONS: OnceLock<Mutex<HashMap<String, LocalSttBridgeDaemon>>> = OnceLock::new();
 static LOCAL_STT_RUNTIME_PYTHON_CACHE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static LOCAL_STT_DAEMON_SWEEPER_STARTED: OnceLock<()> = OnceLock::new();
+static LOCAL_STT_NATIVE_PARAKEET_OP_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static LOCAL_STT_NATIVE_PARAKEET_RUNTIME: OnceLock<Mutex<Option<NativeParakeetRuntime>>> =
     OnceLock::new();
 static PIPER_TUNING_SUPPORT: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
@@ -371,6 +372,10 @@ fn local_stt_runtime_python_cache() -> &'static Mutex<Option<String>> {
 
 fn local_stt_native_parakeet_runtime() -> &'static Mutex<Option<NativeParakeetRuntime>> {
     LOCAL_STT_NATIVE_PARAKEET_RUNTIME.get_or_init(|| Mutex::new(None))
+}
+
+fn local_stt_native_parakeet_op_lock() -> &'static Mutex<()> {
+    LOCAL_STT_NATIVE_PARAKEET_OP_LOCK.get_or_init(|| Mutex::new(()))
 }
 
 fn coqui_daemon_key(python_path: &str, script_path: &Path) -> String {
@@ -625,6 +630,17 @@ struct LocalSttOpenPathResponse {
     repo_id: String,
     local_path: String,
     opened: bool,
+    details: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalSttModelStatusResponse {
+    model: String,
+    provider: String,
+    repo_id: String,
+    local_path: String,
+    exists: bool,
     details: String,
 }
 
@@ -3756,6 +3772,7 @@ async fn delete_local_stt_model(
     if provider.eq_ignore_ascii_case("parakeet") {
         let _ = unload_native_parakeet_runtime("delete-model");
         stop_all_local_stt_bridge_daemons();
+        let _ = state.set_local_stt_runtime_loaded(false);
     }
     let models_dir = stt_models_dir(&app)?;
     let target_dir = models_dir.join(sanitize_model_cache_dir_name(&repo_id));
@@ -3860,6 +3877,41 @@ async fn open_local_stt_model_path(
         local_path: target_dir.to_string_lossy().into_owned(),
         opened: true,
         details: "Opened local model directory in file explorer.".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn get_local_stt_model_status(
+    app: AppHandle,
+    request: LocalSttDeleteRequest,
+) -> Result<LocalSttModelStatusResponse, String> {
+    let model = canonical_local_stt_model_id(&normalize_model_name(Some(&request.model)));
+    if model.is_empty() {
+        return Err("STT model name is required.".to_string());
+    }
+    let allowed_models = built_in_local_stt_model_catalog();
+    if !allowed_models.iter().any(|item| item == &model) {
+        return Err(
+            "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
+        );
+    }
+
+    let provider = infer_local_stt_provider_from_model(&model);
+    let (repo_id, target_dir) = resolve_local_stt_repo_and_dir(&app, &provider, &model)?;
+    let exists = target_dir.exists();
+    let details = if exists {
+        "Model files are available in local cache.".to_string()
+    } else {
+        "Model files are not downloaded yet.".to_string()
+    };
+
+    Ok(LocalSttModelStatusResponse {
+        model,
+        provider,
+        repo_id,
+        local_path: target_dir.to_string_lossy().into_owned(),
+        exists,
+        details,
     })
 }
 
@@ -11761,6 +11813,9 @@ fn decode_local_stt_audio_to_mono_f32(
 }
 
 fn get_or_load_native_parakeet_runtime(model_root: &Path) -> Result<bool, String> {
+    let _op_guard = local_stt_native_parakeet_op_lock()
+        .lock()
+        .map_err(|_| "Native Parakeet operation lock poisoned.".to_string())?;
     let model_key = normalize_native_parakeet_model_key(model_root);
     let runtime = local_stt_native_parakeet_runtime();
     let mut guard = runtime
@@ -11775,6 +11830,7 @@ fn get_or_load_native_parakeet_runtime(model_root: &Path) -> Result<bool, String
         let _ = current.engine.unload_model();
         *guard = None;
     }
+    drop(guard);
 
     let mut engine = ParakeetEngine::new();
     engine
@@ -11787,6 +11843,17 @@ fn get_or_load_native_parakeet_runtime(model_root: &Path) -> Result<bool, String
             )
         })?;
 
+    let mut guard = runtime
+        .lock()
+        .map_err(|_| "Native Parakeet runtime lock poisoned.".to_string())?;
+    if let Some(current) = guard.as_mut() {
+        if current.model_key == model_key {
+            current.last_used = Instant::now();
+            return Ok(true);
+        }
+        let _ = current.engine.unload_model();
+        *guard = None;
+    }
     *guard = Some(NativeParakeetRuntime {
         model_key,
         engine,
@@ -11796,6 +11863,9 @@ fn get_or_load_native_parakeet_runtime(model_root: &Path) -> Result<bool, String
 }
 
 fn unload_native_parakeet_runtime(reason: &str) -> Result<bool, String> {
+    let _op_guard = local_stt_native_parakeet_op_lock()
+        .lock()
+        .map_err(|_| "Native Parakeet operation lock poisoned.".to_string())?;
     let runtime = local_stt_native_parakeet_runtime();
     let mut guard = runtime
         .lock()
@@ -11815,9 +11885,10 @@ fn unload_native_parakeet_runtime(reason: &str) -> Result<bool, String> {
 
 fn native_parakeet_runtime_loaded() -> bool {
     let runtime = local_stt_native_parakeet_runtime();
-    let guard = match runtime.lock() {
+    let guard = match runtime.try_lock() {
         Ok(guard) => guard,
-        Err(_) => return false,
+        Err(std::sync::TryLockError::WouldBlock) => return true,
+        Err(std::sync::TryLockError::Poisoned(_)) => return false,
     };
     guard.is_some()
 }
@@ -12868,152 +12939,206 @@ async fn download_huggingface_stt_model(
         ));
     }
 
-    let mut downloaded_files = 0usize;
-    let mut downloaded_bytes = 0u64;
+    let download_progress = Arc::new(AtomicU64::new(0));
+    let completed_files = Arc::new(AtomicU64::new(0));
+    let parallel_limit = usize::min(4, usize::max(1, to_download.len()));
+    let mut next_index = 0usize;
+    let mut active_tasks = Vec::new();
 
-    for (relative_path, output_path, size_hint) in to_download {
-        if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent).map_err(|error| {
-                format!(
-                    "Failed to create model directory '{}': {error}",
-                    parent.display()
-                )
-            })?;
-        }
-
-        let current_file = relative_path.display().to_string();
-        state.update_local_stt_download_status(|status| {
-            status.current_file = current_file.clone();
-            status.stage = "Downloading file...".to_string();
-            status.message = format!(
-                "Downloading file {} of {}",
-                status.files_completed + 1,
-                status.files_total
-            );
-        })?;
-
-        let mut download_url = Url::parse(&format!(
-            "https://huggingface.co/{repo_id}/resolve/main/"
-        ))
-        .map_err(|error| format!("Invalid HuggingFace download URL for '{repo_id}': {error}"))?;
-        {
-            let mut segments = download_url
-                .path_segments_mut()
-                .map_err(|_| "Failed to build HuggingFace download path.".to_string())?;
-            segments.pop_if_empty();
-            for component in relative_path.components() {
-                if let std::path::Component::Normal(segment) = component {
-                    let value = segment.to_string_lossy();
-                    segments.push(value.as_ref());
-                }
-            }
-        }
-        download_url
-            .query_pairs_mut()
-            .append_pair("download", "true");
-
-        let mut response = apply_optional_bearer_auth(client.get(download_url.clone()), token)
-            .timeout(Duration::from_secs(60 * 60))
-            .send()
-            .await
-            .map_err(|error| {
-                format!(
-                    "Failed to download HuggingFace file '{}': {error}",
-                    relative_path.display()
-                )
-            })?;
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(format!(
-                "HuggingFace file download failed '{}' ({status}): {}",
-                relative_path.display(),
-                clip_text(&single_line(&body), 320)
-            ));
-        }
-
-        if size_hint.is_none() {
-            if let Some(content_length) = response.content_length() {
-                total_bytes = total_bytes.saturating_add(content_length);
-                state.update_local_stt_download_status(|status| {
-                    status.total_bytes = total_bytes;
+    let spawn_file_download = |
+        relative_path: PathBuf,
+        output_path: PathBuf,
+        size_hint: Option<u64>,
+    | {
+        let client = client.clone();
+        let token = token.map(str::to_string);
+        let repo_id = repo_id.to_string();
+        let progress = Arc::clone(&download_progress);
+        let completed = Arc::clone(&completed_files);
+        tauri::async_runtime::spawn(async move {
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    format!(
+                        "Failed to create model directory '{}': {error}",
+                        parent.display()
+                    )
                 })?;
             }
-        }
 
-        let temp_path = output_path.with_extension("partial");
-        if temp_path.exists() {
-            let _ = fs::remove_file(&temp_path);
-        }
+            let mut download_url = Url::parse(&format!(
+                "https://huggingface.co/{repo_id}/resolve/main/"
+            ))
+            .map_err(|error| format!("Invalid HuggingFace download URL for '{repo_id}': {error}"))?;
+            {
+                let mut segments = download_url
+                    .path_segments_mut()
+                    .map_err(|_| "Failed to build HuggingFace download path.".to_string())?;
+                segments.pop_if_empty();
+                for component in relative_path.components() {
+                    if let std::path::Component::Normal(segment) = component {
+                        let value = segment.to_string_lossy();
+                        segments.push(value.as_ref());
+                    }
+                }
+            }
+            download_url
+                .query_pairs_mut()
+                .append_pair("download", "true");
 
-        let mut output_file = fs::File::create(&temp_path).map_err(|error| {
-            format!(
-                "Failed to create temporary model file '{}': {error}",
-                temp_path.display()
-            )
-        })?;
-        let mut bytes_for_file = 0u64;
-        let mut last_status_update = Instant::now();
-        while let Some(chunk) = response.chunk().await.map_err(|error| {
-            format!(
-                "Failed reading HuggingFace download stream '{}': {error}",
-                relative_path.display()
-            )
-        })? {
-            output_file.write_all(&chunk).map_err(|error| {
+            let token_ref = token.as_deref();
+            let mut response = apply_optional_bearer_auth(client.get(download_url.clone()), token_ref)
+                .timeout(Duration::from_secs(60 * 60))
+                .send()
+                .await
+                .map_err(|error| {
+                    format!(
+                        "Failed to download HuggingFace file '{}': {error}",
+                        relative_path.display()
+                    )
+                })?;
+            let status = response.status();
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                return Err(format!(
+                    "HuggingFace file download failed '{}' ({status}): {}",
+                    relative_path.display(),
+                    clip_text(&single_line(&body), 320)
+                ));
+            }
+
+            let discovered_content_length = if size_hint.is_none() {
+                response.content_length()
+            } else {
+                None
+            };
+
+            let temp_path = output_path.with_extension("partial");
+            if temp_path.exists() {
+                let _ = fs::remove_file(&temp_path);
+            }
+
+            let mut output_file = fs::File::create(&temp_path).map_err(|error| {
                 format!(
-                    "Failed writing HuggingFace file chunk '{}': {error}",
+                    "Failed to create temporary model file '{}': {error}",
                     temp_path.display()
                 )
             })?;
-            let chunk_size = u64::try_from(chunk.len()).unwrap_or(u64::MAX);
-            bytes_for_file = bytes_for_file.saturating_add(chunk_size);
-            downloaded_bytes = downloaded_bytes.saturating_add(chunk_size);
+            let mut bytes_for_file = 0u64;
 
-            if last_status_update.elapsed() >= Duration::from_millis(160) {
-                let current_file = relative_path.display().to_string();
-                state.update_local_stt_download_status(|status| {
-                    status.current_file = current_file;
-                    status.downloaded_bytes = downloaded_bytes;
-                })?;
-                last_status_update = Instant::now();
-            }
-        }
-        drop(output_file);
-
-        if bytes_for_file == 0 {
-            let _ = fs::remove_file(&temp_path);
-            return Err(format!(
-                "Downloaded file '{}' was empty.",
-                relative_path.display()
-            ));
-        }
-
-        if output_path.exists() {
-            fs::remove_file(&output_path).map_err(|error| {
+            while let Some(chunk) = response.chunk().await.map_err(|error| {
                 format!(
-                    "Failed to replace existing model file '{}': {error}",
+                    "Failed reading HuggingFace download stream '{}': {error}",
+                    relative_path.display()
+                )
+            })? {
+                output_file.write_all(&chunk).map_err(|error| {
+                    format!(
+                        "Failed writing HuggingFace file chunk '{}': {error}",
+                        temp_path.display()
+                    )
+                })?;
+                let chunk_size = u64::try_from(chunk.len()).unwrap_or(u64::MAX);
+                bytes_for_file = bytes_for_file.saturating_add(chunk_size);
+                progress.fetch_add(chunk_size, Ordering::Relaxed);
+            }
+            drop(output_file);
+
+            if bytes_for_file == 0 {
+                let _ = fs::remove_file(&temp_path);
+                return Err(format!(
+                    "Downloaded file '{}' was empty.",
+                    relative_path.display()
+                ));
+            }
+
+            if output_path.exists() {
+                fs::remove_file(&output_path).map_err(|error| {
+                    format!(
+                        "Failed to replace existing model file '{}': {error}",
+                        output_path.display()
+                    )
+                })?;
+            }
+            fs::rename(&temp_path, &output_path).map_err(|error| {
+                format!(
+                    "Failed to finalize model file '{}': {error}",
                     output_path.display()
                 )
             })?;
-        }
-        fs::rename(&temp_path, &output_path).map_err(|error| {
-            format!(
-                "Failed to finalize model file '{}': {error}",
-                output_path.display()
-            )
-        })?;
 
-        downloaded_files += 1;
-        state.update_local_stt_download_status(|status| {
-            status.downloaded_bytes = downloaded_bytes;
-            status.files_completed = downloaded_files;
-            status.current_file.clear();
-            status.message = format!(
-                "Downloaded {}/{} files.",
-                status.files_completed, status.files_total
-            );
-        })?;
+            completed.fetch_add(1, Ordering::Relaxed);
+            Ok::<(String, u64, Option<u64>), String>((
+                relative_path.display().to_string(),
+                bytes_for_file,
+                discovered_content_length,
+            ))
+        })
+    };
+
+    while next_index < to_download.len() && active_tasks.len() < parallel_limit {
+        let (relative_path, output_path, size_hint) = to_download[next_index].clone();
+        active_tasks.push(spawn_file_download(relative_path, output_path, size_hint));
+        next_index += 1;
+    }
+
+    let mut downloaded_files = 0usize;
+    let mut downloaded_bytes = 0u64;
+    let mut last_status_update = Instant::now();
+
+    while !active_tasks.is_empty() {
+        let task = active_tasks.remove(0);
+        let result = task
+            .await
+            .map_err(|error| format!("Parallel file download worker failed: {error}"))?;
+        match result {
+            Ok((current_file, bytes_for_file, discovered_content_length)) => {
+                downloaded_files += 1;
+                downloaded_bytes = download_progress.load(Ordering::Relaxed);
+                if let Some(content_length) = discovered_content_length {
+                    total_bytes = total_bytes.saturating_add(content_length);
+                }
+                state.update_local_stt_download_status(|status| {
+                    status.current_file = current_file;
+                    status.stage = if parallel_limit > 1 {
+                        "Downloading model files in parallel...".to_string()
+                    } else {
+                        "Downloading file...".to_string()
+                    };
+                    status.total_bytes = total_bytes;
+                    status.downloaded_bytes = downloaded_bytes;
+                    status.files_completed = downloaded_files;
+                    status.message = format!(
+                        "Downloaded {}/{} files.",
+                        status.files_completed, status.files_total
+                    );
+                })?;
+                let _ = bytes_for_file;
+            }
+            Err(error) => {
+                return Err(error);
+            }
+        }
+
+        while next_index < to_download.len() && active_tasks.len() < parallel_limit {
+          let (relative_path, output_path, size_hint) = to_download[next_index].clone();
+          active_tasks.push(spawn_file_download(relative_path, output_path, size_hint));
+          next_index += 1;
+        }
+
+        if last_status_update.elapsed() >= Duration::from_millis(120) {
+            let progress_bytes = download_progress.load(Ordering::Relaxed);
+            let completed_count = completed_files.load(Ordering::Relaxed) as usize;
+            state.update_local_stt_download_status(|status| {
+                status.stage = if parallel_limit > 1 {
+                    format!("Downloading model files with {parallel_limit} parallel workers...")
+                } else {
+                    "Downloading model files...".to_string()
+                };
+                status.downloaded_bytes = progress_bytes;
+                status.files_completed = completed_count;
+            })?;
+            last_status_update = Instant::now();
+        }
     }
 
     if downloaded_files == 0 && skipped_files == 0 {
@@ -14059,6 +14184,7 @@ pub fn run() {
             get_local_stt_download_status,
             delete_local_stt_model,
             open_local_stt_model_path,
+            get_local_stt_model_status,
             warmup_local_stt_model,
             deactivate_local_stt_model,
             get_local_stt_runtime_state,
