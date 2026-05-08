@@ -15,14 +15,13 @@ export function SettingsModal() {
             <div>
               <p className="settings-header-kicker">Workspace controls</p>
               <h2 id="settingsPaneTitle">General</h2>
-              <p className="settings-header-copy">Review shortcuts, behavior, models, and pipeline controls in one place.</p>
             </div>
             <button id="closeSettingsBtn" className="close-settings" type="button" aria-label="Close settings">✕</button>
           </header>
 
           <GeneralSettingsPane />
-          <UpdateSecuritySettingsPane />
           <ModelsSettingsPane />
+          <UpdateSecuritySettingsPane />
           <PipelineSettingsPane />
         </section>
       </div>
