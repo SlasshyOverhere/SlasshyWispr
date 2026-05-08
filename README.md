@@ -4,8 +4,7 @@ SlasshyWispr is a desktop voice dictation and AI assistant app.
 
 Speak naturally, get clean transcription, generate AI responses, and hear replies with built-in TTS.
 
-> [!WARNING]
-> SlasshyWispr is in **strong beta**. Expect bugs, rough edges, and breaking changes while features are actively evolving.
+
 
 
 
