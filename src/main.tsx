@@ -17,6 +17,7 @@ import {
   unregisterAll as unregisterAllGlobalShortcuts,
   type ShortcutEvent,
 } from "@tauri-apps/plugin-global-shortcut";
+import { open as openExternalUrl } from "@tauri-apps/plugin-shell";
 import {
   buildAgentOperatingCorePrompt,
   captureModeLabel,
@@ -46,6 +47,7 @@ import {
   HOME_HISTORY_STORAGE_KEY,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY,
+  APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
   EMPTY_HISTORY_HINT,
@@ -402,6 +404,7 @@ const maxTokensInput = requiredElement<HTMLInputElement>("#maxTokensInput");
 
 const launchAtLoginToggle = requiredElement<HTMLInputElement>("#launchAtLoginToggle");
 const showFlowBarToggle = requiredElement<HTMLInputElement>("#showFlowBarToggle");
+const showDockAlwaysToggle = requiredElement<HTMLInputElement>("#showDockAlwaysToggle");
 const commandModeToggle = requiredElement<HTMLInputElement>("#commandModeToggle");
 const wakeWordEnabledToggle = requiredElement<HTMLInputElement>("#wakeWordEnabledToggle");
 const assistantNameInput = requiredElement<HTMLInputElement>("#assistantNameInput");
@@ -439,9 +442,16 @@ const updateStatusText = requiredElement<HTMLParagraphElement>("#updateStatusTex
 const updateCurrentVersion = requiredElement<HTMLElement>("#updateCurrentVersion");
 const updateLatestVersion = requiredElement<HTMLElement>("#updateLatestVersion");
 const updatePublishedAt = requiredElement<HTMLElement>("#updatePublishedAt");
+const updateLastCheckedText = requiredElement<HTMLParagraphElement>("#updateLastCheckedText");
+const autoCheckUpdatesToggle = requiredElement<HTMLInputElement>("#autoCheckUpdatesToggle");
 const checkUpdatesBtn = requiredElement<HTMLButtonElement>("#checkUpdatesBtn");
 const installUpdateBtn = requiredElement<HTMLButtonElement>("#installUpdateBtn");
+const updateReleaseCard = requiredElement<HTMLDivElement>("#updateReleaseCard");
+const updateReleaseName = requiredElement<HTMLParagraphElement>("#updateReleaseName");
+const updateReleaseNotes = requiredElement<HTMLParagraphElement>("#updateReleaseNotes");
+const updateReleaseLink = requiredElement<HTMLAnchorElement>("#updateReleaseLink");
 const updateInstallProgressWrap = requiredElement<HTMLDivElement>("#updateInstallProgressWrap");
+const updateInstallProgressTrack = requiredElement<HTMLDivElement>("#updateInstallProgressTrack");
 const updateInstallProgressBar = requiredElement<HTMLSpanElement>("#updateInstallProgressBar");
 const updateInstallProgressText = requiredElement<HTMLParagraphElement>("#updateInstallProgressText");
 
@@ -611,6 +621,7 @@ let updateCheckInFlight = false;
 let updateInstallInFlight = false;
 let cachedUpdateResult: AppUpdateCheckResponse | null = null;
 let updateAutoCheckTimerId: number | null = null;
+let updateAutoCheckTimeoutId: number | null = null;
 let updateInstallProgressUnlisten: (() => void) | null = null;
 let foregroundBlockStatusCache: ForegroundInputBlockStatus = {
   blocked: false,
@@ -637,6 +648,7 @@ const ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION = true;
 const MAIN_WINDOW_VISIBILITY_EVENT = "slasshy://main-window-visibility";
 const UPDATE_INSTALL_PROGRESS_EVENT = "slasshy://update-install-progress";
 const APP_UPDATE_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
+const DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED = true;
 
 const ACTIVITY_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "long",
@@ -697,6 +709,15 @@ dockChannel.onmessage = (event: MessageEvent<unknown>) => {
 
   if (payload.action === "toggle-mic") {
     void handleDockMicToggle();
+  } else if (payload.action === "open-app") {
+    void (async () => {
+      const win = getCurrentWindow();
+      await win.show();
+      await win.unminimize();
+      await win.setFocus();
+      setActivePage("home");
+      closeSettings();
+    })();
   }
 };
 
@@ -847,8 +868,36 @@ checkUpdatesBtn.addEventListener("click", () => {
   void handleCheckForUpdates();
 });
 
+autoCheckUpdatesToggle.addEventListener("change", () => {
+  localStorage.setItem(
+    APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
+    autoCheckUpdatesToggle.checked ? "1" : "0",
+  );
+  startAutomaticUpdateChecks();
+  setNotice(
+    autoCheckUpdatesToggle.checked
+      ? "Automatic update checks enabled."
+      : "Automatic update checks disabled.",
+  );
+});
+
 installUpdateBtn.addEventListener("click", () => {
   void handleInstallUpdate();
+});
+
+window.addEventListener("beforeunload", () => {
+  if (updateAutoCheckTimerId !== null) {
+    window.clearInterval(updateAutoCheckTimerId);
+    updateAutoCheckTimerId = null;
+  }
+  if (updateAutoCheckTimeoutId !== null) {
+    window.clearTimeout(updateAutoCheckTimeoutId);
+    updateAutoCheckTimeoutId = null;
+  }
+  if (updateInstallProgressUnlisten) {
+    updateInstallProgressUnlisten();
+    updateInstallProgressUnlisten = null;
+  }
 });
 
 closeSettingsBtn.addEventListener("click", () => {
@@ -1137,8 +1186,9 @@ captureModePushToTalkInput.addEventListener("change", handleSettingsChange);
 launchAtLoginToggle.addEventListener("change", handleSettingsChange);
 showFlowBarToggle.addEventListener("change", handleSettingsChange);
 commandModeToggle.addEventListener("change", handleSettingsChange);
-wakeWordEnabledToggle.addEventListener("change", handleSettingsChange);
-assistantNameInput.addEventListener("input", handleSettingsChange);
+  wakeWordEnabledToggle.addEventListener("change", handleSettingsChange);
+  showDockAlwaysToggle.addEventListener("change", handleSettingsChange);
+  assistantNameInput.addEventListener("input", handleSettingsChange);
 sttRuntimeModeOnlineInput.addEventListener("change", handleSettingsChange);
 sttRuntimeModeOfflineInput.addEventListener("change", handleSettingsChange);
 aiRuntimeModeOnlineInput.addEventListener("change", handleSettingsChange);
@@ -1669,6 +1719,7 @@ function loadSettings(): PersistedSettings {
     maxTokens: DEFAULT_MAX_TOKENS,
     launchAtLogin: true,
     showFlowBar: false,
+    showDockAlways: false,
     commandMode: true,
     wakeWordEnabled: true,
     assistantName: DEFAULT_ASSISTANT_NAME,
@@ -1768,6 +1819,7 @@ function loadSettings(): PersistedSettings {
       showFlowBar: fromLegacyOnly
         ? false
         : coerceBoolean(parsed.showFlowBar, defaults.showFlowBar),
+      showDockAlways: coerceBoolean(parsed.showDockAlways, defaults.showDockAlways),
       commandMode: coerceBoolean(parsed.commandMode, defaults.commandMode),
       wakeWordEnabled: coerceBoolean(parsed.wakeWordEnabled, defaults.wakeWordEnabled),
       assistantName:
@@ -1998,6 +2050,7 @@ function readSettingsFromForm(): PersistedSettings {
     maxTokens: coerceInteger(Number(maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 4096),
     launchAtLogin: launchAtLoginToggle.checked,
     showFlowBar: showFlowBarToggle.checked,
+    showDockAlways: showDockAlwaysToggle.checked,
     commandMode: commandModeToggle.checked,
     wakeWordEnabled: wakeWordEnabledToggle.checked,
     assistantName: assistantNameInput.value,
@@ -2076,6 +2129,7 @@ function applySettingsToForm(next: PersistedSettings): void {
   captureModePushToTalkInput.checked = next.captureMode === "push-to-talk";
   launchAtLoginToggle.checked = next.launchAtLogin;
   showFlowBarToggle.checked = next.showFlowBar;
+  showDockAlwaysToggle.checked = next.showDockAlways;
   commandModeToggle.checked = next.commandMode;
   wakeWordEnabledToggle.checked = next.wakeWordEnabled;
   assistantNameInput.value = next.assistantName;
@@ -2106,27 +2160,21 @@ function applySettingsToForm(next: PersistedSettings): void {
   syncHybridRuntimeFieldVisibility(next.sttRuntimeMode, next.aiRuntimeMode);
 }
 
-function handleSettingsChange(): void {
-  const previousSettings = settings;
-  const previousMode = settings.captureMode;
+async function handleSettingsChange(): Promise<void> {
+  const previousSettings = { ...settings };
+  const previousMicrophoneDeviceId = settings.microphoneDeviceId;
+  const previousShowFlowBar = settings.showFlowBar;
   const previousIncognito = settings.incognitoMode;
+  const previousMuteMusicWhileDictating = settings.muteMusicWhileDictating;
   const previousTtsEngine = settings.ttsEngine;
   const previousSttRuntimeMode = settings.sttRuntimeMode;
   const previousAiRuntimeMode = settings.aiRuntimeMode;
-  const previousMuteMusicWhileDictating = settings.muteMusicWhileDictating;
   const previousLaunchAtLogin = settings.launchAtLogin;
-  const previousMicrophoneDeviceId = settings.microphoneDeviceId;
-  const previousShowFlowBar = settings.showFlowBar;
   const previousShortcutSignature = buildShortcutSyncSignature(settings);
+  const previousMode = settings.captureMode;
+
   const next = readSettingsFromForm();
-  if (settingsOverlay.hidden && next.captureMode !== previousSettings.captureMode) {
-    logClientEvent(
-      `[settings.captureMode] ignored hidden-overlay flip from=${previousSettings.captureMode} to=${next.captureMode}`,
-    );
-    next.captureMode = previousSettings.captureMode;
-    captureModeSingleInput.checked = next.captureMode === "single-tap";
-    captureModePushToTalkInput.checked = next.captureMode === "push-to-talk";
-  }
+
   const parsed = parseHotkey(next.pushToTalkHotkey);
   const commandParsed = parseHotkey(next.commandHotkey);
 
@@ -2704,6 +2752,12 @@ function isTauriEnvironment(): boolean {
   return "__TAURI_INTERNALS__" in window || "__TAURI__" in window;
 }
 
+function openInSystemBrowser(url: string): void {
+  void openExternalUrl(url).catch((error) => {
+    setNotice(`Failed to open link: ${asErrorMessage(error)}`, true);
+  });
+}
+
 function syncUpdaterButtons(): void {
   if (!isTauriEnvironment()) {
     checkUpdatesBtn.disabled = true;
@@ -2717,15 +2771,34 @@ function syncUpdaterButtons(): void {
     updateInstallInFlight ||
     !cachedUpdateResult?.available ||
     !cachedUpdateResult.installerDownloadUrl;
+  installUpdateBtn.textContent = cachedUpdateResult?.available
+    ? `Download & install ${cachedUpdateResult.latestVersion || "update"}`
+    : "Download & install";
 }
 
 function initializeUpdaterPanel(): void {
   updateCurrentVersion.textContent = "-";
   updateLatestVersion.textContent = "-";
   updatePublishedAt.textContent = "-";
+  updateReleaseCard.hidden = true;
+  updateReleaseName.textContent = "-";
+  updateReleaseNotes.textContent = "Release notes are unavailable for this build.";
+  updateReleaseLink.href = "https://github.com";
+  updateReleaseLink.hidden = true;
+  updateReleaseLink.addEventListener("click", (event) => {
+    if (!isTauriEnvironment()) {
+      return;
+    }
+    event.preventDefault();
+    openInSystemBrowser(updateReleaseLink.href);
+  });
   updateInstallProgressWrap.hidden = true;
   updateInstallProgressBar.style.width = "0%";
+  updateInstallProgressTrack.setAttribute("aria-valuenow", "0");
+  updateInstallProgressTrack.setAttribute("aria-valuetext", "Waiting to start update download.");
   updateInstallProgressText.textContent = "Waiting to start update download.";
+  autoCheckUpdatesToggle.checked = readAppUpdateAutoCheckEnabled();
+  refreshUpdateLastCheckedText();
   setUpdaterStatus("idle", "Check to see if a new version is available.");
   syncUpdaterButtons();
 
@@ -2806,11 +2879,74 @@ function setUpdaterStatus(stage: "idle" | "processing" | "speaking" | "error", m
   } else if (stage === "processing") {
     updateStatusPill.textContent = "Checking";
   } else if (stage === "speaking") {
-    updateStatusPill.textContent = "Update";
+    updateStatusPill.textContent = "Available";
   } else {
     updateStatusPill.textContent = "Error";
   }
   updateStatusText.textContent = message;
+}
+
+function readAppUpdateAutoCheckEnabled(): boolean {
+  const raw = localStorage.getItem(APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY);
+  if (raw === null) {
+    return DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED;
+  }
+  return raw !== "0";
+}
+
+function readLastAppUpdateCheckedAtMs(): number {
+  const raw = localStorage.getItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY);
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return parsed;
+}
+
+function refreshUpdateLastCheckedText(): void {
+  const lastCheckedAt = readLastAppUpdateCheckedAtMs();
+  if (lastCheckedAt <= 0) {
+    updateLastCheckedText.textContent = "Last checked: Never.";
+    return;
+  }
+
+  updateLastCheckedText.textContent = `Last checked: ${new Date(lastCheckedAt).toLocaleString()}.`;
+}
+
+function shouldRunStartupUpdateCheck(): boolean {
+  const lastCheckedAt = readLastAppUpdateCheckedAtMs();
+  if (lastCheckedAt <= 0) {
+    return true;
+  }
+  return Date.now() - lastCheckedAt >= APP_UPDATE_CHECK_INTERVAL_MS;
+}
+
+function msUntilNextAutomaticUpdateCheck(): number {
+  const lastCheckedAt = readLastAppUpdateCheckedAtMs();
+  if (lastCheckedAt <= 0) {
+    return 0;
+  }
+
+  const elapsedMs = Date.now() - lastCheckedAt;
+  if (elapsedMs >= APP_UPDATE_CHECK_INTERVAL_MS) {
+    return 0;
+  }
+
+  return APP_UPDATE_CHECK_INTERVAL_MS - elapsedMs;
+}
+
+function isSafeGithubReleasePageUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "https:" && parsed.hostname === "github.com" && parsed.pathname.includes("/releases/");
+  } catch {
+    return false;
+  }
 }
 
 function formatPublishedDate(raw: string): string {
@@ -2835,7 +2971,10 @@ function setUpdateInstallProgress(
   updateInstallProgressWrap.hidden = !visible;
   const normalizedPercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
   updateInstallProgressBar.style.width = `${normalizedPercent}%`;
-  updateInstallProgressText.textContent = detail ? `${message} ${detail}` : message;
+  const progressText = detail ? `${message} ${detail}` : message;
+  updateInstallProgressTrack.setAttribute("aria-valuenow", String(Math.round(normalizedPercent)));
+  updateInstallProgressTrack.setAttribute("aria-valuetext", progressText);
+  updateInstallProgressText.textContent = progressText;
 }
 
 function openUpdateSettings(reason: string): void {
@@ -2902,6 +3041,19 @@ function applyUpdateCheckResult(result: AppUpdateCheckResponse, silent: boolean)
   updateCurrentVersion.textContent = result.currentVersion || "-";
   updateLatestVersion.textContent = result.latestVersion || "-";
   updatePublishedAt.textContent = formatPublishedDate(result.publishedAt);
+  updateReleaseName.textContent = result.releaseName?.trim() || result.latestVersion || "Release information unavailable";
+  updateReleaseNotes.textContent = result.releaseNotes?.trim() || "Release notes are unavailable for this build.";
+  const hasReleaseDetails = Boolean(
+    result.releaseName?.trim() || result.releaseNotes?.trim() || isSafeGithubReleasePageUrl(result.releaseUrl),
+  );
+  updateReleaseCard.hidden = !hasReleaseDetails;
+  if (isSafeGithubReleasePageUrl(result.releaseUrl)) {
+    updateReleaseLink.href = result.releaseUrl;
+    updateReleaseLink.hidden = false;
+  } else {
+    updateReleaseLink.href = "https://github.com";
+    updateReleaseLink.hidden = true;
+  }
 
   if (result.available && result.installerDownloadUrl) {
     setUpdaterStatus(
@@ -2938,6 +3090,7 @@ async function handleCheckForUpdates(options?: {
 
   const silent = options?.silent ?? false;
   const source = options?.source ?? "manual";
+  const previousCachedUpdateResult = cachedUpdateResult;
   updateCheckInFlight = true;
   cachedUpdateResult = null;
   syncUpdaterButtons();
@@ -2948,11 +3101,13 @@ async function handleCheckForUpdates(options?: {
   try {
     const result = await invoke<AppUpdateCheckResponse>("check_for_app_update");
     localStorage.setItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY, String(Date.now()));
+    refreshUpdateLastCheckedText();
     applyUpdateCheckResult(result, silent);
     if (result.available && (source === "startup" || source === "interval")) {
       notifyAppUpdateAvailable(result, source);
     }
   } catch (error) {
+    cachedUpdateResult = previousCachedUpdateResult;
     setUpdaterStatus("error", `Update check failed: ${asErrorMessage(error)}`);
   } finally {
     updateCheckInFlight = false;
@@ -2975,6 +3130,14 @@ async function handleInstallUpdate(): Promise<void> {
     assetName: cachedUpdateResult.installerAssetName || undefined,
     silent: true,
   };
+
+  const targetVersion = cachedUpdateResult.latestVersion || "the available update";
+  const confirmed = confirmDestructiveAction(
+    `Install ${targetVersion} now? The installer will download, this app will close, and any unsaved work in the current session may be lost.`,
+  );
+  if (!confirmed) {
+    return;
+  }
 
   updateInstallInFlight = true;
   syncUpdaterButtons();
@@ -3043,12 +3206,33 @@ function startAutomaticUpdateChecks(): void {
 
   if (updateAutoCheckTimerId !== null) {
     window.clearInterval(updateAutoCheckTimerId);
+    updateAutoCheckTimerId = null;
+  }
+  if (updateAutoCheckTimeoutId !== null) {
+    window.clearTimeout(updateAutoCheckTimeoutId);
+    updateAutoCheckTimeoutId = null;
   }
 
-  void handleCheckForUpdates({ silent: true, source: "startup" });
-  updateAutoCheckTimerId = window.setInterval(() => {
+  if (!readAppUpdateAutoCheckEnabled()) {
+    return;
+  }
+
+  const dueInMs = msUntilNextAutomaticUpdateCheck();
+  if (dueInMs <= 0 || shouldRunStartupUpdateCheck()) {
+    void handleCheckForUpdates({ silent: true, source: "startup" });
+    updateAutoCheckTimerId = window.setInterval(() => {
+      void handleCheckForUpdates({ silent: true, source: "interval" });
+    }, APP_UPDATE_CHECK_INTERVAL_MS);
+    return;
+  }
+
+  updateAutoCheckTimeoutId = window.setTimeout(() => {
+    updateAutoCheckTimeoutId = null;
     void handleCheckForUpdates({ silent: true, source: "interval" });
-  }, APP_UPDATE_CHECK_INTERVAL_MS);
+    updateAutoCheckTimerId = window.setInterval(() => {
+      void handleCheckForUpdates({ silent: true, source: "interval" });
+    }, APP_UPDATE_CHECK_INTERVAL_MS);
+  }, dueInMs);
 }
 
 function requestLaunchAtLoginSync(enabled: boolean): void {
@@ -7640,12 +7824,17 @@ async function applyMainWindowTrayVisibility(hidden: boolean): Promise<void> {
   mainWindowHiddenToTray = hidden;
   if (!hidden) {
     resumeNonEssentialUiPollingAfterTray();
+    // Re-sync the dock so it reappears if showDockAlways is on or a session is active
+    void syncFloatingIndicatorWindow();
     return;
   }
 
   stopNonEssentialUiPollingForTray();
   await closeSelectionAssistantWindowForTray();
-  await closeVoiceIndicatorWindowForTray();
+  // Keep the floating dock alive when minimizing to tray — only close it
+  // if the user explicitly disabled the dock via showFlowBar setting.
+  // Previously this destroyed the dock window which made it disappear
+  // and it was never re-created until the next recording session.
 }
 
 async function initializeTrayBackgroundLifecycle(): Promise<void> {
@@ -7782,6 +7971,9 @@ function logClientEvent(message: string): void {
 function shouldDisplayDock(): boolean {
   if (!settings.showFlowBar) {
     return false;
+  }
+  if (settings.showDockAlways) {
+    return true;
   }
   return (
     stage === "recording" ||
@@ -8158,8 +8350,8 @@ async function ensureVoiceIndicatorWindow(): Promise<WebviewWindow> {
     }
   }
 
-  const dockWidth = 96;
-  const dockHeight = 60;
+  const dockWidth = 160;
+  const dockHeight = 140;
   const dockPosition = await resolveDockStartPosition(dockWidth, dockHeight);
 
   const created = new WebviewWindow("voice_indicator", {
@@ -9543,7 +9735,7 @@ function getOfflineDiagnosticData(issue: string, details?: any): {
             id: 'guide',
             label: 'Setup Guide',
             handler: () => {
-              window.open('https://github.com/SlasshyOverhere/SlasshyWispr#quick-setup', '_blank');
+              openInSystemBrowser('https://github.com/SlasshyOverhere/SlasshyWispr#quick-setup');
             }
           },
           {
