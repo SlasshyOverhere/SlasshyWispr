@@ -1,42 +1,41 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SlasshyWispr Floating Dock</title>
   <style>
-    @font-face {
-      font-family: 'Geist Mono';
-      src: url('fonts/geist-mono/GeistMono-Variable.woff2') format('woff2');
-      font-weight: 100 900;
-    }
+    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
 
     :root {
       color-scheme: dark;
-      --background: #000000;
+      --background: #0a0a0c;
       --foreground: #ffffff;
-
-      --color-idle: #ffffff;
-      --color-active: #ffffff;
-      --color-process: #ffffff;
-      --color-error: #ff4b4b;
-
       --primary: #ffffff;
-      --primary-glow: rgba(255, 255, 255, 0.18);
-      --border-solid: rgba(255, 255, 255, 0.08);
-      --accent: #ffffff;
-      --text-primary: #ffffff;
-      --font-main: "Geist Mono", monospace;
+      --primary-glow: rgba(255, 255, 255, 0.4);
+      --border: #1c1c22;
+      --bg-glass: rgba(10, 10, 12, 0.65);
+      --border-glass: rgba(255, 255, 255, 0.15);
+      --accent: var(--primary);
+      --text-primary: var(--foreground);
+      --text-secondary: #b3b3b3;
+      --font-main: "Inter", system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono", monospace;
     }
 
     :root[data-theme="light"] {
       color-scheme: light;
-      --background: #000000;
-      --foreground: #ffffff;
-      --color-idle: #ffffff;
-      --border-solid: rgba(255, 255, 255, 0.08);
-      --accent: #ffffff;
-      --text-primary: #ffffff;
+      --background: #ffffff;
+      --foreground: #000000;
+      --primary: #000000;
+      --primary-glow: rgba(0, 0, 0, 0.15);
+      --border: #e5e5e5;
+      --bg-glass: rgba(255, 255, 255, 0.75);
+      --border-glass: rgba(0, 0, 0, 0.1);
+      --accent: var(--primary);
+      --text-primary: var(--foreground);
+      --text-secondary: #4d4d4d;
     }
 
     * {
@@ -45,109 +44,65 @@
 
     html,
     body {
-      width: 100vw;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
       margin: 0;
-      padding: 0;
       overflow: hidden;
-      background: rgba(0, 0, 0, 0) !important;
+      background: transparent;
       font-family: var(--font-main);
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
 
     .dock-shell {
-      width: 52px;
-      height: 44px;
+      width: 100%;
+      height: 100%;
       border-radius: 999px;
+      border: 1px solid var(--border-glass);
+      background: var(--bg-glass);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        inset 0 0 0 1px hsla(0, 0%, 100%, 0.05);
       color: var(--text-primary);
       display: flex;
       align-items: center;
-      justify-content: flex-start;
-      gap: 6px;
-      padding: 0 10px;
+      gap: 14px;
+      padding: 0 22px 0 6px;
       user-select: none;
+      transition: all 400ms cubic-bezier(0.16, 1, 0.3, 1);
       position: relative;
       overflow: hidden;
-      border: 1px solid var(--border-solid);
-      background: #000000;
-      box-shadow:
-        0 10px 30px rgba(0, 0, 0, 0.65),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04);
-      transition:
-        width 150ms cubic-bezier(0.25, 1, 0.5, 1),
-        opacity 120ms ease,
-        transform 120ms ease,
-        box-shadow 180ms ease;
     }
 
-    .dock-shell[data-snap="true"] {
-      transition:
-        width 45ms linear,
-        opacity 45ms linear,
-        transform 45ms linear,
-        box-shadow 60ms linear;
+    .dock-shell::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg,
+          transparent,
+          hsla(0, 0%, 100%, 0.03),
+          transparent);
+      animation: scan 4s infinite linear;
+      pointer-events: none;
     }
 
-    .dock-shell[data-stage="recording"],
-    .dock-shell[data-stage="speaking"] {
-      width: 86px;
-      --accent: var(--color-active);
-    }
+    @keyframes scan {
+      0% {
+        left: -100%;
+      }
 
-    .dock-shell[data-stage="processing"] {
-      width: 76px;
-      --accent: var(--color-process);
+      100% {
+        left: 100%;
+      }
     }
 
     .dock-shell[data-visible="false"] {
       opacity: 0;
-      transform: scale(0.92) translateY(10px);
+      transform: scale(0.92) translateY(8px);
       pointer-events: none;
-    }
-
-    .dock-inner-bg {
-      position: absolute;
-      inset: 2px;
-      border-radius: 999px;
-      z-index: 2;
-      background:
-        radial-gradient(circle at top, rgba(255, 255, 255, 0.035), transparent 58%),
-        #000000;
-      pointer-events: none;
-    }
-
-    .dock-border-glow {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 180px;
-      height: 180px;
-      transform: translate(-50%, -50%);
-      z-index: 1;
-      background: conic-gradient(
-        from 0deg,
-        transparent 0%,
-        rgba(255, 255, 255, 0) 10%,
-        rgba(255, 255, 255, 0.6) 50%,
-        rgba(255, 255, 255, 1) 90%,
-        transparent 100%
-      );
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 160ms ease;
-    }
-
-    /* White ring only during transcription (processing) */
-    .dock-shell[data-stage="processing"] .dock-border-glow {
-      opacity: 1;
-      animation: dock-ring-spin 1.5s linear infinite;
-    }
-
-    @keyframes dock-ring-spin {
-      from { transform: translate(-50%, -50%) rotate(0deg); }
-      to { transform: translate(-50%, -50%) rotate(360deg); }
     }
 
     .mic-wrap {
@@ -155,81 +110,82 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 32px;
-      height: 32px;
-      z-index: 3;
-      flex-shrink: 0;
+      width: 44px;
+      height: 44px;
     }
 
     .mic-btn {
-      width: 100%;
-      height: 100%;
+      width: 34px;
+      height: 34px;
       border: 0;
       border-radius: 50%;
-      background: transparent;
+      color: var(--background);
+      background: var(--accent);
       display: grid;
       place-items: center;
       cursor: pointer;
-      transition: transform 200ms ease, opacity 200ms ease;
-      z-index: 3;
+      transition: all 300ms cubic-bezier(0.23, 1, 0.32, 1);
+      flex-shrink: 0;
+      z-index: 2;
       position: relative;
+      box-shadow: 0 0 15px var(--primary-glow);
+      overflow: hidden;
     }
 
-    .mic-btn:active {
-      transform: scale(0.96);
+    .mic-btn:hover {
+      transform: scale(1.08);
+      filter: brightness(0.9);
     }
 
     .dock-logo {
-      width: 18px;
-      height: 18px;
+      width: 22px;
+      height: 22px;
       object-fit: contain;
       display: block;
+      transform: none;
       pointer-events: none;
-      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.18));
-      transition: transform 120ms ease, filter 120ms ease;
     }
 
-    .dock-shell[data-stage="recording"] .dock-logo,
-    .dock-shell[data-stage="speaking"] .dock-logo {
-      animation: breathe 2s ease-in-out infinite;
-      filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.45));
+    .mic-ring {
+      position: absolute;
+      width: 34px;
+      height: 34px;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: conic-gradient(from 0deg, transparent 30%, var(--accent) 100%);
+      mask: radial-gradient(transparent 58%, black 60%);
+      -webkit-mask: radial-gradient(transparent 58%, black 60%);
+      filter: blur(0.5px);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 1;
+      transition: opacity 300ms ease;
     }
 
-    @keyframes breathe {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.12); }
+    .dock-shell[data-stage="recording"] .mic-ring {
+      opacity: 1;
+      animation: spin-glow-centered 1s linear infinite;
+    }
+
+    @keyframes spin-glow-centered {
+      from {
+        transform: translate(-50%, -50%) rotate(0deg);
+      }
+
+      to {
+        transform: translate(-50%, -50%) rotate(360deg);
+      }
     }
 
     .viz-wrap {
       display: flex;
       align-items: center;
-      justify-content: flex-start;
+      justify-content: center;
+      width: 44px;
       height: 100%;
       position: relative;
-      z-index: 3;
-      flex-grow: 1;
-      min-width: 0;
-    }
-
-    .bars, .processing-dots {
-      position: absolute;
-      left: 0;
-      top: 50%;
-      transform: translateY(-50%);
-      transition: opacity 100ms ease, transform 100ms ease;
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .dock-shell[data-stage="recording"] .bars,
-    .dock-shell[data-stage="speaking"] .bars {
-      opacity: 1;
-      transform: translateY(-50%) scale(1);
-    }
-
-    .dock-shell[data-stage="processing"] .processing-dots {
-      opacity: 1;
-      transform: translateY(-50%) scale(1);
     }
 
     .bars {
@@ -237,49 +193,66 @@
       align-items: center;
       gap: 3px;
       height: 24px;
-      transform: translateY(-50%) scale(0.95);
     }
 
     .bars span {
       width: 3px;
       height: 4px;
-      background: linear-gradient(to bottom, rgba(255, 255, 255, 0.4), #ffffff);
-      border-radius: 99px;
-      transition:
-        height 120ms cubic-bezier(0.175, 0.885, 0.32, 1.275),
-        background 300ms ease,
-        opacity 200ms ease,
-        box-shadow 200ms ease;
-      box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
-      opacity: 0.22;
+      background: var(--accent);
+      border-radius: 4px;
+      transition: height 120ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      box-shadow: 0 0 8px var(--primary-glow);
+    }
+
+    .status-group {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 60px;
+    }
+
+    .status-text {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
     }
 
     .processing-dots {
       display: flex;
-      gap: 3px;
-      align-items: center;
-      transform: translateY(-50%) scale(0.95);
+      gap: 5px;
     }
 
     .processing-dots span {
-      width: 4px;
-      height: 4px;
-      background: #ffffff;
+      width: 5px;
+      height: 5px;
+      background: var(--accent);
       border-radius: 50%;
       animation: dots 1.2s infinite ease-in-out;
-      box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+      box-shadow: 0 0 5px var(--primary-glow);
     }
 
-    .processing-dots span:nth-child(2) { animation-delay: 0.2s; }
-    .processing-dots span:nth-child(3) { animation-delay: 0.4s; }
+    .processing-dots span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .processing-dots span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
 
     @keyframes dots {
-      0%, 80%, 100% {
+
+      0%,
+      80%,
+      100% {
         transform: scale(0.6);
-        opacity: 0.28;
+        opacity: 0.3;
       }
+
       40% {
-        transform: scale(1.25);
+        transform: scale(1.2);
         opacity: 1;
       }
     }
@@ -287,33 +260,19 @@
 </head>
 
 <body>
-  <main
-    class="dock-shell"
-    id="dock"
-    data-stage="idle"
-    data-visible="false"
-    data-theme="dark"
-    data-tauri-drag-region
-  >
-    <div class="dock-inner-bg"></div>
-    <div class="dock-border-glow"></div>
-
-    <div class="mic-wrap">
-      <button class="mic-btn" id="micBtn" type="button" aria-label="Toggle dictation">
-        <img
-          class="dock-logo"
-          id="dockLogo"
-          src="data:image/png;base64,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"
-          alt="SlasshyWispr"
-        />
+  <main class="dock-shell" id="dock" data-stage="idle" data-visible="false" data-theme="dark" data-tauri-drag-region>
+    <div class="mic-wrap" data-tauri-drag-region>
+      <div class="mic-ring"></div>
+      <button class="mic-btn" id="micBtn" type="button" aria-label="Toggle dictation"
+        style="background: transparent; box-shadow: none;">
+        <img class="dock-logo" src="data:image/png;base64,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" alt="SlasshyWispr" />
       </button>
     </div>
 
-    <div class="viz-wrap">
+    <div class="viz-wrap" data-tauri-drag-region>
       <div id="vizBars" class="bars">
-        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span><span></span>
       </div>
-
       <div id="vizProcessing" class="processing-dots" style="display: none;">
         <span></span><span></span><span></span>
       </div>
@@ -331,72 +290,46 @@
     let stage = "idle";
     let targetAmplitude = 0;
     let smoothAmplitude = 0;
-    let animationFrameId = null;
-    let snapTimerId = null;
-
-    function applySnapTransition() {
-      dock.dataset.snap = "true";
-      if (snapTimerId !== null) {
-        clearTimeout(snapTimerId);
-      }
-      snapTimerId = setTimeout(() => {
-        dock.dataset.snap = "false";
-        snapTimerId = null;
-      }, 120);
-    }
 
     function render(state) {
       if (!state || state.kind !== "state") return;
 
-      const oldStage = stage;
-      const wasVisible = dock.dataset.visible === "true";
       stage = state.stage || "idle";
       targetAmplitude = Math.min(Math.max(Number(state.amplitude || 0), 0), 1);
-      const nextVisible = state.visible ? "true" : "false";
-      const isDictating = stage === "recording" || stage === "speaking";
-      const wasDictating = oldStage === "recording" || oldStage === "speaking";
 
-      if (nextVisible === "true" && isDictating && (!wasVisible || !wasDictating)) {
-        applySnapTransition();
-      }
-
-      dock.dataset.visible = nextVisible;
+      dock.dataset.visible = state.visible ? "true" : "false";
       dock.dataset.stage = stage;
 
       const theme = state.theme === "light" ? "light" : "dark";
       dock.dataset.theme = theme;
       document.documentElement.setAttribute("data-theme", theme);
 
-      // Note: Visibility and transitions are now handled entirely by CSS using data-stage attributes
+      if (stage === "recording" || stage === "speaking") {
+        vizBars.style.display = "flex";
+        vizProcessing.style.display = "none";
+      } else if (stage === "processing") {
+        vizBars.style.display = "none";
+        vizProcessing.style.display = "flex";
+      } else {
+        vizBars.style.display = "flex";
+        vizProcessing.style.display = "none";
+      }
     }
 
     function animate(now) {
+      smoothAmplitude += (targetAmplitude - smoothAmplitude) * 0.12;
       const active = stage === "recording" || stage === "speaking";
 
-      if (dock.dataset.visible === "false") {
-        animationFrameId = requestAnimationFrame(animate);
-        return;
-      }
-
-      smoothAmplitude += (targetAmplitude - smoothAmplitude) * 0.15;
-
       bars.forEach((bar, i) => {
-        const offset = i * 0.5;
-        const wave = active ? (Math.sin(now * 0.008 + offset) * 0.4 + 0.6) : 0.05;
+        const wobble = active ? (Math.sin(now * 0.015 + i * 0.8) * 0.3 + 0.7) : 0.05;
         const minH = 4;
-        const maxH = 24;
-        const height = active
-          ? (minH + smoothAmplitude * (maxH - minH) * wave)
-          : minH;
-
+        const maxH = 20;
+        const height = active ? (minH + smoothAmplitude * (maxH - minH) * wobble) : minH;
         bar.style.height = `${height}px`;
-        bar.style.opacity = active ? (0.35 + wave * 0.65) : 0.12;
-        bar.style.boxShadow = active
-          ? `0 0 ${height / 2}px rgba(255,255,255,0.45)`
-          : "none";
+        bar.style.opacity = active ? 1 : 0.15;
       });
 
-      animationFrameId = requestAnimationFrame(animate);
+      requestAnimationFrame(animate);
     }
 
     micBtn.addEventListener("click", () => {
@@ -404,7 +337,8 @@
     });
 
     channel.onmessage = (event) => render(event.data);
-    animationFrameId = requestAnimationFrame(animate);
+    requestAnimationFrame(animate);
   </script>
 </body>
+
 </html>
