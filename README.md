@@ -9,7 +9,7 @@ Speak naturally, get clean transcription, generate AI responses, and hear replie
 
 
 
-[![SlasshyWispr screenshot](./assets/screenshot.png)](./assets/screenshot.png)
+[![SlasshyWispr screenshot](./assets/slasshywispr_screenshot.png)](./assets/slasshywispr_screenshot.png)
 
 
 ## Key Features
