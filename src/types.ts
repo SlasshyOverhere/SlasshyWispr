@@ -2,7 +2,7 @@ export type Stage = "idle" | "recording" | "processing" | "speaking" | "error";
 export type CaptureMode = "single-tap" | "push-to-talk";
 export type ThemeMode = "system" | "light" | "dark";
 export type StyleProfile = "adaptive" | "professional" | "casual" | "concise" | "developer";
-export type MainPage = "home" | "history" | "dictionary" | "snippets" | "notes";
+export type MainPage = "home" | "history" | "dictionary" | "snippets" | "notes" | "analytics";
 export type SettingsPane =
   | "general"
   | "models"
@@ -349,6 +349,26 @@ export interface UsageStats {
   prevWpm: number;
   prevSpeakingSeconds: number;
   lastPeriodReset: number;
+}
+
+export interface AnalyticsSessionDetail {
+  date: number;
+  words: number;
+  speakingSeconds: number;
+  wpm: number;
+}
+
+export interface AchievementDef {
+  id: string;
+  label: string;
+  description: string;
+  threshold: number;
+  metric: "words" | "sessions" | "speakingSeconds";
+}
+
+export interface AchievementState {
+  id: string;
+  unlockedAt: number | null;
 }
 
 export interface DockLayout {

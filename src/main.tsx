@@ -32,6 +32,9 @@ import {
 } from "./utils";
 
 import {
+  ACHIEVEMENTS_STATE_KEY,
+  ACTIVE_PAGE_STORAGE_KEY,
+  ANALYTICS_SESSIONS_KEY,
   SELECTION_POPUP_WIDTH,
   SELECTION_POPUP_MIN_WIDTH,
   SELECTION_POPUP_MIN_HEIGHT,
@@ -40,12 +43,12 @@ import {
   SETTINGS_STORAGE_KEY,
   LEGACY_SETTINGS_STORAGE_KEY,
   DICTIONARY_STORAGE_KEY,
-  SNIPPETS_STORAGE_KEY,
+  HOME_HISTORY_STORAGE_KEY,
   NOTES_STORAGE_KEY,
+  SIDEBAR_COLLAPSED_STORAGE_KEY,
+  SNIPPETS_STORAGE_KEY,
   USAGE_STORAGE_KEY,
   DOCK_LAYOUT_STORAGE_KEY,
-  HOME_HISTORY_STORAGE_KEY,
-  SIDEBAR_COLLAPSED_STORAGE_KEY,
   LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
@@ -140,6 +143,9 @@ import type {
   SnippetEntry,
   QuickNoteEntry,
   UsageStats,
+  AnalyticsSessionDetail,
+  AchievementDef,
+  AchievementState,
   DockLayout,
   ForegroundInputBlockStatus,
   HomeHistoryEntry,
@@ -233,7 +239,6 @@ function applySidebarCollapsed(collapsed: boolean): void {
   syncSidebarHoverTitles(collapsed);
 }
 
-const ACTIVE_PAGE_STORAGE_KEY = "slasshy-wispr-active-page-v1";
 const ACTIVE_SETTINGS_PANE_STORAGE_KEY = "slasshy-wispr-active-settings-pane-v1";
 
 const settingsOverlay = requiredElement<HTMLDivElement>("#settingsOverlay");
@@ -567,6 +572,8 @@ let dictionaryTerms = loadDictionaryTerms();
 let snippets = loadSnippets();
 let quickNotes = loadQuickNotes();
 let usageStats = loadUsageStats();
+let analyticsSessionDetails: AnalyticsSessionDetail[] = loadAnalyticsSessionDetails();
+let achievementStates: AchievementState[] = loadAchievementStates();
 let homeHistoryEntries = loadHomeHistory();
 let commandModeArmed = false;
 let commandSelectionSnapshot: string | null = null;
@@ -989,9 +996,9 @@ document.addEventListener("keydown", (event) => {
 
   if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
     const digit = event.key;
-    if (digit >= "1" && digit <= "5") {
+    if (digit >= "1" && digit <= "6") {
       const pageIndex = parseInt(digit, 10) - 1;
-      const pages: MainPage[] = ["home", "history", "dictionary", "snippets", "notes"];
+      const pages: MainPage[] = ["home", "history", "dictionary", "snippets", "notes", "analytics"];
       const page = pages[pageIndex];
       if (page) {
         event.preventDefault();
@@ -1685,11 +1692,25 @@ async function bootstrap(): Promise<void> {
   syncActionAvailability();
   requestGlobalShortcutSync(true);
   startAutomaticUpdateChecks();
+  if (analyticsSessionDetails.length > 0 && achievementStates.length === 0) {
+    const totalWords = usageStats.words + usageStats.prevWords;
+    const totalSessions = usageStats.sessions + usageStats.prevSessions;
+    const totalSeconds = usageStats.speakingSeconds + usageStats.prevSpeakingSeconds;
+    if (totalWords > 0 || totalSessions > 0 || totalSeconds > 0) {
+      checkAndUnlockAchievements({
+        ...usageStats,
+        words: totalWords,
+        sessions: totalSessions,
+        speakingSeconds: totalSeconds,
+      });
+      window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+    }
+  }
   logClientEvent("[bootstrap] completed");
 }
 
 function asMainPage(value: string | undefined): MainPage | null {
-  if (value === "home" || value === "history" || value === "dictionary" || value === "snippets" || value === "notes") {
+  if (value === "home" || value === "history" || value === "dictionary" || value === "snippets" || value === "notes" || value === "analytics") {
     return value;
   }
 
@@ -1736,6 +1757,8 @@ function setActivePage(next: MainPage, options: { forceRender?: boolean } = {}):
     if (forceRender || fullHistoryNeedsRender) {
       renderFullHistory();
     }
+  } else if (next === "analytics") {
+    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
   }
 }
 
@@ -3124,7 +3147,7 @@ function isTauriEnvironment(): boolean {
 }
 
 function openInSystemBrowser(url: string): void {
-  void openExternalUrl(url).catch((error) => {
+  void openExternalUrl(url).catch((error: unknown) => {
     setNotice(`Failed to open link: ${asErrorMessage(error)}`, true);
   });
 }
@@ -4426,6 +4449,108 @@ function persistUsageStats(): void {
   localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(usageStats));
 }
 
+function loadAnalyticsSessionDetails(): AnalyticsSessionDetail[] {
+  const raw = localStorage.getItem(ANALYTICS_SESSIONS_KEY);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch {}
+  }
+  return backfillAnalyticsSessions();
+}
+
+function backfillAnalyticsSessions(): AnalyticsSessionDetail[] {
+  const statsRaw = localStorage.getItem(USAGE_STORAGE_KEY);
+  if (!statsRaw) return [];
+  let stats: Partial<UsageStats>;
+  try { stats = JSON.parse(statsRaw); } catch { return []; }
+  const totalSessions = (stats.sessions ?? 0) + (stats.prevSessions ?? 0);
+  const totalWords = (stats.words ?? 0) + (stats.prevWords ?? 0);
+  const totalSeconds = (stats.speakingSeconds ?? 0) + (stats.prevSpeakingSeconds ?? 0);
+  const avgWpm = stats.avgWpm ?? 0;
+  if (totalSessions === 0 || totalWords === 0) return [];
+
+  const historyRaw = localStorage.getItem(HOME_HISTORY_STORAGE_KEY);
+  if (!historyRaw) return [];
+  let historyEntries: HomeHistoryEntry[];
+  try {
+    historyEntries = JSON.parse(historyRaw);
+    if (!Array.isArray(historyEntries) || historyEntries.length === 0) return [];
+  } catch { return []; }
+
+  const entries = [...historyEntries].reverse();
+  const count = Math.min(entries.length, totalSessions);
+  const sessions: AnalyticsSessionDetail[] = [];
+  for (let i = 0; i < count; i++) {
+    const wordEstimate = i < count - 1
+      ? Math.round(totalWords / count)
+      : totalWords - Math.round(totalWords / count) * (count - 1);
+    const timeEstimate = i < count - 1
+      ? Math.round(totalSeconds / count)
+      : totalSeconds - Math.round(totalSeconds / count) * (count - 1);
+    const wpm = timeEstimate > 0 ? Math.round((wordEstimate / timeEstimate) * 60) : Math.round(avgWpm);
+    sessions.push({
+      date: entries[i].timestamp,
+      words: wordEstimate,
+      speakingSeconds: timeEstimate,
+      wpm: wpm || Math.round(avgWpm),
+    });
+  }
+  if (sessions.length > 0) {
+    localStorage.setItem(ANALYTICS_SESSIONS_KEY, JSON.stringify(sessions));
+  }
+  return sessions;
+}
+
+function persistAnalyticsSessionDetails(): void {
+  localStorage.setItem(ANALYTICS_SESSIONS_KEY, JSON.stringify(analyticsSessionDetails));
+}
+
+function loadAchievementStates(): AchievementState[] {
+  const raw = localStorage.getItem(ACHIEVEMENTS_STATE_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistAchievementStates(): void {
+  localStorage.setItem(ACHIEVEMENTS_STATE_KEY, JSON.stringify(achievementStates));
+}
+
+const ACHIEVEMENT_DEFS: AchievementDef[] = [
+  { id: 'words-1k', label: 'First Milestone', description: '1,000 total words dictated', threshold: 1000, metric: 'words' },
+  { id: 'words-10k', label: 'Word Explorer', description: '10,000 total words dictated', threshold: 10000, metric: 'words' },
+  { id: 'words-50k', label: 'Wordsmith', description: '50,000 total words dictated', threshold: 50000, metric: 'words' },
+  { id: 'words-100k', label: 'Lexicon Master', description: '100,000 total words dictated', threshold: 100000, metric: 'words' },
+  { id: 'sessions-100', label: 'Century Mark', description: '100 dictation sessions', threshold: 100, metric: 'sessions' },
+  { id: 'sessions-1k', label: 'Dedicated Dictator', description: '1,000 dictation sessions', threshold: 1000, metric: 'sessions' },
+  { id: 'time-1h', label: 'First Hour', description: '1 hour of speaking time', threshold: 3600, metric: 'speakingSeconds' },
+  { id: 'time-10h', label: 'Vocal Veteran', description: '10 hours of speaking time', threshold: 36000, metric: 'speakingSeconds' },
+  { id: 'time-50h', label: 'Orator', description: '50 hours of speaking time', threshold: 180000, metric: 'speakingSeconds' },
+];
+
+function checkAndUnlockAchievements(stats: UsageStats): void {
+  let newUnlock = false;
+  for (const def of ACHIEVEMENT_DEFS) {
+    const currentVal = def.metric === 'words' ? stats.words : def.metric === 'sessions' ? stats.sessions : stats.speakingSeconds;
+    if (currentVal >= def.threshold) {
+      const existing = achievementStates.find(a => a.id === def.id);
+      if (!existing) {
+        achievementStates.push({ id: def.id, unlockedAt: Date.now() });
+        newUnlock = true;
+      }
+    }
+  }
+  if (newUnlock) {
+    persistAchievementStates();
+  }
+}
+
 function loadHomeHistory(): HomeHistoryEntry[] {
   const raw = localStorage.getItem(HOME_HISTORY_STORAGE_KEY);
   if (!raw) {
@@ -5066,6 +5191,18 @@ function trackUsage(transcript: string): void {
   }
   persistUsageStats();
   updateUsageMetrics();
+
+  analyticsSessionDetails.push({
+    date: Date.now(),
+    words,
+    speakingSeconds: Math.round(seconds),
+    wpm: Math.round(currentWpm),
+  });
+  persistAnalyticsSessionDetails();
+  checkAndUnlockAchievements(usageStats);
+  if (activePage === "analytics") {
+    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+  }
 }
 
 function createId(): string {

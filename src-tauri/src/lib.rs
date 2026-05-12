@@ -14215,7 +14215,7 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default();
 
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(debug_assertions)))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             info!("[app.single-instance] prevented secondary launch and focused existing window");

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { uiStore } from './store';
 import type { UIState } from './store';
+import { AnalyticsPage } from './components/analytics/AnalyticsPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import type { HomeHistoryEntry, DictionaryTerm, SnippetEntry, QuickNoteEntry } from './types';
 
 function useUIState() {
@@ -74,6 +76,13 @@ export function App() {
                 </span>
                 <span>Notes</span>
                 <span className="nav-keyhint">Alt+5</span>
+              </button>
+              <button className={`nav-item ${state.activePage === 'analytics' ? 'is-active' : ''}`} data-page-nav="analytics" data-label="Analytics" data-hotkey="Alt+6" aria-label="Analytics (Alt+6)" type="button">
+                <span className="nav-glyph">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                </span>
+                <span>Analytics</span>
+                <span className="nav-keyhint">Alt+6</span>
               </button>
             </nav>
 
@@ -444,6 +453,16 @@ export function App() {
                     ))
                   )}
                 </div>
+              </div>
+            </section>
+
+            <section className={`flow-page ${state.activePage === 'analytics' ? 'is-active' : ''}`} data-page="analytics" hidden={state.activePage !== 'analytics'}>
+              <div className="flow-page-inner">
+                {state.activePage === 'analytics' && (
+                  <ErrorBoundary>
+                    <AnalyticsPage usage={state.usage} analyticsSessions={state.analyticsSessions} achievementStates={state.achievementStates} />
+                  </ErrorBoundary>
+                )}
               </div>
             </section>
           </main>
