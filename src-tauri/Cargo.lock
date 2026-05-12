@@ -85,7 +85,6 @@ dependencies = [
  "hound",
  "keyring",
  "log",
- "ndarray",
  "ort",
  "reqwest 0.12.28",
  "serde",

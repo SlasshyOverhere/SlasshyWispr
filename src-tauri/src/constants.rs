@@ -88,12 +88,3 @@ pub const PIPER_BINARY_NAME: &str = "piper";
 pub const OLLAMA_WINDOWS_INSTALLER_URL: &str = "https://ollama.com/download/OllamaSetup.exe";
 #[cfg(target_os = "windows")]
 pub const OLLAMA_WINDOWS_INSTALLER_FILE: &str = "OllamaSetup.exe";
-
-pub const SILERO_VAD_MODEL_URL: &str =
-    "https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx";
-pub const SILERO_VAD_MODEL_FILE: &str = "silero_vad.onnx";
-pub const SILERO_VAD_FRAME_SIZE: usize = 512;
-pub const SILERO_VAD_SAMPLE_RATE: u32 = 16_000;
-pub const SILERO_VAD_THRESHOLD: f64 = 0.5;
-pub const SILERO_VAD_MIN_SPEECH_FRAMES: usize = 3;
-pub const SILERO_VAD_MIN_SILENCE_FRAMES: usize = 6;
