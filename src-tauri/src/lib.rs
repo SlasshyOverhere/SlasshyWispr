@@ -7266,13 +7266,27 @@ fn apply_backtrack_correction(input: &str) -> String {
     let markers = ["scratch that", "delete that", "undo that", "backtrack"];
     let last_marker = markers
         .iter()
-        .filter_map(|marker| lower.rfind(marker).map(|index| (index, *marker)))
+        .filter_map(|marker| {
+            lower.rfind(marker).and_then(|index| {
+                let has_boundary = index == 0
+                    || !lower.as_bytes()[index - 1].is_ascii_alphanumeric();
+                if !has_boundary {
+                    return None;
+                }
+                Some((index, *marker))
+            })
+        })
         .max_by_key(|(index, _)| *index);
 
-    if let Some((index, _)) = last_marker {
-        return input[..index].trim().to_string();
+    if let Some((index, marker)) = last_marker {
+        let after = input[index + marker.len()..].trim();
+        if after.is_empty() {
+            let before = input[..index].trim();
+            if !before.is_empty() {
+                return before.to_string();
+            }
+        }
     }
-
     input.to_string()
 }
 
