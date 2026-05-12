@@ -1,7 +1,6 @@
 export function UpdateSecuritySettingsPane() {
   return (
     <section className="settings-pane" data-settings-pane="update-security" hidden>
-
       <details className="settings-section" open>
         <summary>Software updates</summary>
         <div className="section-body">
@@ -17,13 +16,36 @@ export function UpdateSecuritySettingsPane() {
             <p><span>Channel</span><strong>Stable</strong></p>
           </div>
 
+          <p id="updateLastCheckedText" className="notice">Last checked: Never.</p>
+
+          <label className="switch-row" htmlFor="autoCheckUpdatesToggle">
+            <span>Automatic update checks <span className="switch-desc">(every 12 hours)</span></span>
+            <input id="autoCheckUpdatesToggle" className="switch-input" type="checkbox" />
+          </label>
+
           <div className="button-row">
             <button id="checkUpdatesBtn" className="ghost-action" type="button">Check for updates</button>
             <button id="installUpdateBtn" className="dark-action" type="button" disabled>Download &amp; install</button>
           </div>
 
+          <div id="updateReleaseCard" className="update-release-card" hidden>
+            <p className="settings-group-label">Release</p>
+            <p id="updateReleaseName" className="update-release-name">-</p>
+            <p id="updateReleaseNotes" className="update-release-notes">Release notes are unavailable for this build.</p>
+            <a
+              id="updateReleaseLink"
+              className="update-release-link"
+              href="https://github.com"
+              target="_blank"
+              rel="noreferrer"
+              hidden
+            >
+              Open release page
+            </a>
+          </div>
+
           <div id="updateInstallProgressWrap" className="update-progress" hidden>
-            <div className="update-progress-bar-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0}>
+            <div id="updateInstallProgressTrack" className="update-progress-bar-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0} aria-valuetext="Waiting to start update download.">
               <span id="updateInstallProgressBar" className="update-progress-bar-fill" style={{ width: "0%" }}></span>
             </div>
             <p id="updateInstallProgressText" className="update-progress-text">Waiting to start update download.</p>

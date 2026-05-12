@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.0.1"
+version = "1.0.2"
 description = "Desktop voice dictation and AI assistant with online, offline, and hybrid model routing."
 authors = ["you"]
 license = ""
@@ -35,6 +35,7 @@ sha2 = "0.10"
 tar = "0.4"
 tauri = { version = "2.10.0", features = ["tray-icon"] }
 tauri-plugin-log = "2"
+tauri-plugin-shell = "2"
 transcribe-rs = { version = "0.2.5", features = ["parakeet"] }
 uuid = { version = "1", features = ["v4"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
