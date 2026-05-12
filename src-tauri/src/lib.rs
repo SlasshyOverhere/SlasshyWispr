@@ -5218,6 +5218,17 @@ async fn run_assistant_pipeline(
         return Err("Recorded audio is empty".to_string());
     }
 
+    if audio_bytes.len() < 3000 {
+        warn!(
+            "[pipeline] audio too short ({} bytes), likely accidental tap",
+            audio_bytes.len()
+        );
+        return Err(
+            "Recording too short. Hold the hotkey longer while speaking and try again."
+                .to_string(),
+        );
+    }
+
     let stt_mode_label = match &pipeline_mode.stt {
         SttModeConfig::Online { .. } => "online",
         SttModeConfig::Local(_) => "local",
