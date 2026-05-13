@@ -9,6 +9,7 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
 #[cfg(target_os = "windows")]
@@ -354,6 +355,7 @@ static LOCAL_STT_NATIVE_PARAKEET_OP_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static LOCAL_STT_NATIVE_PARAKEET_RUNTIME: OnceLock<Mutex<Option<NativeParakeetRuntime>>> =
     OnceLock::new();
 static PIPER_TUNING_SUPPORT: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
+static SAVED_SYSTEM_AUDIO_VOLUME: Mutex<Option<u32>> = Mutex::new(None);
 
 fn coqui_daemons() -> &'static Mutex<HashMap<String, CoquiBridgeDaemon>> {
     COQUI_DAEMONS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -886,6 +888,20 @@ struct AppUpdateCheckResponse {
     release_url: String,
     installer_download_url: String,
     installer_asset_name: String,
+    expected_sha256: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct UpdaterManifest {
+    product: String,
+    version: String,
+    tag: String,
+    installer: String,
+    #[serde(rename = "sha256")]
+    sha256_hash: String,
+    #[serde(rename = "releaseUrl")]
+    release_url: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -906,6 +922,7 @@ struct InstallAppUpdateRequest {
     download_url: String,
     asset_name: Option<String>,
     silent: Option<bool>,
+    expected_sha256: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1094,6 +1111,20 @@ async fn check_for_app_update(
 Set {UPDATE_GITHUB_TOKEN_ENV} for private repositories, or verify {UPDATE_REPOSITORY_OWNER_ENV}/{UPDATE_REPOSITORY_NAME_ENV}."
             ));
         }
+        if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::UNAUTHORIZED {
+            let hint = if update_github_token().is_some() {
+                "The configured GitHub token may be invalid or lacks permission.".to_string()
+            } else {
+                format!(
+                    "GitHub API rate limit may be exceeded (unauthenticated: 60 req/h). \
+Consider setting {UPDATE_GITHUB_TOKEN_ENV} for a higher limit."
+                )
+            };
+            return Err(format!(
+                "Update check failed with status {} (rate-limited or unauthorized). {hint}",
+                status,
+            ));
+        }
         return Err(format!(
             "Update check failed with status {}: {}",
             status,
@@ -1120,6 +1151,7 @@ Set {UPDATE_GITHUB_TOKEN_ENV} for private repositories, or verify {UPDATE_REPOSI
             release_url: String::new(),
             installer_download_url: String::new(),
             installer_asset_name: String::new(),
+            expected_sha256: String::new(),
         });
     };
     let latest_version = normalize_release_version(&release.tag_name);
@@ -1141,6 +1173,30 @@ Set {UPDATE_GITHUB_TOKEN_ENV} for private repositories, or verify {UPDATE_REPOSI
         installer_asset_name
     );
 
+    let expected_sha256 = if !installer_asset_name.is_empty() {
+        let manifest_url = format!(
+            "https://github.com/{repository_owner}/{repository_name}/releases/download/{}/updater-manifest.json",
+            release.tag_name
+        );
+        match state
+            .http
+            .get(&manifest_url)
+            .header(USER_AGENT, UPDATE_HTTP_USER_AGENT)
+            .send()
+            .await
+        {
+            Ok(manifest_resp) if manifest_resp.status().is_success() => {
+                match manifest_resp.json::<UpdaterManifest>().await {
+                    Ok(manifest) => manifest.sha256_hash,
+                    Err(_) => String::new(),
+                }
+            }
+            _ => String::new(),
+        }
+    } else {
+        String::new()
+    };
+
     Ok(AppUpdateCheckResponse {
         current_version,
         latest_version,
@@ -1151,6 +1207,7 @@ Set {UPDATE_GITHUB_TOKEN_ENV} for private repositories, or verify {UPDATE_REPOSI
         release_url: release.html_url.clone().unwrap_or_default(),
         installer_download_url,
         installer_asset_name,
+        expected_sha256,
     })
 }
 
@@ -1272,6 +1329,7 @@ async fn download_and_install_app_update(
             false,
         );
 
+        let mut hasher = Sha256::new();
         let mut response = response;
         while let Some(chunk) = response.chunk().await.map_err(|error| {
             let message = format!("Failed while reading installer download: {error}");
@@ -1299,6 +1357,7 @@ async fn download_and_install_app_update(
                 );
                 message
             })?;
+            hasher.update(&chunk);
             downloaded_bytes = downloaded_bytes.saturating_add(chunk.len() as u64);
             emit_update_install_progress(
                 &app,
@@ -1325,6 +1384,12 @@ async fn download_and_install_app_update(
             message
         })?;
 
+        // Release the write handle before validating/launching — Windows
+        // requires zero open write handles before a new process can execute
+        // the file. Without this, command.spawn() below fails with
+        // ERROR_SHARING_VIOLATION (os error 32).
+        drop(installer_file);
+
         if downloaded_bytes == 0 {
             let message = "Installer download returned an empty file.".to_string();
             emit_update_install_progress(
@@ -1337,6 +1402,29 @@ async fn download_and_install_app_update(
                 false,
             );
             return Err(message);
+        }
+
+        // Verify SHA256 if manifest hash was provided
+        let computed_hash = format!("{:x}", hasher.finalize());
+        if let Some(ref expected) = request.expected_sha256 {
+            if !expected.is_empty()
+                && !computed_hash.eq_ignore_ascii_case(expected)
+            {
+                let message = format!(
+                    "Installer SHA256 mismatch (expected={expected} computed={computed_hash})"
+                );
+                emit_update_install_progress(
+                    &app,
+                    "error",
+                    &message,
+                    downloaded_bytes,
+                    total_bytes.max(downloaded_bytes),
+                    true,
+                    false,
+                );
+                let _ = fs::remove_file(&installer_path);
+                return Err(message);
+            }
         }
 
         emit_update_install_progress(
@@ -1458,7 +1546,7 @@ async fn download_and_install_app_update(
 
         let app_for_exit = app.clone();
         thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(220));
+            std::thread::sleep(Duration::from_millis(2000));
             app_for_exit.exit(0);
         });
         return Ok(());
@@ -2322,15 +2410,52 @@ fn schedule_app_relaunch_after_installer(
     }
 
     let escaped_exe = escape_powershell_single_quoted(&exe_text);
+    let log_file = escape_powershell_single_quoted(
+        &std::env::temp_dir().join("slasshywispr-updater.log").to_string_lossy(),
+    );
     let script = format!(
-        "$ErrorActionPreference='SilentlyContinue'; \
+        "$log='{log_file}'; \
+         function wl {{ param($m) '$([DateTime]::Now.ToString(\"o\")) $m' | Out-File $log -Append -Encoding UTF8 }}; \
+         wl 'relaunch watcher started'; \
+         wl 'installer_pid={installer_pid}'; \
+         wl 'app_exe={escaped_exe}'; \
+         \
          $installerPid={installer_pid}; \
-         while (Get-Process -Id $installerPid -ErrorAction SilentlyContinue) {{ Start-Sleep -Milliseconds 500 }}; \
          $exe='{escaped_exe}'; \
-         for ($i=0; $i -lt 180; $i++) {{ \
-             if (Test-Path $exe) {{ try {{ Start-Process -FilePath $exe; break }} catch {{ }} }}; \
+         \
+         $snapshot=@{{}}; \
+         if (Test-Path $exe) {{ \
+             $item=Get-Item $exe; \
+             $snapshot.LastWriteTimeUtc=$item.LastWriteTimeUtc.ToString('o'); \
+             $snapshot.Length=$item.Length; \
+         }}; \
+         \
+         while (Get-Process -Id $installerPid -ErrorAction SilentlyContinue) {{ \
              Start-Sleep -Milliseconds 500; \
-         }};"
+         }}; \
+         wl 'installer process exited, waiting for app exe to be updated'; \
+         \
+         Start-Sleep -Seconds 3; \
+         \
+         $maxAttempts=240; \
+         for ($i=0; $i -lt $maxAttempts; $i++) {{ \
+             if (Test-Path $exe) {{ \
+                 $item=Get-Item $exe; \
+                 $changed=(-not $snapshot.ContainsKey('LastWriteTimeUtc')) -or \
+                     ($item.LastWriteTimeUtc.ToString('o') -ne $snapshot.LastWriteTimeUtc) -or \
+                     ($item.Length -ne $snapshot.Length); \
+                 if ($changed) {{ \
+                     wl 'detected app exe change, launching'; \
+                     Start-Sleep -Milliseconds 500; \
+                     Start-Process -FilePath $exe; \
+                     wl 'launch command issued'; \
+                     exit 0; \
+                 }}; \
+             }}; \
+             Start-Sleep -Milliseconds 500; \
+         }}; \
+         wl 'max attempts reached, launching anyway'; \
+         if (Test-Path $exe) {{ Start-Process -FilePath $exe; wl 'launched (fallback)' }} else {{ wl 'exe not found' }};"
     );
     spawn_powershell_detached(&script)
 }
@@ -2673,6 +2798,77 @@ $lParam=[IntPtr](({app_command}) -shl 16);
         let _ = action;
         Err("Media playback control is currently implemented for Windows builds only.".to_string())
     }
+}
+
+#[tauri::command]
+async fn mute_system_audio(mute: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        if mute {
+            let get_script = r#"
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class Vol {
+    [DllImport("winmm.dll")] public static extern int waveOutGetVolume(System.IntPtr hwo, out uint dwVolume);
+}
+"@
+$v = 0;
+[Vol]::waveOutGetVolume([System.IntPtr]::Zero, [ref]$v);
+Write-Output $v
+"#;
+            match run_powershell_script(get_script, None) {
+                Ok(output) => {
+                    let vol_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if let Ok(vol) = vol_str.parse::<u32>() {
+                        if let Ok(mut saved) = SAVED_SYSTEM_AUDIO_VOLUME.lock() {
+                            *saved = Some(vol);
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("[client] failed to get system volume: {}", e);
+                }
+            }
+
+            let mute_script = r#"
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class Vol {
+    [DllImport("winmm.dll")] public static extern int waveOutSetVolume(System.IntPtr hwo, uint dwVolume);
+}
+"@
+[Vol]::waveOutSetVolume([System.IntPtr]::Zero, 0);
+"#;
+            run_powershell_script(mute_script, None).map_err(|e| format!("Failed to mute system audio: {}", e))?;
+            info!("[client] system audio muted");
+        } else {
+            let vol = SAVED_SYSTEM_AUDIO_VOLUME.lock().unwrap().take();
+            if let Some(vol) = vol {
+                let restore_script = format!(r#"
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class Vol {{
+    [DllImport("winmm.dll")] public static extern int waveOutSetVolume(System.IntPtr hwo, uint dwVolume);
+}}
+"@
+[Vol]::waveOutSetVolume([System.IntPtr]::Zero, {});
+"#, vol);
+                run_powershell_script(&restore_script, None).map_err(|e| format!("Failed to restore system audio: {}", e))?;
+                info!("[client] system audio volume restored to {}", vol);
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = mute;
+        return Err("System audio mute is currently implemented for Windows builds only.".to_string());
+    }
+
+    Ok(())
 }
 
 fn is_blocked_game_process_name(process_name: &str) -> bool {
@@ -9974,10 +10170,20 @@ fn sanitize_installer_file_name(name: &str) -> Option<String> {
     Some(sanitized)
 }
 
+fn extract_version_from_download_url(url: &str) -> Option<String> {
+    let parsed = Url::parse(url).ok()?;
+    let segments: Vec<&str> = parsed.path_segments()?.collect();
+    // URL: /{owner}/{name}/releases/download/{tag}/{filename}
+    // segments[0..5] = [owner, name, "releases", "download", tag]
+    let tag = *segments.get(4)?;
+    let version = normalize_release_version(tag);
+    if version.is_empty() { None } else { Some(version) }
+}
+
 fn resolve_installer_file_name(
     asset_name: Option<&str>,
     download_url: &str,
-    current_version: &str,
+    _current_version: &str,
 ) -> String {
     if let Some(from_asset) = asset_name.and_then(sanitize_installer_file_name) {
         return from_asset;
@@ -9989,8 +10195,9 @@ fn resolve_installer_file_name(
         }
     }
 
-    let normalized_version = normalize_release_version(current_version);
-    format!("SlasshyWispr-{normalized_version}-update.exe")
+    let target_version = extract_version_from_download_url(download_url)
+        .unwrap_or_else(|| String::from("unknown"));
+    format!("SlasshyWispr-{target_version}-update.exe")
 }
 
 fn validate_downloaded_installer_file(
@@ -14022,6 +14229,259 @@ Explanation:
         assert!(validate_piper_binary_path("bash").is_err());
         assert!(validate_piper_binary_path("piper\nbad").is_err());
     }
+
+    // ===== UPDATE MECHANISM — COMPREHENSIVE SCENARIO TESTS =====
+
+    #[test]
+    fn extract_version_from_download_url_parses_github_url() {
+        let url = "https://github.com/SlasshyOverhere/SlasshyWispr/releases/download/v1.0.3/SlasshyWispr_1.0.3_x64-setup.exe";
+        assert_eq!(extract_version_from_download_url(url).as_deref(), Some("1.0.3"));
+    }
+
+    #[test]
+    fn extract_version_from_download_url_handles_missing_tag_segment() {
+        let url = "https://github.com/SlasshyOverhere/releases";
+        assert!(extract_version_from_download_url(url).is_none());
+    }
+
+    #[test]
+    fn extract_version_from_download_url_handles_invalid_url() {
+        assert!(extract_version_from_download_url("not-a-url").is_none());
+    }
+
+    #[test]
+    fn resolve_installer_file_name_fallback_uses_target_version_from_url() {
+        let url = "https://github.com/SlasshyOverhere/SlasshyWispr/releases/download/v1.0.3/SlasshyWispr_1.0.3_x64-setup.exe";
+        let name = resolve_installer_file_name(None, url, "0.1.1");
+        assert_eq!(name, "SlasshyWispr_1.0.3_x64-setup.exe");
+    }
+
+    #[test]
+    fn resolve_installer_file_name_fallback_url_unknown_version() {
+        // URL whose last path segment isn't a valid installer name —
+        // should fall through to the version-extraction fallback.
+        let url = "https://example.com/download/no-extension";
+        let name = resolve_installer_file_name(None, url, "0.1.1");
+        assert_eq!(name, "SlasshyWispr-unknown-update.exe");
+    }
+
+    #[test]
+    fn windows_installer_score_prefers_nsis_setup_over_msi() {
+        let setup_score = windows_installer_score("SlasshyWispr_1.0.3_x64-setup.exe", "v1.0.3");
+        let msi_score = windows_installer_score("SlasshyWispr_1.0.3_x64.msi", "v1.0.3");
+        assert!(setup_score > msi_score, "EXE setup should score higher than MSI");
+    }
+
+    #[test]
+    fn windows_installer_score_penalizes_portable_and_debug() {
+        let portable_score = windows_installer_score("SlasshyWispr_1.0.3_portable.exe", "v1.0.3");
+        let normal_score = windows_installer_score("SlasshyWispr_1.0.3_x64-setup.exe", "v1.0.3");
+        assert!(normal_score > portable_score, "normal installer should score higher than portable");
+    }
+
+    #[test]
+    fn windows_installer_score_rejects_arm_and_x86() {
+        let arm_score = windows_installer_score("SlasshyWispr_1.0.3_arm64-setup.exe", "v1.0.3");
+        let x86_score = windows_installer_score("SlasshyWispr_1.0.3_x86-setup.exe", "v1.0.3");
+        let x64_score = windows_installer_score("SlasshyWispr_1.0.3_x64-setup.exe", "v1.0.3");
+        assert!(x64_score > arm_score, "x64 should score higher than arm64");
+        assert!(x64_score > x86_score, "x64 should score higher than x86");
+    }
+
+    #[test]
+    fn select_windows_installer_asset_returns_none_for_empty_assets() {
+        let release = GithubLatestReleaseResponse {
+            tag_name: "v1.0.0".to_string(),
+            name: None,
+            body: None,
+            draft: false,
+            prerelease: false,
+            published_at: None,
+            html_url: None,
+            assets: vec![],
+        };
+        assert!(select_windows_installer_asset(&release).is_none());
+    }
+
+    #[test]
+    fn select_latest_stable_release_skips_draft_and_prerelease() {
+        let releases = vec![
+            GithubLatestReleaseResponse {
+                tag_name: "v1.0.0-rc.1".to_string(),
+                name: None, body: None, draft: false, prerelease: true,
+                published_at: None, html_url: None, assets: vec![],
+            },
+            GithubLatestReleaseResponse {
+                tag_name: "v0.9.0".to_string(),
+                name: None, body: None, draft: false, prerelease: false,
+                published_at: None, html_url: None, assets: vec![],
+            },
+        ];
+        let selected = select_latest_stable_release(&releases);
+        assert_eq!(selected.map(|r| &r.tag_name), Some(&"v0.9.0".to_string()));
+    }
+
+    #[test]
+    fn select_latest_stable_release_returns_none_when_all_draft() {
+        let releases = vec![
+            GithubLatestReleaseResponse {
+                tag_name: "v1.0.0".to_string(),
+                name: None, body: None, draft: true, prerelease: false,
+                published_at: None, html_url: None, assets: vec![],
+            },
+        ];
+        assert!(select_latest_stable_release(&releases).is_none());
+    }
+
+    #[test]
+    fn is_newer_version_handles_multi_digit_parts() {
+        assert!(is_newer_version("1.9.9", "1.10.0"));
+        assert!(is_newer_version("1.0.0", "2.0.0"));
+        assert!(!is_newer_version("2.0.0", "1.9.9"));
+    }
+
+    #[test]
+    fn is_newer_version_handles_uneven_part_counts() {
+        assert!(is_newer_version("1.0", "1.0.1"));
+        assert!(is_newer_version("1.0.1", "1.0.2"));
+        assert!(!is_newer_version("1.0.1", "1.0"));
+    }
+
+    #[test]
+    fn is_newer_version_handles_prerelease_transitions() {
+        // stable > prerelease when numeric parts equal
+        assert!(is_newer_version("1.0.0-beta.1", "1.0.0"));
+        // prerelease < stable when numeric parts equal
+        assert!(!is_newer_version("1.0.0", "1.0.0-beta.1"));
+        // same version → not newer
+        assert!(!is_newer_version("1.0.0", "1.0.0"));
+        // different prerelease tags compared lexicographically
+        assert!(is_newer_version("1.0.0-alpha", "1.0.0-beta"), "beta > alpha lexicographically");
+        assert!(!is_newer_version("1.0.0-alpha", "1.0.0-alpha"));
+    }
+
+    #[test]
+    fn is_newer_version_returns_false_for_unparseable_inputs() {
+        assert!(!is_newer_version("not-a-version", "1.0.0"));
+        assert!(!is_newer_version("1.0.0", "not-a-version"));
+        assert!(!is_newer_version("", ""));
+    }
+
+    #[test]
+    fn parse_version_triplet_handles_various_formats() {
+        let parsed = parse_version_triplet("1.2.3").unwrap();
+        assert_eq!(parsed.numeric_parts, vec![1, 2, 3]);
+        assert!(parsed.prerelease.is_none());
+
+        let parsed = parse_version_triplet("v1.2.3-alpha").unwrap();
+        assert_eq!(parsed.numeric_parts, vec![1, 2, 3]);
+        assert_eq!(parsed.prerelease.as_deref(), Some("alpha"));
+
+        let parsed = parse_version_triplet("1.2.3+build.42").unwrap();
+        assert_eq!(parsed.numeric_parts, vec![1, 2, 3]);
+
+        let parsed = parse_version_triplet("10.20.30-rc.2").unwrap();
+        assert_eq!(parsed.numeric_parts, vec![10, 20, 30]);
+        assert_eq!(parsed.prerelease.as_deref(), Some("rc.2"));
+    }
+
+    #[test]
+    fn parse_version_triplet_rejects_empty_or_invalid() {
+        assert!(parse_version_triplet("").is_none());
+        assert!(parse_version_triplet("abc").is_none());
+        assert!(parse_version_triplet("1.2.abc").is_none());
+    }
+
+    #[test]
+    fn normalize_release_version_strips_v_prefix() {
+        assert_eq!(normalize_release_version("v1.0.3"), "1.0.3");
+        assert_eq!(normalize_release_version("v1.0.3-beta"), "1.0.3-beta");
+        assert_eq!(normalize_release_version("1.0.3"), "1.0.3");
+        assert_eq!(normalize_release_version(""), "");
+    }
+
+    #[test]
+    fn sanitize_installer_file_name_rejects_non_installer_extensions() {
+        assert!(sanitize_installer_file_name("checksums.txt").is_none());
+        assert!(sanitize_installer_file_name("readme.md").is_none());
+        assert!(sanitize_installer_file_name("").is_none());
+    }
+
+    #[test]
+    fn sanitize_installer_file_name_sanitizes_spaces_and_special_chars() {
+        let result = sanitize_installer_file_name("SlasshyWispr 1.0.3 (x64) setup.exe");
+        assert!(result.is_some());
+        let name = result.unwrap();
+        assert!(!name.contains(' '));
+        assert!(!name.contains('('));
+        assert!(!name.contains(')'));
+        assert!(name.ends_with(".exe"));
+    }
+
+    #[test]
+    fn escape_powershell_single_quoted_replaces_embedded_quotes() {
+        let result = escape_powershell_single_quoted(r"C:\Program Files\Slasshy's App\app.exe");
+        assert_eq!(result, r"C:\Program Files\Slasshy''s App\app.exe");
+    }
+
+    #[test]
+    fn escape_powershell_single_quoted_passes_through_safe_strings() {
+        let result = escape_powershell_single_quoted(r"C:\Program Files\SlasshyWispr\app.exe");
+        assert_eq!(result, r"C:\Program Files\SlasshyWispr\app.exe");
+    }
+
+    #[test]
+    fn validate_downloaded_installer_file_rejects_empty_exe() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let exe_path = temp_dir.path().join("empty.exe");
+        std::fs::write(&exe_path, b"").expect("write empty");
+        assert!(validate_downloaded_installer_file(&exe_path, WindowsInstallerKind::Exe).is_err());
+    }
+
+    #[test]
+    fn validate_downloaded_installer_file_validates_msi_magic() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let msi_path = temp_dir.path().join("package.msi");
+        const MSI_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+        std::fs::write(&msi_path, &MSI_MAGIC).expect("write msi");
+        assert!(validate_downloaded_installer_file(&msi_path, WindowsInstallerKind::Msi).is_ok());
+
+        let bad_path = temp_dir.path().join("bad.msi");
+        std::fs::write(&bad_path, b"<package>").expect("write bad msi");
+        assert!(validate_downloaded_installer_file(&bad_path, WindowsInstallerKind::Msi).is_err());
+    }
+
+    #[test]
+    fn is_windows_installer_asset_detects_known_formats() {
+        assert!(is_windows_installer_asset("installer.exe"));
+        assert!(is_windows_installer_asset("setup.msi"));
+        assert!(is_windows_installer_asset("SlasshyWispr_1.0.3_x64-setup.exe"));
+        assert!(!is_windows_installer_asset("SlasshyWispr_1.0.3_x64-setup.exe.sig"));
+        assert!(!is_windows_installer_asset("checksums.txt"));
+        assert!(!is_windows_installer_asset(""));
+    }
+
+    #[test]
+    fn select_windows_installer_asset_uses_name_length_as_tiebreaker() {
+        let release = GithubLatestReleaseResponse {
+            tag_name: "v1.0.0".to_string(),
+            name: None, body: None, draft: false, prerelease: false,
+            published_at: None, html_url: None,
+            assets: vec![
+                GithubReleaseAsset {
+                    name: "a.exe".to_string(),
+                    browser_download_url: "https://example.com/a.exe".to_string(),
+                },
+                GithubReleaseAsset {
+                    name: "longer-name.exe".to_string(),
+                    browser_download_url: "https://example.com/longer-name.exe".to_string(),
+                },
+            ],
+        };
+        let selected = select_windows_installer_asset(&release)
+            .expect("should pick one");
+        assert_eq!(selected.name, "longer-name.exe", "longer name wins on tie");
+    }
 }
 
 fn show_main_window(app: &AppHandle) {
@@ -14256,6 +14716,25 @@ pub fn run() {
                 warn!("[tray] main window not found for close-to-tray hook");
             }
 
+            // Clean up stale installer files from previous update attempts
+            if let Ok(app_data) = app.path().app_data_dir() {
+                let updates_dir = app_data.join("updates");
+                if updates_dir.is_dir() {
+                    if let Ok(entries) = fs::read_dir(&updates_dir) {
+                        for entry in entries.flatten() {
+                            let path = entry.path();
+                            if path.extension().is_some_and(|ext| ext == "exe" || ext == "msi") {
+                                let _ = fs::remove_file(&path);
+                                info!(
+                                    "[updater] cleaned stale installer: {}",
+                                    clip_text(&path.to_string_lossy(), 200)
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
             if start_in_tray {
                 hide_main_window_to_tray(&app_handle);
             }
@@ -14274,6 +14753,7 @@ pub fn run() {
             paste_text_via_clipboard,
             type_text_direct,
             control_media_playback,
+            mute_system_audio,
             get_foreground_input_block_status,
             get_assistant_info,
             fetch_provider_models,

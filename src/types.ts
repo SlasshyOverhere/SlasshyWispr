@@ -231,12 +231,14 @@ export interface AppUpdateCheckResponse {
   releaseUrl: string;
   installerDownloadUrl: string;
   installerAssetName: string;
+  expectedSha256: string;
 }
 
 export interface InstallAppUpdateRequest {
   downloadUrl: string;
   assetName?: string;
   silent?: boolean;
+  expectedSha256?: string;
 }
 
 export interface AppUpdateInstallProgressEvent {

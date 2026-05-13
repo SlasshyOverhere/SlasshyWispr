@@ -52,7 +52,6 @@ import {
   LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
-  APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
   EMPTY_HISTORY_HINT,
   LEGACY_DEFAULT_SYSTEM_PROMPT,
   DEFAULT_SYSTEM_PROMPT,
@@ -1171,7 +1170,7 @@ window.addEventListener("beforeunload", () => {
     foregroundBlockMonitorId = null;
   }
   if (externalMediaMutedForDictation) {
-    void invokeExternalMediaPlayback("play").catch(() => {
+    void invokeSystemAudioMute(false).catch(() => {
       // Ignore shutdown restore failures.
     });
     externalMediaMutedForDictation = false;
@@ -3376,18 +3375,22 @@ function openUpdateSettings(reason: string): void {
   setActiveSettingsPane("update-security", reason);
 }
 
+const notifiedVersionsThisSession = new Set<string>();
+
 function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "startup" | "interval"): void {
   const version = result.latestVersion.trim();
   if (!version) {
     return;
   }
 
-  const lastNotifiedVersion = localStorage.getItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY);
-  if (lastNotifiedVersion === version) {
+  // Use in-memory set per session so on restart the user is re-notified
+  // if the update is still pending. Persisting this across restarts caused
+  // silent suppression after a failed install.
+  if (notifiedVersionsThisSession.has(version)) {
     return;
   }
 
-  localStorage.setItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY, version);
+  notifiedVersionsThisSession.add(version);
   const message = `Update ${version} is available. Open Updates to download and install it.`;
   setNotice(message);
 
@@ -3431,7 +3434,6 @@ function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "start
 }
 
 function applyUpdateCheckResult(result: AppUpdateCheckResponse, silent: boolean): void {
-  cachedUpdateResult = result;
   updateCurrentVersion.textContent = result.currentVersion || "-";
   updateLatestVersion.textContent = result.latestVersion || "-";
   updatePublishedAt.textContent = formatPublishedDate(result.publishedAt);
@@ -3484,9 +3486,7 @@ async function handleCheckForUpdates(options?: {
 
   const silent = options?.silent ?? false;
   const source = options?.source ?? "manual";
-  const previousCachedUpdateResult = cachedUpdateResult;
   updateCheckInFlight = true;
-  cachedUpdateResult = null;
   syncUpdaterButtons();
   if (!silent) {
     setUpdaterStatus("processing", "Checking GitHub release channel...");
@@ -3494,6 +3494,7 @@ async function handleCheckForUpdates(options?: {
 
   try {
     const result = await invoke<AppUpdateCheckResponse>("check_for_app_update");
+    cachedUpdateResult = result;
     localStorage.setItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY, String(Date.now()));
     refreshUpdateLastCheckedText();
     applyUpdateCheckResult(result, silent);
@@ -3501,7 +3502,6 @@ async function handleCheckForUpdates(options?: {
       notifyAppUpdateAvailable(result, source);
     }
   } catch (error) {
-    cachedUpdateResult = previousCachedUpdateResult;
     setUpdaterStatus("error", `Update check failed: ${asErrorMessage(error)}`);
   } finally {
     updateCheckInFlight = false;
@@ -3523,6 +3523,7 @@ async function handleInstallUpdate(): Promise<void> {
     downloadUrl: cachedUpdateResult.installerDownloadUrl,
     assetName: cachedUpdateResult.installerAssetName || undefined,
     silent: true,
+    expectedSha256: cachedUpdateResult.expectedSha256 || undefined,
   };
 
   const targetVersion = cachedUpdateResult.latestVersion || "the available update";
@@ -3561,6 +3562,11 @@ function handleUpdateInstallProgressEvent(payload: AppUpdateInstallProgressEvent
     updateInstallInFlight = false;
     setUpdateInstallProgress(payload.progressPercent, payload.message, detail, true);
     setUpdaterStatus("error", payload.message);
+    // Reset the "last checked" timestamp so the next startup re-checks immediately,
+    // and clear in-session notification suppression so user gets re-notified.
+    localStorage.removeItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY);
+    notifiedVersionsThisSession.clear();
+    refreshUpdateLastCheckedText();
     syncUpdaterButtons();
     return;
   }
@@ -8342,12 +8348,12 @@ function playDictationSoundEffect(kind: "start" | "stop" | "error", previewSound
   }
 }
 
-async function invokeExternalMediaPlayback(action: "pause" | "play"): Promise<void> {
+async function invokeSystemAudioMute(mute: boolean): Promise<void> {
   if (!isTauriEnvironment()) {
     return;
   }
 
-  await invoke("control_media_playback", { action });
+  await invoke("mute_system_audio", { mute });
   externalMediaControlErrorShown = false;
 }
 
@@ -8596,7 +8602,7 @@ function pauseExternalMediaForDictation(): void {
     if (!settings.muteMusicWhileDictating || externalMediaMutedForDictation) {
       return;
     }
-    await invokeExternalMediaPlayback("pause");
+    await invokeSystemAudioMute(true);
     externalMediaMutedForDictation = true;
   });
 }
@@ -8610,7 +8616,7 @@ function resumeExternalMediaAfterDictation(): void {
     if (!externalMediaMutedForDictation) {
       return;
     }
-    await invokeExternalMediaPlayback("play");
+    await invokeSystemAudioMute(false);
     externalMediaMutedForDictation = false;
   });
 }
