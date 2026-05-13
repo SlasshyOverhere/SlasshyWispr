@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "SlasshyWispr",
   "version": "1.0.3",
-  "identifier": "online.slasshy.slasshywispr",
+  "identifier": "online.slasshy.slasshywispr.dev",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",

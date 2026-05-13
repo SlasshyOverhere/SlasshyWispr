@@ -1,4 +1,7 @@
 import {
+  ACHIEVEMENTS_STATE_KEY,
+  ACTIVE_PAGE_STORAGE_KEY,
+  ANALYTICS_SESSIONS_KEY,
   DICTIONARY_STORAGE_KEY,
   HOME_HISTORY_STORAGE_KEY,
   NOTES_STORAGE_KEY,
@@ -8,6 +11,8 @@ import {
 } from './constants';
 import { normalizeDictionaryEntries, normalizeSnippetEntries } from './utils';
 import type {
+  AchievementState,
+  AnalyticsSessionDetail,
   DictionaryTerm,
   HomeHistoryEntry,
   MainPage,
@@ -15,6 +20,14 @@ import type {
   SnippetEntry,
   UsageStats,
 } from './types';
+
+function loadActivePage(): MainPage {
+  const raw = localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY);
+  if (raw === 'home' || raw === 'history' || raw === 'dictionary' || raw === 'snippets' || raw === 'notes' || raw === 'analytics') {
+    return raw;
+  }
+  return 'home';
+}
 
 export interface UIState {
   activePage: MainPage;
@@ -24,6 +37,8 @@ export interface UIState {
   dictionary: DictionaryTerm[];
   snippets: SnippetEntry[];
   notes: QuickNoteEntry[];
+  analyticsSessions: AnalyticsSessionDetail[];
+  achievementStates: AchievementState[];
 }
 
 type Listener = (state: UIState) => void;
@@ -92,15 +107,71 @@ function loadNotes(): QuickNoteEntry[] {
   return parsed.filter((item) => item && typeof item.text === 'string');
 }
 
+function loadAnalyticsSessions(): AnalyticsSessionDetail[] {
+  const parsed = parseJson<AnalyticsSessionDetail[]>(ANALYTICS_SESSIONS_KEY, []);
+  if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+  return backfillAnalyticsSessions();
+}
+
+function backfillAnalyticsSessions(): AnalyticsSessionDetail[] {
+  const statsRaw = localStorage.getItem(USAGE_STORAGE_KEY);
+  if (!statsRaw) return [];
+  let stats: Partial<UsageStats>;
+  try { stats = JSON.parse(statsRaw); } catch { return []; }
+  const totalSessions = (stats.sessions ?? 0) + (stats.prevSessions ?? 0);
+  const totalWords = (stats.words ?? 0) + (stats.prevWords ?? 0);
+  const totalSeconds = (stats.speakingSeconds ?? 0) + (stats.prevSpeakingSeconds ?? 0);
+  const avgWpm = stats.avgWpm ?? 0;
+  if (totalSessions === 0 || totalWords === 0) return [];
+
+  const historyRaw = localStorage.getItem(HOME_HISTORY_STORAGE_KEY);
+  if (!historyRaw) return [];
+  let historyEntries: HomeHistoryEntry[];
+  try {
+    historyEntries = JSON.parse(historyRaw);
+    if (!Array.isArray(historyEntries) || historyEntries.length === 0) return [];
+  } catch { return []; }
+
+  const entries = [...historyEntries].reverse();
+  const count = Math.min(entries.length, totalSessions);
+  const sessions: AnalyticsSessionDetail[] = [];
+  for (let i = 0; i < count; i++) {
+    const wordEstimate = i < count - 1
+      ? Math.round(totalWords / count)
+      : totalWords - Math.round(totalWords / count) * (count - 1);
+    const timeEstimate = i < count - 1
+      ? Math.round(totalSeconds / count)
+      : totalSeconds - Math.round(totalSeconds / count) * (count - 1);
+    const wpm = timeEstimate > 0 ? Math.round((wordEstimate / timeEstimate) * 60) : Math.round(avgWpm);
+    sessions.push({
+      date: entries[i].timestamp,
+      words: wordEstimate,
+      speakingSeconds: timeEstimate,
+      wpm: wpm || Math.round(avgWpm),
+    });
+  }
+  if (sessions.length > 0) {
+    localStorage.setItem(ANALYTICS_SESSIONS_KEY, JSON.stringify(sessions));
+  }
+  return sessions;
+}
+
+function loadAchievementStates(): AchievementState[] {
+  const parsed = parseJson<AchievementState[]>(ACHIEVEMENTS_STATE_KEY, []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
 function loadInitialState(): UIState {
   return {
-    activePage: 'home',
+    activePage: loadActivePage(),
     sidebarCollapsed: localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true',
     usage: loadUsageStats(),
     history: loadHistory(),
     dictionary: loadDictionary(),
     snippets: loadSnippets(),
     notes: loadNotes(),
+    analyticsSessions: loadAnalyticsSessions(),
+    achievementStates: loadAchievementStates(),
   };
 }
 
@@ -124,6 +195,9 @@ function createUIStore() {
       return () => {
         listeners.delete(listener);
       };
+    },
+    reNotify(): void {
+      notify();
     },
   };
 }

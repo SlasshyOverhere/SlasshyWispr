@@ -48,6 +48,7 @@ use zip::ZipArchive;
 
 pub mod constants;
 pub mod security;
+pub mod vad;
 use constants::*;
 
 #[derive(Debug, Clone, Serialize)]
@@ -5293,6 +5294,17 @@ async fn run_assistant_pipeline(
         return Err("Recorded audio is empty".to_string());
     }
 
+    if audio_bytes.len() < 3000 {
+        warn!(
+            "[pipeline] audio too short ({} bytes), likely accidental tap",
+            audio_bytes.len()
+        );
+        return Err(
+            "Recording too short. Hold the hotkey longer while speaking and try again."
+                .to_string(),
+        );
+    }
+
     let stt_mode_label = match &pipeline_mode.stt {
         SttModeConfig::Online { .. } => "online",
         SttModeConfig::Local(_) => "local",
@@ -5376,30 +5388,16 @@ async fn run_assistant_pipeline(
             .await?
         }
     };
-    if let SttModeConfig::Local(local) = &pipeline_mode.stt {
-        let provider = infer_local_stt_provider_from_model(&local.stt_model);
-        let mime = request.audio_mime_type.trim().to_ascii_lowercase();
-        if provider == "parakeet" && mime.contains("wav") {
-            if let Some(duration_secs) = estimate_wav_duration_seconds(&audio_bytes) {
-                let transcript_chars = transcript_raw.chars().count();
-                let cps = transcript_chars as f64 / duration_secs.max(0.001);
-                let likely_hallucination = (transcript_chars >= 120 && cps > 55.0)
-                    || (duration_secs <= 0.8 && transcript_chars >= 32 && cps > 80.0);
-                if likely_hallucination {
-                    warn!(
-                        "[pipeline] rejected implausible local transcript provider={} chars={} duration_secs={:.3} cps={:.1}",
-                        provider,
-                        transcript_chars,
-                        duration_secs,
-                        cps
-                    );
-                    return Err(
-                        "Detected noisy local transcript from very short audio. Hold push-to-talk while speaking and try again."
-                            .to_string(),
-                    );
-                }
-            }
-        }
+    if is_known_stt_hallucination(&transcript_raw) {
+        warn!(
+            "[pipeline] rejected known hallucination transcript='{}' chars={}",
+            clip_text(&transcript_raw, 120),
+            transcript_raw.chars().count()
+        );
+        return Err(
+            "Detected a known STT hallucination. Hold push-to-talk longer while speaking and try again."
+                .to_string(),
+        );
     }
     if looks_like_repetitive_transcript_noise(&transcript_raw, effective_language_hint.as_deref()) {
         warn!(
@@ -5416,7 +5414,7 @@ async fn run_assistant_pipeline(
                     .to_string()
             }
             _ => {
-                "Detected noisy transcript output. Set Dictation language in Settings > General and try again."
+                "Detected noisy transcript output. Hold push-to-talk longer while speaking and try again."
                     .to_string()
             }
         };
@@ -6084,6 +6082,16 @@ async fn transcribe_audio_local_parakeet(
         audio_bytes.len()
     );
 
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Failed to resolve app data dir for VAD: {error}"))?;
+    let vad_model_path_str = {
+        let state = app.state::<AppState>();
+        let vad_path = vad::ensure_vad_model(&app_data_dir, &state.http).await?;
+        vad_path.to_string_lossy().into_owned()
+    };
+
     let model_root_for_worker = model_root.clone();
     let audio_bytes_for_worker = audio_bytes.to_vec();
     let audio_mime_type_for_worker = audio_mime_type.to_string();
@@ -6093,6 +6101,7 @@ async fn transcribe_audio_local_parakeet(
                 &model_root_for_worker,
                 &audio_bytes_for_worker,
                 &audio_mime_type_for_worker,
+                Some(vad_model_path_str),
             )?;
         info!(
             "[local.stt.parakeet.native] success transcript_chars={} model_cached={} device=cpu precision=int8 unloaded_after_transcribe={}",
@@ -7333,13 +7342,27 @@ fn apply_backtrack_correction(input: &str) -> String {
     let markers = ["scratch that", "delete that", "undo that", "backtrack"];
     let last_marker = markers
         .iter()
-        .filter_map(|marker| lower.rfind(marker).map(|index| (index, *marker)))
+        .filter_map(|marker| {
+            lower.rfind(marker).and_then(|index| {
+                let has_boundary = index == 0
+                    || !lower.as_bytes()[index - 1].is_ascii_alphanumeric();
+                if !has_boundary {
+                    return None;
+                }
+                Some((index, *marker))
+            })
+        })
         .max_by_key(|(index, _)| *index);
 
-    if let Some((index, _)) = last_marker {
-        return input[..index].trim().to_string();
+    if let Some((index, marker)) = last_marker {
+        let after = input[index + marker.len()..].trim();
+        if after.is_empty() {
+            let before = input[..index].trim();
+            if !before.is_empty() {
+                return before.to_string();
+            }
+        }
     }
-
     input.to_string()
 }
 
@@ -10487,6 +10510,64 @@ fn looks_like_repetitive_transcript_noise(input: &str, language_hint: Option<&st
     false
 }
 
+fn is_known_stt_hallucination(transcript: &str) -> bool {
+    let trimmed = transcript.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+
+    let known_hallucinations: &[&str] = &[
+        ".",
+        "..",
+        "...",
+        ",",
+        "?",
+        "!",
+        "you",
+        "i",
+        "a",
+        "thank you.",
+        "thank you",
+        "thanks for watching.",
+        "thanks for watching",
+        "thank you for watching.",
+        "thank you for watching",
+        "thanks for watching!",
+        "you",
+        "i",
+        "uh",
+        "mm",
+        "okay.",
+        "yeah.",
+        "thank you for watching i'll see you in the next video",
+        "thanks for watching",
+        "thank you",
+        "thank you!",
+        "thank you.",
+        "thanks.",
+    ];
+
+    if known_hallucinations.contains(&lower.as_str()) {
+        return true;
+    }
+
+    if lower.starts_with("thank you") && trimmed.len() < 80 {
+        return true;
+    }
+    if lower.starts_with("thanks for watching") && trimmed.len() < 80 {
+        return true;
+    }
+
+    let alpha: Vec<char> = trimmed.chars().filter(|c| c.is_alphabetic()).collect();
+    if alpha.len() <= 2 && trimmed.len() <= 4 {
+        return true;
+    }
+
+    false
+}
+
 fn estimate_wav_duration_seconds(audio_bytes: &[u8]) -> Option<f64> {
     if audio_bytes.len() < 44 {
         return None;
@@ -11897,9 +11978,30 @@ fn transcribe_local_stt_parakeet_native(
     model_root: &Path,
     audio_bytes: &[u8],
     audio_mime_type: &str,
+    vad_model_path: Option<String>,
 ) -> Result<(String, bool, bool), String> {
     let model_cached = get_or_load_native_parakeet_runtime(model_root)?;
-    let audio_samples = decode_local_stt_audio_to_mono_f32(audio_bytes, audio_mime_type)?;
+    let mut audio_samples = decode_local_stt_audio_to_mono_f32(audio_bytes, audio_mime_type)?;
+
+    if let Some(ref model_path) = vad_model_path {
+        if !model_path.is_empty() {
+            match vad::trim_speech(&audio_samples, std::path::Path::new(model_path)) {
+                Ok(Some(trimmed)) => {
+                    audio_samples = trimmed;
+                }
+                Ok(None) => {
+                    return Err(
+                        "No speech detected. Please speak into the microphone and try again."
+                            .to_string(),
+                    );
+                }
+                Err(error) => {
+                    warn!("[vad] trim_speech failed, continuing without VAD: {}", error);
+                }
+            }
+        }
+    }
+
     let unload_after_transcribe = local_stt_parakeet_unload_after_transcribe();
 
     let runtime = local_stt_native_parakeet_runtime();
@@ -14113,7 +14215,7 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default();
 
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(debug_assertions)))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             info!("[app.single-instance] prevented secondary launch and focused existing window");
