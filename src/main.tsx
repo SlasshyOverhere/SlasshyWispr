@@ -52,6 +52,7 @@ import {
   LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
+  GITHUB_RELEASES_PAGE_URL,
   EMPTY_HISTORY_HINT,
   LEGACY_DEFAULT_SYSTEM_PROMPT,
   DEFAULT_SYSTEM_PROMPT,
@@ -462,6 +463,9 @@ const updateInstallProgressWrap = requiredElement<HTMLDivElement>("#updateInstal
 const updateInstallProgressTrack = requiredElement<HTMLDivElement>("#updateInstallProgressTrack");
 const updateInstallProgressBar = requiredElement<HTMLSpanElement>("#updateInstallProgressBar");
 const updateInstallProgressText = requiredElement<HTMLParagraphElement>("#updateInstallProgressText");
+const updateManualDownloadRow = requiredElement<HTMLDivElement>("#updateManualDownloadRow");
+const updateManualDownloadText = requiredElement<HTMLParagraphElement>("#updateManualDownloadText");
+const openGithubReleasesBtn = requiredElement<HTMLButtonElement>("#openGithubReleasesBtn");
 
 const baseUrlValue = requiredElement<HTMLElement>("#baseUrlValue");
 const sttModelValue = requiredElement<HTMLElement>("#sttModelValue");
@@ -677,6 +681,7 @@ const MAIN_WINDOW_VISIBILITY_EVENT = "slasshy://main-window-visibility";
 const UPDATE_INSTALL_PROGRESS_EVENT = "slasshy://update-install-progress";
 const APP_UPDATE_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED = true;
+let githubReleasesAutoOpenedThisSession = false;
 
 const ACTIVITY_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "long",
@@ -3190,6 +3195,10 @@ function initializeUpdaterPanel(): void {
   updateInstallProgressTrack.setAttribute("aria-valuenow", "0");
   updateInstallProgressTrack.setAttribute("aria-valuetext", "Waiting to start update download.");
   updateInstallProgressText.textContent = "Waiting to start update download.";
+  updateManualDownloadRow.hidden = true;
+  openGithubReleasesBtn.addEventListener("click", () => {
+    openInSystemBrowser(GITHUB_RELEASES_PAGE_URL);
+  });
   autoCheckUpdatesToggle.checked = readAppUpdateAutoCheckEnabled();
   refreshUpdateLastCheckedText();
   setUpdaterStatus("idle", "Check to see if a new version is available.");
@@ -3377,6 +3386,17 @@ function openUpdateSettings(reason: string): void {
 
 const notifiedVersionsThisSession = new Set<string>();
 
+function showManualDownloadFallback(detail: string): void {
+  updateManualDownloadText.textContent = `Download the latest version from GitHub Releases instead.`;
+  updateManualDownloadRow.hidden = false;
+  setUpdaterStatus("error", detail);
+
+  if (!githubReleasesAutoOpenedThisSession) {
+    githubReleasesAutoOpenedThisSession = true;
+    openInSystemBrowser(GITHUB_RELEASES_PAGE_URL);
+  }
+}
+
 function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "startup" | "interval"): void {
   const version = result.latestVersion.trim();
   if (!version) {
@@ -3502,7 +3522,7 @@ async function handleCheckForUpdates(options?: {
       notifyAppUpdateAvailable(result, source);
     }
   } catch (error) {
-    setUpdaterStatus("error", `Update check failed: ${asErrorMessage(error)}`);
+    showManualDownloadFallback(`Update check failed: ${asErrorMessage(error)}`);
   } finally {
     updateCheckInFlight = false;
     syncUpdaterButtons();
@@ -3515,7 +3535,7 @@ async function handleInstallUpdate(): Promise<void> {
   }
 
   if (!cachedUpdateResult || !cachedUpdateResult.available || !cachedUpdateResult.installerDownloadUrl) {
-    setUpdaterStatus("error", "No update package is ready. Run check first.");
+    showManualDownloadFallback("No update package is ready.");
     return;
   }
 
@@ -3544,7 +3564,7 @@ async function handleInstallUpdate(): Promise<void> {
     setUpdaterStatus("processing", "Installer started. The app will close now.");
   } catch (error) {
     updateInstallInFlight = false;
-    setUpdaterStatus("error", `Installer launch failed: ${asErrorMessage(error)}`);
+    showManualDownloadFallback(`Installer launch failed: ${asErrorMessage(error)}`);
     syncUpdaterButtons();
   }
 }
@@ -3561,7 +3581,7 @@ function handleUpdateInstallProgressEvent(payload: AppUpdateInstallProgressEvent
   if (payload.stage === "error") {
     updateInstallInFlight = false;
     setUpdateInstallProgress(payload.progressPercent, payload.message, detail, true);
-    setUpdaterStatus("error", payload.message);
+    showManualDownloadFallback(payload.message);
     // Reset the "last checked" timestamp so the next startup re-checks immediately,
     // and clear in-session notification suppression so user gets re-notified.
     localStorage.removeItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY);
