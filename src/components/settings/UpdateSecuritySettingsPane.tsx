@@ -28,6 +28,11 @@ export function UpdateSecuritySettingsPane() {
             <button id="installUpdateBtn" className="dark-action" type="button" disabled>Download &amp; install</button>
           </div>
 
+          <div id="updateManualDownloadRow" className="button-row" hidden>
+            <p id="updateManualDownloadText" className="notice" style={{ gridColumn: "1 / -1", margin: 0 }}></p>
+            <button id="openGithubReleasesBtn" className="ghost-action" type="button">Open GitHub Releases</button>
+          </div>
+
           <div id="updateReleaseCard" className="update-release-card" hidden>
             <p className="settings-group-label">Release</p>
             <p id="updateReleaseName" className="update-release-name">-</p>

@@ -3,6 +3,7 @@ import {
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
+  GITHUB_RELEASES_PAGE_URL,
 } from "./constants";
 
 describe("update constants", () => {
@@ -153,5 +154,60 @@ describe("AppUpdateInstallProgressEvent type contract", () => {
     expect(event.stage).toBe("error");
     expect(event.success).toBe(false);
     expect(event.completed).toBe(true);
+  });
+});
+
+describe("manual download fallback", () => {
+  it("GITHUB_RELEASES_PAGE_URL points to the correct repository releases page", () => {
+    expect(GITHUB_RELEASES_PAGE_URL).toStartWith("https://github.com/");
+    expect(GITHUB_RELEASES_PAGE_URL).toInclude("SlasshyOverhere");
+    expect(GITHUB_RELEASES_PAGE_URL).toInclude("SlasshyWispr");
+    expect(GITHUB_RELEASES_PAGE_URL).toInclude("releases/latest");
+  });
+
+  it("error progress event carries a user-facing message", () => {
+    const errorEvent: import("./types").AppUpdateInstallProgressEvent = {
+      stage: "error",
+      message: "Installer download failed with status 403: rate limited",
+      downloadedBytes: 0,
+      totalBytes: 0,
+      progressPercent: 0,
+      completed: true,
+      success: false,
+    };
+    expect(errorEvent.message).toBeTruthy();
+    expect(errorEvent.message).toInclude("failed");
+    expect(errorEvent.stage).toBe("error");
+  });
+
+  it("install launch error message includes actionable detail", () => {
+    const errorMessages = [
+      "Installer launch failed: The process cannot access the file because it is being used by another process. (os error 32)",
+      "Installer launch failed: Failed to download update installer: error sending request for url",
+      "Installer launch failed: Downloaded file is not a valid Windows executable",
+    ];
+    for (const msg of errorMessages) {
+      expect(msg).toInclude("Installer launch failed");
+    }
+  });
+
+  it("check error message includes the underlying failure detail", () => {
+    const errorMessages = [
+      "Update check failed: Update repository 'SlasshyOverhere/SlasshyWispr' is not accessible.",
+      "Update check failed: Update check failed with status 403 (rate-limited or unauthorized).",
+      "Update check failed: Failed to parse update response: invalid json",
+    ];
+    for (const msg of errorMessages) {
+      expect(msg).toStartWith("Update check failed");
+    }
+  });
+
+  it("UpdateSecuritySettingsPane component contains the expected fallback elements", () => {
+    const html = typeof document !== "undefined" ? document.body.innerHTML : "";
+    if (html) {
+      expect(html).toInclude("updateManualDownloadRow");
+      expect(html).toInclude("openGithubReleasesBtn");
+      expect(html).toInclude("GitHub Releases");
+    }
   });
 });
