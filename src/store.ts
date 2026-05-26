@@ -185,6 +185,7 @@ function createUIStore() {
   };
 
   window.addEventListener('storage', notify);
+  window.addEventListener('slasshy:store-updated', notify);
 
   return {
     getState(): UIState {
