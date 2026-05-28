@@ -406,7 +406,6 @@ struct AssistantPipelineRequest {
     api_base_url: Option<String>,
     stt_model: Option<String>,
     ai_model: Option<String>,
-    local_mode: Option<bool>,
     stt_local_mode: Option<bool>,
     ai_local_mode: Option<bool>,
     local_ollama_base_url: Option<String>,
@@ -2615,129 +2614,6 @@ async fn paste_text_via_clipboard(text: String) -> Result<(), String> {
     {
         let _ = text;
         Err("Dictation paste helper is currently implemented for Windows builds only.".to_string())
-    }
-}
-
-#[tauri::command]
-async fn type_text_direct(text: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        if text.is_empty() {
-            return Ok(());
-        }
-
-        let script = r#"$ErrorActionPreference='Stop';
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public static class SlasshyInput {
-  [StructLayout(LayoutKind.Sequential)]
-  public struct INPUT {
-    public uint type;
-    public InputUnion U;
-  }
-
-  [StructLayout(LayoutKind.Explicit)]
-  public struct InputUnion {
-    [FieldOffset(0)]
-    public KEYBDINPUT ki;
-  }
-
-  [StructLayout(LayoutKind.Sequential)]
-  public struct KEYBDINPUT {
-    public ushort wVk;
-    public ushort wScan;
-    public uint dwFlags;
-    public uint time;
-    public IntPtr dwExtraInfo;
-  }
-
-  [DllImport("user32.dll", SetLastError=true)]
-  public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
-}
-"@;
-
-$text=[Console]::In.ReadToEnd();
-if ([string]::IsNullOrEmpty($text)) { exit 0 }
-
-$INPUT_KEYBOARD = 1;
-$KEYEVENTF_KEYUP = 0x0002;
-$KEYEVENTF_UNICODE = 0x0004;
-$VK_RETURN = 0x0D;
-$inputSize = [System.Runtime.InteropServices.Marshal]::SizeOf([type]([SlasshyInput+INPUT]));
-
-function Send-UnicodeChar([char]$char) {
-  $code = [int]$char;
-  $down = New-Object SlasshyInput+INPUT;
-  $down.type = $INPUT_KEYBOARD;
-  $down.U.ki.wVk = 0;
-  $down.U.ki.wScan = [uint16]$code;
-  $down.U.ki.dwFlags = $KEYEVENTF_UNICODE;
-
-  $up = New-Object SlasshyInput+INPUT;
-  $up.type = $INPUT_KEYBOARD;
-  $up.U.ki.wVk = 0;
-  $up.U.ki.wScan = [uint16]$code;
-  $up.U.ki.dwFlags = ($KEYEVENTF_UNICODE -bor $KEYEVENTF_KEYUP);
-
-  $sent = [SlasshyInput]::SendInput(2, @($down, $up), $inputSize);
-  if ($sent -ne 2) {
-    throw "SendInput unicode failed.";
-  }
-}
-
-function Send-Enter {
-  $down = New-Object SlasshyInput+INPUT;
-  $down.type = $INPUT_KEYBOARD;
-  $down.U.ki.wVk = [uint16]$VK_RETURN;
-  $down.U.ki.wScan = 0;
-  $down.U.ki.dwFlags = 0;
-
-  $up = New-Object SlasshyInput+INPUT;
-  $up.type = $INPUT_KEYBOARD;
-  $up.U.ki.wVk = [uint16]$VK_RETURN;
-  $up.U.ki.wScan = 0;
-  $up.U.ki.dwFlags = $KEYEVENTF_KEYUP;
-
-  $sent = [SlasshyInput]::SendInput(2, @($down, $up), $inputSize);
-  if ($sent -ne 2) {
-    throw "SendInput enter failed.";
-  }
-}
-
-Start-Sleep -Milliseconds 45;
-
-foreach ($char in $text.ToCharArray()) {
-  if ($char -eq "`r") {
-    continue;
-  }
-  if ($char -eq "`n") {
-    Send-Enter;
-    continue;
-  }
-  Send-UnicodeChar $char;
-}"#;
-
-        let output = run_powershell_script(script, Some(&text))?;
-        if !output.status.success() {
-            let merged = merge_process_output(&output.stdout, &output.stderr);
-            return Err(format!(
-                "Direct text insertion failed: {}",
-                clip_text(&single_line(&merged), 280)
-            ));
-        }
-
-        info!(
-            "[client] direct text insertion triggered chars={}",
-            text.chars().count()
-        );
-        return Ok(());
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = text;
-        Err("Direct text insertion is currently implemented for Windows builds only.".to_string())
     }
 }
 
@@ -5310,9 +5186,8 @@ fn extract_wake_command(transcript: &str, assistant_name: &str) -> Option<String
 }
 
 fn resolve_pipeline_mode(request: &AssistantPipelineRequest) -> Result<PipelineModeConfig, String> {
-    let legacy_local_mode = request.local_mode.unwrap_or(false);
-    let stt_local_mode = request.stt_local_mode.unwrap_or(legacy_local_mode);
-    let ai_local_mode = request.ai_local_mode.unwrap_or(legacy_local_mode);
+    let stt_local_mode = request.stt_local_mode.unwrap_or(false);
+    let ai_local_mode = request.ai_local_mode.unwrap_or(false);
     let requires_online_provider = !stt_local_mode || !ai_local_mode;
 
     let (api_key, api_base_url) = if requires_online_provider {
@@ -8767,20 +8642,8 @@ fn coqui_venv_python_path(app: &AppHandle) -> Result<PathBuf, String> {
     }
 }
 
-fn ensure_coqui_bridge_script(app: &AppHandle) -> Result<PathBuf, String> {
-    let runtime_dir = coqui_runtime_dir(app)?;
-    let script_path = runtime_dir.join("coqui_bridge.py");
-    let should_write = fs::read_to_string(&script_path)
-        .map(|existing| existing != COQUI_BRIDGE_SCRIPT)
-        .unwrap_or(true);
-
-    if should_write {
-        stop_all_coqui_bridge_daemons();
-        fs::write(&script_path, COQUI_BRIDGE_SCRIPT)
-            .map_err(|error| format!("Failed to write Coqui bridge script: {error}"))?;
-    }
-
-    Ok(script_path)
+fn ensure_coqui_bridge_script(_app: &AppHandle) -> Result<PathBuf, String> {
+    Err("Coqui TTS is disabled. The bridge script is no longer bundled.".to_string())
 }
 
 fn validate_python_binary_path(path: &str) -> Result<(), String> {
@@ -12357,9 +12220,6 @@ fn open_path_in_file_explorer(path: &Path) -> Result<(), String> {
             .map_err(|error| format!("Failed to open '{}': {error}", path.display()))?;
         return Ok(());
     }
-
-    #[allow(unreachable_code)]
-    Err("Opening local file explorer is not supported on this platform.".to_string())
 }
 
 fn sanitize_model_cache_dir_name(input: &str) -> String {
@@ -13600,7 +13460,6 @@ mod tests {
             api_base_url: None,
             stt_model: None,
             ai_model: None,
-            local_mode: None,
             stt_local_mode: None,
             ai_local_mode: None,
             local_ollama_base_url: None,
@@ -13636,7 +13495,6 @@ mod tests {
             api_base_url: Some("https://api.example.com/v1".to_string()),
             stt_model: Some("gpt-4o-mini-transcribe".to_string()),
             ai_model: Some("gpt-4o-mini".to_string()),
-            local_mode: None,
             stt_local_mode: None,
             ai_local_mode: None,
             local_ollama_base_url: Some("http://127.0.0.1:11434".to_string()),
@@ -14751,7 +14609,6 @@ pub fn run() {
             configure_launch_at_login,
             paste_clipboard_text,
             paste_text_via_clipboard,
-            type_text_direct,
             control_media_playback,
             mute_system_audio,
             get_foreground_input_block_status,

@@ -5,8 +5,6 @@ import type {
   TtsEngine,
   PiperQuality,
   PiperEmotion,
-  CoquiQuality,
-  CoquiEmotion,
   DictationLanguageMode,
 } from "./types";
 
@@ -17,7 +15,6 @@ export const SELECTION_POPUP_MAX_HEIGHT = 560;
 export const SELECTION_POPUP_CHARS_PER_LINE = 68;
 
 export const SETTINGS_STORAGE_KEY = "slasshy-desktop-assistant-settings-v4";
-export const LEGACY_SETTINGS_STORAGE_KEY = "slasshy-desktop-assistant-settings-v3";
 export const DICTIONARY_STORAGE_KEY = "slasshy-wispr-dictionary-v1";
 export const SNIPPETS_STORAGE_KEY = "slasshy-wispr-snippets-v1";
 export const NOTES_STORAGE_KEY = "slasshy-wispr-notes-v1";
@@ -34,9 +31,8 @@ export const ANALYTICS_SESSIONS_KEY = "slasshy-wispr-analytics-sessions-v1";
 export const ACHIEVEMENTS_STATE_KEY = "slasshy-wispr-achievements-state-v1";
 export const ACTIVE_PAGE_STORAGE_KEY = "slasshy-wispr-active-page-v1";
 export const EMPTY_HISTORY_HINT = "No turns yet. Start dictating to see your recent activity.";
-export const LEGACY_DEFAULT_SYSTEM_PROMPT =
+export const DEFAULT_SYSTEM_PROMPT =
   "You are SlasshyWispr, a helpful desktop voice assistant. Keep replies concise and easy to speak aloud.";
-export const DEFAULT_SYSTEM_PROMPT = LEGACY_DEFAULT_SYSTEM_PROMPT;
 export const DEFAULT_TEMPERATURE = 0.35;
 export const DEFAULT_MAX_TOKENS = 320;
 export const DEFAULT_API_BASE_URL = "";
@@ -53,13 +49,6 @@ export const DEFAULT_ASSISTANT_NAME = "Lily";
 export const DEFAULT_PIPER_SPEED = 1.08;
 export const DEFAULT_PIPER_QUALITY: PiperQuality = "fast";
 export const DEFAULT_PIPER_EMOTION: PiperEmotion = "neutral";
-export const DEFAULT_COQUI_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2";
-export const DEFAULT_COQUI_LANGUAGE = "en";
-export const DEFAULT_COQUI_SPEED = 1.0;
-export const DEFAULT_COQUI_QUALITY: CoquiQuality = "balanced";
-export const DEFAULT_COQUI_EMOTION: CoquiEmotion = "neutral";
-export const ZERO_PYTHON_MODE = true;
-export const ZERO_PYTHON_TTS_NOTICE = "Coqui is disabled in zero-Python mode. Piper is active.";
 export const DEFAULT_DICTATION_LANGUAGE_MODE: DictationLanguageMode = "single";
 export const DICTATION_LANGUAGE_OPTIONS: Array<{ code: string; label: string }> = [
   { code: "en", label: "English" },
@@ -82,14 +71,6 @@ export const DICTATION_LANGUAGE_LABELS: Record<string, string> = Object.fromEntr
 export const LOCAL_STT_MODEL_SIZE_LABELS: Record<string, string> = {
   "nvidia/parakeet-tdt-0.6b-v3": "Parakeet v3 (478 MB)",
   "nvidia/parakeet-tdt_ctc-110m": "Parakeet v2 (473 MB)",
-  // Backward compatibility label for older persisted settings.
-  "openai/whisper-large-v3": "Whisper Large (1.1 GB)",
-  "openai/whisper-medium": "Whisper Medium (492 MB)",
-  "openai/whisper-small": "Whisper Small (487 MB)",
-  "UsefulSensors/moonshine-base": "Moonshine Base (58.0 MB)",
-  "openai/whisper-large-v3-turbo": "Whisper Turbo (1.6 GB)",
-  "nvidia/parakeet-tdt-0.6b-v2": "Parakeet v2 (473 MB)",
-  "FunAudioLLM/SenseVoiceSmall": "SenseVoice (160 MB)",
 };
 export const MAX_COQUI_REFERENCE_SECONDS = 30;
 export const ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS = 1_000;

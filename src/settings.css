@@ -153,26 +153,6 @@
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.settings-sidebar-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.48);
-}
-
-.settings-sidebar-badge::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #9ed36a;
-  box-shadow: 0 0 12px rgba(158, 211, 106, 0.55);
-}
-
 .settings-version {
   margin-top: 6px;
   color: rgba(255, 255, 255, 0.6);
@@ -418,12 +398,6 @@
   font-weight: 400;
 }
 
-.s-row-value {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-  font-family: var(--font-mono);
-}
-
 /* ── Preserved existing classes (switch rows, cards, fields etc.) ── */
 
 .settings-section-title {
@@ -567,8 +541,7 @@
 
 .switch-row:last-child { border-bottom: 0; }
 
-.switch-row span:first-child,
-.select-row span:first-child {
+.switch-row span:first-child {
   font-size: 13px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.8);
@@ -724,8 +697,7 @@
 }
 
 /* ── Checkboxes & selects ── */
-.checkbox-field,
-.select-row {
+.checkbox-field {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -747,7 +719,6 @@
   font-size: 12px;
 }
 
-.select-row select,
 .inline-select select {
   max-width: 180px;
 }
@@ -839,8 +810,7 @@
 .tts-bootstrap-card,
 .tts-profile-panel,
 .tts-clone-card,
-.tts-engine-card,
-.updater-card {
+.tts-engine-card {
   gap: 10px;
 }
 
@@ -883,48 +853,6 @@
   gap: 20px;
 }
 
-/* TTS Panel Sections */
-.tts-panel-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.tts-section-label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: rgba(255, 255, 255, 0.3);
-  margin: 0;
-}
-
-.tts-control-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.tts-control-select {
-  min-height: 36px;
-}
-
-/* TTS Speed Field */
-.tts-speed-field {
-  gap: 8px;
-}
-
-.tts-speed-val {
-  color: var(--accent);
-  font-family: var(--font-mono);
-}
-
-.tts-range-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .tts-range-input {
   width: 100%;
   height: 6px;
@@ -963,31 +891,6 @@
   border: 2px solid rgba(255, 255, 255, 0.15);
 }
 
-/* TTS Notice */
-.tts-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 11.5px;
-  line-height: 1.4;
-}
-
-.tts-notice-icon {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 10px;
-  font-weight: 700;
-  font-style: normal;
-}
-
 /* Model Meta Redesign */
 .model-meta {
   display: flex;
@@ -998,34 +901,6 @@
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.02);
   overflow: hidden;
-}
-
-.model-meta-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.model-meta-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(var(--accent-rgb, 98, 179, 255), 0.15);
-  border: 1px solid rgba(98, 179, 255, 0.2);
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: rgba(98, 179, 255, 0.9);
-}
-
-.model-meta-title {
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.6);
-  letter-spacing: 0.04em;
 }
 
 .model-meta-grid {
@@ -1039,10 +914,6 @@
   flex-direction: column;
   gap: 3px;
   overflow: hidden;
-}
-
-.model-meta-item--full {
-  width: 100%;
 }
 
 .model-meta-key {
@@ -1060,13 +931,6 @@
   word-break: break-word;
 }
 
-.status-check {
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.04);
-  font-size: 10.5px;
-}
-
 /* TTS Profile Grid */
 .tts-profile-grid {
   display: flex;
@@ -1082,57 +946,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.tts-clone-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.tts-clone-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: rgba(var(--accent-rgb, 98, 179, 255), 0.1);
-  border: 1px solid rgba(98, 179, 255, 0.15);
-  color: var(--accent);
-}
-
-.tts-clone-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.8);
-  letter-spacing: 0.02em;
-}
-
-.tts-coqui-notice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 9px;
-  background: rgba(255, 200, 0, 0.05);
-  border: 1px solid rgba(255, 200, 0, 0.1);
-  font-size: 11.5px;
-  color: rgba(255, 200, 0, 0.7);
-}
-
-.coqui-audio-preview {
-  padding: 8px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.coqui-audio-preview audio {
-  width: 100%;
-  height: 32px;
 }
 
 /* ── Status pills ── */
@@ -1276,39 +1089,6 @@
   transition: width 180ms ease;
 }
 
-/* ── Key badge ── */
-.key-badge {
-  display: inline-flex;
-  padding: 2px 7px;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.65);
-}
-
-/* ── Card header ── */
-.settings-card-header {
-  padding: 10px 14px 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.settings-card-header h3 {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.88);
-}
-
-.settings-card-header p {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.35);
-  line-height: 1.5;
-}
-
 /* ── Audio ── */
 .settings-pane audio {
   width: 100%;
@@ -1431,7 +1211,7 @@
   .settings-header,
   .settings-pane { padding-left: 16px; padding-right: 16px; }
 
-  .settings-row, .select-row, .switch-row, .s-row,
+  .settings-row, .switch-row, .s-row,
   .checkbox-field, .tts-bootstrap-head, .pipeline-status-row {
     flex-direction: column;
     align-items: stretch;

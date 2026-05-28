@@ -6,19 +6,14 @@ export type MainPage = "home" | "history" | "dictionary" | "snippets" | "notes" 
 export type SettingsPane =
   | "general"
   | "models"
-  | "online"
-  | "offline"
-  | "hybrid"
   | "update-security"
   | "pipeline";
-export type TtsEngine = "piper" | "coqui";
+export type TtsEngine = "piper";
 export type RuntimeMode = "online" | "local";
 export type DictationLanguageMode = "single" | "multiple";
 export type PiperQuality = "fast" | "balanced" | "high";
 export type PiperEmotion = "neutral" | "calm" | "happy" | "excited" | "serious" | "sad";
-export type CoquiQuality = "fast" | "balanced" | "high";
-export type CoquiEmotion = "neutral" | "calm" | "happy" | "excited" | "serious" | "sad";
-export type TtsProfilePane = "piper" | "coqui";
+export type TtsProfilePane = "piper";
 export type HoldSource = "notes-button" | "hotkey";
 
 export type LocalSttHardwareAdvisorChoice = "suggestion" | "selected" | "cancel";
@@ -32,8 +27,6 @@ export interface AssistantInfoResponse {
   piperPath: string;
   voiceInstalled: boolean;
   voiceModelPath: string;
-  coquiInstalled: boolean;
-  coquiPythonPath: string;
 }
 
 export interface RuntimeSetupResponse {
@@ -48,36 +41,6 @@ export interface VoiceInstallResponse {
 export interface PiperValidationResponse {
   ok: boolean;
   details: string;
-}
-
-export interface CoquiStatusResponse {
-  available: boolean;
-  pythonPath: string;
-  ttsVersion: string;
-  cudaAvailable: boolean;
-  voiceDir: string;
-  voices: string[];
-  defaultModel: string;
-  error: string;
-}
-
-export interface CoquiSetupResponse {
-  pythonPath: string;
-  details: string;
-}
-
-export interface CoquiValidationResponse {
-  ok: boolean;
-  details: string;
-}
-
-export interface CoquiVoicesResponse {
-  voiceDir: string;
-  voices: string[];
-}
-
-export interface CoquiModelsResponse {
-  models: string[];
 }
 
 export interface ProviderModelsResponse {
@@ -185,19 +148,6 @@ export interface LocalSttDownloadStatusResponse {
   updatedAtMs: number;
 }
 
-export interface CoquiVoiceCloneResponse {
-  speakerId: string;
-  durationSeconds: number;
-  voiceDir: string;
-  voices: string[];
-  previewAudioBase64: string;
-}
-
-export interface CoquiVoicePreviewResponse {
-  audioBase64: string;
-  text: string;
-}
-
 export interface TtsSetupStatusResponse {
   running: boolean;
   completed: boolean;
@@ -296,15 +246,6 @@ export interface PersistedSettings {
   piperSpeed: number;
   piperQuality: PiperQuality;
   piperEmotion: PiperEmotion;
-  coquiPythonPath: string;
-  coquiModelName: string;
-  coquiLanguage: string;
-  coquiVoiceId: string;
-  coquiSpeed: number;
-  coquiQuality: CoquiQuality;
-  coquiEmotion: CoquiEmotion;
-  coquiUseGpu: boolean;
-  coquiSplitSentences: boolean;
   pushToTalkSound: string;
   pushToTalkEndSound: string;
   pushToTalkSoundVolume: number;

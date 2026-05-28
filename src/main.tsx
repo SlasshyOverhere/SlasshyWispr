@@ -41,7 +41,6 @@ import {
   SELECTION_POPUP_MAX_HEIGHT,
   SELECTION_POPUP_CHARS_PER_LINE,
   SETTINGS_STORAGE_KEY,
-  LEGACY_SETTINGS_STORAGE_KEY,
   DICTIONARY_STORAGE_KEY,
   HOME_HISTORY_STORAGE_KEY,
   NOTES_STORAGE_KEY,
@@ -54,7 +53,6 @@ import {
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
   GITHUB_RELEASES_PAGE_URL,
   EMPTY_HISTORY_HINT,
-  LEGACY_DEFAULT_SYSTEM_PROMPT,
   DEFAULT_SYSTEM_PROMPT,
   DEFAULT_TEMPERATURE,
   DEFAULT_MAX_TOKENS,
@@ -72,17 +70,9 @@ import {
   DEFAULT_PIPER_SPEED,
   DEFAULT_PIPER_QUALITY,
   DEFAULT_PIPER_EMOTION,
-  DEFAULT_COQUI_MODEL,
-  DEFAULT_COQUI_LANGUAGE,
-  DEFAULT_COQUI_SPEED,
-  DEFAULT_COQUI_QUALITY,
-  DEFAULT_COQUI_EMOTION,
-  ZERO_PYTHON_MODE,
-  ZERO_PYTHON_TTS_NOTICE,
   DEFAULT_DICTATION_LANGUAGE_MODE,
   DICTATION_LANGUAGE_LABELS,
   LOCAL_STT_MODEL_SIZE_LABELS,
-  MAX_COQUI_REFERENCE_SECONDS,
   ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS,
   MAX_HISTORY_ITEMS,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
@@ -103,8 +93,6 @@ import type {
   DictationLanguageMode,
   PiperQuality,
   PiperEmotion,
-  CoquiQuality,
-  CoquiEmotion,
   TtsProfilePane,
   HoldSource,
 
@@ -113,11 +101,6 @@ import type {
   RuntimeSetupResponse,
   VoiceInstallResponse,
   PiperValidationResponse,
-  CoquiStatusResponse,
-  CoquiSetupResponse,
-  CoquiValidationResponse,
-  CoquiVoicesResponse,
-  CoquiModelsResponse,
   ProviderModelsResponse,
   OllamaPullResponse,
   OllamaStatusResponse,
@@ -130,8 +113,6 @@ import type {
   LocalSttRuntimeStateResponse,
   LocalSttHardwareAdviceResponse,
   LocalSttDownloadStatusResponse,
-  CoquiVoiceCloneResponse,
-  CoquiVoicePreviewResponse,
   TtsSetupStatusResponse,
   AssistantPipelineResponse,
   AppUpdateCheckResponse,
@@ -267,9 +248,7 @@ const ttsSetupStatus = requiredElement<HTMLParagraphElement>("#ttsSetupStatus");
 const ttsSetupLogs = requiredElement<HTMLDivElement>("#ttsSetupLogs");
 const setupAllTtsBtn = requiredElement<HTMLButtonElement>("#setupAllTtsBtn");
 const ttsProfilePiperPanel = requiredElement<HTMLDivElement>("#ttsProfilePiperPanel");
-const ttsProfileCoquiPanel = requiredElement<HTMLDivElement>("#ttsProfileCoquiPanel");
 const ttsProfilePiperTab = requiredElement<HTMLButtonElement>("#ttsProfilePiperTab");
-const ttsProfileCoquiTab = requiredElement<HTMLButtonElement>("#ttsProfileCoquiTab");
 const appTitlebarDrag = requiredElement<HTMLDivElement>("#appTitlebarDrag");
 const windowMinimizeBtn = requiredElement<HTMLButtonElement>("#windowMinimizeBtn");
 const windowMaximizeBtn = requiredElement<HTMLButtonElement>("#windowMaximizeBtn");
@@ -390,23 +369,10 @@ const piperPathInput = requiredElement<HTMLInputElement>("#piperPathInput");
 const piperQualitySelect = requiredElement<HTMLSelectElement>("#piperQualitySelect");
 const piperEmotionSelect = requiredElement<HTMLSelectElement>("#piperEmotionSelect");
 const piperSpeedInput = requiredElement<HTMLInputElement>("#piperSpeedInput");
-const coquiPythonPathInput = requiredElement<HTMLInputElement>("#coquiPythonPathInput");
-const coquiModelInput = requiredElement<HTMLInputElement>("#coquiModelInput");
-const coquiLanguageInput = requiredElement<HTMLInputElement>("#coquiLanguageInput");
-const coquiVoiceIdInput = requiredElement<HTMLInputElement>("#coquiVoiceIdInput");
-const coquiVoiceSelect = requiredElement<HTMLSelectElement>("#coquiVoiceSelect");
-const coquiModelCatalogSelect = requiredElement<HTMLSelectElement>("#coquiModelCatalogSelect");
-const coquiSpeedInput = requiredElement<HTMLInputElement>("#coquiSpeedInput");
-const coquiQualitySelect = requiredElement<HTMLSelectElement>("#coquiQualitySelect");
-const coquiEmotionSelect = requiredElement<HTMLSelectElement>("#coquiEmotionSelect");
-const coquiUseGpuToggle = requiredElement<HTMLInputElement>("#coquiUseGpuToggle");
-const coquiSplitSentencesToggle = requiredElement<HTMLInputElement>("#coquiSplitSentencesToggle");
-const coquiVoiceFileInput = requiredElement<HTMLInputElement>("#coquiVoiceFileInput");
 const systemPromptInput = requiredElement<HTMLTextAreaElement>("#systemPromptInput");
 const temperatureInput = requiredElement<HTMLInputElement>("#temperatureInput");
 const temperatureValue = requiredElement<HTMLElement>("#temperatureValue");
 const piperSpeedValue = requiredElement<HTMLElement>("#piperSpeedValue");
-const coquiSpeedValue = requiredElement<HTMLElement>("#coquiSpeedValue");
 const maxTokensInput = requiredElement<HTMLInputElement>("#maxTokensInput");
 
 const launchAtLoginToggle = requiredElement<HTMLInputElement>("#launchAtLoginToggle");
@@ -474,11 +440,6 @@ const piperStatusValue = requiredElement<HTMLElement>("#piperStatusValue");
 const piperPathValue = requiredElement<HTMLElement>("#piperPathValue");
 const voiceStatusValue = requiredElement<HTMLElement>("#voiceStatusValue");
 const voicePathValue = requiredElement<HTMLElement>("#voicePathValue");
-const coquiStatusValue = requiredElement<HTMLElement>("#coquiStatusValue");
-const coquiPythonValue = requiredElement<HTMLElement>("#coquiPythonValue");
-const coquiVersionValue = requiredElement<HTMLElement>("#coquiVersionValue");
-const coquiCudaValue = requiredElement<HTMLElement>("#coquiCudaValue");
-const coquiVoiceDirValue = requiredElement<HTMLElement>("#coquiVoiceDirValue");
 
 const refreshMicsBtn = requiredElement<HTMLButtonElement>("#refreshMicsBtn");
 const setupRuntimeBtn = requiredElement<HTMLButtonElement>("#setupRuntimeBtn");
@@ -495,12 +456,6 @@ const deleteLocalSttModelBtn = requiredElement<HTMLButtonElement>("#deleteLocalS
 const openLocalSttModelPathBtn = requiredElement<HTMLButtonElement>("#openLocalSttModelPathBtn");
 const validatePiperBtn = requiredElement<HTMLButtonElement>("#validatePiperBtn");
 const downloadVoiceBtn = requiredElement<HTMLButtonElement>("#downloadVoiceBtn");
-const setupCoquiBtn = requiredElement<HTMLButtonElement>("#setupCoquiBtn");
-const validateCoquiBtn = requiredElement<HTMLButtonElement>("#validateCoquiBtn");
-const refreshCoquiVoicesBtn = requiredElement<HTMLButtonElement>("#refreshCoquiVoicesBtn");
-const refreshCoquiModelsBtn = requiredElement<HTMLButtonElement>("#refreshCoquiModelsBtn");
-const cloneCoquiVoiceBtn = requiredElement<HTMLButtonElement>("#cloneCoquiVoiceBtn");
-const testCoquiVoiceBtn = requiredElement<HTMLButtonElement>("#testCoquiVoiceBtn");
 const recordBtn = requiredElement<HTMLButtonElement>("#recordBtn");
 const clearHistoryBtn = requiredElement<HTMLButtonElement>("#clearHistoryBtn");
 const clearHistoryBtnFull = requiredElement<HTMLButtonElement>("#clearHistoryBtnFull");
@@ -522,8 +477,6 @@ const totalLatency = requiredElement<HTMLElement>("#totalLatency");
 const conversationLog = requiredElement<HTMLDivElement>("#conversationLog");
 const fullHistoryLog = requiredElement<HTMLDivElement>("#fullHistoryLog");
 const assistantAudio = requiredElement<HTMLAudioElement>("#assistantAudio");
-const coquiVoicePreview = requiredElement<HTMLAudioElement>("#coquiVoicePreview");
-const coquiCloneStatus = requiredElement<HTMLParagraphElement>("#coquiCloneStatus");
 
 let stage: Stage = "idle";
 let pipelineRunning = false;
@@ -598,14 +551,11 @@ let lastGlobalShortcutHandledAt = 0;
 let shortcutSyncInFlight: Promise<void> | null = null;
 let shortcutSyncQueued = false;
 let dockRuntimeErrorShown = false;
-let coquiModelCatalog: string[] = [];
 let providerModelCatalog: string[] = [];
 let localOllamaModelCatalog: string[] = [];
 let localSttModelCatalog: string[] = [];
 let latestAssistantInfoDefaults: AssistantInfoResponse | null = null;
 let piperRuntimeReady = false;
-let coquiRuntimeInstalled = false;
-let coquiCloneInProgress = false;
 let ollamaStatusInFlight = false;
 let ollamaInstallInFlight = false;
 let ollamaPullInFlight = false;
@@ -711,22 +661,15 @@ const systemThemeMediaQuery =
   typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: light)")
     : null;
-enforceZeroPythonUi();
-
 let settings = loadSettings();
-if (ZERO_PYTHON_MODE && settings.ttsEngine === "coqui") {
-  settings.ttsEngine = "piper";
-}
 settings.pushToTalkHotkey = settings.pushToTalkHotkey.trim() || DEFAULT_HOTKEY;
 settings.commandHotkey = settings.commandHotkey.trim() || DEFAULT_COMMAND_HOTKEY;
 let cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
 applySettingsToForm(settings);
 renderSidebarLocalSttToggle();
-renderCoquiModelCatalog([], settings.coquiModelName);
 renderProviderModelCatalog([], settings.aiModelName || settings.sttModelName);
 renderLocalOllamaModelCatalog([], settings.localOllamaModel);
 renderLocalSttModelCatalog([], settings.localSttModel);
-renderCoquiVoiceOptions([], settings.coquiVoiceId);
 setActiveTtsProfile("piper");
 updateTtsSetupGate();
 persistDictionaryTerms();
@@ -1212,16 +1155,7 @@ piperPathInput.addEventListener("input", handleSettingsChange);
 piperQualitySelect.addEventListener("change", handleSettingsChange);
 piperEmotionSelect.addEventListener("change", handleSettingsChange);
 piperSpeedInput.addEventListener("input", handleSettingsChange);
-coquiPythonPathInput.addEventListener("input", handleSettingsChange);
-coquiModelInput.addEventListener("input", handleSettingsChange);
-coquiLanguageInput.addEventListener("input", handleSettingsChange);
-coquiVoiceIdInput.addEventListener("input", handleSettingsChange);
 ttsEngineSelect.addEventListener("change", handleSettingsChange);
-coquiQualitySelect.addEventListener("change", handleSettingsChange);
-coquiEmotionSelect.addEventListener("change", handleSettingsChange);
-coquiUseGpuToggle.addEventListener("change", handleSettingsChange);
-coquiSplitSentencesToggle.addEventListener("change", handleSettingsChange);
-coquiSpeedInput.addEventListener("input", handleSettingsChange);
 systemPromptInput.addEventListener("input", handleSettingsChange);
 temperatureInput.addEventListener("input", handleSettingsChange);
 maxTokensInput.addEventListener("input", handleSettingsChange);
@@ -1269,11 +1203,6 @@ removeFillersToggle.addEventListener("change", handleSettingsChange);
 autoPunctuationToggle.addEventListener("change", handleSettingsChange);
 numberedListsToggle.addEventListener("change", handleSettingsChange);
 
-coquiVoiceSelect.addEventListener("change", () => {
-  coquiVoiceIdInput.value = coquiVoiceSelect.value;
-  handleSettingsChange();
-});
-
 providerModelCatalogSelect.addEventListener("change", () => {
   const selected = providerModelCatalogSelect.value.trim();
   if (!selected) {
@@ -1305,15 +1234,6 @@ localSttModelCatalogSelect.addEventListener("change", () => {
   localSttStatusChecked = false;
   handleSettingsChange();
   void refreshSelectedLocalSttModelAvailability({ quiet: true });
-});
-
-coquiModelCatalogSelect.addEventListener("change", () => {
-  const selected = coquiModelCatalogSelect.value.trim();
-  if (!selected) {
-    return;
-  }
-  coquiModelInput.value = selected;
-  handleSettingsChange();
 });
 
 hotkeyInput.addEventListener("focus", () => {
@@ -1415,30 +1335,6 @@ validatePiperBtn.addEventListener("click", () => {
 
 downloadVoiceBtn.addEventListener("click", () => {
   void handleDownloadVoice();
-});
-
-setupCoquiBtn.addEventListener("click", () => {
-  void handleSetupCoquiRuntime();
-});
-
-validateCoquiBtn.addEventListener("click", () => {
-  void handleValidateCoqui();
-});
-
-refreshCoquiVoicesBtn.addEventListener("click", () => {
-  void refreshCoquiVoices();
-});
-
-refreshCoquiModelsBtn.addEventListener("click", () => {
-  void refreshCoquiModels();
-});
-
-cloneCoquiVoiceBtn.addEventListener("click", () => {
-  void handleCloneCoquiVoice();
-});
-
-testCoquiVoiceBtn.addEventListener("click", () => {
-  void handleTestCoquiVoice();
 });
 
 setupAllTtsBtn.addEventListener("click", () => {
@@ -1652,13 +1548,7 @@ async function bootstrap(): Promise<void> {
     renderAssistantInfo(info);
 
     if (info.piperInstalled && info.voiceInstalled) {
-      setNotice(
-        ZERO_PYTHON_MODE
-          ? "Runtime is ready (Piper only, zero-Python mode)."
-          : info.coquiInstalled
-          ? "Runtime is ready (Piper main, Coqui beta available)."
-          : "Piper runtime is ready. Coqui beta is optional.",
-      );
+      setNotice("Piper runtime is ready.");
       setStage("idle", "Ready for voice input.");
     } else {
       setNotice("Piper runtime incomplete. Open Settings > Models and complete runtime setup.");
@@ -1670,10 +1560,6 @@ async function bootstrap(): Promise<void> {
     setStage("error", "Metadata load failed.");
   }
 
-  if (!ZERO_PYTHON_MODE && settings.ttsEngine === "coqui") {
-    await refreshCoquiStatusSafely();
-    await refreshCoquiVoices();
-  }
   await refreshMicrophones(false);
   if (stage === "idle") {
     void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
@@ -1722,12 +1608,12 @@ function asMainPage(value: string | undefined): MainPage | null {
 }
 
 function asSettingsPane(value: string | undefined): SettingsPane | null {
+  if (value === "online" || value === "offline" || value === "hybrid") {
+    return "models";
+  }
   if (
     value === "general" ||
     value === "models" ||
-    value === "online" ||
-    value === "offline" ||
-    value === "hybrid" ||
     value === "update-security" ||
     value === "pipeline"
   ) {
@@ -1767,31 +1653,24 @@ function setActivePage(next: MainPage, options: { forceRender?: boolean } = {}):
 }
 
 function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void {
-  let resolved = next;
-  if (resolved === "online" || resolved === "offline" || resolved === "hybrid") {
-    resolved = "models";
-  }
   logClientEvent(
-    `[ui.settings.pane] requested=${next} resolved=${resolved} reason=${reason}`,
+    `[ui.settings.pane] next=${next} reason=${reason}`,
   );
   const previousPane = activeSettingsPane;
-  activeSettingsPane = resolved;
-  localStorage.setItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY, resolved);
+  activeSettingsPane = next;
+  localStorage.setItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY, next);
 
   const titleMap: Record<SettingsPane, string> = {
     general: "General",
     models: "Models",
-    online: "Models",
-    offline: "Models",
-    hybrid: "Models",
     "update-security": "Update and Security",
     pipeline: "Pipeline",
   };
 
-  settingsPaneTitle.textContent = titleMap[resolved];
+  settingsPaneTitle.textContent = titleMap[next];
 
   for (const navButton of settingsNavButtons) {
-    const current = navButton.dataset.settingsPaneNav === resolved;
+    const current = navButton.dataset.settingsPaneNav === next;
     navButton.classList.toggle("is-active", current);
     navButton.setAttribute("aria-current", current ? "page" : "false");
   }
@@ -1807,11 +1686,11 @@ function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void
   }
 
   const previousIndex = settingsPanels.findIndex((panel) => panel.dataset.settingsPane === previousPane);
-  const nextIndex = settingsPanels.findIndex((panel) => panel.dataset.settingsPane === resolved);
-  const shouldAnimate = previousPane !== resolved && previousIndex >= 0 && nextIndex >= 0;
+  const nextIndex = settingsPanels.findIndex((panel) => panel.dataset.settingsPane === next);
+  const shouldAnimate = previousPane !== next && previousIndex >= 0 && nextIndex >= 0;
 
   for (const panel of settingsPanels) {
-    const current = panel.dataset.settingsPane === resolved;
+    const current = panel.dataset.settingsPane === next;
     panel.classList.toggle("is-active", current);
     panel.hidden = !current;
     if (current && shouldAnimate) {
@@ -1833,50 +1712,20 @@ function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void
   }
 }
 
-function enforceZeroPythonUi(): void {
-  if (!ZERO_PYTHON_MODE) {
-    return;
-  }
-
-  const coquiOption = ttsEngineSelect.querySelector('option[value="coqui"]');
-  if (coquiOption instanceof HTMLOptionElement) {
-    coquiOption.disabled = true;
-    coquiOption.hidden = true;
-  }
-
-  if (ttsEngineSelect.value === "coqui") {
-    ttsEngineSelect.value = "piper";
-  }
-  coquiStatusValue.textContent = "Disabled";
-  coquiPythonValue.textContent = "-";
-  coquiVersionValue.textContent = "-";
-  coquiCudaValue.textContent = "-";
-  setCoquiCloneStatus(ZERO_PYTHON_TTS_NOTICE);
-}
-
-function setActiveTtsProfile(next: TtsProfilePane): void {
-  const piperActive = ZERO_PYTHON_MODE ? true : next === "piper";
-  ttsProfilePiperTab.classList.toggle("is-active", piperActive);
-  ttsProfileCoquiTab.classList.toggle("is-active", !piperActive);
-  ttsProfilePiperTab.setAttribute("aria-selected", piperActive ? "true" : "false");
-  ttsProfileCoquiTab.setAttribute("aria-selected", piperActive ? "false" : "true");
-  ttsProfilePiperPanel.hidden = !piperActive;
-  ttsProfileCoquiPanel.hidden = piperActive;
+function setActiveTtsProfile(_next: TtsProfilePane): void {
+  ttsProfilePiperTab.classList.toggle("is-active", true);
+  ttsProfilePiperTab.setAttribute("aria-selected", "true");
+  ttsProfilePiperPanel.hidden = false;
 }
 
 function updateTtsSetupGate(): void {
   const piperReady = piperRuntimeReady;
-  const coquiReady = ZERO_PYTHON_MODE ? false : coquiRuntimeInstalled;
   const showBootstrap = !piperReady || ttsSetupRunning;
   ttsBootstrapCard.hidden = !showBootstrap;
   ttsProfilesArea.hidden = !piperReady;
 
-  if (ZERO_PYTHON_MODE && piperReady && !ttsSetupRunning && !ttsSetupStatus.textContent?.trim()) {
-    ttsSetupStatus.textContent = "Piper is ready. Coqui is disabled in zero-Python mode.";
-  } else if (piperReady && !coquiReady && !ttsSetupRunning && !ttsSetupStatus.textContent?.trim()) {
-    ttsSetupStatus.textContent = "Piper is ready. Coqui beta is optional and loads only when selected.";
-  } else if (piperReady && coquiReady && !ttsSetupRunning && !ttsSetupStatus.textContent?.trim()) {
-    ttsSetupStatus.textContent = "Piper and Coqui runtimes are ready.";
+  if (piperReady && !ttsSetupRunning && !ttsSetupStatus.textContent?.trim()) {
+    ttsSetupStatus.textContent = "Piper is ready.";
   }
 }
 
@@ -1961,24 +1810,14 @@ function loadSettings(): PersistedSettings {
     piperSpeed: DEFAULT_PIPER_SPEED,
     piperQuality: DEFAULT_PIPER_QUALITY,
     piperEmotion: DEFAULT_PIPER_EMOTION,
-    coquiPythonPath: "",
-    coquiModelName: DEFAULT_COQUI_MODEL,
-    coquiLanguage: DEFAULT_COQUI_LANGUAGE,
-    coquiVoiceId: "",
-    coquiSpeed: DEFAULT_COQUI_SPEED,
-    coquiQuality: DEFAULT_COQUI_QUALITY,
-    coquiEmotion: DEFAULT_COQUI_EMOTION,
-    coquiUseGpu: true,
-    coquiSplitSentences: false,
     pushToTalkSound: DEFAULT_PUSH_TO_TALK_SOUND,
     pushToTalkEndSound: DEFAULT_PUSH_TO_TALK_END_SOUND,
     pushToTalkSoundVolume: DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
   };
 
   const rawCurrent = localStorage.getItem(SETTINGS_STORAGE_KEY);
-  const rawLegacy = localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
-  const raw = rawCurrent ?? rawLegacy;
-  const fromLegacyOnly = !rawCurrent && Boolean(rawLegacy);
+  const raw = rawCurrent;
+  const fromLegacyOnly = false;
   if (!raw) {
     return defaults;
   }
@@ -2068,15 +1907,6 @@ function loadSettings(): PersistedSettings {
       piperSpeed: coerceNumber(parsed.piperSpeed, defaults.piperSpeed, 0.5, 2),
       piperQuality: asPiperQuality(parsed.piperQuality),
       piperEmotion: asPiperEmotion(parsed.piperEmotion),
-      coquiPythonPath: String(parsed.coquiPythonPath ?? defaults.coquiPythonPath),
-      coquiModelName: String(parsed.coquiModelName ?? defaults.coquiModelName),
-      coquiLanguage: String(parsed.coquiLanguage ?? defaults.coquiLanguage),
-      coquiVoiceId: String(parsed.coquiVoiceId ?? defaults.coquiVoiceId),
-      coquiSpeed: coerceNumber(parsed.coquiSpeed, defaults.coquiSpeed, 0.5, 2),
-      coquiQuality: asCoquiQuality(parsed.coquiQuality),
-      coquiEmotion: asCoquiEmotion(parsed.coquiEmotion),
-      coquiUseGpu: coerceBoolean(parsed.coquiUseGpu, defaults.coquiUseGpu),
-      coquiSplitSentences: coerceBoolean(parsed.coquiSplitSentences, defaults.coquiSplitSentences),
       pushToTalkSound: String(parsed.pushToTalkSound ?? defaults.pushToTalkSound),
       pushToTalkEndSound: String(parsed.pushToTalkEndSound ?? defaults.pushToTalkEndSound),
       pushToTalkSoundVolume: coerceNumber(parsed.pushToTalkSoundVolume, defaults.pushToTalkSoundVolume, 0, 1),
@@ -2227,7 +2057,7 @@ function readSettingsFromForm(): PersistedSettings {
     dictationLanguageMode === "multiple"
       ? primaryDictationLanguage || dictationLanguageAllowList[0] || ""
       : primaryDictationLanguage;
-  const resolvedTtsEngine: TtsEngine = ZERO_PYTHON_MODE ? "piper" : asTtsEngine(ttsEngineSelect.value);
+  const resolvedTtsEngine: TtsEngine = "piper";
 
   return {
     apiKey: apiKeyInput.value.trim(),
@@ -2248,15 +2078,6 @@ function readSettingsFromForm(): PersistedSettings {
     piperSpeed: coerceNumber(Number(piperSpeedInput.value), DEFAULT_PIPER_SPEED, 0.5, 2),
     piperQuality: asPiperQuality(piperQualitySelect.value),
     piperEmotion: asPiperEmotion(piperEmotionSelect.value),
-    coquiPythonPath: coquiPythonPathInput.value.trim(),
-    coquiModelName: coquiModelInput.value.trim() || DEFAULT_COQUI_MODEL,
-    coquiLanguage: coquiLanguageInput.value.trim() || DEFAULT_COQUI_LANGUAGE,
-    coquiVoiceId: coquiVoiceIdInput.value.trim() || coquiVoiceSelect.value.trim(),
-    coquiSpeed: coerceNumber(Number(coquiSpeedInput.value), DEFAULT_COQUI_SPEED, 0.5, 2),
-    coquiQuality: asCoquiQuality(coquiQualitySelect.value),
-    coquiEmotion: asCoquiEmotion(coquiEmotionSelect.value),
-    coquiUseGpu: coquiUseGpuToggle.checked,
-    coquiSplitSentences: coquiSplitSentencesToggle.checked,
     microphoneDeviceId: microphoneSelect.value,
     pushToTalkHotkey: hotkeyCaptureActive
       ? settings.pushToTalkHotkey
@@ -2308,7 +2129,6 @@ function applySettingsValidation(next: PersistedSettings): void {
 }
 
 function applySettingsToForm(next: PersistedSettings): void {
-  const effectiveTtsEngine: TtsEngine = ZERO_PYTHON_MODE ? "piper" : next.ttsEngine;
   apiKeyInput.value = next.apiKey;
   apiBaseUrlInput.value = next.apiBaseUrl;
   sttModelInput.value = next.sttModelName;
@@ -2326,21 +2146,11 @@ function applySettingsToForm(next: PersistedSettings): void {
     microphoneSelect.value = next.microphoneDeviceId;
   }
   piperPathInput.value = next.piperPath;
-  ttsEngineSelect.value = effectiveTtsEngine;
+  ttsEngineSelect.value = next.ttsEngine;
   piperSpeedInput.value = next.piperSpeed.toFixed(2);
   piperSpeedValue.textContent = `${next.piperSpeed.toFixed(2)}x`;
   piperQualitySelect.value = next.piperQuality;
   piperEmotionSelect.value = next.piperEmotion;
-  coquiPythonPathInput.value = next.coquiPythonPath;
-  coquiModelInput.value = next.coquiModelName;
-  coquiLanguageInput.value = next.coquiLanguage;
-  coquiVoiceIdInput.value = next.coquiVoiceId;
-  coquiSpeedInput.value = next.coquiSpeed.toFixed(2);
-  coquiSpeedValue.textContent = `${next.coquiSpeed.toFixed(2)}x`;
-  coquiQualitySelect.value = next.coquiQuality;
-  coquiEmotionSelect.value = next.coquiEmotion;
-  coquiUseGpuToggle.checked = next.coquiUseGpu;
-  coquiSplitSentencesToggle.checked = next.coquiSplitSentences;
   hotkeyInput.value = next.pushToTalkHotkey;
   commandHotkeyInput.value = next.commandHotkey;
   applyDictationLanguageSettingsToForm(next);
@@ -2411,11 +2221,6 @@ async function handleSettingsChange(): Promise<void> {
     commandHotkeyInput.value = commandParsed.label;
   }
 
-  if (ZERO_PYTHON_MODE && next.ttsEngine === "coqui") {
-    next.ttsEngine = "piper";
-    ttsEngineSelect.value = "piper";
-  }
-
   applySettingsValidation(next);
   settings = next;
   cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
@@ -2447,7 +2252,6 @@ async function handleSettingsChange(): Promise<void> {
   applyDictationLanguageSettingsToForm(settings);
   temperatureValue.textContent = settings.temperature.toFixed(2);
   piperSpeedValue.textContent = `${settings.piperSpeed.toFixed(2)}x`;
-  coquiSpeedValue.textContent = `${settings.coquiSpeed.toFixed(2)}x`;
   updateWakePhrasePreview(settings.assistantName);
   hotkeyHint.textContent = cachedHotkeyDisplay;
   captureModeHint.textContent = captureModeLabel(settings.captureMode);
@@ -2455,12 +2259,7 @@ async function handleSettingsChange(): Promise<void> {
   updateRuntimeModeNotice(settings.sttRuntimeMode, settings.aiRuntimeMode);
   syncRuntimeModePaneVisibility(settings.sttRuntimeMode, settings.aiRuntimeMode);
   syncHybridRuntimeFieldVisibility(settings.sttRuntimeMode, settings.aiRuntimeMode);
-  setActiveTtsProfile(settings.ttsEngine === "coqui" ? "coqui" : "piper");
-  if (coquiModelCatalog.includes(settings.coquiModelName)) {
-    coquiModelCatalogSelect.value = settings.coquiModelName;
-  } else if (coquiModelCatalog.length > 0) {
-    coquiModelCatalogSelect.value = "";
-  }
+  setActiveTtsProfile("piper");
   if (providerModelCatalog.includes(settings.aiModelName)) {
     providerModelCatalogSelect.value = settings.aiModelName;
   } else if (providerModelCatalog.includes(settings.sttModelName)) {
@@ -2477,9 +2276,6 @@ async function handleSettingsChange(): Promise<void> {
     localSttModelCatalogSelect.value = settings.localSttModel;
   } else if (localSttModelCatalog.length > 0) {
     localSttModelCatalogSelect.value = "";
-  }
-  if (settings.coquiVoiceId) {
-    coquiVoiceSelect.value = settings.coquiVoiceId;
   }
   if (latestAssistantInfoDefaults) {
     renderAssistantInfo(latestAssistantInfoDefaults);
@@ -2534,11 +2330,6 @@ async function handleSettingsChange(): Promise<void> {
     requestLocalSttRuntimeSyncForMode(settings.sttRuntimeMode, {
       showLoadOverlay: settings.sttRuntimeMode === "local",
     });
-  }
-  if (!ZERO_PYTHON_MODE && settings.ttsEngine === "coqui" && previousTtsEngine !== "coqui") {
-    void refreshCoquiStatusSafely();
-    void refreshCoquiVoices();
-    void refreshCoquiModels({ quiet: true });
   }
   updateTtsSetupGate();
   publishDockState();
@@ -2840,7 +2631,7 @@ async function ensureSelectedLocalSttModel(options: { quiet?: boolean } = {}): P
   if (!quiet) {
     setNotice("No local STT models are available yet. Open Settings > Models and refresh the catalog.", true);
     openSettings("local-stt-model-required");
-    setActiveSettingsPane("offline", "local-stt-model-required");
+    setActiveSettingsPane("models", "local-stt-model-required");
   }
   return "";
 }
@@ -2935,7 +2726,7 @@ async function syncLocalSttRuntimeForMode(
           true,
         );
       }
-      setActiveSettingsPane("offline");
+      setActiveSettingsPane("models");
       return;
     } finally {
       if (showLoadOverlay) {
@@ -4200,11 +3991,8 @@ function asThemeMode(value: unknown): ThemeMode {
   return "system";
 }
 
-function asTtsEngine(value: unknown): TtsEngine {
-  if (ZERO_PYTHON_MODE) {
-    return "piper";
-  }
-  return value === "coqui" ? "coqui" : "piper";
+function asTtsEngine(_value: unknown): TtsEngine {
+  return "piper";
 }
 
 function asRuntimeMode(value: unknown): RuntimeMode {
@@ -4333,26 +4121,6 @@ function asPiperEmotion(value: unknown): PiperEmotion {
     return value;
   }
   return DEFAULT_PIPER_EMOTION;
-}
-
-function asCoquiQuality(value: unknown): CoquiQuality {
-  if (value === "fast" || value === "high") {
-    return value;
-  }
-  return DEFAULT_COQUI_QUALITY;
-}
-
-function asCoquiEmotion(value: unknown): CoquiEmotion {
-  if (
-    value === "calm" ||
-    value === "happy" ||
-    value === "excited" ||
-    value === "serious" ||
-    value === "sad"
-  ) {
-    return value;
-  }
-  return DEFAULT_COQUI_EMOTION;
 }
 
 function updateWakePhrasePreview(name: string): void {
@@ -5242,7 +5010,7 @@ function buildEffectiveSystemPrompt(activeSettings: PersistedSettings, commandMo
   const agentName = activeSettings.assistantName.trim() || DEFAULT_ASSISTANT_NAME;
   const parts = [buildAgentOperatingCorePrompt(agentName)];
   const customPrompt = activeSettings.systemPrompt.trim();
-  if (customPrompt && customPrompt !== LEGACY_DEFAULT_SYSTEM_PROMPT) {
+  if (customPrompt) {
     parts.push(`Custom user instructions:\n${customPrompt}`);
   }
   parts.push(styleProfileInstruction(activeSettings.styleProfile));
@@ -5488,10 +5256,6 @@ async function refreshAssistantInfo(): Promise<void> {
     handleSettingsChange();
   }
 
-  if (!coquiPythonPathInput.value.trim() && info.coquiPythonPath) {
-    coquiPythonPathInput.value = info.coquiPythonPath;
-    handleSettingsChange();
-  }
 }
 
 async function handleAutoSetupRuntime(): Promise<void> {
@@ -5597,7 +5361,7 @@ function applyTtsSetupStatus(status: TtsSetupStatusResponse): void {
 
   if (!status.running && status.completed) {
     if (status.success) {
-      setNotice(ZERO_PYTHON_MODE ? "Piper runtime is ready." : "All TTS runtimes are ready.");
+      setNotice("Piper runtime is ready.");
       if (stage !== "recording") {
         setStage("idle", "TTS setup complete.");
       }
@@ -5627,13 +5391,6 @@ async function pollTtsSetupStatusOnce(): Promise<void> {
     if (!status.running) {
       stopTtsSetupPolling();
       await refreshAssistantInfoSafely();
-      if (!ZERO_PYTHON_MODE && (status.completed || settings.ttsEngine === "coqui")) {
-        await refreshCoquiStatusSafely();
-        await refreshCoquiVoices();
-        if (settings.ttsEngine === "coqui") {
-          await refreshCoquiModels({ quiet: true });
-        }
-      }
       syncActionAvailability();
     }
   } catch (error) {
@@ -5661,15 +5418,15 @@ async function handleSetupAllTts(): Promise<void> {
     return;
   }
 
-  setStage("processing", ZERO_PYTHON_MODE ? "Setting up Piper runtime..." : "Setting up Piper and Coqui runtimes...");
+  setStage("processing", "Setting up Piper runtime...");
   setupAllTtsBtn.disabled = true;
   ttsSetupStatus.textContent = "Starting setup...";
   syncActionAvailability();
 
   try {
     const request = {
-      pythonPath: coquiPythonPathInput.value.trim() || null,
-      useGpu: coquiUseGpuToggle.checked,
+      pythonPath: null,
+      useGpu: false,
     };
     const status = await invoke<TtsSetupStatusResponse>("start_tts_runtime_setup", { request });
     applyTtsSetupStatus(status);
@@ -5682,65 +5439,6 @@ async function handleSetupAllTts(): Promise<void> {
     setStage("error", "Setup failed to start.");
     syncActionAvailability();
   }
-}
-
-function renderCoquiVoiceOptions(voices: string[], preferredVoiceId = ""): void {
-  const safeVoices = Array.from(new Set(voices.map((voice) => voice.trim()).filter(Boolean))).sort();
-
-  if (safeVoices.length === 0) {
-    coquiVoiceSelect.innerHTML = '<option value="">No voices found</option>';
-    coquiVoiceSelect.value = "";
-    return;
-  }
-
-  const selected = safeVoices.includes(preferredVoiceId)
-    ? preferredVoiceId
-    : safeVoices[0];
-
-  coquiVoiceSelect.innerHTML = safeVoices
-    .map((voice) => {
-      const active = voice === selected ? " selected" : "";
-      return `<option value="${escapeHtml(voice)}"${active}>${escapeHtml(voice)}</option>`;
-    })
-    .join("");
-  coquiVoiceSelect.value = selected;
-  if (!coquiVoiceIdInput.value.trim() || !safeVoices.includes(coquiVoiceIdInput.value.trim())) {
-    coquiVoiceIdInput.value = selected;
-  }
-}
-
-function renderCoquiModelCatalog(models: string[], selectedModel = ""): void {
-  const normalized = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean))).sort();
-  const fallbackModel =
-    selectedModel.trim() ||
-    coquiModelInput.value.trim() ||
-    settings.coquiModelName.trim() ||
-    DEFAULT_COQUI_MODEL;
-  const finalModels =
-    normalized.length > 0
-      ? normalized
-      : fallbackModel
-        ? [fallbackModel]
-        : [];
-  coquiModelCatalog = finalModels;
-
-  if (finalModels.length === 0) {
-    coquiModelCatalogSelect.innerHTML = '<option value="">No models available</option>';
-    return;
-  }
-
-  const selected = finalModels.includes(selectedModel)
-    ? selectedModel
-    : finalModels.includes(fallbackModel)
-      ? fallbackModel
-      : "";
-  const options = ['<option value="">Select a model...</option>'];
-  for (const model of finalModels) {
-    const active = model === selected ? " selected" : "";
-    options.push(`<option value="${escapeHtml(model)}"${active}>${escapeHtml(model)}</option>`);
-  }
-  coquiModelCatalogSelect.innerHTML = options.join("");
-  coquiModelCatalogSelect.value = selected;
 }
 
 function renderProviderModelCatalog(models: string[], selectedModel = ""): void {
@@ -5847,7 +5545,7 @@ async function fetchProviderModels(): Promise<void> {
   }
   if (!activeSettings.apiKey) {
     setNotice("API key is required to fetch model catalog.", true);
-    setActiveSettingsPane("online");
+    setActiveSettingsPane("models");
     return;
   }
 
@@ -6034,14 +5732,14 @@ async function ensureLocalOllamaModelSelected(options: { quiet?: boolean } = {})
       `Selected Ollama model "${selected}" appears embedding-only. Choose a chat model (for example llama, qwen, mistral, gemma).`,
       true,
     );
-    setActiveSettingsPane("offline");
+    setActiveSettingsPane("models");
   }
   if (!selected && !quiet) {
     setNotice(
       "No local Ollama model is selected. Open Settings > Models and pull/download a model.",
       true,
     );
-    setActiveSettingsPane("offline");
+    setActiveSettingsPane("models");
   }
   return selected;
 }
@@ -6054,7 +5752,7 @@ async function pullOllamaModel(): Promise<void> {
   const model = activeSettings.localOllamaModel.trim() || localOllamaModelCatalogSelect.value.trim();
   if (!model) {
     setNotice("Enter or select an Ollama model to pull/download.", true);
-    setActiveSettingsPane("offline");
+    setActiveSettingsPane("models");
     return;
   }
 
@@ -6922,193 +6620,6 @@ async function openLocalSttModelPath(): Promise<void> {
   }
 }
 
-function renderCoquiStatus(status: CoquiStatusResponse): void {
-  coquiStatusValue.textContent = ZERO_PYTHON_MODE ? "Disabled" : status.available ? "Ready" : "Unavailable";
-  coquiPythonValue.textContent = status.pythonPath || "-";
-  coquiVersionValue.textContent = status.ttsVersion || "-";
-  coquiCudaValue.textContent = status.cudaAvailable ? "Available" : "Not available";
-  coquiVoiceDirValue.textContent = status.voiceDir || "-";
-  coquiRuntimeInstalled = ZERO_PYTHON_MODE
-    ? false
-    :
-    coquiRuntimeInstalled ||
-    Boolean(status.pythonPath && status.pythonPath.trim().length > 0);
-
-  if (!coquiModelInput.value.trim()) {
-    coquiModelInput.value = status.defaultModel || DEFAULT_COQUI_MODEL;
-  }
-
-  const preferred = coquiVoiceIdInput.value.trim() || settings.coquiVoiceId;
-  renderCoquiVoiceOptions(status.voices, preferred);
-  updateTtsSetupGate();
-}
-
-async function refreshCoquiStatus(): Promise<void> {
-  if (ZERO_PYTHON_MODE) {
-    return;
-  }
-  if (coquiCloneInProgress) {
-    return;
-  }
-  const request = {
-    pythonPath: coquiPythonPathInput.value.trim() || null,
-  };
-  const status = await invoke<CoquiStatusResponse>("get_coqui_status", { request });
-  renderCoquiStatus(status);
-}
-
-async function refreshCoquiVoices(): Promise<void> {
-  if (ZERO_PYTHON_MODE) {
-    return;
-  }
-  if (coquiCloneInProgress) {
-    return;
-  }
-  const request = {
-    pythonPath: coquiPythonPathInput.value.trim() || null,
-  };
-
-  try {
-    const response = await invoke<CoquiVoicesResponse>("list_coqui_voices", { request });
-    coquiVoiceDirValue.textContent = response.voiceDir || coquiVoiceDirValue.textContent;
-    const preferred = coquiVoiceIdInput.value.trim() || settings.coquiVoiceId;
-    renderCoquiVoiceOptions(response.voices, preferred);
-
-    if (coquiVoiceSelect.value) {
-      coquiVoiceIdInput.value = coquiVoiceSelect.value;
-      handleSettingsChange();
-    }
-  } catch (error) {
-    setNotice(`Unable to list Coqui voices: ${asErrorMessage(error)}`, true);
-  }
-}
-
-async function refreshCoquiModels(options: { quiet?: boolean } = {}): Promise<void> {
-  if (ZERO_PYTHON_MODE) {
-    return;
-  }
-  if (coquiCloneInProgress) {
-    return;
-  }
-  if (pipelineRunning || stage === "recording") {
-    return;
-  }
-  const quiet = options.quiet === true;
-  if (!quiet) {
-    setStage("processing", "Loading Coqui model catalog...");
-  }
-  try {
-    const request = {
-      pythonPath: coquiPythonPathInput.value.trim() || null,
-    };
-    const response = await invoke<CoquiModelsResponse>("list_coqui_models", { request });
-    renderCoquiModelCatalog(response.models, coquiModelInput.value.trim());
-    if (!quiet) {
-      setNotice(`Loaded ${response.models.length} Coqui models.`);
-      setStage("idle", "Coqui model list loaded.");
-    }
-  } catch (error) {
-    renderCoquiModelCatalog([], coquiModelInput.value.trim() || DEFAULT_COQUI_MODEL);
-    if (!quiet) {
-      setNotice(
-        `Unable to load Coqui model catalog. Using manual/default model instead: ${asErrorMessage(error)}`,
-        true,
-      );
-      setStage("idle", "Using manual Coqui model.");
-    }
-  } finally {
-    syncActionAvailability();
-  }
-}
-
-async function handleSetupCoquiRuntime(): Promise<void> {
-  if (ZERO_PYTHON_MODE) {
-    setNotice(ZERO_PYTHON_TTS_NOTICE, true);
-    return;
-  }
-  if (pipelineRunning || stage === "recording") {
-    return;
-  }
-
-  setStage("processing", "Setting up Coqui runtime...");
-  try {
-    const request = {
-      pythonPath: coquiPythonPathInput.value.trim() || null,
-      useGpu: coquiUseGpuToggle.checked,
-    };
-    const result = await invoke<CoquiSetupResponse>("setup_coqui_runtime", { request });
-    if (!coquiPythonPathInput.value.trim()) {
-      coquiPythonPathInput.value = result.pythonPath;
-      handleSettingsChange();
-    }
-    await refreshCoquiStatus();
-    await refreshCoquiVoices();
-    await refreshCoquiModels({ quiet: true });
-    setNotice(`Coqui setup completed. ${result.details}`);
-    setStage("idle", "Coqui runtime ready.");
-  } catch (error) {
-    setNotice(`Coqui setup failed: ${asErrorMessage(error)}`, true);
-    setStage("error", "Coqui setup failed.");
-  } finally {
-    syncActionAvailability();
-  }
-}
-
-async function handleValidateCoqui(): Promise<void> {
-  if (ZERO_PYTHON_MODE) {
-    setNotice(ZERO_PYTHON_TTS_NOTICE, true);
-    return;
-  }
-  if (pipelineRunning || stage === "recording") {
-    return;
-  }
-
-  setStage("processing", "Validating Coqui runtime...");
-  try {
-    const request = {
-      pythonPath: coquiPythonPathInput.value.trim() || null,
-    };
-    const result = await invoke<CoquiValidationResponse>("validate_coqui", { request });
-    if (result.ok) {
-      setNotice(result.details);
-      setStage("idle", "Coqui validated.");
-      await refreshCoquiStatusSafely();
-    } else {
-      setNotice(result.details, true);
-      setStage("error", "Coqui validation failed.");
-    }
-  } catch (error) {
-    setNotice(`Coqui validation failed: ${asErrorMessage(error)}`, true);
-    setStage("error", "Coqui validation failed.");
-  } finally {
-    syncActionAvailability();
-  }
-}
-
-async function getAudioDurationSeconds(file: File): Promise<number> {
-  return new Promise<number>((resolve, reject) => {
-    const audio = document.createElement("audio");
-    const objectUrl = URL.createObjectURL(file);
-    audio.preload = "metadata";
-    audio.src = objectUrl;
-
-    const cleanup = (): void => {
-      URL.revokeObjectURL(objectUrl);
-      audio.removeAttribute("src");
-    };
-
-    audio.onloadedmetadata = () => {
-      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-      cleanup();
-      resolve(duration);
-    };
-    audio.onerror = () => {
-      cleanup();
-      reject(new Error("Unable to read audio metadata."));
-    };
-  });
-}
-
 async function decodeAudioSample(file: Blob): Promise<AudioBuffer> {
   const AudioCtor = window.AudioContext;
   if (!AudioCtor) {
@@ -7221,239 +6732,6 @@ function resolvePreferredOnlineSttBitrate(settings: PersistedSettings): number |
   }
 
   return 48_000;
-}
-
-function withWavExtension(fileName: string): string {
-  const trimmed = fileName.trim();
-  if (!trimmed) {
-    return "reference.wav";
-  }
-
-  const dotIndex = trimmed.lastIndexOf(".");
-  if (dotIndex <= 0) {
-    return `${trimmed}.wav`;
-  }
-
-  return `${trimmed.slice(0, dotIndex)}.wav`;
-}
-
-async function prepareCoquiReferenceSample(file: File): Promise<{
-  sampleBlob: Blob;
-  sampleFileName: string;
-  durationSeconds: number;
-  convertedToWav: boolean;
-}> {
-  const extension = file.name.split(".").pop()?.trim().toLowerCase() ?? "";
-  const isWav = extension === "wav";
-
-  let decoded: AudioBuffer | null = null;
-  try {
-    decoded = await decodeAudioSample(file);
-  } catch {
-    decoded = null;
-  }
-
-  const durationSeconds = decoded
-    ? decoded.duration
-    : await getAudioDurationSeconds(file).catch(() => 0);
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-    throw new Error("Unable to read voice sample duration.");
-  }
-  if (durationSeconds > MAX_COQUI_REFERENCE_SECONDS) {
-    throw new Error(
-      `Voice sample must be ${MAX_COQUI_REFERENCE_SECONDS} seconds or less. Current: ${durationSeconds.toFixed(2)}s.`,
-    );
-  }
-
-  if (isWav) {
-    return {
-      sampleBlob: file,
-      sampleFileName: file.name || "reference.wav",
-      durationSeconds,
-      convertedToWav: false,
-    };
-  }
-
-  if (!decoded) {
-    throw new Error("Unable to decode this audio format. Please upload WAV/MP3/WEBM with a standard codec.");
-  }
-
-  const wavBlob = audioBufferToWavBlob(decoded);
-  return {
-    sampleBlob: wavBlob,
-    sampleFileName: withWavExtension(file.name || "reference.wav"),
-    durationSeconds,
-    convertedToWav: true,
-  };
-}
-
-async function handleCloneCoquiVoice(): Promise<void> {
-  if (ZERO_PYTHON_MODE) {
-    setCoquiCloneStatus(ZERO_PYTHON_TTS_NOTICE, true);
-    setNotice(ZERO_PYTHON_TTS_NOTICE, true);
-    return;
-  }
-  if (pipelineRunning || stage === "recording") {
-    setCoquiCloneStatus("Clone blocked while pipeline is busy.", true);
-    logClientEvent("coqui.clone blocked: pipeline busy");
-    return;
-  }
-
-  const selectedFile = coquiVoiceFileInput.files?.item(0) ?? null;
-  if (!selectedFile) {
-    setCoquiCloneStatus("Select a reference sample file first.", true);
-    setNotice("Select a voice sample file before cloning.", true);
-    logClientEvent("coqui.clone blocked: no file selected");
-    return;
-  }
-
-  let speakerId = coquiVoiceIdInput.value.trim();
-  if (!speakerId) {
-    speakerId = `voice_${Date.now()}`;
-    coquiVoiceIdInput.value = speakerId;
-    handleSettingsChange();
-    setCoquiCloneStatus(`Voice profile ID was empty. Using "${speakerId}".`);
-    logClientEvent(`coqui.clone speaker id auto-filled: ${speakerId}`);
-  }
-
-  let preparedSample:
-    | {
-        sampleBlob: Blob;
-        sampleFileName: string;
-        durationSeconds: number;
-        convertedToWav: boolean;
-      }
-    | null = null;
-  try {
-    setCoquiCloneStatus("Reading and validating sample...");
-    logClientEvent(
-      `coqui.clone preparing sample file=${selectedFile.name} type=${selectedFile.type || "unknown"} size=${selectedFile.size}`,
-    );
-    preparedSample = await prepareCoquiReferenceSample(selectedFile);
-  } catch (error) {
-    setCoquiCloneStatus(`Sample processing failed: ${asErrorMessage(error)}`, true);
-    setNotice(`Unable to process voice sample: ${asErrorMessage(error)}`, true);
-    logClientEvent(`coqui.clone failed during sample prep: ${asErrorMessage(error)}`);
-    return;
-  }
-  if (!preparedSample) {
-    setCoquiCloneStatus("Sample processing returned no output.", true);
-    setNotice("Unable to process voice sample.", true);
-    logClientEvent("coqui.clone failed: prepared sample is null");
-    return;
-  }
-
-  setCoquiCloneStatus("Sample ready. Sending clone request (first run can take a few minutes)...");
-  setStage("processing", "Processing sample and cloning Coqui voice...");
-  coquiCloneInProgress = true;
-  try {
-    const audioBase64 = await blobToBase64(preparedSample.sampleBlob);
-    logClientEvent(
-      `coqui.clone invoking backend speaker=${speakerId} duration=${preparedSample.durationSeconds.toFixed(2)} convertedToWav=${preparedSample.convertedToWav}`,
-    );
-    const request = {
-      pythonPath: coquiPythonPathInput.value.trim() || null,
-      modelName: coquiModelInput.value.trim() || DEFAULT_COQUI_MODEL,
-      language: coquiLanguageInput.value.trim() || DEFAULT_COQUI_LANGUAGE,
-      speakerId,
-      audioBase64,
-      fileName: preparedSample.sampleFileName,
-      useGpu: coquiUseGpuToggle.checked,
-    };
-
-    const response = await invoke<CoquiVoiceCloneResponse>("clone_coqui_voice", { request });
-    renderCoquiVoiceOptions(response.voices, response.speakerId);
-    coquiVoiceIdInput.value = response.speakerId;
-    if (response.previewAudioBase64) {
-      coquiVoicePreview.src = `data:audio/wav;base64,${response.previewAudioBase64}`;
-      coquiVoicePreview.currentTime = 0;
-    }
-    handleSettingsChange();
-    setCoquiCloneStatus(
-      `Voice cloned: "${response.speakerId}" (${response.durationSeconds.toFixed(2)}s).`,
-    );
-    setNotice(
-      preparedSample.convertedToWav
-        ? `Voice cloned as "${response.speakerId}" from ${response.durationSeconds.toFixed(2)}s sample (converted from ${selectedFile.name} to WAV).`
-        : `Voice cloned as "${response.speakerId}" from ${response.durationSeconds.toFixed(2)}s sample.`,
-    );
-    logClientEvent(
-      `coqui.clone success speaker=${response.speakerId} voices=${response.voices.length}`,
-    );
-    setStage("idle", "Coqui voice clone ready.");
-  } catch (error) {
-    setCoquiCloneStatus(`Clone failed: ${asErrorMessage(error)}`, true);
-    setNotice(`Coqui voice cloning failed: ${asErrorMessage(error)}`, true);
-    logClientEvent(`coqui.clone failed in backend: ${asErrorMessage(error)}`);
-    setStage("error", "Coqui voice cloning failed.");
-  } finally {
-    coquiCloneInProgress = false;
-    syncActionAvailability();
-    coquiVoiceFileInput.value = "";
-  }
-}
-
-async function handleTestCoquiVoice(): Promise<void> {
-  if (ZERO_PYTHON_MODE) {
-    setCoquiCloneStatus(ZERO_PYTHON_TTS_NOTICE, true);
-    setNotice(ZERO_PYTHON_TTS_NOTICE, true);
-    return;
-  }
-  if (pipelineRunning || stage === "recording" || coquiCloneInProgress) {
-    setCoquiCloneStatus("Voice test is blocked while another task is running.", true);
-    return;
-  }
-
-  const speakerId = (coquiVoiceIdInput.value.trim() || coquiVoiceSelect.value.trim()).trim();
-  if (!speakerId) {
-    setCoquiCloneStatus("Select a cloned voice before testing.", true);
-    setNotice("Select a cloned Coqui voice profile before testing.", true);
-    return;
-  }
-
-  if (coquiVoiceIdInput.value.trim() !== speakerId) {
-    coquiVoiceIdInput.value = speakerId;
-    handleSettingsChange();
-  }
-
-  setCoquiCloneStatus(`Generating preview for "${speakerId}"...`);
-  setStage("processing", "Generating Coqui voice preview...");
-  logClientEvent(`coqui.preview start speaker=${speakerId}`);
-
-  try {
-    const request = {
-      pythonPath: coquiPythonPathInput.value.trim() || null,
-      modelName: coquiModelInput.value.trim() || DEFAULT_COQUI_MODEL,
-      language: coquiLanguageInput.value.trim() || DEFAULT_COQUI_LANGUAGE,
-      speakerId,
-      text: "Hello. This is a preview of your selected cloned voice.",
-      speed: coquiSpeedInput.value ? Number(coquiSpeedInput.value) : DEFAULT_COQUI_SPEED,
-      quality: coquiQualitySelect.value,
-      emotion: coquiEmotionSelect.value,
-      useGpu: coquiUseGpuToggle.checked,
-      splitSentences: coquiSplitSentencesToggle.checked,
-    };
-    const response = await invoke<CoquiVoicePreviewResponse>("preview_coqui_voice", { request });
-
-    coquiVoicePreview.src = `data:audio/wav;base64,${response.audioBase64}`;
-    coquiVoicePreview.currentTime = 0;
-    await coquiVoicePreview.play().catch(() => {
-      // Playback can be blocked by autoplay policy; keep source loaded for manual play.
-    });
-
-    setCoquiCloneStatus(`Preview ready for "${speakerId}".`);
-    setNotice(`Coqui preview generated for "${speakerId}".`);
-    logClientEvent(`coqui.preview success speaker=${speakerId}`);
-    setStage("idle", "Coqui voice preview ready.");
-  } catch (error) {
-    const message = asErrorMessage(error);
-    setCoquiCloneStatus(`Voice preview failed: ${message}`, true);
-    setNotice(`Coqui voice preview failed: ${message}`, true);
-    logClientEvent(`coqui.preview failed speaker=${speakerId} error=${message}`);
-    setStage("error", "Coqui voice preview failed.");
-  } finally {
-    syncActionAvailability();
-  }
 }
 
 function missingApiKeyForOnlineRuntime(activeSettings: PersistedSettings): boolean {
@@ -7864,8 +7142,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       )} bytes=${pipelineAudioBlob.size} mime=${pipelineAudioMimeType || "unknown"}`,
     );
     const systemPrompt = buildEffectiveSystemPrompt(activeSettings, commandModeArmed);
-    const coquiVoiceId = activeSettings.coquiVoiceId || coquiVoiceSelect.value || "";
-    const pipelineTtsEngine: TtsEngine = ZERO_PYTHON_MODE ? "piper" : activeSettings.ttsEngine;
+    const pipelineTtsEngine: TtsEngine = "piper";
     let selectedTextForRewrite: string | null = null;
     if (commandModeArmed) {
       const primedSelected = (commandSelectionSnapshot ?? "").trim();
@@ -7906,7 +7183,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
           true,
         );
         openSettings("missing-local-stt-files");
-        setActiveSettingsPane("offline", "missing-local-stt-files");
+        setActiveSettingsPane("models", "missing-local-stt-files");
         setStage("idle", "Local setup required.");
         return;
       }
@@ -7916,7 +7193,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
           "Local STT mode needs a local STT model (Parakeet). Open Settings > Models and select one.",
           true,
         );
-        setActiveSettingsPane("offline");
+        setActiveSettingsPane("models");
         setStage("idle", "Local setup required.");
         return;
       }
@@ -7947,7 +7224,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
           "Local AI mode needs a local Ollama model. Open Settings > Models and pull/download one.",
           true,
         );
-        setActiveSettingsPane("offline");
+        setActiveSettingsPane("models");
         setStage("idle", "Local setup required.");
         return;
       }
@@ -7993,28 +7270,12 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
         assistantName: activeSettings.assistantName || DEFAULT_ASSISTANT_NAME,
         selectedText: selectedTextForRewrite,
         ttsEngine: pipelineTtsEngine,
-        piper:
-          pipelineTtsEngine === "piper"
-            ? {
-                speed: activeSettings.piperSpeed,
-                quality: activeSettings.piperQuality,
-                emotion: activeSettings.piperEmotion,
-              }
-            : null,
-        coqui:
-          pipelineTtsEngine === "coqui"
-            ? {
-                pythonPath: activeSettings.coquiPythonPath || null,
-                modelName: activeSettings.coquiModelName,
-                language: activeSettings.coquiLanguage || DEFAULT_COQUI_LANGUAGE,
-                speakerId: coquiVoiceId || null,
-                speed: activeSettings.coquiSpeed,
-                quality: activeSettings.coquiQuality,
-                emotion: activeSettings.coquiEmotion,
-                useGpu: activeSettings.coquiUseGpu,
-                splitSentences: activeSettings.coquiSplitSentences,
-              }
-            : null,
+        piper: {
+          speed: activeSettings.piperSpeed,
+          quality: activeSettings.piperQuality,
+          emotion: activeSettings.piperEmotion,
+        },
+        coqui: null,
       },
     });
     logClientEvent(
@@ -8185,8 +7446,8 @@ function appendConversationEntry(
   }
 }
 
-async function playGeneratedAudio(audioBase64: string, engine: TtsEngine): Promise<boolean> {
-  setStage("speaking", `Playing ${engine === "coqui" ? "Coqui" : "Piper"} audio...`);
+async function playGeneratedAudio(audioBase64: string, _engine: TtsEngine): Promise<boolean> {
+  setStage("speaking", "Playing Piper audio...");
 
   let playback!: ActiveTtsPlayback;
   let settled = false;
@@ -8265,10 +7526,6 @@ function renderAssistantInfo(info: AssistantInfoResponse): void {
   voiceStatusValue.textContent = info.voiceInstalled ? "Installed" : "Missing";
   voicePathValue.textContent = info.voiceModelPath;
   piperRuntimeReady = Boolean(info.piperInstalled && info.voiceInstalled);
-  coquiRuntimeInstalled = ZERO_PYTHON_MODE ? false : Boolean(info.coquiInstalled);
-  if (!coquiPythonValue.textContent || coquiPythonValue.textContent === "-") {
-    coquiPythonValue.textContent = info.coquiPythonPath || "-";
-  }
   updateTtsSetupGate();
 }
 
@@ -8691,11 +7948,6 @@ function stageLabel(next: Stage): string {
 function setNotice(message: string, isError = false): void {
   noticeText.textContent = message;
   noticeText.dataset.tone = isError ? "error" : "normal";
-}
-
-function setCoquiCloneStatus(message: string, isError = false): void {
-  coquiCloneStatus.textContent = message;
-  coquiCloneStatus.dataset.tone = isError ? "error" : "normal";
 }
 
 function logClientEvent(message: string): void {
@@ -9287,12 +8539,6 @@ function syncActionAvailability(): void {
   setupRuntimeBtn.disabled = busy;
   validatePiperBtn.disabled = busy;
   downloadVoiceBtn.disabled = busy;
-  setupCoquiBtn.disabled = busy;
-  validateCoquiBtn.disabled = busy;
-  refreshCoquiVoicesBtn.disabled = busy;
-  refreshCoquiModelsBtn.disabled = busy;
-  cloneCoquiVoiceBtn.disabled = busy;
-  testCoquiVoiceBtn.disabled = busy;
   setupAllTtsBtn.disabled = busy;
   clearHistoryBtn.disabled = busy;
   fetchProviderModelsBtn.disabled = busy;
@@ -9335,18 +8581,6 @@ function syncActionAvailability(): void {
   piperQualitySelect.disabled = busy;
   piperEmotionSelect.disabled = busy;
   piperSpeedInput.disabled = busy;
-  coquiPythonPathInput.disabled = busy;
-  coquiModelInput.disabled = busy;
-  coquiLanguageInput.disabled = busy;
-  coquiVoiceIdInput.disabled = busy;
-  coquiVoiceSelect.disabled = busy;
-  coquiModelCatalogSelect.disabled = busy;
-  coquiQualitySelect.disabled = busy;
-  coquiEmotionSelect.disabled = busy;
-  coquiSpeedInput.disabled = busy;
-  coquiUseGpuToggle.disabled = busy;
-  coquiSplitSentencesToggle.disabled = busy;
-  coquiVoiceFileInput.disabled = busy;
   hotkeyInput.disabled = busy;
   commandHotkeyInput.disabled = busy;
   captureModeSingleInput.disabled = busy;
@@ -9371,8 +8605,6 @@ function syncActionAvailability(): void {
   renderLocalSttSettingsStatus();
   snippetsAddBtnTop.disabled = busy;
 
-  const piperSelected = settings.ttsEngine === "piper";
-  const coquiSelected = settings.ttsEngine === "coqui";
   const allRuntimeLocal = settings.sttRuntimeMode === "local" && settings.aiRuntimeMode === "local";
   fetchProviderModelsBtn.disabled = fetchProviderModelsBtn.disabled || allRuntimeLocal;
   applyModelToAiBtn.disabled = applyModelToAiBtn.disabled || allRuntimeLocal;
@@ -9383,32 +8615,6 @@ function syncActionAvailability(): void {
   sttModelInput.disabled = sttModelInput.disabled || allRuntimeLocal;
   aiModelInput.disabled = aiModelInput.disabled || allRuntimeLocal;
   providerModelCatalogSelect.disabled = providerModelCatalogSelect.disabled || allRuntimeLocal;
-  setupRuntimeBtn.disabled = setupRuntimeBtn.disabled || !piperSelected;
-  validatePiperBtn.disabled = validatePiperBtn.disabled || !piperSelected;
-  downloadVoiceBtn.disabled = downloadVoiceBtn.disabled || !piperSelected;
-  piperPathInput.disabled = piperPathInput.disabled || !piperSelected;
-  piperQualitySelect.disabled = piperQualitySelect.disabled || !piperSelected;
-  piperEmotionSelect.disabled = piperEmotionSelect.disabled || !piperSelected;
-  piperSpeedInput.disabled = piperSpeedInput.disabled || !piperSelected;
-
-  setupCoquiBtn.disabled = setupCoquiBtn.disabled || !coquiSelected;
-  validateCoquiBtn.disabled = validateCoquiBtn.disabled || !coquiSelected;
-  refreshCoquiVoicesBtn.disabled = refreshCoquiVoicesBtn.disabled || !coquiSelected;
-  refreshCoquiModelsBtn.disabled = refreshCoquiModelsBtn.disabled || !coquiSelected;
-  cloneCoquiVoiceBtn.disabled = cloneCoquiVoiceBtn.disabled || !coquiSelected;
-  testCoquiVoiceBtn.disabled = testCoquiVoiceBtn.disabled || !coquiSelected;
-  coquiPythonPathInput.disabled = coquiPythonPathInput.disabled || !coquiSelected;
-  coquiModelInput.disabled = coquiModelInput.disabled || !coquiSelected;
-  coquiLanguageInput.disabled = coquiLanguageInput.disabled || !coquiSelected;
-  coquiVoiceIdInput.disabled = coquiVoiceIdInput.disabled || !coquiSelected;
-  coquiVoiceSelect.disabled = coquiVoiceSelect.disabled || !coquiSelected;
-  coquiModelCatalogSelect.disabled = coquiModelCatalogSelect.disabled || !coquiSelected;
-  coquiQualitySelect.disabled = coquiQualitySelect.disabled || !coquiSelected;
-  coquiEmotionSelect.disabled = coquiEmotionSelect.disabled || !coquiSelected;
-  coquiSpeedInput.disabled = coquiSpeedInput.disabled || !coquiSelected;
-  coquiUseGpuToggle.disabled = coquiUseGpuToggle.disabled || !coquiSelected;
-  coquiSplitSentencesToggle.disabled = coquiSplitSentencesToggle.disabled || !coquiSelected;
-  coquiVoiceFileInput.disabled = coquiVoiceFileInput.disabled || !coquiSelected;
 }
 
 async function engagePushToTalk(source: HoldSource): Promise<void> {
@@ -10630,17 +9836,6 @@ async function refreshAssistantInfoSafely(): Promise<void> {
     await refreshAssistantInfo();
   } catch (error) {
     setNotice(`Unable to refresh runtime status: ${asErrorMessage(error)}`, true);
-  }
-}
-
-async function refreshCoquiStatusSafely(): Promise<void> {
-  if (ZERO_PYTHON_MODE) {
-    return;
-  }
-  try {
-    await refreshCoquiStatus();
-  } catch (error) {
-    setNotice(`Unable to refresh Coqui status: ${asErrorMessage(error)}`, true);
   }
 }
 

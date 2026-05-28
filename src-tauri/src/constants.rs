@@ -25,7 +25,6 @@ pub const COQUI_MAX_REFERENCE_SECONDS: f32 = 30.0;
 pub const MAX_TTS_INPUT_LENGTH: usize = 2000;
 pub const PENDING_SELECTION_REWRITE_TTL_SECS: u64 = 90;
 pub const RECENT_SELECTION_CONTEXT_TTL_SECS: u64 = 240;
-pub const COQUI_BRIDGE_SCRIPT: &str = include_str!("../coqui_bridge.py");
 pub const LOCAL_STT_BRIDGE_SCRIPT: &str = include_str!("../local_stt_bridge.py");
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const TRAY_ID: &str = "slasshywispr-tray";
