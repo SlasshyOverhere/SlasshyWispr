@@ -256,7 +256,6 @@ const windowMaximizeGlyph = requiredElement<HTMLElement>("#windowMaximizeGlyph")
 const windowCloseBtn = requiredElement<HTMLButtonElement>("#windowCloseBtn");
 
 const pageNavButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-page-nav]"));
-const pagePanels = Array.from(document.querySelectorAll<HTMLElement>("[data-page]"));
 const settingsNavButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>("[data-settings-pane-nav]"),
 );
@@ -1627,17 +1626,16 @@ function setActivePage(next: MainPage, options: { forceRender?: boolean } = {}):
   const forceRender = options.forceRender ?? false;
   activePage = next;
   localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, next);
+
+  // Let React control nav button and panel classes via the store event below.
+  // Vanilla JS only updates aria-current for accessibility.
   for (const navButton of pageNavButtons) {
     const current = navButton.dataset.pageNav === next;
-    navButton.classList.toggle("is-active", current);
     navButton.setAttribute("aria-current", current ? "page" : "false");
   }
 
-  for (const panel of pagePanels) {
-    const current = panel.dataset.page === next;
-    panel.classList.toggle("is-active", current);
-    panel.hidden = !current;
-  }
+  // Notify React to re-render with the new active page.
+  window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
 
   if (next === "home") {
     if (forceRender || homeHistoryNeedsRender) {
@@ -1647,8 +1645,6 @@ function setActivePage(next: MainPage, options: { forceRender?: boolean } = {}):
     if (forceRender || fullHistoryNeedsRender) {
       renderFullHistory();
     }
-  } else if (next === "analytics") {
-    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
   }
 }
 

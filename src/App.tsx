@@ -113,7 +113,7 @@ export function App() {
           </aside>
 
           <main className="flow-content">
-            <section className={`flow-page ${state.activePage === 'home' ? 'is-active' : ''}`} data-page="home" hidden={state.activePage !== 'home'}>
+            <section className={`flow-page ${state.activePage === 'home' ? 'is-active' : ''}`} data-page="home">
               <div className="flow-page-inner home-page">
                 <header className="overview-header">
                   <div>
@@ -229,7 +229,7 @@ export function App() {
               </div>
             </section>
 
-            <section className={`flow-page ${state.activePage === 'history' ? 'is-active' : ''}`} data-page="history" hidden={state.activePage !== 'history'}>
+            <section className={`flow-page ${state.activePage === 'history' ? 'is-active' : ''}`} data-page="history">
               <div className="flow-page-inner">
                 <header className="page-header-row">
                   <div>
@@ -277,7 +277,7 @@ export function App() {
               </div>
             </section>
 
-            <section className={`flow-page ${state.activePage === 'dictionary' ? 'is-active' : ''}`} data-page="dictionary" hidden={state.activePage !== 'dictionary'}>
+            <section className={`flow-page ${state.activePage === 'dictionary' ? 'is-active' : ''}`} data-page="dictionary">
               <div className="flow-page-inner">
                 <header className="page-header-row">
                   <div>
@@ -360,7 +360,7 @@ export function App() {
               </div>
             </section>
 
-            <section className={`flow-page ${state.activePage === 'snippets' ? 'is-active' : ''}`} data-page="snippets" hidden={state.activePage !== 'snippets'}>
+            <section className={`flow-page ${state.activePage === 'snippets' ? 'is-active' : ''}`} data-page="snippets">
               <div className="flow-page-inner">
                 <header className="page-header-row">
                   <div>
@@ -419,7 +419,7 @@ export function App() {
               </div>
             </section>
 
-            <section className={`flow-page ${state.activePage === 'notes' ? 'is-active' : ''}`} data-page="notes" hidden={state.activePage !== 'notes'}>
+            <section className={`flow-page ${state.activePage === 'notes' ? 'is-active' : ''}`} data-page="notes">
               <div className="flow-page-inner notes-layout">
                 <header className="page-header-row">
                   <div>
@@ -456,13 +456,11 @@ export function App() {
               </div>
             </section>
 
-            <section className={`flow-page ${state.activePage === 'analytics' ? 'is-active' : ''}`} data-page="analytics" hidden={state.activePage !== 'analytics'}>
+            <section className={`flow-page ${state.activePage === 'analytics' ? 'is-active' : ''}`} data-page="analytics">
               <div className="flow-page-inner">
-                {state.activePage === 'analytics' && (
-                  <ErrorBoundary>
-                    <AnalyticsPage usage={state.usage} analyticsSessions={state.analyticsSessions} achievementStates={state.achievementStates} />
-                  </ErrorBoundary>
-                )}
+                <ErrorBoundary>
+                  <AnalyticsPage usage={state.usage} analyticsSessions={state.analyticsSessions} achievementStates={state.achievementStates} />
+                </ErrorBoundary>
               </div>
             </section>
           </main>
