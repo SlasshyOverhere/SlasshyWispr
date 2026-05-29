@@ -47,14 +47,17 @@ function formatDate(ts: number): string {
 function groupByDate(sessions: AnalyticsSessionDetail[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const s of sessions) {
-    const key = new Date(s.date).toISOString().slice(0, 10);
+    const key = getDayKey(new Date(s.date));
     map.set(key, (map.get(key) || 0) + s.words);
   }
   return map;
 }
 
 function getDayKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function getStreak(sessions: AnalyticsSessionDetail[]): number {
@@ -66,7 +69,8 @@ function getStreak(sessions: AnalyticsSessionDetail[]): number {
   let streak = 0;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  for (let i = 0; i < 365; i++) {
+  // Start from yesterday so the streak persists even if user hasn't dictated yet today
+  for (let i = 1; i < 366; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     const key = getDayKey(d);
@@ -75,6 +79,10 @@ function getStreak(sessions: AnalyticsSessionDetail[]): number {
     } else {
       break;
     }
+  }
+  // If user dictated today, add it to the streak
+  if (activeDays.has(getDayKey(today))) {
+    streak++;
   }
   return streak;
 }
@@ -158,7 +166,9 @@ function ActivityHeatmap({ sessions, range }: { sessions: AnalyticsSessionDetail
         if (!rows[r]) rows[r] = [];
         const key = getDayKey(cell);
         const count = activeDays.get(key) || 0;
-        const diff = Math.floor((now.getTime() - cell.getTime()) / (1000 * 60 * 60 * 24));
+        const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const cellMidnight = new Date(cell.getFullYear(), cell.getMonth(), cell.getDate());
+        const diff = Math.floor((nowMidnight.getTime() - cellMidnight.getTime()) / (1000 * 60 * 60 * 24));
         if (diff > maxDays) {
           rows[r].push({ key, count: -1, label: '' });
         } else {
@@ -264,9 +274,9 @@ function RecentActivity({ sessions }: { sessions: AnalyticsSessionDetail[] }) {
 
 function AchievementsGrid({ usage, achievementStates }: { usage: UsageStats; achievementStates: AchievementState[] }) {
   const currentMetric = (m: 'words' | 'sessions' | 'speakingSeconds'): number => {
-    if (m === 'words') return usage.words;
-    if (m === 'sessions') return usage.sessions;
-    return usage.speakingSeconds;
+    if (m === 'words') return usage.words + (usage.prevWords || 0);
+    if (m === 'sessions') return usage.sessions + (usage.prevSessions || 0);
+    return usage.speakingSeconds + (usage.prevSpeakingSeconds || 0);
   };
 
   const stateMap = useMemo(() => {
@@ -318,7 +328,10 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
   useEffect(() => {
     const handler = (): void => {
       setLocalUsage(parseJson<UsageStats>(USAGE_KEY, initialUsage));
-      setLocalSessions(parseJson<AnalyticsSessionDetail[]>(SESSIONS_KEY, initialSessions));
+      const parsed = parseJson<AnalyticsSessionDetail[]>(SESSIONS_KEY, []);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        setLocalSessions(parsed);
+      }
       setLocalAchievements(parseJson<AchievementState[]>(ACHIEVEMENTS_KEY, initialAchievements));
     };
     window.addEventListener('slasshy:store-updated', handler);
@@ -327,7 +340,9 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
 
   const filteredSessions = useMemo(() => {
     if (range === 'all') return localSessions;
-    const cutoff = Date.now() - (range === '7d' ? 7 : 30) * 24 * 60 * 60 * 1000;
+    const nowDate = new Date();
+    const cutoffDate = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() - (range === '7d' ? 7 : 30));
+    const cutoff = cutoffDate.getTime();
     return localSessions.filter(s => s.date >= cutoff);
   }, [localSessions, range]);
 
@@ -337,8 +352,7 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
   const periodSeconds = useMemo(() => filteredSessions.reduce((a, s) => a + s.speakingSeconds, 0), [filteredSessions]);
   const periodSessions = filteredSessions.length;
   const periodWpm = useMemo(() => {
-    const valid = filteredSessions.filter(s => s.wpm > 0);
-    return valid.length > 0 ? valid.reduce((a, s) => a + s.wpm, 0) / valid.length : 0;
+    return filteredSessions.length > 0 ? filteredSessions.reduce((a, s) => a + s.wpm, 0) / filteredSessions.length : 0;
   }, [filteredSessions]);
 
   const streak = useMemo(() => getStreak(localSessions), [localSessions]);
@@ -379,7 +393,7 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
 
       <RecentActivity sessions={filteredSessions} />
 
-      <ActivityHeatmap sessions={localSessions} range={range} />
+      <ActivityHeatmap sessions={filteredSessions} range={range} />
 
       <AchievementsGrid usage={localUsage} achievementStates={localAchievements} />
     </div>

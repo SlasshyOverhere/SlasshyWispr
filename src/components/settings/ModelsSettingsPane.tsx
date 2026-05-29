@@ -1,4 +1,4 @@
-import { DEFAULT_COQUI_MODEL, DEFAULT_LOCAL_OLLAMA_BASE_URL } from '../../constants';
+import { DEFAULT_LOCAL_OLLAMA_BASE_URL } from '../../constants';
 
 export function ModelsSettingsPane() {
   return (
@@ -289,7 +289,7 @@ export function ModelsSettingsPane() {
             </label>
             <label className="field">
               <span>Coqui model</span>
-              <input id="coquiModelInput" type="text" placeholder={DEFAULT_COQUI_MODEL} autoComplete="off" />
+              <input id="coquiModelInput" type="text" placeholder="tts_models/multilingual/multi-dataset/xtts_v2" autoComplete="off" />
             </label>
             <label className="field">
               <span>Language code</span>

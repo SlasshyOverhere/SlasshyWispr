@@ -5,6 +5,7 @@ import {
   DICTIONARY_STORAGE_KEY,
   HOME_HISTORY_STORAGE_KEY,
   NOTES_STORAGE_KEY,
+  SETTINGS_STORAGE_KEY,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   SNIPPETS_STORAGE_KEY,
   USAGE_STORAGE_KEY,
@@ -39,6 +40,7 @@ export interface UIState {
   notes: QuickNoteEntry[];
   analyticsSessions: AnalyticsSessionDetail[];
   achievementStates: AchievementState[];
+  incognitoMode: boolean;
 }
 
 type Listener = (state: UIState) => void;
@@ -161,6 +163,17 @@ function loadAchievementStates(): AchievementState[] {
   return Array.isArray(parsed) ? parsed : [];
 }
 
+function loadIncognitoMode(): boolean {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    return parsed?.incognitoMode === true;
+  } catch {
+    return false;
+  }
+}
+
 function loadInitialState(): UIState {
   return {
     activePage: loadActivePage(),
@@ -172,6 +185,7 @@ function loadInitialState(): UIState {
     notes: loadNotes(),
     analyticsSessions: loadAnalyticsSessions(),
     achievementStates: loadAchievementStates(),
+    incognitoMode: loadIncognitoMode(),
   };
 }
 
@@ -185,6 +199,7 @@ function createUIStore() {
   };
 
   window.addEventListener('storage', notify);
+  window.addEventListener('slasshy:store-updated', notify);
 
   return {
     getState(): UIState {

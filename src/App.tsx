@@ -14,8 +14,47 @@ function useUIState() {
   return state;
 }
 
+type HistoryFilter = { filter: "all" | "day" | "week" | "month"; specificDate?: string };
+
+function useHistoryFilter(): HistoryFilter {
+  const [hf, setHf] = useState<HistoryFilter>({ filter: "all" });
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<HistoryFilter>).detail;
+      if (detail) setHf(detail);
+    };
+    window.addEventListener("slasshy:history-filter", handler);
+    return () => window.removeEventListener("slasshy:history-filter", handler);
+  }, []);
+  return hf;
+}
+
+function filterHistory(entries: HomeHistoryEntry[], hf: HistoryFilter): HomeHistoryEntry[] {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (hf.specificDate) {
+    const parts = hf.specificDate.split("-");
+    const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const end = start + 24 * 60 * 60 * 1000;
+    return entries.filter(e => e.timestamp >= start && e.timestamp < end);
+  }
+  if (hf.filter === "day") return entries.filter(e => e.timestamp >= todayStart);
+  if (hf.filter === "week") {
+    const dow = now.getDay();
+    const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow).getTime();
+    return entries.filter(e => e.timestamp >= weekStart);
+  }
+  if (hf.filter === "month") {
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    return entries.filter(e => e.timestamp >= monthStart);
+  }
+  return entries;
+}
+
 export function App() {
   const state = useUIState();
+  const historyFilter = useHistoryFilter();
 
   return (
     <>
@@ -23,7 +62,7 @@ export function App() {
         <header className="app-titlebar">
           <div id="appTitlebarDrag" className="app-titlebar-drag" data-tauri-drag-region="true">
             <div className="brand-row">
-              <strong>SlasshyWispr</strong>
+              <strong>SlasshyWispr{import.meta.env.DEV && " Dev"}</strong>
             </div>
           </div>
           <div className="app-titlebar-actions">
@@ -113,7 +152,7 @@ export function App() {
           </aside>
 
           <main className="flow-content">
-            <section className={`flow-page ${state.activePage === 'home' ? 'is-active' : ''}`} data-page="home" hidden={state.activePage !== 'home'}>
+            <section className={`flow-page ${state.activePage === 'home' ? 'is-active' : ''}`} data-page="home">
               <div className="flow-page-inner home-page">
                 <header className="overview-header">
                   <div>
@@ -211,25 +250,32 @@ export function App() {
                     </div>
                   </div>
                   <div id="conversationLog" className="conversation-log" role="log" aria-live="polite">
-                    {state.history.length === 0 ? (
-                      <div className="empty-hint">
-                        <div className="empty-hint-icon">
-                          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+                    {state.incognitoMode ? (
+                      <p className="empty-hint">Incognito mode enabled. History is hidden.</p>
+                    ) : (() => {
+                      const now = new Date();
+                      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                      const todayEntries = state.history.filter(e => e.timestamp >= todayStart);
+                      return todayEntries.length === 0 ? (
+                        <div className="empty-hint">
+                          <div className="empty-hint-icon">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+                          </div>
+                          <h4>No activity yet</h4>
+                          <p>Start dictating to see your recent transcriptions here.</p>
                         </div>
-                        <h4>No activity yet</h4>
-                        <p>Start dictating to see your recent transcriptions here.</p>
-                      </div>
-                    ) : (
-                      state.history.slice(0, 10).map((entry, i) => (
-                        <HistoryRow key={`${entry.timestamp}-${i}`} entry={entry} />
-                      ))
-                    )}
+                      ) : (
+                        todayEntries.slice(0, 10).map((entry, i) => (
+                          <HistoryRow key={`${entry.timestamp}-${i}`} entry={entry} />
+                        ))
+                      );
+                    })()}
                   </div>
                 </section>
               </div>
             </section>
 
-            <section className={`flow-page ${state.activePage === 'history' ? 'is-active' : ''}`} data-page="history" hidden={state.activePage !== 'history'}>
+            <section className={`flow-page ${state.activePage === 'history' ? 'is-active' : ''}`} data-page="history">
               <div className="flow-page-inner">
                 <header className="page-header-row">
                   <div>
@@ -264,20 +310,25 @@ export function App() {
                   </div>
                 </div>
                 <div id="fullHistoryLog" className="conversation-log full-history-log" role="log" aria-live="polite">
-                   {state.history.length === 0 ? (
-                      <div className="empty-hint">
-                         <h4>No history yet</h4>
-                      </div>
-                    ) : (
-                      state.history.map((entry, i) => (
-                        <HistoryRow key={`full-${entry.timestamp}-${i}`} entry={entry} />
-                      ))
-                    )}
+                   {state.incognitoMode ? (
+                      <p className="empty-hint">Incognito mode enabled. History is hidden.</p>
+                    ) : (() => {
+                      const filtered = filterHistory(state.history, historyFilter);
+                      return filtered.length === 0 ? (
+                        <div className="empty-hint">
+                           <h4>No history yet</h4>
+                        </div>
+                      ) : (
+                        filtered.map((entry, i) => (
+                          <HistoryRow key={`full-${entry.timestamp}-${i}`} entry={entry} />
+                        ))
+                      );
+                    })()}
                 </div>
               </div>
             </section>
 
-            <section className={`flow-page ${state.activePage === 'dictionary' ? 'is-active' : ''}`} data-page="dictionary" hidden={state.activePage !== 'dictionary'}>
+            <section className={`flow-page ${state.activePage === 'dictionary' ? 'is-active' : ''}`} data-page="dictionary">
               <div className="flow-page-inner">
                 <header className="page-header-row">
                   <div>
@@ -360,7 +411,7 @@ export function App() {
               </div>
             </section>
 
-            <section className={`flow-page ${state.activePage === 'snippets' ? 'is-active' : ''}`} data-page="snippets" hidden={state.activePage !== 'snippets'}>
+            <section className={`flow-page ${state.activePage === 'snippets' ? 'is-active' : ''}`} data-page="snippets">
               <div className="flow-page-inner">
                 <header className="page-header-row">
                   <div>
@@ -419,7 +470,7 @@ export function App() {
               </div>
             </section>
 
-            <section className={`flow-page ${state.activePage === 'notes' ? 'is-active' : ''}`} data-page="notes" hidden={state.activePage !== 'notes'}>
+            <section className={`flow-page ${state.activePage === 'notes' ? 'is-active' : ''}`} data-page="notes">
               <div className="flow-page-inner notes-layout">
                 <header className="page-header-row">
                   <div>
@@ -456,13 +507,11 @@ export function App() {
               </div>
             </section>
 
-            <section className={`flow-page ${state.activePage === 'analytics' ? 'is-active' : ''}`} data-page="analytics" hidden={state.activePage !== 'analytics'}>
+            <section className={`flow-page ${state.activePage === 'analytics' ? 'is-active' : ''}`} data-page="analytics">
               <div className="flow-page-inner">
-                {state.activePage === 'analytics' && (
-                  <ErrorBoundary>
-                    <AnalyticsPage usage={state.usage} analyticsSessions={state.analyticsSessions} achievementStates={state.achievementStates} />
-                  </ErrorBoundary>
-                )}
+                <ErrorBoundary>
+                  <AnalyticsPage usage={state.usage} analyticsSessions={state.analyticsSessions} achievementStates={state.achievementStates} />
+                </ErrorBoundary>
               </div>
             </section>
           </main>

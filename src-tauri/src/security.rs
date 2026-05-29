@@ -1,3 +1,7 @@
+// NOTE: This module is currently test-only. The public functions below are not wired into
+// production code (lib.rs) but are exercised by the integration test suite.
+// Retain until the security helpers are integrated or the tests are migrated.
+
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 use std::fs;
