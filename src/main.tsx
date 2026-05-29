@@ -1496,7 +1496,12 @@ clearStatsBtn.addEventListener("click", async () => {
   }
   usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
   persistUsageStats();
+  analyticsSessionDetails = [];
+  persistAnalyticsSessionDetails();
+  achievementStates = [];
+  persistAchievementStates();
   updateUsageMetrics();
+  window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
   setNotice("Statistics have been reset.");
 });
 
@@ -4185,14 +4190,14 @@ function loadUsageStats(): UsageStats {
     
     if (now - lastReset > sevenDaysMs) {
       return {
-        sessions: coerceInteger(parsed.sessions, 0, 0, 999_999),
-        words: coerceInteger(parsed.words, 0, 0, 99_999_999),
-        avgWpm: coerceNumber(parsed.avgWpm, 0, 0, 600),
-        speakingSeconds: coerceInteger(parsed.speakingSeconds, 0, 0, 99_999_999),
-        prevSessions: coerceInteger(parsed.sessions, 0, 0, 999_999),
-        prevWords: coerceInteger(parsed.words, 0, 0, 99_999_999),
-        prevWpm: coerceNumber(parsed.avgWpm, 0, 0, 600),
-        prevSpeakingSeconds: coerceInteger(parsed.speakingSeconds, 0, 0, 99_999_999),
+        sessions: 0,
+        words: 0,
+        avgWpm: 0,
+        speakingSeconds: 0,
+        prevSessions: coerceInteger((parsed.prevSessions || 0) + (parsed.sessions || 0), 0, 0, 999_999),
+        prevWords: coerceInteger((parsed.prevWords || 0) + (parsed.words || 0), 0, 0, 99_999_999),
+        prevWpm: 0,
+        prevSpeakingSeconds: coerceInteger((parsed.prevSpeakingSeconds || 0) + (parsed.speakingSeconds || 0), 0, 0, 99_999_999),
         lastPeriodReset: now,
       };
     }
@@ -4838,25 +4843,25 @@ function updateTrendIndicator(element: HTMLElement, current: number, previous: n
 
 function trackUsage(transcript: string): void {
   const words = countWords(transcript);
+  if (words === 0) return;
   usageStats.sessions += 1;
   usageStats.words += words;
   const seconds = Math.max((Date.now() - recordingStartedAt) / 1000, 1);
   usageStats.speakingSeconds += Math.round(seconds);
   const currentWpm = (words / seconds) * 60;
-  if (usageStats.sessions <= 1) {
-    usageStats.avgWpm = currentWpm;
-  } else {
-    usageStats.avgWpm = usageStats.avgWpm * 0.8 + currentWpm * 0.2;
-  }
+  usageStats.avgWpm = Math.round(((usageStats.avgWpm * (usageStats.sessions - 1)) + currentWpm) / usageStats.sessions);
   persistUsageStats();
   updateUsageMetrics();
 
   analyticsSessionDetails.push({
-    date: Date.now(),
+    date: recordingStartedAt,
     words,
     speakingSeconds: Math.round(seconds),
     wpm: Math.round(currentWpm),
   });
+  if (analyticsSessionDetails.length > 5000) {
+    analyticsSessionDetails = analyticsSessionDetails.slice(-5000);
+  }
   persistAnalyticsSessionDetails();
   checkAndUnlockAchievements(usageStats);
   if (activePage === "analytics") {
