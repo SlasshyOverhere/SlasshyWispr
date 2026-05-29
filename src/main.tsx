@@ -52,7 +52,6 @@ import {
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
   GITHUB_RELEASES_PAGE_URL,
-  EMPTY_HISTORY_HINT,
   DEFAULT_SYSTEM_PROMPT,
   DEFAULT_TEMPERATURE,
   DEFAULT_MAX_TOKENS,
@@ -473,8 +472,6 @@ const aiLatency = requiredElement<HTMLElement>("#aiLatency");
 const ttsLatency = requiredElement<HTMLElement>("#ttsLatency");
 const totalLatency = requiredElement<HTMLElement>("#totalLatency");
 
-const conversationLog = requiredElement<HTMLDivElement>("#conversationLog");
-const fullHistoryLog = requiredElement<HTMLDivElement>("#fullHistoryLog");
 const assistantAudio = requiredElement<HTMLAudioElement>("#assistantAudio");
 
 let stage: Stage = "idle";
@@ -535,8 +532,6 @@ let commandSelectionSnapshot: string | null = null;
 const recentTurns: Array<{ speaker: string; content: string }> = [];
 let activePage: MainPage = loadPersistedMainPage();
 let activeSettingsPane: SettingsPane = loadPersistedSettingsPane();
-let homeHistoryNeedsRender = true;
-let fullHistoryNeedsRender = true;
 let settingsCloseTimer: number | null = null;
 let settingsPaneTransitionTimer: number | null = null;
 let globalShortcutsActive = false;
@@ -642,11 +637,6 @@ const UPDATE_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
   year: "numeric",
-});
-
-const CONVERSATION_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
 });
 
 const NOTE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -768,7 +758,7 @@ if (systemThemeMediaQuery) {
   systemThemeMediaQuery.addEventListener("change", handleSystemThemeChange);
 }
 
-setActivePage(activePage, { forceRender: true });
+setActivePage(activePage);
 setActiveSettingsPane(activeSettingsPane);
 renderDictionaryList();
 renderSnippetsList();
@@ -1513,13 +1503,8 @@ clearStatsBtn.addEventListener("click", async () => {
 function clearAllHistory(): void {
   homeHistoryEntries = [];
   persistHomeHistory();
-  invalidateHistoryViews();
-  if (activePage === "home") {
-    renderHomeHistory();
-  }
-  if (activePage === "history") {
-    renderFullHistory();
-  }
+  // Notify React to re-render with cleared history.
+  window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
   recentTurns.length = 0;
   setNotice("History cleared.");
 }
@@ -1622,8 +1607,7 @@ function asSettingsPane(value: string | undefined): SettingsPane | null {
   return null;
 }
 
-function setActivePage(next: MainPage, options: { forceRender?: boolean } = {}): void {
-  const forceRender = options.forceRender ?? false;
+function setActivePage(next: MainPage): void {
   activePage = next;
   localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, next);
 
@@ -1635,17 +1619,10 @@ function setActivePage(next: MainPage, options: { forceRender?: boolean } = {}):
   }
 
   // Notify React to re-render with the new active page.
+  // React is the single source of truth for page content (history, etc.).
+  // Do NOT call renderHomeHistory()/renderFullHistory() here — that causes
+  // innerHTML writes on React-controlled DOM nodes, leading to blank screens.
   window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
-
-  if (next === "home") {
-    if (forceRender || homeHistoryNeedsRender) {
-      renderHomeHistory();
-    }
-  } else if (next === "history") {
-    if (forceRender || fullHistoryNeedsRender) {
-      renderFullHistory();
-    }
-  }
 }
 
 function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void {
@@ -2282,7 +2259,8 @@ async function handleSettingsChange(): Promise<void> {
   }
 
   if (previousIncognito !== settings.incognitoMode) {
-    renderHomeHistory();
+    // Notify React to re-render with updated incognito state from localStorage.
+    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
   }
 
   if (!previousMuteMusicWhileDictating && settings.muteMusicWhileDictating && stage === "recording") {
@@ -4381,119 +4359,10 @@ function persistHomeHistory(): void {
   localStorage.setItem(HOME_HISTORY_STORAGE_KEY, JSON.stringify(homeHistoryEntries));
 }
 
-function invalidateHistoryViews(): void {
-  homeHistoryNeedsRender = true;
-  fullHistoryNeedsRender = true;
-}
-
-function formatConversationTime(timestamp: number): string {
-  return CONVERSATION_TIME_FORMATTER.format(timestamp);
-}
-
-function createConversationEntryElement(entry: HomeHistoryEntry): HTMLElement {
-  const row = document.createElement("article");
-  row.className = `entry entry-${entry.tone}`;
-
-  const timeEl = document.createElement("time");
-  timeEl.className = "entry-time";
-  timeEl.textContent = formatConversationTime(entry.timestamp);
-
-  const speakerEl = document.createElement("p");
-  speakerEl.className = "entry-speaker";
-  speakerEl.textContent = entry.speaker;
-
-  const contentEl = document.createElement("p");
-  contentEl.className = "entry-content";
-  contentEl.textContent = entry.content;
-
-  const actionsEl = document.createElement("div");
-  actionsEl.className = "entry-actions";
-
-  const copyBtn = document.createElement("button");
-  copyBtn.type = "button";
-  copyBtn.className = "entry-action";
-  copyBtn.textContent = "Copy";
-  copyBtn.onclick = () => {
-    navigator.clipboard.writeText(entry.content);
-    const originalText = copyBtn.textContent;
-    copyBtn.textContent = "Copied!";
-    setTimeout(() => {
-      copyBtn.textContent = originalText;
-    }, 2000);
-  };
-
-  actionsEl.append(copyBtn);
-  row.append(timeEl, speakerEl, contentEl, actionsEl);
-  return row;
-}
-
-function renderHomeHistory(): void {
-  if (settings.incognitoMode) {
-    conversationLog.innerHTML = '<p class="empty-hint">Incognito mode enabled. History is hidden.</p>';
-    homeHistoryNeedsRender = false;
-    return;
-  }
-
-  const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-  const todayEntries = homeHistoryEntries.filter(e => e.timestamp >= todayStart);
-
-  if (todayEntries.length === 0) {
-    conversationLog.innerHTML = `<p class="empty-hint">${EMPTY_HISTORY_HINT}</p>`;
-    homeHistoryNeedsRender = false;
-    return;
-  }
-
-  conversationLog.innerHTML = "";
-  const fragment = document.createDocumentFragment();
-  for (const entry of todayEntries) {
-    fragment.append(createConversationEntryElement(entry));
-  }
-  conversationLog.append(fragment);
-  homeHistoryNeedsRender = false;
-}
 
 function renderFullHistory(filter: "all" | "day" | "week" | "month" = "all", specificDate?: string): void {
-  if (settings.incognitoMode) {
-    fullHistoryLog.innerHTML = '<p class="empty-hint">Incognito mode enabled. History is hidden.</p>';
-    fullHistoryNeedsRender = false;
-    return;
-  }
-
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const dayOfWeek = now.getDay();
-  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek).getTime();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-
-  let filteredEntries = homeHistoryEntries;
-  if (specificDate) {
-    const dateParts = specificDate.split("-");
-    const selectedDate = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]));
-    const dateStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate()).getTime();
-    const dateEnd = dateStart + 24 * 60 * 60 * 1000;
-    filteredEntries = homeHistoryEntries.filter(e => e.timestamp >= dateStart && e.timestamp < dateEnd);
-  } else if (filter === "day") {
-    filteredEntries = homeHistoryEntries.filter(e => e.timestamp >= todayStart);
-  } else if (filter === "week") {
-    filteredEntries = homeHistoryEntries.filter(e => e.timestamp >= weekStart);
-  } else if (filter === "month") {
-    filteredEntries = homeHistoryEntries.filter(e => e.timestamp >= monthStart);
-  }
-
-  if (filteredEntries.length === 0) {
-    fullHistoryLog.innerHTML = `<p class="empty-hint">${EMPTY_HISTORY_HINT}</p>`;
-    fullHistoryNeedsRender = false;
-    return;
-  }
-
-  fullHistoryLog.innerHTML = "";
-  const fragment = document.createDocumentFragment();
-  for (const entry of filteredEntries) {
-    fragment.append(createConversationEntryElement(entry));
-  }
-  fullHistoryLog.append(fragment);
-  fullHistoryNeedsRender = false;
+  // React owns #fullHistoryLog. Dispatch filter event for React to apply.
+  window.dispatchEvent(new CustomEvent("slasshy:history-filter", { detail: { filter, specificDate } }));
 }
 
 function loadDockLayout(): DockLayout | null {
@@ -7426,13 +7295,8 @@ function appendConversationEntry(
       homeHistoryEntries.pop();
     }
     persistHomeHistory();
-    invalidateHistoryViews();
-    if (activePage === "home") {
-      renderHomeHistory();
-    }
-    if (activePage === "history") {
-      renderFullHistory();
-    }
+    // Notify React to re-render with updated history from localStorage.
+    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
   }
 
   recentTurns.unshift({ speaker, content });

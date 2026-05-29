@@ -10638,71 +10638,6 @@ fn is_known_stt_hallucination(transcript: &str) -> bool {
     false
 }
 
-fn estimate_wav_duration_seconds(audio_bytes: &[u8]) -> Option<f64> {
-    if audio_bytes.len() < 44 {
-        return None;
-    }
-    if &audio_bytes[0..4] != b"RIFF" || &audio_bytes[8..12] != b"WAVE" {
-        return None;
-    }
-
-    let mut cursor = 12usize;
-    let mut sample_rate: Option<f64> = None;
-    let mut channels: Option<f64> = None;
-    let mut bits_per_sample: Option<f64> = None;
-    let mut data_size_bytes: Option<f64> = None;
-
-    while cursor + 8 <= audio_bytes.len() {
-        let chunk_id = &audio_bytes[cursor..cursor + 4];
-        let chunk_size = u32::from_le_bytes([
-            audio_bytes[cursor + 4],
-            audio_bytes[cursor + 5],
-            audio_bytes[cursor + 6],
-            audio_bytes[cursor + 7],
-        ]) as usize;
-        cursor += 8;
-
-        if cursor + chunk_size > audio_bytes.len() {
-            break;
-        }
-
-        if chunk_id == b"fmt " && chunk_size >= 16 {
-            channels =
-                Some(u16::from_le_bytes([audio_bytes[cursor + 2], audio_bytes[cursor + 3]]) as f64);
-            sample_rate = Some(u32::from_le_bytes([
-                audio_bytes[cursor + 4],
-                audio_bytes[cursor + 5],
-                audio_bytes[cursor + 6],
-                audio_bytes[cursor + 7],
-            ]) as f64);
-            bits_per_sample =
-                Some(
-                    u16::from_le_bytes([audio_bytes[cursor + 14], audio_bytes[cursor + 15]]) as f64,
-                );
-        } else if chunk_id == b"data" {
-            data_size_bytes = Some(chunk_size as f64);
-        }
-
-        let padded_chunk_size = chunk_size + (chunk_size % 2);
-        cursor += padded_chunk_size;
-    }
-
-    let (Some(sr), Some(ch), Some(bits), Some(data)) =
-        (sample_rate, channels, bits_per_sample, data_size_bytes)
-    else {
-        return None;
-    };
-    let bytes_per_second = sr * ch * (bits / 8.0);
-    if !bytes_per_second.is_finite() || bytes_per_second <= 0.0 {
-        return None;
-    }
-    let seconds = data / bytes_per_second;
-    if seconds.is_finite() && seconds > 0.0 {
-        Some(seconds)
-    } else {
-        None
-    }
-}
 
 fn transcript_candidate_score(input: &str) -> usize {
     input.chars().filter(|ch| ch.is_alphanumeric()).count()
@@ -14531,7 +14466,7 @@ pub fn run() {
     let start_in_tray =
         std::env::args().any(|arg| arg.eq_ignore_ascii_case(STARTUP_ARG_START_IN_TRAY));
 
-    let mut builder = tauri::Builder::default();
+    let builder = tauri::Builder::default();
 
     #[cfg(all(desktop, not(debug_assertions)))]
     {

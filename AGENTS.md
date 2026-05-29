@@ -29,7 +29,7 @@ Single test: `bun test src/utils.test.ts` — works on any `src/**/*.test.ts` fi
 - Path alias `@/` maps to `./src/*`.
 - `ZERO_PYTHON_MODE = true` in `src/constants.ts` — Coqui TTS is disabled by default; only Piper TTS works at runtime.
 - `pretauri:dev` script (`scripts/ensure-valid-dev-exe.mjs`) checks for corrupted Windows dev binaries and deletes stale `app.exe`/`app.pdb` before `tauri dev`.
-- Tauri v2 dev URL: `http://localhost:1420` (hardcoded in `vite.config.ts`).
+- Tauri v2 dev URL: `http://localhost:1421` (hardcoded in `vite.config.ts`).
 - Window is non-resizable, non-maximizable, non-minimizable with custom titlebar (`decorations: false`).
 
 ## CI / Release

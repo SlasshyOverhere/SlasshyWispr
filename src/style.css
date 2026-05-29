@@ -1230,7 +1230,7 @@ body.sidebar-collapsed .nav-keyhint {
   text-decoration: underline;
 }
 
-.entry {
+.conversation-entry {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1240,11 +1240,11 @@ body.sidebar-collapsed .nav-keyhint {
   position: relative;
 }
 
-.entry:last-child {
+.conversation-entry:last-child {
   border-bottom: 0;
 }
 
-.entry:hover {
+.conversation-entry:hover {
   background: hsl(var(--secondary) / 0.3);
 }
 
@@ -1258,7 +1258,7 @@ body.sidebar-collapsed .nav-keyhint {
   gap: var(--space-2);
 }
 
-.entry:hover .entry-actions {
+.conversation-entry:hover .entry-actions {
   opacity: 1;
 }
 
