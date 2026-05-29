@@ -14466,7 +14466,7 @@ pub fn run() {
     let start_in_tray =
         std::env::args().any(|arg| arg.eq_ignore_ascii_case(STARTUP_ARG_START_IN_TRAY));
 
-    let builder = tauri::Builder::default();
+    let mut builder = tauri::Builder::default();
 
     #[cfg(all(desktop, not(debug_assertions)))]
     {
