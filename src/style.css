@@ -1,8 +1,22 @@
-/* Sora + Inter + JetBrains Mono — original Google Fonts stack */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&display=swap');
+/* Inter Variable — self-hosted (no Google Fonts dependency) */
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/InterVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/InterVariable-Italic.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
 
 :root {
-  --font-main: "Sora", "Inter", system-ui, sans-serif;
+  --font-main: "Inter", "Sora", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", monospace;
   font-size: 16px;
   font-weight: 600;
@@ -54,7 +68,7 @@
   --accent-foreground: #000000;
 
   /* Typography Scale */
-  --font-main: "Sora", "Inter", system-ui, sans-serif;
+  --font-main: "Inter", "Sora", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "JetBrains Mono", monospace;
   font-weight: 600;
 
