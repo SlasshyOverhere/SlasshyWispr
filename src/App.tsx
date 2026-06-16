@@ -179,7 +179,7 @@ export function App() {
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg>
                       </span>
                     </div>
-                    <div className="stat-value" id="metricWords">{state.usage?.words ?? 0}</div>
+                    <div className="stat-value" id="metricWords">{((state.usage?.words ?? 0) + (state.usage?.prevWords ?? 0))}</div>
                     <div className="stat-meta">
                       <span className="stat-trend stat-trend-up" id="wordsTrend">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
@@ -195,7 +195,7 @@ export function App() {
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                       </span>
                     </div>
-                    <div className="stat-value" id="metricSpeakingTime">{state.usage?.speakingSeconds ? Math.floor(state.usage.speakingSeconds / 60) : 0}m</div>
+                    <div className="stat-value" id="metricSpeakingTime">{state.usage ? Math.floor(((state.usage?.speakingSeconds ?? 0) + (state.usage?.prevSpeakingSeconds ?? 0)) / 60) : 0}m</div>
                     <div className="stat-meta">
                       <span className="stat-trend stat-trend-up" id="timeTrend">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
@@ -211,7 +211,7 @@ export function App() {
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
                       </span>
                     </div>
-                    <div className="stat-value" id="metricSessions">{state.usage?.sessions ?? 0}</div>
+                    <div className="stat-value" id="metricSessions">{((state.usage?.sessions ?? 0) + (state.usage?.prevSessions ?? 0))}</div>
                     <div className="stat-meta">
                       <span className="stat-trend stat-trend-up" id="sessionsTrend">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>

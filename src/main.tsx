@@ -4802,9 +4802,12 @@ function formatSpeakingTime(totalSeconds: number): string {
 }
 
 function updateUsageMetrics(): void {
-  metricWords.textContent = `${usageStats.words} words`;
-  metricSpeakingTime.textContent = formatSpeakingTime(usageStats.speakingSeconds);
-  metricSessions.textContent = `${usageStats.sessions}`;
+  const totalWords = usageStats.words + usageStats.prevWords;
+  const totalSeconds = usageStats.speakingSeconds + usageStats.prevSpeakingSeconds;
+  const totalSessions = usageStats.sessions + usageStats.prevSessions;
+  metricWords.textContent = `${totalWords} words`;
+  metricSpeakingTime.textContent = formatSpeakingTime(totalSeconds);
+  metricSessions.textContent = `${totalSessions}`;
   metricWpm.textContent = `${Math.round(usageStats.avgWpm)} `;
   const unit = document.createElement("span");
   unit.className = "stat-unit";
