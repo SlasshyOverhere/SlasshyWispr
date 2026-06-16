@@ -8307,6 +8307,11 @@ async function showVoiceIndicatorWindow(): Promise<void> {
     await win.show();
     dockRuntimeErrorShown = false;
     publishDockState();
+    // ponytail: re-publish after 300ms in case the dock's onmessage listener
+    // wasn't attached yet when the first message fired. Covers the race where
+    // the dock window is shown but the BroadcastChannel subscriber in
+    // voice-indicator.html hasn't been set up yet.
+    setTimeout(() => publishDockState(), 300);
   } catch (error) {
     reportDockRuntimeError(`Unable to show floating dock: ${asErrorMessage(error)}`);
   }
@@ -8368,6 +8373,13 @@ async function syncFloatingIndicatorWindow(): Promise<void> {
   const shouldShow = shouldDisplayDock();
 
   if (shouldShow) {
+    // Cancel any pending hide timer before showing — prevents the race where a
+    // hide timer is already ticking and this show path is followed by a quick
+    // re-entry that hits the early return below and lets the stale hide fire.
+    if (dockHideTimerId !== null) {
+      window.clearTimeout(dockHideTimerId);
+      dockHideTimerId = null;
+    }
     await showVoiceIndicatorWindow();
     return;
   }
