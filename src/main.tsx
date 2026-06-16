@@ -4808,7 +4808,8 @@ function updateUsageMetrics(): void {
   metricWords.textContent = `${totalWords} words`;
   metricSpeakingTime.textContent = formatSpeakingTime(totalSeconds);
   metricSessions.textContent = `${totalSessions}`;
-  metricWpm.textContent = `${Math.round(usageStats.avgWpm)} `;
+  const lifetimeWpm = totalSeconds > 0 ? Math.round((totalWords / totalSeconds) * 60) : 0;
+  metricWpm.textContent = `${lifetimeWpm} `;
   const unit = document.createElement("span");
   unit.className = "stat-unit";
   unit.textContent = "wpm";

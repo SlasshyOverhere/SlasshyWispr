@@ -227,7 +227,7 @@ export function App() {
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
                       </span>
                     </div>
-                    <div className="stat-value" id="metricWpm">{state.usage?.avgWpm ?? 0} <span className="stat-unit">wpm</span></div>
+                    <div className="stat-value" id="metricWpm">{state.usage ? (() => { const totalLifeWords = state.usage.words + state.usage.prevWords; const totalLifeTime = state.usage.speakingSeconds + state.usage.prevSpeakingSeconds; return totalLifeTime > 0 ? Math.round((totalLifeWords / totalLifeTime) * 60) : 0; })() : 0} <span className="stat-unit">wpm</span></div>
                     <div className="stat-meta">
                       <span className="stat-trend stat-trend-up" id="wpmTrend">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
