@@ -39,11 +39,26 @@ use transcribe_rs::{
     TranscriptionEngine,
 };
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::Foundation::LocalFree;
+use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, RECT};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Media::Audio::{waveOutGetVolume, waveOutSetVolume};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Security::Cryptography::{
     CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
 };
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::System::SystemInformation::{
+    GetSystemInfo, GlobalMemoryStatusEx, MEMORYSTATUSEX, SYSTEM_INFO,
+};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, WaitForSingleObject, INFINITE,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::UI::WindowsAndMessaging::*;
 #[cfg(target_os = "windows")]
 use zip::ZipArchive;
 
@@ -356,6 +371,94 @@ static LOCAL_STT_NATIVE_PARAKEET_RUNTIME: OnceLock<Mutex<Option<NativeParakeetRu
     OnceLock::new();
 static PIPER_TUNING_SUPPORT: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
 static SAVED_SYSTEM_AUDIO_VOLUME: Mutex<Option<u32>> = Mutex::new(None);
+
+#[cfg(target_os = "windows")]
+mod win32_native {
+    use windows_sys::Win32::Foundation::RECT;
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    pub struct MONITORINFO {
+        pub cbSize: u32,
+        pub rcMonitor: RECT,
+        pub rcWork: RECT,
+        pub dwFlags: u32,
+    }
+
+    extern "system" {
+        pub fn GetMonitorInfoW(hMonitor: isize, lpmi: *mut MONITORINFO) -> i32;
+        pub fn MonitorFromWindow(hwnd: isize, dwFlags: u32) -> isize;
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn make_key_input(vk: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk,
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    }
+}
+
+/// Simulate Ctrl+<vk> (hold Ctrl, tap <vk>, release both).
+#[cfg(target_os = "windows")]
+fn simulate_ctrl_combo(vk: u16) -> Result<(), String> {
+    let inputs = [
+        make_key_input(VK_LCONTROL, 0),
+        make_key_input(vk, 0),
+        make_key_input(vk, KEYEVENTF_KEYUP),
+        make_key_input(VK_LCONTROL, KEYEVENTF_KEYUP),
+    ];
+    let sent = unsafe { SendInput(4, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32) };
+    if sent != 4 {
+        return Err(format!("SendInput sent {}/4 events", sent));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn native_get_clipboard_text() -> Result<String, String> {
+    let mut ctx = arboard::Clipboard::new().map_err(|e| format!("Clipboard open failed: {e}"))?;
+    ctx.get_text()
+        .map_err(|e| format!("Clipboard read failed: {e}"))
+}
+
+#[cfg(target_os = "windows")]
+fn native_set_clipboard_text(text: &str) -> Result<(), String> {
+    let mut ctx = arboard::Clipboard::new().map_err(|e| format!("Clipboard open failed: {e}"))?;
+    ctx.set_text(text.to_owned())
+        .map_err(|e| format!("Clipboard write failed: {e}"))
+}
+
+#[cfg(target_os = "windows")]
+fn get_process_name_from_pid(pid: u32) -> String {
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return String::new();
+        }
+        let mut buf = [0u16; 512];
+        let mut size = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut size);
+        CloseHandle(handle);
+        if ok == 0 {
+            return String::new();
+        }
+        let path = String::from_utf16_lossy(&buf[..size as usize]);
+        std::path::Path::new(&path)
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_ascii_lowercase()
+    }
+}
 
 fn coqui_daemons() -> &'static Mutex<HashMap<String, CoquiBridgeDaemon>> {
     COQUI_DAEMONS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -2253,149 +2356,56 @@ async fn capture_selected_text() -> Result<String, String> {
 
 #[cfg(target_os = "windows")]
 fn capture_selected_text_windows() -> Result<String, String> {
+    // Detect if the foreground window is a terminal or IDE with a terminal tab
+    let is_terminal_focused = unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_null() {
+            false
+        } else {
+            let mut pid: u32 = 0;
+            GetWindowThreadProcessId(hwnd, &mut pid);
+            if pid == 0 {
+                false
+            } else {
+                is_blocked_terminal_process_name(&get_process_name_from_pid(pid))
+            }
+        }
+    };
+    if is_terminal_focused {
+        info!("[client] selection capture skipped while terminal window is focused");
+        return Ok(String::new());
+    }
+
     let marker_stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| format!("Failed to compute marker timestamp: {error}"))?
         .as_millis();
     let marker = format!("SLASSHY_SEL_MARKER_{marker_stamp}");
-    let script = format!(
-        "$ErrorActionPreference='SilentlyContinue'; \
-        $terminalFocus=$false; \
-        try {{ \
-          Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class SlasshyWin32 {{ [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow(); [DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId); }}' -ErrorAction SilentlyContinue | Out-Null; \
-          $hwnd=[SlasshyWin32]::GetForegroundWindow(); \
-          if ($hwnd -ne [IntPtr]::Zero) {{ \
-            [uint32]$pid=0; \
-            [void][SlasshyWin32]::GetWindowThreadProcessId($hwnd, [ref]$pid); \
-            $proc=''; $title=''; \
-            try {{ $p=Get-Process -Id $pid -ErrorAction Stop; $proc=([string]$p.ProcessName).ToLowerInvariant(); $title=([string]$p.MainWindowTitle).ToLowerInvariant(); }} catch {{}}; \
-            $isTerminalProc=($proc -match 'windowsterminal|wt|pwsh|powershell|cmd|conemu|alacritty|wezterm|mintty|tabby'); \
-            $isIdeProc=($proc -match 'code|cursor|windsurf|devenv|idea64|pycharm64|webstorm64|rider64|clion64'); \
-            $hasTerminalTitle=($title -match 'terminal|powershell|pwsh|cmd|bash|zsh|fish'); \
-            if ($isTerminalProc -or ($isIdeProc -and $hasTerminalTitle)) {{ $terminalFocus=$true }}; \
-          }} \
-        }} catch {{}}; \
-        if ($terminalFocus) {{ [Console]::Error.Write('__SLASSHY_TERMINAL_FOCUS__'); [Console]::Out.Write(''); return }}; \
-        $prev=$null; $hadPrev=$false; \
-        try {{ $prev = Get-Clipboard -Raw; $hadPrev = $true }} catch {{}}; \
-        $marker='{marker}'; \
-        try {{ Set-Clipboard -Value $marker }} catch {{}}; \
-        $ws = New-Object -ComObject WScript.Shell; \
-        $sel=''; \
-        for ($i=0; $i -lt 4; $i++) {{ \
-          Start-Sleep -Milliseconds 70; \
-          $ws.SendKeys('^c'); \
-          Start-Sleep -Milliseconds 160; \
-          try {{ \
-            $cur = Get-Clipboard -Raw; \
-            if ($null -ne $cur -and $cur -ne $marker -and $cur.Trim().Length -gt 0) {{ \
-              $sel = $cur; \
-              break; \
-            }} \
-          }} catch {{}}; \
-        }}; \
-        if ($hadPrev) {{ \
-          try {{ Set-Clipboard -Value $prev }} catch {{}} \
-        }}; \
-        [Console]::Out.Write($sel)"
-    );
-    let output = run_powershell_script(&script, None)?;
-    let stderr_text = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if stderr_text.contains("__SLASSHY_TERMINAL_FOCUS__") {
-        info!("[client] selection capture skipped while terminal window is focused");
-        return Ok(String::new());
-    }
-    if !output.status.success() {
-        let merged = merge_process_output(&output.stdout, &output.stderr);
-        return Err(format!(
-            "Failed to capture selected text: {}",
-            clip_text(&single_line(&merged), 280)
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .replace("\r\n", "\n")
-        .trim_end_matches(['\r', '\n'])
-        .to_string())
-}
 
-#[cfg(target_os = "windows")]
-fn run_powershell_script(
-    script: &str,
-    stdin_text: Option<&str>,
-) -> Result<std::process::Output, String> {
-    let mut command = Command::new("powershell");
-    command
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-WindowStyle",
-            "Hidden",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            script,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    command.creation_flags(CREATE_NO_WINDOW);
+    // Save clipboard state
+    let prev = native_get_clipboard_text().ok();
+    native_set_clipboard_text(&marker).ok();
 
-    if stdin_text.is_some() {
-        command.stdin(Stdio::piped());
-    } else {
-        command.stdin(Stdio::null());
+    thread::sleep(Duration::from_millis(40));
+    let mut sel = String::new();
+    for _ in 0..4 {
+        thread::sleep(Duration::from_millis(70));
+        simulate_ctrl_combo(0x43)?; // Ctrl+C
+        thread::sleep(Duration::from_millis(160));
+        if let Ok(cur) = native_get_clipboard_text() {
+            if cur != marker && !cur.trim().is_empty() {
+                sel = cur;
+                break;
+            }
+        }
     }
 
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("Failed to start PowerShell helper: {error}"))?;
-
-    if let Some(text) = stdin_text {
-        let stdin = child
-            .stdin
-            .as_mut()
-            .ok_or_else(|| "Failed to open PowerShell stdin.".to_string())?;
-        stdin
-            .write_all(text.as_bytes())
-            .map_err(|error| format!("Failed to write PowerShell stdin: {error}"))?;
+    // Restore previous clipboard
+    if let Some(ref prev_text) = prev {
+        native_set_clipboard_text(prev_text).ok();
     }
 
-    child
-        .wait_with_output()
-        .map_err(|error| format!("Failed waiting for PowerShell helper: {error}"))
-}
-
-#[cfg(target_os = "windows")]
-fn spawn_powershell_detached(script: &str) -> Result<(), String> {
-    let mut command = Command::new("powershell");
-    command
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-WindowStyle",
-            "Hidden",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            script,
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    command.creation_flags(CREATE_NO_WINDOW);
-
-    command
-        .spawn()
-        .map_err(|error| format!("Failed to start detached PowerShell helper: {error}"))?;
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn escape_powershell_single_quoted(value: &str) -> String {
-    if value.contains('\'') {
-        value.replace('\'', "''")
-    } else {
-        value.to_string()
-    }
+    Ok(sel.replace("\r\n", "\n"))
 }
 
 #[cfg(target_os = "windows")]
@@ -2403,60 +2413,64 @@ fn schedule_app_relaunch_after_installer(
     installer_pid: u32,
     app_exe_path: &Path,
 ) -> Result<(), String> {
-    let exe_text = app_exe_path.to_string_lossy().to_string();
-    if exe_text.trim().is_empty() {
+    let exe_path = app_exe_path.to_path_buf();
+    if exe_path.as_os_str().is_empty() {
         return Err("App executable path is empty; cannot schedule relaunch.".to_string());
     }
 
-    let escaped_exe = escape_powershell_single_quoted(&exe_text);
-    let log_file = escape_powershell_single_quoted(
-        &std::env::temp_dir().join("slasshywispr-updater.log").to_string_lossy(),
-    );
-    let script = format!(
-        "$log='{log_file}'; \
-         function wl {{ param($m) '$([DateTime]::Now.ToString(\"o\")) $m' | Out-File $log -Append -Encoding UTF8 }}; \
-         wl 'relaunch watcher started'; \
-         wl 'installer_pid={installer_pid}'; \
-         wl 'app_exe={escaped_exe}'; \
-         \
-         $installerPid={installer_pid}; \
-         $exe='{escaped_exe}'; \
-         \
-         $snapshot=@{{}}; \
-         if (Test-Path $exe) {{ \
-             $item=Get-Item $exe; \
-             $snapshot.LastWriteTimeUtc=$item.LastWriteTimeUtc.ToString('o'); \
-             $snapshot.Length=$item.Length; \
-         }}; \
-         \
-         while (Get-Process -Id $installerPid -ErrorAction SilentlyContinue) {{ \
-             Start-Sleep -Milliseconds 500; \
-         }}; \
-         wl 'installer process exited, waiting for app exe to be updated'; \
-         \
-         Start-Sleep -Seconds 3; \
-         \
-         $maxAttempts=240; \
-         for ($i=0; $i -lt $maxAttempts; $i++) {{ \
-             if (Test-Path $exe) {{ \
-                 $item=Get-Item $exe; \
-                 $changed=(-not $snapshot.ContainsKey('LastWriteTimeUtc')) -or \
-                     ($item.LastWriteTimeUtc.ToString('o') -ne $snapshot.LastWriteTimeUtc) -or \
-                     ($item.Length -ne $snapshot.Length); \
-                 if ($changed) {{ \
-                     wl 'detected app exe change, launching'; \
-                     Start-Sleep -Milliseconds 500; \
-                     Start-Process -FilePath $exe; \
-                     wl 'launch command issued'; \
-                     exit 0; \
-                 }}; \
-             }}; \
-             Start-Sleep -Milliseconds 500; \
-         }}; \
-         wl 'max attempts reached, launching anyway'; \
-         if (Test-Path $exe) {{ Start-Process -FilePath $exe; wl 'launched (fallback)' }} else {{ wl 'exe not found' }};"
-    );
-    spawn_powershell_detached(&script)
+    // Snapshot the exe before the installer runs
+    let snapshot = exe_path.metadata().ok().map(|m| {
+        (
+            m.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+            m.len(),
+        )
+    });
+
+    thread::spawn(move || {
+        // Wait for the installer process to exit
+        unsafe {
+            let handle = OpenProcess(
+                PROCESS_SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
+                0,
+                installer_pid,
+            );
+            if !handle.is_null() {
+                WaitForSingleObject(handle, INFINITE);
+                CloseHandle(handle);
+            }
+        }
+
+        // Give the installer a moment to finalize file writes
+        thread::sleep(Duration::from_secs(3));
+
+        // Poll for the exe to change
+        let max_attempts = 240;
+        for _ in 0..max_attempts {
+            if exe_path.exists() {
+                let changed = match (&snapshot, exe_path.metadata()) {
+                    (Some((old_time, old_len)), Ok(meta)) => {
+                        meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH) != *old_time
+                            || meta.len() != *old_len
+                    }
+                    (None, Ok(_)) => true,
+                    _ => false,
+                };
+                if changed {
+                    thread::sleep(Duration::from_millis(500));
+                    let _ = std::process::Command::new(&exe_path).spawn();
+                    return;
+                }
+            }
+            thread::sleep(Duration::from_millis(500));
+        }
+
+        // Fallback: launch anyway
+        if exe_path.exists() {
+            let _ = std::process::Command::new(&exe_path).spawn();
+        }
+    });
+
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
@@ -2469,19 +2483,7 @@ fn apply_no_window(_command: &mut Command) {}
 
 #[cfg(target_os = "windows")]
 fn set_clipboard_text_windows(text: &str) -> Result<(), String> {
-    let output = run_powershell_script(
-        "$ErrorActionPreference='Stop'; $text=[Console]::In.ReadToEnd(); Set-Clipboard -Value $text",
-        Some(text),
-    )?;
-    if !output.status.success() {
-        let merged = merge_process_output(&output.stdout, &output.stderr);
-        return Err(format!(
-            "Clipboard write failed: {}",
-            clip_text(&single_line(&merged), 280)
-        ));
-    }
-
-    Ok(())
+    native_set_clipboard_text(text)
 }
 
 #[tauri::command]
@@ -2504,55 +2506,39 @@ async fn set_clipboard_text(text: String) -> Result<(), String> {
 async fn configure_launch_at_login(enabled: bool) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        let run_key = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-        let value_name = STARTUP_RUN_VALUE_NAME.replace('\'', "''");
+        use winreg::enums::*;
+        use winreg::RegKey;
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let run_key = hkcu
+            .open_subkey_with_flags(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                KEY_READ | KEY_WRITE,
+            )
+            .or_else(|_| {
+                hkcu.create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+                    .map(|(key, _)| key)
+            })
+            .map_err(|e| format!("Unable to open startup registry key: {e}"))?;
 
         if enabled {
             let exe_path = std::env::current_exe()
-                .map_err(|error| format!("Failed to resolve executable path: {error}"))?;
+                .map_err(|e| format!("Failed to resolve executable path: {e}"))?;
             let exe_text = exe_path.to_string_lossy().to_string();
-            let script = format!(
-                "$ErrorActionPreference='Stop'; \
-                 $exe=[Console]::In.ReadToEnd().Trim(); \
-                 if ([string]::IsNullOrWhiteSpace($exe)) {{ throw 'Executable path is empty.' }}; \
-                 $runKey='{run_key}'; \
-                 $name='{value_name}'; \
-                 $value='\"' + $exe.Replace('\"','\"\"') + '\" {STARTUP_ARG_START_IN_TRAY}'; \
-                 New-Item -Path $runKey -Force | Out-Null; \
-                 New-ItemProperty -Path $runKey -Name $name -Value $value -PropertyType String -Force | Out-Null; \
-                 $written=(Get-ItemProperty -Path $runKey -Name $name -ErrorAction Stop).$name; \
-                 if ($written -ne $value) {{ throw ('Startup registry value mismatch. expected=' + $value + ' actual=' + [string]$written) }};"
-            );
-            let output = run_powershell_script(&script, Some(&exe_text))?;
-            if !output.status.success() {
-                let merged = merge_process_output(&output.stdout, &output.stderr);
-                return Err(format!(
-                    "Unable to enable launch at login: {}",
-                    clip_text(&single_line(&merged), 300)
-                ));
-            }
+            let value = format!("\"{}\" {}", exe_text, STARTUP_ARG_START_IN_TRAY);
+            run_key
+                .set_value(STARTUP_RUN_VALUE_NAME, &value)
+                .map_err(|e| format!("Unable to enable launch at login: {e}"))?;
             info!(
                 "[startup] launch at login enabled with start-in-tray flag path={}",
                 clip_text(&single_line(&exe_text), 240)
             );
-            return Ok(());
+        } else {
+            run_key
+                .delete_value(STARTUP_RUN_VALUE_NAME)
+                .ok(); // ignore if not present
+            info!("[startup] launch at login disabled");
         }
-
-        let script = format!(
-            "$ErrorActionPreference='Stop'; \
-             $runKey='{run_key}'; \
-             $name='{value_name}'; \
-             if (Test-Path $runKey) {{ Remove-ItemProperty -Path $runKey -Name $name -ErrorAction SilentlyContinue }};"
-        );
-        let output = run_powershell_script(&script, None)?;
-        if !output.status.success() {
-            let merged = merge_process_output(&output.stdout, &output.stderr);
-            return Err(format!(
-                "Unable to disable launch at login: {}",
-                clip_text(&single_line(&merged), 300)
-            ));
-        }
-        info!("[startup] launch at login disabled");
         return Ok(());
     }
 
@@ -2567,17 +2553,8 @@ async fn configure_launch_at_login(enabled: bool) -> Result<(), String> {
 async fn paste_clipboard_text() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        let output = run_powershell_script(
-            "$ErrorActionPreference='Stop'; $ws = New-Object -ComObject WScript.Shell; Start-Sleep -Milliseconds 70; $ws.SendKeys('^v')",
-            None,
-        )?;
-        if !output.status.success() {
-            let merged = merge_process_output(&output.stdout, &output.stderr);
-            return Err(format!(
-                "Auto-paste failed: {}",
-                clip_text(&single_line(&merged), 280)
-            ));
-        }
+        thread::sleep(Duration::from_millis(70));
+        simulate_ctrl_combo(0x56).map_err(|e| format!("Auto-paste failed: {e}"))?; // Ctrl+V
         info!("[client] auto-paste triggered");
         return Ok(());
     }
@@ -2592,17 +2569,9 @@ async fn paste_clipboard_text() -> Result<(), String> {
 async fn paste_text_via_clipboard(text: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        let output = run_powershell_script(
-            "$ErrorActionPreference='Stop'; $text=[Console]::In.ReadToEnd(); Set-Clipboard -Value $text; $ws = New-Object -ComObject WScript.Shell; Start-Sleep -Milliseconds 90; $ws.SendKeys('^v')",
-            Some(&text),
-        )?;
-        if !output.status.success() {
-            let merged = merge_process_output(&output.stdout, &output.stderr);
-            return Err(format!(
-                "Dictation paste failed: {}",
-                clip_text(&single_line(&merged), 280)
-            ));
-        }
+        native_set_clipboard_text(&text)?;
+        thread::sleep(Duration::from_millis(90));
+        simulate_ctrl_combo(0x56).map_err(|e| format!("Dictation paste failed: {e}"))?; // Ctrl+V
         info!(
             "[client] dictation clipboard+paste triggered chars={}",
             text.chars().count()
@@ -2623,46 +2592,25 @@ async fn control_media_playback(action: String) -> Result<(), String> {
     {
         let normalized = action.trim().to_ascii_lowercase();
         let app_command = match normalized.as_str() {
-            "play" => 46u32,
-            "pause" => 47u32,
+            "play" => 46isize,
+            "pause" => 47isize,
             _ => {
                 return Err("Invalid media action. Expected \"play\" or \"pause\".".to_string());
             }
         };
 
-        let script = format!(
-            r#"$ErrorActionPreference='Stop';
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public static class Win32MediaControl {{
-    [DllImport("user32.dll", SetLastError=true)]
-    public static extern IntPtr SendMessageTimeout(
-        IntPtr hWnd,
-        uint Msg,
-        IntPtr wParam,
-        IntPtr lParam,
-        uint fuFlags,
-        uint uTimeout,
-        out IntPtr lpdwResult
-    );
-}}
-"@;
-$HWND_BROADCAST=[IntPtr]0xffff;
-$WM_APPCOMMAND=0x0319;
-$SMTO_ABORTIFHUNG=0x0002;
-$result=[IntPtr]::Zero;
-$lParam=[IntPtr](({app_command}) -shl 16);
-[void][Win32MediaControl]::SendMessageTimeout($HWND_BROADCAST, $WM_APPCOMMAND, [IntPtr]::Zero, $lParam, $SMTO_ABORTIFHUNG, 250, [ref]$result)"#
-        );
-
-        let output = run_powershell_script(&script, None)?;
-        if !output.status.success() {
-            let merged = merge_process_output(&output.stdout, &output.stderr);
-            return Err(format!(
-                "Media playback control failed: {}",
-                clip_text(&single_line(&merged), 280)
-            ));
+        let lparam = app_command << 16;
+        let mut result: usize = 0;
+        unsafe {
+            SendMessageTimeoutW(
+                HWND_BROADCAST,
+                WM_APPCOMMAND,
+                0,
+                lparam,
+                SMTO_ABORTIFHUNG,
+                250,
+                &mut result,
+            );
         }
 
         info!("[client] media playback action={}", normalized);
@@ -2681,58 +2629,28 @@ async fn mute_system_audio(mute: bool) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         if mute {
-            let get_script = r#"
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public class Vol {
-    [DllImport("winmm.dll")] public static extern int waveOutGetVolume(System.IntPtr hwo, out uint dwVolume);
-}
-"@
-$v = 0;
-[Vol]::waveOutGetVolume([System.IntPtr]::Zero, [ref]$v);
-Write-Output $v
-"#;
-            match run_powershell_script(get_script, None) {
-                Ok(output) => {
-                    let vol_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if let Ok(vol) = vol_str.parse::<u32>() {
-                        if let Ok(mut saved) = SAVED_SYSTEM_AUDIO_VOLUME.lock() {
-                            *saved = Some(vol);
-                        }
+            // Save current volume
+            let mut vol: u32 = 0;
+            unsafe {
+                if waveOutGetVolume(std::ptr::null_mut(), &mut vol) == 0 {
+                    if let Ok(mut saved) = SAVED_SYSTEM_AUDIO_VOLUME.lock() {
+                        *saved = Some(vol);
                     }
-                }
-                Err(e) => {
-                    warn!("[client] failed to get system volume: {}", e);
+                } else {
+                    warn!("[client] failed to get system volume");
                 }
             }
-
-            let mute_script = r#"
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public class Vol {
-    [DllImport("winmm.dll")] public static extern int waveOutSetVolume(System.IntPtr hwo, uint dwVolume);
-}
-"@
-[Vol]::waveOutSetVolume([System.IntPtr]::Zero, 0);
-"#;
-            run_powershell_script(mute_script, None).map_err(|e| format!("Failed to mute system audio: {}", e))?;
+            // Mute
+            unsafe {
+                waveOutSetVolume(std::ptr::null_mut(), 0);
+            }
             info!("[client] system audio muted");
         } else {
             let vol = SAVED_SYSTEM_AUDIO_VOLUME.lock().unwrap().take();
             if let Some(vol) = vol {
-                let restore_script = format!(r#"
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public class Vol {{
-    [DllImport("winmm.dll")] public static extern int waveOutSetVolume(System.IntPtr hwo, uint dwVolume);
-}}
-"@
-[Vol]::waveOutSetVolume([System.IntPtr]::Zero, {});
-"#, vol);
-                run_powershell_script(&restore_script, None).map_err(|e| format!("Failed to restore system audio: {}", e))?;
+                unsafe {
+                    waveOutSetVolume(std::ptr::null_mut(), vol);
+                }
                 info!("[client] system audio volume restored to {}", vol);
             }
         }
@@ -3033,95 +2951,74 @@ fn emit_update_install_progress(
 
 #[cfg(target_os = "windows")]
 fn probe_foreground_window_windows() -> Result<ForegroundWindowProbeResult, String> {
-    let script = r#"$ErrorActionPreference='Stop';
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public static class ForegroundWindowProbe {
-    [StructLayout(LayoutKind.Sequential)]
-    public struct RECT {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
-    }
-    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Auto)]
-    public struct MONITORINFO {
-        public int cbSize;
-        public RECT rcMonitor;
-        public RECT rcWork;
-        public uint dwFlags;
-    }
-    [DllImport("user32.dll", SetLastError=true)]
-    public static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll", SetLastError=true)]
-    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-    [DllImport("user32.dll", SetLastError=true)]
-    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-    [DllImport("user32.dll", SetLastError=true)]
-    public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
-    [DllImport("user32.dll", CharSet=CharSet.Auto, SetLastError=true)]
-    public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
-}
-"@;
-$hwnd=[ForegroundWindowProbe]::GetForegroundWindow();
-if ($hwnd -eq [IntPtr]::Zero) { [Console]::Out.Write(''); exit 0 }
-$pid = 0;
-[void][ForegroundWindowProbe]::GetWindowThreadProcessId($hwnd, [ref]$pid);
-if ($pid -le 0) { [Console]::Out.Write(''); exit 0 }
-$title = '';
-$procName = '';
-try {
-  $proc = Get-Process -Id $pid -ErrorAction Stop;
-  $procName = $proc.ProcessName.ToLowerInvariant();
-  $title = $proc.MainWindowTitle;
-} catch {
-  [Console]::Out.Write('');
-  exit 0
-}
-if ($null -eq $title) { $title = '' }
-$fullscreen = $false;
-$rect = New-Object ForegroundWindowProbe+RECT;
-$monitor = [ForegroundWindowProbe]::MonitorFromWindow($hwnd, 2);
-if ($monitor -ne [IntPtr]::Zero -and [ForegroundWindowProbe]::GetWindowRect($hwnd, [ref]$rect)) {
-  $info = New-Object ForegroundWindowProbe+MONITORINFO;
-  $info.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf([type][ForegroundWindowProbe+MONITORINFO]);
-  if ([ForegroundWindowProbe]::GetMonitorInfo($monitor, [ref]$info)) {
-    $t = 2;
-    $fullscreen =
-      [Math]::Abs($rect.Left - $info.rcMonitor.Left) -le $t -and
-      [Math]::Abs($rect.Top - $info.rcMonitor.Top) -le $t -and
-      [Math]::Abs($rect.Right - $info.rcMonitor.Right) -le $t -and
-      [Math]::Abs($rect.Bottom - $info.rcMonitor.Bottom) -le $t;
-  }
-}
-[Console]::Out.Write($procName + '||' + $title.ToLowerInvariant() + '||' + ($(if ($fullscreen) { '1' } else { '0' })));
-"#;
+    use win32_native::{GetMonitorInfoW, MONITORINFO, MonitorFromWindow};
 
-    let output = run_powershell_script(script, None)?;
-    if !output.status.success() {
-        let merged = merge_process_output(&output.stdout, &output.stderr);
-        return Err(format!(
-            "Foreground app detection failed: {}",
-            clip_text(&single_line(&merged), 280)
-        ));
-    }
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_null() {
+            return Ok(ForegroundWindowProbeResult {
+                process_name: String::new(),
+                window_title: String::new(),
+                fullscreen: false,
+            });
+        }
 
-    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if raw.is_empty() {
-        return Ok(ForegroundWindowProbeResult {
-            process_name: String::new(),
-            window_title: String::new(),
-            fullscreen: false,
-        });
-    }
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if pid == 0 {
+            return Ok(ForegroundWindowProbeResult {
+                process_name: String::new(),
+                window_title: String::new(),
+                fullscreen: false,
+            });
+        }
 
-    let mut parts = raw.splitn(3, "||");
-    Ok(ForegroundWindowProbeResult {
-        process_name: parts.next().unwrap_or_default().trim().to_ascii_lowercase(),
-        window_title: parts.next().unwrap_or_default().trim().to_ascii_lowercase(),
-        fullscreen: parts.next().unwrap_or_default().trim() == "1",
-    })
+        let process_name = get_process_name_from_pid(pid);
+        if process_name.is_empty() {
+            return Ok(ForegroundWindowProbeResult {
+                process_name: String::new(),
+                window_title: String::new(),
+                fullscreen: false,
+            });
+        }
+
+        // Get window title
+        let mut title_buf = [0u16; 512];
+        let title_len = GetWindowTextW(hwnd, title_buf.as_mut_ptr(), title_buf.len() as i32);
+        let window_title = if title_len > 0 {
+            String::from_utf16_lossy(&title_buf[..title_len as usize])
+                .to_ascii_lowercase()
+        } else {
+            String::new()
+        };
+
+        // Detect fullscreen
+        let mut fullscreen = false;
+        let mut rect = std::mem::zeroed::<RECT>();
+        let monitor = MonitorFromWindow(hwnd as isize, 2); // MONITOR_DEFAULTTONEAREST
+        if monitor != 0 && GetWindowRect(hwnd, &mut rect) != 0 {
+            let mut info = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                rcMonitor: std::mem::zeroed(),
+                rcWork: std::mem::zeroed(),
+                dwFlags: 0,
+            };
+            if GetMonitorInfoW(monitor, &mut info) != 0 {
+                let t = 2i32;
+                fullscreen =
+                    (rect.left - info.rcMonitor.left).abs() <= t &&
+                    (rect.top - info.rcMonitor.top).abs() <= t &&
+                    (rect.right - info.rcMonitor.right).abs() <= t &&
+                    (rect.bottom - info.rcMonitor.bottom).abs() <= t;
+            }
+        }
+
+        Ok(ForegroundWindowProbeResult {
+            process_name,
+            window_title,
+            fullscreen,
+        })
+    }
 }
 
 #[tauri::command]
@@ -10769,43 +10666,46 @@ fn probe_local_stt_hardware() -> LocalSttHardwareProbe {
 
 #[cfg(target_os = "windows")]
 fn probe_windows_local_stt_hardware(probe: &mut LocalSttHardwareProbe) {
-    let script = r#"$ErrorActionPreference='SilentlyContinue';
-$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1 Name,NumberOfLogicalProcessors;
-$sys = Get-CimInstance Win32_ComputerSystem | Select-Object -First 1 TotalPhysicalMemory;
-$name = if ($null -ne $cpu -and $cpu.Name) { $cpu.Name } else { '' };
-$logical = if ($null -ne $cpu -and $cpu.NumberOfLogicalProcessors) { [int]$cpu.NumberOfLogicalProcessors } else { 0 };
-$ram = if ($null -ne $sys -and $sys.TotalPhysicalMemory) { [uint64]$sys.TotalPhysicalMemory } else { 0 };
-Write-Output ($name + '||' + $logical + '||' + $ram)"#;
-    let output = run_powershell_script(script, None);
-    let Ok(output) = output else {
-        return;
-    };
-    if !output.status.success() {
-        return;
-    }
+    use winreg::enums::*;
+    use winreg::RegKey;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let line = stdout
-        .lines()
-        .find(|value| !value.trim().is_empty())
-        .unwrap_or_default();
-    if line.trim().is_empty() {
-        return;
-    }
-
-    let mut segments = line.split("||").map(str::trim);
-    if let Some(cpu_name) = segments.next() {
-        if !cpu_name.is_empty() {
-            probe.cpu_name = cpu_name.to_string();
+    // CPU name from registry
+    if let Ok(hklm) = RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", KEY_READ)
+    {
+        if let Ok(name) = hklm.get_value::<String, _>("ProcessorNameString") {
+            let trimmed = name.trim().to_string();
+            if !trimmed.is_empty() {
+                probe.cpu_name = trimmed;
+            }
         }
     }
-    if let Some(logical) = segments.next().and_then(parse_u64_token) {
-        if let Ok(parsed) = usize::try_from(logical) {
-            probe.logical_cores = parsed;
+
+    // Logical cores from GetSystemInfo
+    unsafe {
+        let mut info: SYSTEM_INFO = std::mem::zeroed();
+        GetSystemInfo(&mut info);
+        if info.dwNumberOfProcessors > 0 {
+            probe.logical_cores = info.dwNumberOfProcessors as usize;
         }
     }
-    if let Some(ram_bytes) = segments.next().and_then(parse_u64_token) {
-        probe.total_ram_bytes = ram_bytes;
+
+    // Total RAM from GlobalMemoryStatusEx
+    unsafe {
+        let mut status = MEMORYSTATUSEX {
+            dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+            dwMemoryLoad: 0,
+            ullTotalPhys: 0,
+            ullAvailPhys: 0,
+            ullTotalPageFile: 0,
+            ullAvailPageFile: 0,
+            ullTotalVirtual: 0,
+            ullAvailVirtual: 0,
+            ullAvailExtendedVirtual: 0,
+        };
+        if GlobalMemoryStatusEx(&mut status) != 0 {
+            probe.total_ram_bytes = status.ullTotalPhys;
+        }
     }
 }
 
@@ -14209,18 +14109,6 @@ Explanation:
         assert!(!name.contains('('));
         assert!(!name.contains(')'));
         assert!(name.ends_with(".exe"));
-    }
-
-    #[test]
-    fn escape_powershell_single_quoted_replaces_embedded_quotes() {
-        let result = escape_powershell_single_quoted(r"C:\Program Files\Slasshy's App\app.exe");
-        assert_eq!(result, r"C:\Program Files\Slasshy''s App\app.exe");
-    }
-
-    #[test]
-    fn escape_powershell_single_quoted_passes_through_safe_strings() {
-        let result = escape_powershell_single_quoted(r"C:\Program Files\SlasshyWispr\app.exe");
-        assert_eq!(result, r"C:\Program Files\SlasshyWispr\app.exe");
     }
 
     #[test]
