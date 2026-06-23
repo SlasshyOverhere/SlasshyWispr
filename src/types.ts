@@ -238,6 +238,7 @@ export interface PersistedSettings {
   themeMode: ThemeMode;
   dictationSoundEffects: boolean;
   muteMusicWhileDictating: boolean;
+  rawMode: boolean;
   backtrackCorrection: boolean;
   removeFillers: boolean;
   autoPunctuation: boolean;

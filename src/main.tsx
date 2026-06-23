@@ -406,6 +406,7 @@ const pushToTalkSoundVolumeRange = requiredElement<HTMLInputElement>("#pushToTal
 const previewPttSoundBtn = requiredElement<HTMLButtonElement>("#previewPttSoundBtn");
 const previewPttEndSoundBtn = requiredElement<HTMLButtonElement>("#previewPttEndSoundBtn");
 const pttVolumeHint = requiredElement<HTMLSpanElement>("#pttVolumeHint");
+const rawModeToggle = requiredElement<HTMLInputElement>("#rawModeToggle");
 const backtrackToggle = requiredElement<HTMLInputElement>("#backtrackToggle");
 const removeFillersToggle = requiredElement<HTMLInputElement>("#removeFillersToggle");
 const autoPunctuationToggle = requiredElement<HTMLInputElement>("#autoPunctuationToggle");
@@ -1187,6 +1188,7 @@ previewPttEndSoundBtn.addEventListener("click", () => {
   playDictationSoundEffect("stop", pushToTalkEndSoundSelect.value);
 });
 muteMusicWhileDictatingToggle.addEventListener("change", handleSettingsChange);
+rawModeToggle.addEventListener("change", handleSettingsChange);
 backtrackToggle.addEventListener("change", handleSettingsChange);
 removeFillersToggle.addEventListener("change", handleSettingsChange);
 autoPunctuationToggle.addEventListener("change", handleSettingsChange);
@@ -1780,6 +1782,7 @@ function loadSettings(): PersistedSettings {
     themeMode: "system",
     dictationSoundEffects: true,
     muteMusicWhileDictating: false,
+    rawMode: false,
     backtrackCorrection: true,
     removeFillers: true,
     autoPunctuation: true,
@@ -1877,6 +1880,7 @@ function loadSettings(): PersistedSettings {
         parsed.muteMusicWhileDictating,
         defaults.muteMusicWhileDictating,
       ),
+      rawMode: coerceBoolean(parsed.rawMode, defaults.rawMode),
       backtrackCorrection: coerceBoolean(parsed.backtrackCorrection, defaults.backtrackCorrection),
       removeFillers: coerceBoolean(parsed.removeFillers, defaults.removeFillers),
       autoPunctuation: coerceBoolean(parsed.autoPunctuation, defaults.autoPunctuation),
@@ -2083,6 +2087,7 @@ function readSettingsFromForm(): PersistedSettings {
     themeMode: asThemeMode(themeModeSelect.value),
     dictationSoundEffects: dictationSoundEffectsToggle.checked,
     muteMusicWhileDictating: muteMusicWhileDictatingToggle.checked,
+    rawMode: rawModeToggle.checked,
     backtrackCorrection: backtrackToggle.checked,
     removeFillers: removeFillersToggle.checked,
     autoPunctuation: autoPunctuationToggle.checked,
@@ -2152,6 +2157,7 @@ function applySettingsToForm(next: PersistedSettings): void {
   themeModeSelect.value = next.themeMode;
   dictationSoundEffectsToggle.checked = next.dictationSoundEffects;
   muteMusicWhileDictatingToggle.checked = next.muteMusicWhileDictating;
+  rawModeToggle.checked = next.rawMode;
   backtrackToggle.checked = next.backtrackCorrection;
   removeFillersToggle.checked = next.removeFillers;
   autoPunctuationToggle.checked = next.autoPunctuation;
@@ -7135,6 +7141,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
           trigger: item.trigger,
           expansion: item.expansion,
         })),
+        rawMode: activeSettings.rawMode,
         applyBacktrack: activeSettings.backtrackCorrection,
         removeFillers: activeSettings.removeFillers,
         autoPunctuation: activeSettings.autoPunctuation,

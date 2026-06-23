@@ -524,6 +524,7 @@ struct AssistantPipelineRequest {
     max_tokens: Option<u32>,
     dictionary_entries: Option<Vec<DictionaryEntryRequest>>,
     snippet_entries: Option<Vec<SnippetEntryRequest>>,
+    raw_mode: Option<bool>,
     apply_backtrack: Option<bool>,
     remove_fillers: Option<bool>,
     auto_punctuation: Option<bool>,
@@ -7252,6 +7253,10 @@ fn build_selected_context_answer_prompt(command: &str, selected_text: &str) -> S
 fn refine_transcript(input: &str, request: &AssistantPipelineRequest) -> String {
     let mut transcript = input.trim().to_string();
 
+    if request.raw_mode.unwrap_or(false) {
+        return normalize_spacing(&transcript);
+    }
+
     if let Some(snippet_entries) = request.snippet_entries.as_ref() {
         transcript = apply_snippet_expansions(&transcript, snippet_entries);
     }
@@ -13310,6 +13315,7 @@ mod tests {
             max_tokens: None,
             dictionary_entries: None,
             snippet_entries: None,
+            raw_mode: None,
             apply_backtrack: Some(apply_backtrack),
             remove_fillers: Some(remove_fillers),
             auto_punctuation: Some(auto_punctuation),
@@ -13345,6 +13351,7 @@ mod tests {
             max_tokens: None,
             dictionary_entries: None,
             snippet_entries: None,
+            raw_mode: None,
             apply_backtrack: None,
             remove_fillers: None,
             auto_punctuation: None,

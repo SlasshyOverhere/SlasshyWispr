@@ -111,6 +111,7 @@ export function GeneralSettingsPane() {
       <details className="settings-section">
         <summary>Transcript cleanup</summary>
         <div className="section-body">
+          <label className="switch-row" htmlFor="rawModeToggle"><span>Raw mode <span className="switch-desc">(no cleanup at all)</span></span><input id="rawModeToggle" className="switch-input" type="checkbox" /></label>
           <label className="switch-row" htmlFor="backtrackToggle"><span>Backtrack corrections <span className="switch-desc">("scratch that")</span></span><input id="backtrackToggle" className="switch-input" type="checkbox" /></label>
           <label className="switch-row" htmlFor="removeFillersToggle"><span>Remove filler words</span><input id="removeFillersToggle" className="switch-input" type="checkbox" /></label>
           <label className="switch-row" htmlFor="autoPunctuationToggle"><span>Auto punctuation</span><input id="autoPunctuationToggle" className="switch-input" type="checkbox" /></label>
