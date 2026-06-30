@@ -3999,18 +3999,20 @@ function normalizeDictationLanguageAllowList(value: unknown): string[] {
   const rawValues: unknown[] = Array.isArray(value)
     ? value
     : typeof value === "string"
-      ? value
-          .split(",")
-          .map((item) => item.trim())
-          .filter((item) => item.length > 0)
+      ? value.split(",")
       : [];
 
+  const seen = new Set<string>();
   const next: string[] = [];
   for (const item of rawValues) {
-    const normalized = normalizeDictationLanguageCode(item);
-    if (!normalized || next.includes(normalized)) {
+    if (typeof item !== "string") {
       continue;
     }
+    const normalized = normalizeDictationLanguageCode(item);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
     next.push(normalized);
   }
   return next;
@@ -5316,7 +5318,14 @@ async function handleSetupAllTts(): Promise<void> {
 }
 
 function renderProviderModelCatalog(models: string[], selectedModel = ""): void {
-  const normalized = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean))).sort();
+  const seen = new Set<string>();
+  for (const model of models) {
+    const trimmed = model.trim();
+    if (trimmed) {
+      seen.add(trimmed);
+    }
+  }
+  const normalized = Array.from(seen).sort();
   const fallbackModel =
     selectedModel.trim() ||
     aiModelInput.value.trim() ||
@@ -5351,7 +5360,14 @@ function renderProviderModelCatalog(models: string[], selectedModel = ""): void 
 }
 
 function renderLocalOllamaModelCatalog(models: string[], selectedModel = ""): void {
-  const normalized = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean))).sort();
+  const seen = new Set<string>();
+  for (const model of models) {
+    const trimmed = model.trim();
+    if (trimmed) {
+      seen.add(trimmed);
+    }
+  }
+  const normalized = Array.from(seen).sort();
   const fallbackModel =
     selectedModel.trim() || localOllamaModelInput.value.trim() || settings.localOllamaModel.trim();
   const finalModels =
@@ -5382,7 +5398,14 @@ function renderLocalOllamaModelCatalog(models: string[], selectedModel = ""): vo
 }
 
 function renderLocalSttModelCatalog(models: string[], selectedModel = ""): void {
-  const normalized = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean)));
+  const seen = new Set<string>();
+  for (const model of models) {
+    const trimmed = model.trim();
+    if (trimmed) {
+      seen.add(trimmed);
+    }
+  }
+  const normalized = Array.from(seen);
   localSttModelCatalog = normalized;
 
   if (normalized.length === 0) {
