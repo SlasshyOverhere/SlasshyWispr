@@ -1,0 +1,4 @@
+## 2026-07-01 - [XSS in Offline Diagnostic Dialog]
+**Vulnerability:** Unescaped dynamic properties (e.g., `title`, `description`, `steps`, `icon`) were interpolated into `innerHTML` using a template literal in `showOfflineDiagnosticDialog`.
+**Learning:** Even internal diagnostic UI can be vulnerable to XSS if the data it consumes (e.g., error messages passed down from system or user actions) is unescaped before rendering directly into the DOM. Replacing `.innerHTML` is best but escaping using an internal helper also mitigates the issue, though it may alter formatting such as stripping explicit newlines when rendered.
+**Prevention:** Always pass dynamic data through a sanitization or escaping function (like `escapeHtml`) before inserting it into template strings used for `innerHTML`. Additionally, when using `escapeHtml`, apply `white-space: pre-wrap;` via CSS to the containing element so that encoded newline characters (`\n`) are preserved in the visual output.

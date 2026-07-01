@@ -9317,9 +9317,9 @@ function showOfflineModeDiagnostic(issue: string, details?: {
 
   dialog.innerHTML = `
     <div style="margin-bottom: 20px;">
-      <div style="font-size: 32px; margin-bottom: 12px;">${diagnostics.icon}</div>
-      <h3 style="margin: 0 0 8px 0; font-size: 18px; color: var(--text-primary, #fff);">${diagnostics.title}</h3>
-      <p style="margin: 0; color: var(--text-secondary, #aaa); font-size: 14px; line-height: 1.5;">${diagnostics.description}</p>
+      <div style="font-size: 32px; margin-bottom: 12px;">${escapeHtml(diagnostics.icon)}</div>
+      <h3 style="margin: 0 0 8px 0; font-size: 18px; color: var(--text-primary, #fff);">${escapeHtml(diagnostics.title)}</h3>
+      <p style="margin: 0; color: var(--text-secondary, #aaa); font-size: 14px; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(diagnostics.description)}</p>
     </div>
 
     ${details?.model ? `
@@ -9332,14 +9332,14 @@ function showOfflineModeDiagnostic(issue: string, details?: {
     <div style="margin-bottom: 20px;">
       <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-primary, #fff);">How to fix:</div>
       <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary, #aaa); font-size: 13px; line-height: 1.6;">
-        ${diagnostics.steps.map(step => `<li style="margin-bottom: 6px;">${step}</li>`).join('')}
+        ${diagnostics.steps.map(step => `<li style="margin-bottom: 6px;">${escapeHtml(step)}</li>`).join('')}
       </ol>
     </div>
 
     <div style="display: flex; gap: 8px; justify-content: flex-end;">
       ${diagnostics.actions.map(action => `
         <button
-          data-action="${action.id}"
+          data-action="${escapeHtml(action.id)}"
           class="diagnostic-action-btn"
           style="
             padding: 8px 16px;
@@ -9353,7 +9353,7 @@ function showOfflineModeDiagnostic(issue: string, details?: {
             transition: all 0.15s ease;
           "
         >
-          ${action.label}
+          ${escapeHtml(action.label)}
         </button>
       `).join('')}
     </div>
