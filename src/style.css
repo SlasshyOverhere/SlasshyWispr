@@ -1841,6 +1841,13 @@ textarea:focus-visible {
   background: var(--bg-hover);
 }
 
+.confirm-btn:focus-visible,
+.diagnostic-action-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--bg-hover);
+}
+
 .confirm-btn:active {
   transform: scale(0.98);
 }
