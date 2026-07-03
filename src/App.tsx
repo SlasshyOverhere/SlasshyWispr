@@ -153,7 +153,7 @@ export function App() {
               </button>
               <button id="toggleSidebarBtn" className="secondary-link" type="button" data-label="Collapse sidebar" data-hotkey="Alt+B" aria-label="Collapse sidebar (Alt+B)">
                 <span className="secondary-glyph">
-                  <span className="ico-grid secondary-glyph"></span>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="m14 9-3 3 3 3"/></svg>
                 </span>
                 <span>Collapse Sidebar</span>
                 <span className="nav-keyhint">Alt+B</span>

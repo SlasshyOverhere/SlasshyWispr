@@ -313,15 +313,6 @@ body.sidebar-collapsed .flow-shell {
   pointer-events: none;
 }
 
-.ico-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 2px;
-  width: 12px;
-  height: 12px;
-  background-image: radial-gradient(circle, currentColor 1.5px, transparent 1.5px);
-  background-size: 6px 6px;
-}
 
 .brand-row {
   display: flex;
@@ -492,6 +483,10 @@ body.sidebar-collapsed .secondary-link {
 body.sidebar-collapsed .nav-item span:not(.nav-glyph),
 body.sidebar-collapsed .secondary-link span:not(.secondary-glyph) {
   display: none;
+}
+
+body.sidebar-collapsed #toggleSidebarBtn svg {
+  transform: scaleX(-1);
 }
 
 .nav-keyhint {
