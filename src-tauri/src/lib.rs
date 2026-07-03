@@ -371,6 +371,7 @@ static LOCAL_STT_NATIVE_PARAKEET_OP_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static LOCAL_STT_NATIVE_PARAKEET_RUNTIME: OnceLock<Mutex<Option<NativeParakeetRuntime>>> =
     OnceLock::new();
 static PIPER_TUNING_SUPPORT: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
+static TRAY_UPDATE_ITEM: OnceLock<MenuItem<tauri::Wry>> = OnceLock::new();
 static SAVED_SYSTEM_AUDIO_VOLUME: Mutex<Option<u32>> = Mutex::new(None);
 
 #[cfg(target_os = "windows")]
@@ -1195,17 +1196,36 @@ async fn check_for_app_update(
     let request_url = format!(
         "https://api.github.com/repos/{repository_owner}/{repository_name}/releases?per_page=30"
     );
-    let mut request = state
-        .http
-        .get(&request_url)
-        .header(USER_AGENT, UPDATE_HTTP_USER_AGENT);
-    if let Some(token) = update_github_token() {
-        request = request.bearer_auth(token);
-    }
-    let response = request
-        .send()
-        .await
-        .map_err(|error| format!("Failed to check for updates: {error}"))?;
+    let max_retries = 2u32;
+    let mut attempt = 0u32;
+    let response = loop {
+        let mut req = state
+            .http
+            .get(&request_url)
+            .header(USER_AGENT, UPDATE_HTTP_USER_AGENT);
+        if let Some(token) = update_github_token() {
+            req = req.bearer_auth(token);
+        }
+        let resp = req
+            .send()
+            .await
+            .map_err(|error| format!("Failed to check for updates: {error}"))?;
+        let status = resp.status();
+        if (status == reqwest::StatusCode::FORBIDDEN
+            || status == reqwest::StatusCode::TOO_MANY_REQUESTS)
+            && attempt < max_retries
+        {
+            attempt += 1;
+            let delay = if attempt == 1 { 5u64 } else { 15u64 };
+            warn!(
+                "[updater] rate-limited (status={}) retry {attempt}/{max_retries}",
+                status,
+            );
+            std::thread::sleep(Duration::from_secs(delay));
+            continue;
+        }
+        break resp;
+    };
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
@@ -1292,10 +1312,23 @@ Consider setting {UPDATE_GITHUB_TOKEN_ENV} for a higher limit."
             Ok(manifest_resp) if manifest_resp.status().is_success() => {
                 match manifest_resp.json::<UpdaterManifest>().await {
                     Ok(manifest) => manifest.sha256_hash,
-                    Err(_) => String::new(),
+                    Err(error) => {
+                        warn!("[updater] failed to parse updater manifest: {error}");
+                        String::new()
+                    }
                 }
             }
-            _ => String::new(),
+            Ok(manifest_resp) => {
+                warn!(
+                    "[updater] manifest fetch returned status={}",
+                    manifest_resp.status()
+                );
+                String::new()
+            }
+            Err(error) => {
+                warn!("[updater] manifest fetch failed: {error}");
+                String::new()
+            }
         }
     } else {
         String::new()
@@ -1384,10 +1417,22 @@ async fn download_and_install_app_update(
             false,
         );
 
-        let response = state
+        let existing_size = fs::metadata(&installer_path)
+            .ok()
+            .and_then(|m| if m.len() > 0 { Some(m.len()) } else { None });
+
+        let mut req_builder = state
             .http
             .get(download_url)
-            .header(USER_AGENT, UPDATE_HTTP_USER_AGENT)
+            .header(USER_AGENT, UPDATE_HTTP_USER_AGENT);
+        if let Some(size) = existing_size {
+            info!(
+                "[updater] partial installer found ({} bytes), requesting resume",
+                size
+            );
+            req_builder = req_builder.header(RANGE, format!("bytes={size}-"));
+        }
+        let response = req_builder
             .send()
             .await
             .map_err(|error| {
@@ -1396,7 +1441,7 @@ async fn download_and_install_app_update(
                 message
             })?;
         let status = response.status();
-        if !status.is_success() {
+        if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
             let body = response.text().await.unwrap_or_default();
             let message = format!(
                 "Installer download failed with status {}: {}",
@@ -1407,10 +1452,24 @@ async fn download_and_install_app_update(
             return Err(message);
         }
 
-        let total_bytes = response.content_length().unwrap_or(0);
-        let mut downloaded_bytes = 0_u64;
-        let mut installer_file = fs::File::create(&installer_path).map_err(|error| {
-            let message = format!("Failed to create installer file: {error}");
+        let is_resume = existing_size.is_some() && status == reqwest::StatusCode::PARTIAL_CONTENT;
+        let total_bytes = if is_resume {
+            existing_size.unwrap() + response.content_length().unwrap_or(0)
+        } else {
+            response.content_length().unwrap_or(0)
+        };
+        let default_downloaded = existing_size.unwrap_or(0);
+        let mut downloaded_bytes = if is_resume { default_downloaded } else { 0_u64 };
+        let mut installer_file: fs::File = if is_resume {
+            fs::OpenOptions::new().append(true).open(&installer_path)
+        } else {
+            if existing_size.is_some() {
+                info!("[updater] server does not support resume, downloading from scratch");
+            }
+            fs::File::create(&installer_path)
+        }
+        .map_err(|error| {
+            let message = format!("Failed to open installer file: {error}");
             emit_update_install_progress(
                 &app,
                 "error",
@@ -1434,6 +1493,41 @@ async fn download_and_install_app_update(
         );
 
         let mut hasher = Sha256::new();
+        if is_resume {
+            let mut existing_file = fs::File::open(&installer_path).map_err(|error| {
+                let message = format!("Failed to read partial installer for hash: {error}");
+                emit_update_install_progress(
+                    &app,
+                    "error",
+                    &message,
+                    downloaded_bytes,
+                    total_bytes,
+                    true,
+                    false,
+                );
+                message
+            })?;
+            let mut buf = [0u8; 8192];
+            loop {
+                let n = existing_file.read(&mut buf).map_err(|error| {
+                    let message = format!("Failed to read partial installer: {error}");
+                    emit_update_install_progress(
+                        &app,
+                        "error",
+                        &message,
+                        downloaded_bytes,
+                        total_bytes,
+                        true,
+                        false,
+                    );
+                    message
+                })?;
+                if n == 0 {
+                    break;
+                }
+                hasher.update(&buf[..n]);
+            }
+        }
         let mut response = response;
         while let Some(chunk) = response.chunk().await.map_err(|error| {
             let message = format!("Failed while reading installer download: {error}");
@@ -1508,15 +1602,54 @@ async fn download_and_install_app_update(
             return Err(message);
         }
 
+        // Verify downloaded size matches expected when content-length is known
+        if total_bytes > 0 && downloaded_bytes != total_bytes {
+            let message = format!(
+                "Installer download size mismatch (expected={total_bytes} got={downloaded_bytes})"
+            );
+            emit_update_install_progress(
+                &app,
+                "error",
+                &message,
+                downloaded_bytes,
+                total_bytes.max(downloaded_bytes),
+                true,
+                false,
+            );
+            let _ = fs::remove_file(&installer_path);
+            return Err(message);
+        }
+
         // Verify SHA256 if manifest hash was provided
         let computed_hash = format!("{:x}", hasher.finalize());
         if let Some(ref expected) = request.expected_sha256 {
-            if !expected.is_empty()
-                && !computed_hash.eq_ignore_ascii_case(expected)
-            {
-                let message = format!(
-                    "Installer SHA256 mismatch (expected={expected} computed={computed_hash})"
-                );
+            if !expected.is_empty() {
+                if !computed_hash.eq_ignore_ascii_case(expected) {
+                    let message = format!(
+                        "Installer SHA256 mismatch (expected={expected} computed={computed_hash})"
+                    );
+                    emit_update_install_progress(
+                        &app,
+                        "error",
+                        &message,
+                        downloaded_bytes,
+                        total_bytes.max(downloaded_bytes),
+                        true,
+                        false,
+                    );
+                    let _ = fs::remove_file(&installer_path);
+                    return Err(message);
+                }
+            }
+        }
+        // Enforce SHA256: fail if hash is missing (None or empty) when asset is known
+        let hash_missing = request.expected_sha256.is_none()
+            || request.expected_sha256.as_deref() == Some("");
+        if hash_missing {
+            let has_asset = request.asset_name.as_deref().map_or(false, |n| !n.is_empty());
+            if has_asset {
+                let message =
+                    "Update installer manifest is missing SHA256 hash. Cannot verify installer integrity.".to_string();
                 emit_update_install_progress(
                     &app,
                     "error",
@@ -1649,8 +1782,30 @@ async fn download_and_install_app_update(
         }
 
         let app_for_exit = app.clone();
+        let installer_for_poll = installer_path.clone();
         thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(2000));
+            let initial_len = fs::metadata(&installer_for_poll)
+                .ok()
+                .map(|m| m.len())
+                .unwrap_or(0);
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                let current_len = fs::metadata(&installer_for_poll)
+                    .ok()
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+                if current_len != initial_len {
+                    info!("[updater] installer process started writing to disk");
+                    break;
+                }
+                if Instant::now() >= deadline {
+                    warn!("[updater] installer did not start writing within 10s, exiting anyway");
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            info!("[updater] exiting app to allow installer to proceed");
+            std::thread::sleep(Duration::from_millis(1000));
             app_for_exit.exit(0);
         });
         return Ok(());
@@ -1661,6 +1816,40 @@ async fn download_and_install_app_update(
         let _ = (app, state, request);
         Err("Auto-update installer is currently implemented for Windows only.".to_string())
     }
+}
+
+#[tauri::command]
+async fn show_update_settings(app: AppHandle) -> Result<(), String> {
+    show_main_window(&app);
+    if let Err(error) = app.emit(APP_EVENT_UPDATE_AVAILABLE, json!({})) {
+        return Err(format!("Failed to emit update settings event: {error}"));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_tray_update_available(
+    app: AppHandle,
+    available: bool,
+    version: String,
+) -> Result<(), String> {
+    let label = if available {
+        format!("Update v{version} available")
+    } else {
+        "No updates available".to_string()
+    };
+    if let Some(item) = TRAY_UPDATE_ITEM.get() {
+        let _ = item.set_text(&label);
+        let _ = item.set_enabled(available);
+    }
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        if available {
+            let _ = tray.set_tooltip(Some(&format!("SlasshyWispr — Update v{version} available")));
+        } else {
+            let _ = tray.set_tooltip(Some("SlasshyWispr"));
+        }
+    }
+    Ok(())
 }
 
 const KEYRING_SERVICE: &str = "SlasshyWispr";
@@ -14304,6 +14493,14 @@ fn build_tray_icon(app: &AppHandle) -> tauri::Result<()> {
     )?;
     let dashboard =
         MenuItem::with_id(app, TRAY_MENU_DASHBOARD_ID, "Dashboard", true, None::<&str>)?;
+    let update_available = MenuItem::with_id(
+        app,
+        TRAY_MENU_UPDATE_AVAILABLE_ID,
+        "Update available",
+        false,
+        None::<&str>,
+    )?;
+    let _ = TRAY_UPDATE_ITEM.set(update_available.clone());
     let quit = MenuItem::with_id(app, TRAY_MENU_QUIT_ID, "Quit", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
@@ -14312,6 +14509,7 @@ fn build_tray_icon(app: &AppHandle) -> tauri::Result<()> {
             &copy_last_transcription,
             &copy_last_response,
             &dashboard,
+            &update_available,
             &separator,
             &quit,
         ],
@@ -14331,6 +14529,12 @@ fn build_tray_icon(app: &AppHandle) -> tauri::Result<()> {
             }
             TRAY_MENU_DASHBOARD_ID => {
                 show_main_window(app);
+            }
+            TRAY_MENU_UPDATE_AVAILABLE_ID => {
+                show_main_window(app);
+                if let Err(error) = app.emit(APP_EVENT_UPDATE_AVAILABLE, json!({})) {
+                    warn!("[tray] failed to emit update-available event: {error}");
+                }
             }
             TRAY_MENU_QUIT_ID => {
                 app.exit(0);
@@ -14479,6 +14683,8 @@ pub fn run() {
             start_tts_runtime_setup,
             get_tts_runtime_setup_status,
             run_assistant_pipeline,
+            show_update_settings,
+            set_tray_update_available,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
