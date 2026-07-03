@@ -59,7 +59,7 @@ export function GeneralSettingsPane() {
           defaultValue="system"
         >
           <option value="system">Follow system</option>
-          <option value="dark">Slasshy Studio</option>
+          <option value="dark">Studio</option>
           <option value="light">Daylight</option>
           <option value="mono">Index</option>
         </select>
@@ -97,7 +97,7 @@ export function GeneralSettingsPane() {
             </span>
           </span>
           <span className="theme-card-meta">
-            <span className="theme-card-name">Slasshy Studio</span>
+            <span className="theme-card-name">Studio</span>
             <span className="theme-card-tagline">Warm amber dark, evening work</span>
           </span>
         </label>
