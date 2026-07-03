@@ -350,6 +350,46 @@ button, input, select, textarea {
   height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+.window-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  z-index: 100;
+}
+
+.window-btn {
+  width: 44px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-secondary);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.window-btn:hover {
+  background: var(--bg-hover);
+  color: var(--ink-primary);
+}
+
+.window-close:hover {
+  background: oklch(60% 0.20 25);
+  color: oklch(98% 0 0);
+}
+
+.app-drag-region {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  z-index: 1;
 }
 
 .flow-shell {
@@ -785,6 +825,7 @@ body.sidebar-collapsed .nav-keyhint {
   padding: 5px 10px;
   border-radius: 4px;
   transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
+  margin-left: auto;
 }
 
 .overview-clear-btn:hover {

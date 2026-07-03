@@ -81,20 +81,17 @@ export function App() {
   return (
     <>
       <div className={`app-frame ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-        <header className="app-titlebar">
-          <div id="appTitlebarDrag" className="app-titlebar-drag" data-tauri-drag-region="true">
-          </div>
-          <div className="app-titlebar-actions">
-            <button id="windowMinimizeBtn" className="titlebar-action" type="button" aria-label="Minimize">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            </button>
-<button id="windowCloseBtn" className="titlebar-action titlebar-close" type="button" aria-label="Close">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-            </button>
-          </div>
-        </header>
+        <div className="window-controls">
+          <button id="windowMinimizeBtn" className="window-btn" type="button" aria-label="Minimize">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <button id="windowCloseBtn" className="window-btn window-close" type="button" aria-label="Close">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
 
         <div className="flow-shell">
+          <div className="app-drag-region" data-tauri-drag-region="true"></div>
           <aside className="flow-sidebar">
             <nav className="nav-main" aria-label="Main navigation">
               <button className={`nav-item ${state.activePage === 'home' ? 'is-active' : ''}`} data-page-nav="home" data-label="Home" data-hotkey="Alt+1" aria-label="Home (Alt+1)" type="button">
