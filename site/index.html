@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SlasshyWispr: voice dictation, on a desktop instrument</title>
+  <meta name="description" content="SlasshyWispr is a desktop voice dictation and AI assistant with online, offline, and hybrid model routing. Speak naturally, get clean transcription, hear assistant replies with built-in TTS. A precision instrument for people who dictate for a living." />
+  <meta name="theme-color" content="#1a1d24" />
+  <meta property="og:title" content="SlasshyWispr: voice dictation, on a desktop instrument" />
+  <meta property="og:description" content="Online, offline, or hybrid. Local STT, local AI. A dictation tool for people who dictate for a living." />
+  <meta property="og:image" content="assets/og-cover.png" />
+  <meta property="og:type" content="website" />
+  <link rel="icon" type="image/png" href="assets/logo.png" />
+
+  <!-- Fonts: Fraunces (display, opsz/wght/soft) + Geist (body) from Google Fonts. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,100..900,0..100;1,9..144,100..900,0..100&family=Geist:wght@100..900&display=swap" />
+
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/components.css" />
+  <link rel="stylesheet" href="styles/showcase.css" />
+</head>
+<body>
+
+<div class="page-bg" aria-hidden="true"></div>
+<div class="page-grain" aria-hidden="true"></div>
+
+<div class="page">
+
+  <!-- ============================================================
+       01 · Titlebar
+       ============================================================ -->
+  <header class="titlebar" role="banner">
+    <a href="#top" class="titlebar__logo" aria-label="SlasshyWispr home">
+      <span class="logo-mark"></span>
+      <span>SlasshyWispr</span>
+    </a>
+
+    <nav class="titlebar__nav" aria-label="primary">
+      <a href="#overview" aria-current="page">Overview</a>
+      <a href="#spec">Spec</a>
+      <a href="#sequence">Sequence</a>
+      <a href="#hotkeys">Hotkeys</a>
+      <a href="#download">Get</a>
+    </nav>
+
+    <div class="titlebar__actions">
+      <span class="titlebar__version">v1.0.7 · Windows</span>
+      <a href="#download" class="btn-ghost">
+        Get for Windows
+        <span class="icon-chev"></span>
+      </a>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- ============================================================
+         02 · Hero
+         ============================================================ -->
+    <section class="section hero" id="overview" aria-labelledby="hero-title">
+      <div class="section-inner">
+        <div class="hero__grid">
+
+          <div class="hero__copy">
+            <div class="t-eyebrow t-rule"><span class="t-mono-sm" style="color: var(--ink-muted)">SLASSHY · DESKTOP · 01</span></div>
+
+            <h1 class="t-display-1" id="hero-title">
+              Voice <span class="t-spoken">into</span> text,<br />
+              on a desktop <span class="t-spoken">instrument.</span>
+            </h1>
+
+            <p class="t-lede">
+              SlasshyWispr is a precision dictation tool for people who dictate for a living.
+              Online, offline, or hybrid. Local STT, local AI. Speak naturally, get clean text,
+              hear assistant replies with built-in TTS.
+            </p>
+
+            <div class="hero__copy-actions">
+              <a href="#download" class="btn-primary">
+                <span class="icon-disc"></span>
+                Download for Windows
+              </a>
+              <a href="#sequence" class="btn-ghost">
+                See it in motion
+                <span class="icon-chev"></span>
+              </a>
+            </div>
+
+            <p class="hero__spec-line t-mono-sm">
+              <span><span class="t-mono-sm" style="color:var(--ink-faint)">RUNTIME</span> &nbsp; Local · cloud · both</span>
+              <span class="hero__spec-sep" aria-hidden="true"></span>
+              <span><span class="t-mono-sm" style="color:var(--ink-faint)">LATENCY</span> &nbsp; &lt; 0.8 s end to end</span>
+              <span class="hero__spec-sep" aria-hidden="true"></span>
+              <span><span class="t-mono-sm" style="color:var(--ink-faint)">PRIVACY</span> &nbsp; Offline by default</span>
+            </p>
+          </div>
+
+          <!-- The actual captured screenshot, framed like the app's titlebar. -->
+          <figure class="frame-app" aria-label="Actual SlasshyWispr desktop app screenshot">
+            <div class="frame-app__titlebar">
+              <span class="frame-app__titlebar-dot"></span>
+              <span class="frame-app__titlebar-name">SlasshyWispr · Overview</span>
+              <span class="frame-app__titlebar-meta">captured · 9 May 2026</span>
+            </div>
+            <div class="frame-app__viewport">
+              <img
+                src="assets/slasshywispr_screenshot.png"
+                alt="SlasshyWispr Overview page in dark Studio Console style, showing productivity metrics and the latest dictation transcript."
+                width="1280" height="800"
+                loading="eager"
+                decoding="async" />
+            </div>
+            <figcaption class="frame-app__annotation">
+              <span class="rec-dot"></span>
+              <span>LIVE CAPTURE · THE CURRENT BUILD, NOT A MOCK</span>
+            </figcaption>
+          </figure>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         03 · Spec ledger
+         ============================================================ -->
+    <section class="section spec" id="spec" aria-labelledby="spec-title">
+      <div class="section-inner">
+        <div class="section-head">
+          <div class="section-head__eyebrow t-eyebrow">02 · SPECIFICATION</div>
+          <h2 class="section-head__title t-display-2" id="spec-title">The surface.</h2>
+          <div class="section-head__meta">
+            <div class="t-mono-sm">REVISION 1.0.7 · 2026-05-09</div>
+          </div>
+        </div>
+
+        <div class="spec__grid">
+
+          <div class="spec__lead">
+            <p class="t-eyebrow t-mono-sm" style="color: var(--ink-faint)">WHAT IT IS</p>
+            <h3 class="t-display-3">A precision instrument, not a chat app.</h3>
+            <p class="t-body">
+              SlasshyWispr lives in your titlebar and disappears into your flow until
+              you press the hotkey. From the moment you speak, every step of the
+              pipeline (capture, transcription, language model, speech synthesis)
+              is visible and tunable. Online, offline, or hybrid: choose per task,
+              not per account.
+            </p>
+          </div>
+
+          <div class="ledger" aria-label="specifications">
+            <div class="ledger__row">
+              <span class="ledger__num">/01</span>
+              <span class="ledger__label">Speech to text</span>
+              <span class="ledger__value">parakeet · whisper · online STT</span>
+            </div>
+            <div class="ledger__row">
+              <span class="ledger__num">/02</span>
+              <span class="ledger__label">Language model</span>
+              <span class="ledger__value">ollama · openai-compatible · custom</span>
+            </div>
+            <div class="ledger__row">
+              <span class="ledger__num">/03</span>
+              <span class="ledger__label">Speech synthesis</span>
+              <span class="ledger__value">piper · coqui · browser TTS</span>
+            </div>
+            <div class="ledger__row">
+              <span class="ledger__num">/04</span>
+              <span class="ledger__label">Hotkey</span>
+              <span class="ledger__value">push-to-talk · toggle · wake phrase</span>
+            </div>
+            <div class="ledger__row">
+              <span class="ledger__num">/05</span>
+              <span class="ledger__label">Wake phrase</span>
+              <span class="ledger__value">'hey slasshy' · 'hey jarvis' · custom</span>
+            </div>
+            <div class="ledger__row">
+              <span class="ledger__num">/06</span>
+              <span class="ledger__label">Pipeline visibility</span>
+              <span class="ledger__value">stt · ai · tts timings, live</span>
+            </div>
+            <div class="ledger__row">
+              <span class="ledger__num">/07</span>
+              <span class="ledger__label">Credential store</span>
+              <span class="ledger__value">os keyring · dpapi fallback</span>
+            </div>
+            <div class="ledger__row">
+              <span class="ledger__num">/08</span>
+              <span class="ledger__label">Auto-update</span>
+              <span class="ledger__value">background check · signed nsis</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         04 · Remotion-style showcase
+         ============================================================ -->
+    <section class="section showcase" id="sequence" aria-labelledby="showcase-title">
+      <div class="section-inner">
+
+        <div class="showcase__head">
+          <div>
+            <div class="t-eyebrow">03 · SEQUENCE</div>
+            <h2 class="t-display-2" id="showcase-title">
+              <span style="display: block;">From the moment</span>
+              <span style="display: block;">the <span class="t-spoken">hotkey</span> is pressed.</span>
+            </h2>
+          </div>
+          <p class="t-body">
+            This is a Remotion-style composition rendered live in the page, using
+            the same surface tokens, fonts, and accent logic as the app.
+            Each step is a stage in the dictation pipeline, animated at 60 fps
+            and shaped by the same easing as the real hotkey capture.
+          </p>
+        </div>
+
+        <!-- The composition = the centerpiece of the site -->
+        <div class="composition" id="composition" data-stage="idle">
+
+          <div class="composition__stage">
+
+            <div class="app" aria-hidden="false">
+
+              <div class="app__winbar">
+                <div class="app__winbar-meta">
+                  <span class="meta__path">online.slasshy.slasshywispr.exe</span>
+                  <span class="meta__ver">v1.0.7</span>
+                </div>
+                <div class="app__winbar-controls">
+                  <span class="ctrl" aria-hidden="true">—</span>
+                  <span class="ctrl" aria-hidden="true">▢</span>
+                  <span class="ctrl ctrl--close" aria-hidden="true">×</span>
+                </div>
+              </div>
+
+              <aside class="sidebar" aria-label="app sidebar">
+                <ul class="sidebar__nav">
+                  <li class="sidebar__item" aria-label="Home">
+                    <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg></span>
+                  </li>
+                  <li class="sidebar__item" aria-label="History" aria-current="true">
+                    <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+                  </li>
+                  <li class="sidebar__item" aria-label="Dictionary">
+                    <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 012-2h12a2 2 0 012 2v15H8a4 4 0 01-4-4V5z"/><path d="M8 17h12"/></svg></span>
+                  </li>
+                  <li class="sidebar__item" aria-label="Snippets">
+                    <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6l-4 6 4 6"/><path d="M16 6l4 6-4 6"/></svg></span>
+                  </li>
+                  <li class="sidebar__item" aria-label="Notes">
+                    <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h14v14H5z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg></span>
+                  </li>
+                  <li class="sidebar__item" aria-label="Analytics">
+                    <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M7 16V10"/><path d="M12 16V6"/><path d="M17 16v-7"/></svg></span>
+                  </li>
+                </ul>
+                <div class="sidebar__bottom">
+                  <div class="sidebar__item" aria-label="Add">
+                    <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
+                  </div>
+                  <div class="sidebar__item" aria-label="Settings">
+                    <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7z"/><path d="M19.4 13.5l1.5 1-2 3.5-1.7-.6a7.6 7.6 0 01-1.7 1l-.3 1.8h-4l-.3-1.8a7.6 7.6 0 01-1.7-1l-1.7.6-2-3.5 1.5-1a7.6 7.6 0 010-2l-1.5-1 2-3.5 1.7.6a7.6 7.6 0 011.7-1l.3-1.8h4l.3 1.8a7.6 7.6 0 011.7 1l1.7-.6 2 3.5-1.5 1a7.6 7.6 0 010 2z"/></svg></span>
+                  </div>
+                </div>
+              </aside>
+
+              <main class="content" aria-label="app content">
+                <h2 class="content__title">Overview</h2>
+
+                <section class="metrics-strip" aria-label="Productivity trends">
+                  <div class="metric-cell">
+                    <span class="metric__label">Words</span>
+                    <span class="metric__value">2445<span class="metric__unit">words</span></span>
+                    <span class="metric__delta metric__delta--up">+35%</span>
+                  </div>
+                  <div class="metric-cell">
+                    <span class="metric__label">Spoken</span>
+                    <span class="metric__value">16<span class="metric__unit">m</span></span>
+                    <span class="metric__delta metric__delta--up">+20%</span>
+                  </div>
+                  <div class="metric-cell">
+                    <span class="metric__label">Sessions</span>
+                    <span class="metric__value">145</span>
+                    <span class="metric__delta metric__delta--down">-37%</span>
+                  </div>
+                  <div class="metric-cell">
+                    <span class="metric__label">Pace</span>
+                    <span class="metric__value">146</span>
+                    <span class="metric__delta metric__delta--flat">--</span>
+                  </div>
+                  <button type="button" class="metric-clear" aria-label="Clear metrics">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                    <span>CLEAR</span>
+                  </button>
+                </section>
+
+                <div class="history-actions">
+                  <button type="button" class="history-pill">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                    <span>View Full History</span>
+                  </button>
+                  <button type="button" class="history-link">Clear</button>
+                </div>
+
+                <div class="empty-state" id="empty-state">
+                  <div class="empty-state__mic" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0"/><path d="M12 18v3"/></svg>
+                  </div>
+                  <h3 class="empty-state__title">No activity yet</h3>
+                  <p class="empty-state__caption">Start dictating to see your recent transcriptions here.</p>
+                </div>
+
+                <div class="conversation-log" id="conversation-log" role="log" aria-live="polite" aria-hidden="false">
+                  <div class="history-date-header"><span>9 MAY 2026</span></div>
+
+                  <div class="conversation-entry is-user" data-conv="user">
+                    <span class="entry-time">03:48 AM</span>
+                    <p class="entry-content"><span class="dict__typed"></span><span class="dict__caret" aria-hidden="true"></span></p>
+                    <div class="entry-actions">
+                      <button type="button" class="entry-action">Copy</button>
+                    </div>
+                  </div>
+
+                  <div class="conversation-entry is-assistant" data-conv="assistant">
+                    <span class="entry-time">03:48 AM</span>
+                    <p class="entry-content">How can I help with this?</p>
+                    <div class="entry-actions">
+                      <button type="button" class="entry-action">Copy</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="overlay-waveform stage-overlay" aria-hidden="true">
+                  <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+                  <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+                  <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+                  <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+                  <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+                  <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+                </div>
+              </main>
+            </div>
+
+            <!-- Stage overlays: hotkey -->
+            <div class="overlay-hotkey stage-overlay" aria-hidden="true">
+              <span class="key">ALT</span><span class="plus">+</span><span class="key">SPACE</span>
+            </div>
+
+            <!-- Stage overlays: scanline across the titlebar during recording -->
+            <div class="overlay-scanline stage-overlay" aria-hidden="true"></div>
+
+            <!-- Stage overlays: assistant reply -->
+            <div class="overlay-assistant stage-overlay" aria-hidden="true">
+              <div class="overlay-assistant__head">
+                <span class="assistant-dot"></span>
+                <span>jarvis · 10:31 am</span>
+                <span class="assistant-tag">assistant</span>
+                <span class="overlay-tts" aria-hidden="true">
+                  <span class="bars"><i></i><i></i><i></i><i></i></span>
+                  <span>PLAYING</span>
+                </span>
+              </div>
+              <div class="overlay-assistant__body">
+                Dictation captured.
+              </div>
+              <div class="overlay-assistant__foot">
+                <span>STT 142 ms</span>
+                <span style="color:var(--ink-faint)">·</span>
+                <span>AI 612 ms</span>
+                <span style="color:var(--ink-faint)">·</span>
+                <span>TTS 220 ms</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="composition__meta">
+          <span>60 FPS · ease-out-quint · 8 STAGES</span>
+          <span class="composition__play-label">READY · 9.4 s LOOP</span>
+          <span class="composition__meta-actions">
+            <button type="button" class="btn-replay" aria-label="Replay the dictation sequence">
+              <span class="replay-arrow"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 109-9 9.7 9.7 0 00-6.7 2.7L3 8"/><path d="M3 3v5h5"/></svg></span>
+              <span>REPLAY</span>
+            </button>
+          </span>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================
+         05 · Manifesto
+         ============================================================ -->
+    <section class="section manifesto" aria-labelledby="manifesto-title">
+      <div class="section-inner" style="max-width: 1080px;">
+        <div class="section-head">
+          <div class="section-head__eyebrow t-eyebrow">04 · POSITION</div>
+          <h2 class="section-head__title t-display-2" id="manifesto-title">The hotkey is the product.</h2>
+          <div class="section-head__meta">
+            <div class="t-mono-sm">A STATEMENT · NOT A SLOGAN</div>
+          </div>
+        </div>
+
+        <div class="manifesto__quote-mark" aria-hidden="true">&ldquo;</div>
+
+        <p class="t-display-italic manifesto__body">
+          A dictation tool, not a chat app. A precision instrument, not a
+          productivity suite. The hotkey is the product. The transcript
+          is the headline. The accent appears only when something
+          deserves your attention; everything else stays out of the way.
+        </p>
+
+        <div class="manifesto__cite">
+          <span><span style="color:var(--ink-primary)">/ PRODUCT POSITION</span></span>
+          <span style="margin-left: auto;">DRAFT 1.0 · 9 MAY 2026</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         06 · Hotkey surface
+         ============================================================ -->
+    <section class="section hotkeys" id="hotkeys" aria-labelledby="hotkeys-title">
+      <div class="section-inner">
+        <div class="section-head">
+          <div class="section-head__eyebrow t-eyebrow">05 · HARDWARE INPUT</div>
+          <h2 class="section-head__title t-display-2" id="hotkeys-title">Hands never leave the keys.</h2>
+          <div class="section-head__meta">
+            <div class="t-mono-sm">CUSTOMIZABLE · 16 BUILT-IN</div>
+          </div>
+        </div>
+
+        <div class="hotkeys__lead">
+          <p class="t-display-3" style="margin: 0 0 var(--space-5);">The keyboard is the surface. The mouse is optional. The voice is the input.</p>
+          <p class="t-body">Every action has a hotkey. Every hotkey has a hint visible beside its result. Customize them per session, per workflow, or per language.</p>
+        </div>
+
+        <div class="hotkeys__grid" aria-label="hotkey reference">
+          <div class="hotkey">
+            <div class="hotkey__keys">
+              <span class="key-cap">ALT</span>
+              <span style="color:var(--ink-faint)">+</span>
+              <span class="key-cap">SPACE</span>
+            </div>
+            <div class="hotkey__desc">
+              <span class="t-mono-sm">/ PUSH TO TALK · TOGGLE</span>
+              <div class="t-body">Capture voice from the focused app.</div>
+            </div>
+          </div>
+
+          <div class="hotkey">
+            <div class="hotkey__keys">
+              <span class="key-cap">CTRL</span>
+              <span style="color:var(--ink-faint)">+</span>
+              <span class="key-cap">SHIFT</span>
+              <span style="color:var(--ink-faint)">+</span>
+              <span class="key-cap">R</span>
+            </div>
+            <div class="hotkey__desc">
+              <span class="t-mono-sm">/ WAKE PHRASE</span>
+              <div class="t-body">Listen passively for "hey slasshy".</div>
+            </div>
+          </div>
+
+          <div class="hotkey">
+            <div class="hotkey__keys">
+              <span class="key-cap">CTRL</span>
+              <span style="color:var(--ink-faint)">+</span>
+              <span class="key-cap">ENTER</span>
+            </div>
+            <div class="hotkey__desc">
+              <span class="t-mono-sm">/ INSERT TRANSCRIPT</span>
+              <div class="t-body">Paste the clean text into the focused app.</div>
+            </div>
+          </div>
+
+          <div class="hotkey">
+            <div class="hotkey__keys">
+              <span class="key-cap">ALT</span>
+              <span style="color:var(--ink-faint)">+</span>
+              <span class="key-cap">1</span>
+              <span style="color:var(--ink-faint)">..</span>
+              <span class="key-cap">5</span>
+            </div>
+            <div class="hotkey__desc">
+              <span class="t-mono-sm">/ NAVIGATE</span>
+              <div class="t-body">Jump between Home, History, Dictionary, Snippets, Notes.</div>
+            </div>
+          </div>
+
+          <div class="hotkey">
+            <div class="hotkey__keys">
+              <span class="key-cap">CTRL</span>
+              <span style="color:var(--ink-faint)">+</span>
+              <span class="key-cap">L</span>
+            </div>
+            <div class="hotkey__desc">
+              <span class="t-mono-sm">/ OPEN LAST TRANSCRIPT</span>
+              <div class="t-body">Re-edit the most recent dictation.</div>
+            </div>
+          </div>
+
+          <div class="hotkey">
+            <div class="hotkey__keys">
+              <span class="key-cap">CTRL</span>
+              <span style="color:var(--ink-faint)">+</span>
+              <span class="key-cap">K</span>
+            </div>
+            <div class="hotkey__desc">
+              <span class="t-mono-sm">/ COMMAND PALETTE</span>
+              <div class="t-body">Every command, snippet, and dictionary entry.</div>
+            </div>
+          </div>
+
+          <div class="hotkey">
+            <div class="hotkey__keys">
+              <span class="key-cap">CTRL</span>
+              <span style="color:var(--ink-faint)">+</span>
+              <span class="key-cap">.</span>
+            </div>
+            <div class="hotkey__desc">
+              <span class="t-mono-sm">/ ASK ASSISTANT</span>
+              <div class="t-body">Toggle the on-demand assistant with TTS reply.</div>
+            </div>
+          </div>
+
+          <div class="hotkey">
+            <div class="hotkey__keys">
+              <span class="key-cap">ALT</span>
+              <span style="color:var(--ink-faint)">+</span>
+              <span class="key-cap">S</span>
+            </div>
+            <div class="hotkey__desc">
+              <span class="t-mono-sm">/ OPEN SETTINGS</span>
+              <div class="t-body">Models, hotkeys, dictionary, runtime modes.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         07 · Pipeline timings
+         ============================================================ -->
+    <section class="section pipeline" aria-labelledby="pipeline-title">
+      <div class="section-inner">
+        <div class="section-head">
+          <div class="section-head__eyebrow t-eyebrow">06 · LATENCY BUDGET</div>
+          <h2 class="section-head__title t-display-2" id="pipeline-title">The pipeline is visible.</h2>
+          <div class="section-head__meta">
+            <div class="t-mono-sm">STT · AI · TTS · LIVE</div>
+          </div>
+        </div>
+
+        <div class="pipeline__galaxy">
+
+          <div class="pipeline__lead">
+            <p class="t-display-3" style="margin: 0 0 var(--space-5);">From speech to reply, in readable timings.</p>
+            <p class="t-body">
+              Each step of the pipeline reports its duration as soon as it completes.
+              You can see exactly where time is spent, down to the model that handled
+              it. The same numbers surface in the assistant reply so you're never
+              guessing what just happened.
+            </p>
+
+            <ul class="sig-list" style="margin-top: var(--space-8);">
+              <li>
+                <span class="sig-list__key">UPPER BOUND</span>
+                <span class="sig-list__val">800 ms end to end on the slowest tier.</span>
+              </li>
+              <li>
+                <span class="sig-list__key">FALLBACK</span>
+                <span class="sig-list__val">Cloud STT engages on local silence, never silently.</span>
+              </li>
+              <li>
+                <span class="sig-list__key">VISIBLE</span>
+                <span class="sig-list__val">Every stage reports its own duration, always.</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="pipeline__console" aria-label="pipeline console">
+            <div class="pipeline__console-head">
+              <span class="rec-dot"></span>
+              <span class="t-mono">PIPELINE · LIVE · HOTKEY ACTIVE</span>
+              <span class="t-mono" style="margin-left: auto;">online.slasshy.slasshywispr.exe</span>
+            </div>
+            <div class="pipeline__console-rows">
+              <span class="pc-label">/01</span>
+              <span class="pc-stage">stt</span>
+              <span class="pc-bar"><span style="width: 14%"></span></span>
+              <span class="pc-time">142 ms</span>
+
+              <span class="pc-label">/02</span>
+              <span class="pc-stage">rewrite</span>
+              <span class="pc-bar"><span style="width: 22%"></span></span>
+              <span class="pc-time">228 ms</span>
+
+              <span class="pc-label">/03</span>
+              <span class="pc-stage">llm</span>
+              <span class="pc-bar"><span style="width: 60%"></span></span>
+              <span class="pc-time">612 ms</span>
+
+              <span class="pc-label">/04</span>
+              <span class="pc-stage">tts</span>
+              <span class="pc-bar"><span style="width: 22%"></span></span>
+              <span class="pc-time">220 ms</span>
+
+              <span class="pc-label">TOTAL</span>
+              <span class="pc-stage" style="color: var(--accent-live);">end to end</span>
+              <span class="pc-bar"><span style="width: 92%; background: var(--accent-live);"></span></span>
+              <span class="pc-time" style="color: var(--ink-primary);">982 ms</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         08 · Privacy
+         ============================================================ -->
+    <section class="section privacy" aria-labelledby="privacy-title">
+      <div class="section-inner">
+        <div class="section-head">
+          <div class="section-head__eyebrow t-eyebrow">07 · STANCE</div>
+          <h2 class="section-head__title t-display-2" id="privacy-title">Offline by design.</h2>
+          <div class="section-head__meta">
+            <div class="t-mono-sm">NOT A FEATURE · A DEFAULT</div>
+          </div>
+        </div>
+
+        <div class="privacy__grid">
+          <div>
+            <span class="t-eyebrow t-mono-sm">/ POSITION</span>
+          </div>
+          <div>
+            <h3 class="t-display-3">Your voice never leaves the device unless you tell it to.</h3>
+          </div>
+          <div>
+            <p class="t-body">Local STT, local AI, and local synthesis are first-class. The remote ones are opt-in per session, with a credential store that uses the OS keyring. The moment you take it online is the moment you ask.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         09 · Get it (download)
+         ============================================================ -->
+    <section class="section get" id="download" aria-labelledby="download-title">
+      <div class="section-inner">
+        <div class="get__grid">
+
+          <div class="get__copy">
+            <div class="t-eyebrow t-rule">08 · INSTALL</div>
+            <h2 class="t-display-2" id="download-title">SlasshyWispr 1.0.7</h2>
+            <p class="t-lede">A Windows installer, signed. About 38 MB. Runs on Windows 10 21H2 and later. No telemetry, no account, no license key.</p>
+
+            <div class="get__primary">
+              <a href="https://github.com/SlasshyOverhere/SlasshyWispr/releases/latest" class="btn-primary get__primary-cta" rel="noopener">
+                <span class="icon-disc"></span>
+                Download SlasshyWispr for Windows
+              </a>
+            </div>
+
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: var(--space-6);">
+              <span class="install-meta"><span class="install-meta__dot"></span> NSIS · signed</span>
+              <span class="install-meta"><span class="install-meta__dot"></span> 38 MB</span>
+              <span class="install-meta"><span class="install-meta__dot"></span> Win 10 21H2+</span>
+              <span class="install-meta"><span class="install-meta__dot"></span> No telemetry</span>
+            </div>
+          </div>
+
+          <div class="get__meta">
+            <span class="t-mono-sm">RELEASES</span>
+            <span class="t-mono">github.com/SlasshyOverhere/SlasshyWispr/releases/latest</span>
+            <span class="t-mono-sm" style="margin-top: var(--space-4);">ISSUES</span>
+            <span class="t-mono">github.com/SlasshyOverhere/SlasshyWispr/issues</span>
+            <span class="t-mono-sm" style="margin-top: var(--space-4);">CHECKSUM</span>
+            <span class="t-mono">sha256 · see release notes</span>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============================================================
+       10 · Footer
+       ============================================================ -->
+  <footer class="footer">
+    <span>SLASSHY · ALEXANDER OVERHEER · CINCINNATI</span>
+    <span class="footer__center">SLASSHY WISPR · BUILD 1.0.7 · 9 MAY 2026</span>
+    <span class="footer__right">
+      <a href="https://github.com/SlasshyOverhere/SlasshyWispr" rel="noopener">SOURCE</a>
+      <span style="color:var(--ink-faint)"> / </span>
+      <a href="https://github.com/SlasshyOverhere/SlasshyWispr/blob/main/LICENSE" rel="noopener">LICENSE</a>
+      <span style="color:var(--ink-faint)"> / </span>
+      <a href="https://github.com/SlasshyOverhere/SlasshyWispr/issues" rel="noopener">ISSUES</a>
+    </span>
+  </footer>
+
+</div>
+
+<script type="module" src="scripts/showcase.mjs"></script>
+</body>
+</html>
