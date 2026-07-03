@@ -52,11 +52,127 @@ export function GeneralSettingsPane() {
 
       <div className="s-row">
         <span className="s-row-label" id="themeLabel">Theme</span>
-        <select id="themeModeSelect" aria-labelledby="themeLabel" className="mini-select">
-          <option value="system">Match system</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
+        <select
+          id="themeModeSelect"
+          aria-labelledby="themeLabel"
+          className="mini-select"
+          defaultValue="system"
+        >
+          <option value="system">Follow system</option>
+          <option value="dark">Slasshy Studio</option>
+          <option value="light">Daylight</option>
+          <option value="mono">Index</option>
         </select>
+      </div>
+
+      <div className="theme-picker" role="radiogroup" aria-labelledby="themeLabel">
+        <label className="theme-card" data-theme-target="dark">
+          <input
+            type="radio"
+            name="themeCard"
+            value="dark"
+            className="theme-card-input"
+            data-theme-card
+          />
+          <span className="theme-card-preview" aria-hidden="true">
+            <span className="preview-titlebar">
+              <span className="preview-dot" />
+              <span className="preview-dot" />
+              <span className="preview-dot" />
+            </span>
+            <span className="preview-body">
+              <span className="preview-sidebar">
+                <span className="preview-row is-active" />
+                <span className="preview-row" />
+                <span className="preview-row" />
+                <span className="preview-row" />
+              </span>
+              <span className="preview-main">
+                <span className="preview-h" />
+                <span className="preview-line" />
+                <span className="preview-line is-short" />
+                <span className="preview-line" />
+                <span className="preview-record" />
+              </span>
+            </span>
+          </span>
+          <span className="theme-card-meta">
+            <span className="theme-card-name">Slasshy Studio</span>
+            <span className="theme-card-tagline">Warm amber dark, evening work</span>
+          </span>
+        </label>
+
+        <label className="theme-card" data-theme-target="light">
+          <input
+            type="radio"
+            name="themeCard"
+            value="light"
+            className="theme-card-input"
+            data-theme-card
+          />
+          <span className="theme-card-preview" aria-hidden="true">
+            <span className="preview-titlebar">
+              <span className="preview-dot" />
+              <span className="preview-dot" />
+              <span className="preview-dot" />
+            </span>
+            <span className="preview-body">
+              <span className="preview-sidebar">
+                <span className="preview-row is-active" />
+                <span className="preview-row" />
+                <span className="preview-row" />
+                <span className="preview-row" />
+              </span>
+              <span className="preview-main">
+                <span className="preview-h" />
+                <span className="preview-line" />
+                <span className="preview-line is-short" />
+                <span className="preview-line" />
+                <span className="preview-record" />
+              </span>
+            </span>
+          </span>
+          <span className="theme-card-meta">
+            <span className="theme-card-name">Daylight</span>
+            <span className="theme-card-tagline">Editorial paper, daytime reading</span>
+          </span>
+        </label>
+
+        <label className="theme-card" data-theme-target="mono">
+          <input
+            type="radio"
+            name="themeCard"
+            value="mono"
+            className="theme-card-input"
+            data-theme-card
+          />
+          <span className="theme-card-preview" aria-hidden="true">
+            <span className="preview-titlebar">
+              <span className="preview-dot" />
+              <span className="preview-dot" />
+              <span className="preview-dot" />
+            </span>
+            <span className="preview-body">
+              <span className="preview-sidebar">
+                <span className="preview-row is-active" />
+                <span className="preview-row" />
+                <span className="preview-row" />
+                <span className="preview-row" />
+              </span>
+              <span className="preview-main">
+                <span className="preview-h" />
+                <span className="preview-line" />
+                <span className="preview-line is-short" />
+                <span className="preview-line" />
+                <span className="preview-record" />
+              </span>
+            </span>
+          </span>
+          <span className="theme-card-meta">
+            <span className="theme-card-name">Index</span>
+            <span className="theme-card-tagline">Pure grayscale, deep focus</span>
+          </span>
+        </label>
       </div>
 
       {/* ── Language ── */}

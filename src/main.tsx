@@ -393,6 +393,9 @@ const copyToClipboardToggle = requiredElement<HTMLInputElement>("#copyToClipboar
 const autoPasteDictationToggle = requiredElement<HTMLInputElement>("#autoPasteDictationToggle");
 const incognitoModeToggle = requiredElement<HTMLInputElement>("#incognitoModeToggle");
 const themeModeSelect = requiredElement<HTMLSelectElement>("#themeModeSelect");
+const themeCardInputs = Array.from(
+  document.querySelectorAll<HTMLInputElement>("input[data-theme-card]"),
+);
 const dictationSoundEffectsToggle = requiredElement<HTMLInputElement>("#dictationSoundEffectsToggle");
 const muteMusicWhileDictatingToggle = requiredElement<HTMLInputElement>(
   "#muteMusicWhileDictatingToggle",
@@ -1167,6 +1170,19 @@ copyToClipboardToggle.addEventListener("change", handleSettingsChange);
 autoPasteDictationToggle.addEventListener("change", handleSettingsChange);
 incognitoModeToggle.addEventListener("change", handleSettingsChange);
 themeModeSelect.addEventListener("change", handleSettingsChange);
+
+for (const cardInput of themeCardInputs) {
+  cardInput.addEventListener("change", () => {
+    if (!cardInput.checked) {
+      return;
+    }
+    const next = asThemeMode(cardInput.value);
+    if (themeModeSelect.value !== next) {
+      themeModeSelect.value = next;
+    }
+    void handleSettingsChange();
+  });
+}
 dictationSoundEffectsToggle.addEventListener("change", handleSettingsChange);
 pushToTalkSoundSelect.addEventListener("change", handleSettingsChange);
 pushToTalkEndSoundSelect.addEventListener("change", handleSettingsChange);
@@ -2165,9 +2181,16 @@ function applySettingsToForm(next: PersistedSettings): void {
   hotkeyHint.textContent = displayHotkey;
   captureModeHint.textContent = captureModeLabel(next.captureMode);
   applyTheme(next.themeMode);
+  syncThemeCardSelection(next.themeMode);
   updateRuntimeModeNotice(next.sttRuntimeMode, next.aiRuntimeMode);
   syncRuntimeModePaneVisibility(next.sttRuntimeMode, next.aiRuntimeMode);
   syncHybridRuntimeFieldVisibility(next.sttRuntimeMode, next.aiRuntimeMode);
+}
+
+function syncThemeCardSelection(themeMode: ThemeMode): void {
+  for (const input of themeCardInputs) {
+    input.checked = input.value === themeMode;
+  }
 }
 
 async function handleSettingsChange(): Promise<void> {
@@ -3920,7 +3943,7 @@ function asStyleProfile(value: unknown): StyleProfile {
 }
 
 function asThemeMode(value: unknown): ThemeMode {
-  if (value === "light" || value === "dark") {
+  if (value === "light" || value === "dark" || value === "mono") {
     return value;
   }
   return "system";
@@ -7834,8 +7857,11 @@ function shouldDisplayDock(): boolean {
 }
 
 function resolvedDockTheme(): "light" | "dark" {
-  if (settings.themeMode === "light" || settings.themeMode === "dark") {
-    return settings.themeMode;
+  if (settings.themeMode === "light") {
+    return "light";
+  }
+  if (settings.themeMode === "dark" || settings.themeMode === "mono") {
+    return "dark";
   }
 
   return systemThemeMediaQuery?.matches ? "light" : "dark";
@@ -8463,6 +8489,9 @@ function syncActionAvailability(): void {
   copyToClipboardToggle.disabled = busy;
   incognitoModeToggle.disabled = busy;
   themeModeSelect.disabled = busy;
+  for (const cardInput of themeCardInputs) {
+    cardInput.disabled = busy;
+  }
   backtrackToggle.disabled = busy;
   removeFillersToggle.disabled = busy;
   autoPunctuationToggle.disabled = busy;

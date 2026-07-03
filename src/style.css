@@ -105,20 +105,83 @@
 }
 
 :root[data-theme="light"] {
-  --bg-void:    oklch(97% 0.012 80);
-  --bg-rail:    oklch(94% 0.014 80);
-  --bg-paper:   oklch(99% 0.006 80);
-  --bg-recess:  oklch(94% 0.010 80);
-  --bg-card:    oklch(99% 0.006 80);
-  --bg-hover:   oklch(92% 0.010 80);
-  --bg-active:  oklch(88% 0.014 80);
-  --border-line:    oklch(86% 0.010 80);
-  --border-strong:  oklch(76% 0.014 80);
-  --ink-primary:    oklch(18% 0.012 250);
-  --ink-secondary:  oklch(38% 0.012 250);
-  --ink-muted:      oklch(54% 0.012 250);
-  --ink-faint:      oklch(68% 0.012 250);
-  --accent-live:    oklch(62% 0.20 55);
+  /* Daylight — editorial paper palette.
+     Warm ivory paper, deep ink, amber live accent. */
+  color-scheme: light;
+
+  --bg-void:    oklch(96.5% 0.012 85);
+  --bg-rail:    oklch(92% 0.014 85);
+  --bg-paper:   oklch(98.5% 0.008 85);
+  --bg-recess:  oklch(93% 0.012 85);
+  --bg-card:    oklch(99% 0.006 85);
+  --bg-hover:   oklch(91% 0.012 85);
+  --bg-active:  oklch(86% 0.016 85);
+
+  --border-line:    oklch(84% 0.010 85);
+  --border-strong:  oklch(72% 0.014 85);
+  --border-subtle:  oklch(89% 0.008 85);
+
+  --ink-primary:    oklch(20% 0.018 50);
+  --ink-secondary:  oklch(36% 0.014 50);
+  --ink-muted:      oklch(52% 0.012 50);
+  --ink-faint:      oklch(66% 0.010 50);
+
+  --accent-live:        oklch(64% 0.20 55);
+  --accent-live-soft:   oklch(64% 0.20 55 / 0.14);
+  --accent-live-edge:   oklch(64% 0.20 55 / 0.55);
+  --accent-quiet:       oklch(20% 0.018 50);
+  --accent-quiet-ink:   oklch(99% 0.006 85);
+  --accent:             var(--accent-quiet);
+  --accent-foreground:  var(--accent-quiet-ink);
+  --primary:            var(--accent-live);
+  --ring:               var(--accent-live);
+  --text-inverse:       var(--accent-quiet-ink);
+
+  --shadow-card:    0 1px 0 oklch(100% 0 0 / 0.7) inset, 0 12px 28px -18px oklch(20% 0.02 50 / 0.18);
+  --shadow-modal:   0 24px 64px -16px oklch(20% 0.02 50 / 0.22), 0 0 0 1px oklch(84% 0.010 85 / 0.6) inset;
+  --shadow-popover: 0 8px 32px -8px oklch(20% 0.02 50 / 0.18), 0 0 0 1px oklch(84% 0.010 85 / 0.7) inset;
+  --shadow-live:    0 0 0 0 oklch(64% 0.20 55 / 0.0);
+}
+
+:root[data-theme="mono"] {
+  /* Index — true grayscale, chroma stripped from every token.
+     Distraction-free, accessibility-first, late-night reading. */
+  color-scheme: dark;
+
+  --bg-void:    oklch(13% 0 0);
+  --bg-rail:    oklch(16% 0 0);
+  --bg-paper:   oklch(19% 0 0);
+  --bg-recess:  oklch(11% 0 0);
+  --bg-card:    oklch(22% 0 0);
+  --bg-hover:   oklch(25% 0 0);
+  --bg-active:  oklch(28% 0 0);
+
+  --border-line:    oklch(28% 0 0);
+  --border-strong:  oklch(36% 0 0);
+  --border-subtle:  oklch(24% 0 0);
+
+  --ink-primary:    oklch(96% 0 0);
+  --ink-secondary:  oklch(74% 0 0);
+  --ink-muted:      oklch(56% 0 0);
+  --ink-faint:      oklch(42% 0 0);
+
+  /* The "live" heartbeat — soft white pulse, no hue. Keeps the recording
+     signal unmistakable without introducing any chromatic warmth. */
+  --accent-live:        oklch(94% 0 0);
+  --accent-live-soft:   oklch(94% 0 0 / 0.14);
+  --accent-live-edge:   oklch(94% 0 0 / 0.55);
+  --accent-quiet:       var(--ink-primary);
+  --accent-quiet-ink:   var(--bg-void);
+  --accent:             var(--accent-quiet);
+  --accent-foreground:  var(--accent-quiet-ink);
+  --primary:            var(--accent-live);
+  --ring:               var(--accent-live);
+  --text-inverse:       var(--accent-quiet-ink);
+
+  --shadow-card:    0 1px 0 oklch(100% 0 0 / 0.05) inset, 0 12px 32px -16px oklch(0% 0 0 / 0.5);
+  --shadow-modal:   0 24px 64px -16px oklch(0% 0 0 / 0.6), 0 0 0 1px oklch(28% 0 0 / 0.4) inset;
+  --shadow-popover: 0 8px 32px -8px oklch(0% 0 0 / 0.5), 0 0 0 1px oklch(28% 0 0 / 0.6) inset;
+  --shadow-live:    0 0 0 0 oklch(94% 0 0 / 0.0);
 }
 
 [hidden] {
@@ -155,6 +218,16 @@ body {
     radial-gradient(ellipse 80% 50% at 20% -10%, oklch(74% 0.18 55 / 0.06), transparent 60%),
     radial-gradient(ellipse 60% 40% at 100% 110%, oklch(70% 0.10 250 / 0.06), transparent 55%);
   background-attachment: fixed;
+}
+
+:root[data-theme="light"] body {
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, oklch(80% 0.10 80 / 0.18), transparent 65%),
+    radial-gradient(ellipse 70% 40% at 100% 110%, oklch(74% 0.16 55 / 0.10), transparent 60%);
+}
+
+:root[data-theme="mono"] body {
+  background-image: none;
 }
 
 /* Accessibility: Focus Rings */
