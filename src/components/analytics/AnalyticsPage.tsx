@@ -91,19 +91,6 @@ function formatWpm(wpm: number): string {
   return `${Math.round(wpm)}`;
 }
 
-function MetricCard({ label, value, sub, icon }: { label: string; value: string; sub: string; icon: string }) {
-  return (
-    <article className="analytics-metric-card">
-      <div className="analytics-metric-header">
-        <span className="analytics-metric-label">{label}</span>
-        <span className="analytics-metric-icon">{icon}</span>
-      </div>
-      <div className="analytics-metric-value">{value}</div>
-      <div className="analytics-metric-sub">{sub}</div>
-    </article>
-  );
-}
-
 function DailyChart({ data, range }: { data: Map<string, number>; range: AnalyticsRange }) {
   const days = useMemo(() => {
     const maxDays = range === '7d' ? 7 : range === '30d' ? 30 : 90;
@@ -379,11 +366,27 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
         </div>
       )}
 
-      <div className="analytics-metric-grid">
-        <MetricCard label="WORDS" value={periodWords.toLocaleString()} sub={`${localUsage.words.toLocaleString()} all time`} icon="W" />
-        <MetricCard label="SPEAKING TIME" value={formatDuration(periodSeconds)} sub={`${formatDuration(localUsage.speakingSeconds)} all time`} icon="⏱" />
-        <MetricCard label="SESSIONS" value={periodSessions.toString()} sub={`${localUsage.sessions} all time`} icon="S" />
-        <MetricCard label="AVG PACE" value={`${formatWpm(periodWpm)} wpm`} sub={`${formatWpm(localUsage.avgWpm)} wpm overall`} icon="⚡" />
+      <div className="analytics-metrics">
+        <div className="analytics-metric">
+          <span className="analytics-metric-label">Words</span>
+          <span className="analytics-metric-value">{periodWords.toLocaleString()}</span>
+          <span className="analytics-metric-sub">{localUsage.words.toLocaleString()} all time</span>
+        </div>
+        <div className="analytics-metric">
+          <span className="analytics-metric-label">Speaking Time</span>
+          <span className="analytics-metric-value">{formatDuration(periodSeconds)}</span>
+          <span className="analytics-metric-sub">{formatDuration(localUsage.speakingSeconds)} all time</span>
+        </div>
+        <div className="analytics-metric">
+          <span className="analytics-metric-label">Sessions</span>
+          <span className="analytics-metric-value">{periodSessions}</span>
+          <span className="analytics-metric-sub">{localUsage.sessions} all time</span>
+        </div>
+        <div className="analytics-metric">
+          <span className="analytics-metric-label">Avg Pace</span>
+          <span className="analytics-metric-value">{formatWpm(periodWpm)} <span className="analytics-metric-unit">wpm</span></span>
+          <span className="analytics-metric-sub">{formatWpm(localUsage.avgWpm)} wpm overall</span>
+        </div>
       </div>
 
       <div className="analytics-grid-2col">

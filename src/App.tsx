@@ -471,29 +471,26 @@ export function App() {
                 </header>
 
                 <article className="quick-note-card">
-                  <div className="quick-note-info">
-                    <h3>Capture a thought</h3>
-                    <p>Tap to record a voice note</p>
+                  <div className="quick-note-content">
+                    <div className="quick-note-info">
+                      <span className="quick-note-label">Capture a thought</span>
+                      <h3>Tap to record a voice note</h3>
+                    </div>
+                    <button id="notesQuickMicBtn" className="notes-mic-btn" type="button" aria-label="Dictate a quick note">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+                    </button>
                   </div>
-                  <button id="notesQuickMicBtn" className="notes-mic-btn" type="button" aria-label="Dictate a quick note">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
-                  </button>
                 </article>
 
-                <div className="section-head notes-head">
-                  <h3>Recent Notes</h3>
-                </div>
-
-                <div id="notesList" className="notes-list">
-                  {state.notes.length === 0 ? (
-                    <div className="empty-state">
-                      <h4>No notes found</h4>
-                    </div>
-                  ) : (
-                    state.notes.map(note => (
+                <div className="notes-ledger">
+                  <div className="notes-ledger-head">
+                    <h3>Recent Notes</h3>
+                  </div>
+                  <div id="notesList" className="notes-list">
+                    {state.notes.map(note => (
                       <NoteRow key={note.id} note={note} />
-                    ))
-                  )}
+                    ))}
+                  </div>
                 </div>
               </div>
             </section>
@@ -635,12 +632,24 @@ function SnippetRow({ snippet }: { snippet: SnippetEntry }) {
 
 function NoteRow({ note }: { note: QuickNoteEntry }) {
   const time = new Date(note.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  
+  const handleRemove = (): void => {
+    const raw = localStorage.getItem('slasshy-desktop-assistant-notes');
+    if (!raw) return;
+    try {
+      const notes = JSON.parse(raw) as QuickNoteEntry[];
+      const filtered = notes.filter(n => n.id !== note.id);
+      localStorage.setItem('slasshy-desktop-assistant-notes', JSON.stringify(filtered));
+      window.dispatchEvent(new CustomEvent('slasshy:store-updated'));
+    } catch { /* ignore */ }
+  };
+
   return (
     <div className="conversation-entry" data-id={note.id}>
       <span className="entry-time">{time}</span>
       <p className="entry-content">{note.text}</p>
       <div className="entry-actions">
-        <button type="button" className="entry-action" data-action="remove-note">Remove</button>
+        <button type="button" className="entry-action" onClick={handleRemove}>Remove</button>
       </div>
     </div>
   );

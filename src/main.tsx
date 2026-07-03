@@ -4724,7 +4724,7 @@ function addQuickNote(text: string): void {
 
 function renderNotesList(): void {
   if (quickNotes.length === 0 || settings.incognitoMode) {
-    notesList.innerHTML = '<p class="notes-empty">No notes found</p>';
+    notesList.innerHTML = "";
     return;
   }
 
@@ -4961,15 +4961,11 @@ async function confirmDestructiveAction(message: string): Promise<boolean> {
     overlay.innerHTML = `
       <div class="confirm-modal">
         <div class="confirm-body">
-          <div class="confirm-icon-wrapper">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-          </div>
-          <h3 class="confirm-title">Confirm Action</h3>
-          <p class="confirm-message" style="white-space: pre-wrap;">${escapeHtml(message)}</p>
+          <p class="confirm-message">${escapeHtml(message)}</p>
         </div>
         <div class="confirm-actions">
           <button type="button" class="confirm-btn confirm-btn-cancel">Cancel</button>
-          <button type="button" class="confirm-btn confirm-btn-confirm">Confirm</button>
+          <button type="button" class="confirm-btn confirm-btn-confirm">Delete</button>
         </div>
       </div>
     `;
@@ -7291,7 +7287,7 @@ function renderPipelineResponse(response: AssistantPipelineResponse): void {
   }
 
   trackUsage(response.transcript);
-  if (activePage === "notes") {
+  if (lastCaptureIntentLabel === "notes-button") {
     addQuickNote(response.transcript);
   }
 }
