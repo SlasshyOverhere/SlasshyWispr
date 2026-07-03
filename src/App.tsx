@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { uiStore } from './store';
 import type { UIState } from './store';
@@ -77,16 +77,6 @@ export function App() {
     }
     return f;
   }
-
-  const todayEntries = useMemo(() => {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    return state.history.filter(e => e.timestamp >= todayStart);
-  }, [state.history]);
-
-  const filteredHistory = useMemo(() => {
-    return filterHistory(state.history, historyFilter);
-  }, [state.history, historyFilter]);
 
   return (
     <>
@@ -221,21 +211,52 @@ export function App() {
                   <div id="conversationLog" className="conversation-log" role="log" aria-live="polite">
                     {state.incognitoMode ? (
                       <p className="empty-hint">Incognito mode enabled. History is hidden.</p>
-                    ) : (
-                      todayEntries.length === 0 ? (
-                        <div className="empty-hint">
-                          <div className="empty-hint-icon">
-                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+                    ) : (() => {
+                      if (state.history.length === 0) {
+                        return (
+                          <div className="empty-hint">
+                            <div className="empty-hint-icon">
+                              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+                            </div>
+                            <h4>No activity yet</h4>
+                            <p>Start dictating to see your recent transcriptions here.</p>
                           </div>
-                          <h4>No activity yet</h4>
-                          <p>Start dictating to see your recent transcriptions here.</p>
-                        </div>
-                      ) : (
-                        todayEntries.map((entry, i) => (
+                        );
+                      }
+
+                      const formatDate = (ts: number) => {
+                        const d = new Date(ts);
+                        const day = d.getDate();
+                        const month = d.toLocaleString('en-US', { month: 'long' }).toUpperCase();
+                        const year = d.getFullYear();
+                        return `${day} ${month} ${year}`;
+                      };
+
+                      const getDateKey = (ts: number) => {
+                        const d = new Date(ts);
+                        return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                      };
+
+                      let lastDateKey = '';
+                      const elements: React.ReactNode[] = [];
+
+                      state.history.forEach((entry, i) => {
+                        const dateKey = getDateKey(entry.timestamp);
+                        if (dateKey !== lastDateKey) {
+                          lastDateKey = dateKey;
+                          elements.push(
+                            <div key={`date-${dateKey}`} className="history-date-header">
+                              <span>{formatDate(entry.timestamp)}</span>
+                            </div>
+                          );
+                        }
+                        elements.push(
                           <HistoryRow key={`${entry.timestamp}-${i}`} entry={entry} />
-                        ))
-                      )
-                    )}
+                        );
+                      });
+
+                      return elements;
+                    })()}
                   </div>
                 </section>
               </div>
@@ -282,17 +303,18 @@ export function App() {
                 <div id="fullHistoryLog" className="conversation-log full-history-log" role="log" aria-live="polite">
                    {state.incognitoMode ? (
                       <p className="empty-hint">Incognito mode enabled. History is hidden.</p>
-                    ) : (
-                      filteredHistory.length === 0 ? (
+                    ) : (() => {
+                      const filtered = hf(state.history);
+                      return filtered.length === 0 ? (
                         <div className="empty-hint">
                            <h4>No history yet</h4>
                         </div>
                       ) : (
-                        filteredHistory.map((entry, i) => (
+                        filtered.map((entry, i) => (
                           <HistoryRow key={`full-${entry.timestamp}-${i}`} entry={entry} />
                         ))
-                      )
-                    )}
+                      );
+                    })()}
                 </div>
               </div>
             </section>
