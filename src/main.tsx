@@ -4981,7 +4981,7 @@ async function confirmDestructiveAction(message: string): Promise<boolean> {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
           </div>
           <h3 class="confirm-title">Confirm Action</h3>
-          <p class="confirm-message">${message}</p>
+          <p class="confirm-message" style="white-space: pre-wrap;">${escapeHtml(message)}</p>
         </div>
         <div class="confirm-actions">
           <button type="button" class="confirm-btn confirm-btn-cancel">Cancel</button>
@@ -9318,8 +9318,8 @@ function showOfflineModeDiagnostic(issue: string, details?: {
   dialog.innerHTML = `
     <div style="margin-bottom: 20px;">
       <div style="font-size: 32px; margin-bottom: 12px;">${diagnostics.icon}</div>
-      <h3 style="margin: 0 0 8px 0; font-size: 18px; color: var(--text-primary, #fff);">${diagnostics.title}</h3>
-      <p style="margin: 0; color: var(--text-secondary, #aaa); font-size: 14px; line-height: 1.5;">${diagnostics.description}</p>
+      <h3 style="margin: 0 0 8px 0; font-size: 18px; color: var(--text-primary, #fff);">${escapeHtml(diagnostics.title)}</h3>
+      <p style="margin: 0; color: var(--text-secondary, #aaa); font-size: 14px; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(diagnostics.description)}</p>
     </div>
 
     ${details?.model ? `
@@ -9332,14 +9332,14 @@ function showOfflineModeDiagnostic(issue: string, details?: {
     <div style="margin-bottom: 20px;">
       <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-primary, #fff);">How to fix:</div>
       <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary, #aaa); font-size: 13px; line-height: 1.6;">
-        ${diagnostics.steps.map(step => `<li style="margin-bottom: 6px;">${step}</li>`).join('')}
+        ${diagnostics.steps.map(step => `<li style="margin-bottom: 6px;">${escapeHtml(step)}</li>`).join('')}
       </ol>
     </div>
 
     <div style="display: flex; gap: 8px; justify-content: flex-end;">
       ${diagnostics.actions.map(action => `
         <button
-          data-action="${action.id}"
+          data-action="${escapeHtml(action.id)}"
           class="diagnostic-action-btn"
           style="
             padding: 8px 16px;
@@ -9353,7 +9353,7 @@ function showOfflineModeDiagnostic(issue: string, details?: {
             transition: all 0.15s ease;
           "
         >
-          ${action.label}
+          ${escapeHtml(action.label)}
         </button>
       `).join('')}
     </div>
