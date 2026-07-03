@@ -26,6 +26,7 @@ export const LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY = "slasshy-wispr-local-stt-h
 export const GITHUB_RELEASES_PAGE_URL = "https://github.com/SlasshyOverhere/SlasshyWispr/releases/latest";
 export const APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY = "slasshy-wispr-app-update-last-checked-at-v1";
 export const APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY = "slasshy-wispr-app-update-last-notified-version-v1";
+export const APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY = "slasshy-wispr-app-update-snoozed-until-v1";
 export const APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY = "slasshy-wispr-app-update-auto-check-enabled-v1";
 export const ANALYTICS_SESSIONS_KEY = "slasshy-wispr-analytics-sessions-v1";
 export const ACHIEVEMENTS_STATE_KEY = "slasshy-wispr-achievements-state-v1";

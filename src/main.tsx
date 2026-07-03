@@ -51,6 +51,8 @@ import {
   LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
+  APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
+  APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY,
   GITHUB_RELEASES_PAGE_URL,
   DEFAULT_SYSTEM_PROMPT,
   DEFAULT_TEMPERATURE,
@@ -431,6 +433,8 @@ const updateInstallProgressText = requiredElement<HTMLParagraphElement>("#update
 const updateManualDownloadRow = requiredElement<HTMLDivElement>("#updateManualDownloadRow");
 const updateManualDownloadText = requiredElement<HTMLParagraphElement>("#updateManualDownloadText");
 const openGithubReleasesBtn = requiredElement<HTMLButtonElement>("#openGithubReleasesBtn");
+const skipUpdateVersionBtn = requiredElement<HTMLButtonElement>("#skipUpdateVersionBtn");
+const snoozeUpdateBtn = requiredElement<HTMLButtonElement>("#snoozeUpdateBtn");
 
 const baseUrlValue = requiredElement<HTMLElement>("#baseUrlValue");
 const sttModelValue = requiredElement<HTMLElement>("#sttModelValue");
@@ -626,8 +630,6 @@ const MAIN_WINDOW_VISIBILITY_EVENT = "slasshy://main-window-visibility";
 const UPDATE_INSTALL_PROGRESS_EVENT = "slasshy://update-install-progress";
 const APP_UPDATE_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED = true;
-let githubReleasesAutoOpenedThisSession = false;
-
 
 
 const UPDATE_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -858,6 +860,20 @@ autoCheckUpdatesToggle.addEventListener("change", () => {
 
 installUpdateBtn.addEventListener("click", () => {
   void handleInstallUpdate();
+});
+
+skipUpdateVersionBtn.addEventListener("click", () => {
+  if (cachedUpdateResult?.latestVersion) {
+    localStorage.setItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY, cachedUpdateResult.latestVersion);
+    setNotice(`Version ${cachedUpdateResult.latestVersion} will be skipped. You won't be notified about this version again.`);
+    syncUpdaterButtons();
+  }
+});
+
+snoozeUpdateBtn.addEventListener("click", () => {
+  snoozeUpdateFor24Hours();
+  setNotice("Update notifications snoozed for 24 hours.");
+  syncUpdaterButtons();
 });
 
 window.addEventListener("beforeunload", () => {
@@ -2964,6 +2980,8 @@ function syncUpdaterButtons(): void {
   installUpdateBtn.textContent = cachedUpdateResult?.available
     ? `Download & install ${cachedUpdateResult.latestVersion || "update"}`
     : "Download & install";
+  skipUpdateVersionBtn.disabled = updateCheckInFlight || updateInstallInFlight || !cachedUpdateResult?.available;
+  snoozeUpdateBtn.disabled = updateCheckInFlight || updateInstallInFlight;
 }
 
 function initializeUpdaterPanel(): void {
@@ -3043,6 +3061,21 @@ function readAppUpdateAutoCheckEnabled(): boolean {
     return DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED;
   }
   return raw !== "0";
+}
+
+function readUpdateSnoozedUntilMs(): number {
+  const raw = localStorage.getItem(APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY);
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return parsed;
+}
+
+function isUpdateSnoozed(): boolean {
+  return Date.now() < readUpdateSnoozedUntilMs();
+}
+
+function snoozeUpdateFor24Hours(): void {
+  localStorage.setItem(APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY, String(Date.now() + 24 * 60 * 60 * 1000));
 }
 
 function readLastAppUpdateCheckedAtMs(): number {
@@ -3139,16 +3172,16 @@ function showManualDownloadFallback(detail: string): void {
   updateManualDownloadText.textContent = `Download the latest version from GitHub Releases instead.`;
   updateManualDownloadRow.hidden = false;
   setUpdaterStatus("error", detail);
-
-  if (!githubReleasesAutoOpenedThisSession) {
-    githubReleasesAutoOpenedThisSession = true;
-    openInSystemBrowser(GITHUB_RELEASES_PAGE_URL);
-  }
 }
 
-function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "startup" | "interval"): void {
+function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "startup" | "interval" | "manual"): void {
   const version = result.latestVersion.trim();
   if (!version) {
+    return;
+  }
+
+  // Check localStorage skip before in-memory dedup — user explicitly skipped this version
+  if (localStorage.getItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY) === version) {
     return;
   }
 
@@ -3159,7 +3192,13 @@ function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "start
     return;
   }
 
+  if (isUpdateSnoozed()) {
+    return;
+  }
+
   notifiedVersionsThisSession.add(version);
+  // Persist skipped version to localStorage for cross-session skip tracking
+  localStorage.setItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY, version);
   const message = `Update ${version} is available. Open Updates to download and install it.`;
   setNotice(message);
 
@@ -3254,6 +3293,11 @@ async function handleCheckForUpdates(options?: {
   }
 
   const silent = options?.silent ?? false;
+
+  if (silent && isUpdateSnoozed()) {
+    return;
+  }
+
   const source = options?.source ?? "manual";
   updateCheckInFlight = true;
   syncUpdaterButtons();
@@ -3267,7 +3311,7 @@ async function handleCheckForUpdates(options?: {
     localStorage.setItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY, String(Date.now()));
     refreshUpdateLastCheckedText();
     applyUpdateCheckResult(result, silent);
-    if (result.available && (source === "startup" || source === "interval")) {
+    if (result.available) {
       notifyAppUpdateAvailable(result, source);
     }
   } catch (error) {

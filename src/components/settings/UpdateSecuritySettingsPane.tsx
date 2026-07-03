@@ -41,7 +41,9 @@ export function UpdateSecuritySettingsPane() {
 
       <div className="btn-row">
         <button id="checkUpdatesBtn" className="btn" type="button">Check for updates</button>
+        <button id="snoozeUpdateBtn" className="btn" type="button" disabled>Snooze 24h</button>
         <button id="installUpdateBtn" className="btn btn-primary" type="button" disabled>Download &amp; install</button>
+        <button id="skipUpdateVersionBtn" className="btn" type="button" disabled>Skip this version</button>
       </div>
 
       <div id="updateManualDownloadRow" className="s-row-block" hidden>
