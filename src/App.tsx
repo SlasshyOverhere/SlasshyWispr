@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { uiStore } from './store';
 import type { UIState } from './store';
@@ -55,6 +55,16 @@ function filterHistory(entries: HomeHistoryEntry[], hf: HistoryFilter): HomeHist
 export function App() {
   const state = useUIState();
   const historyFilter = useHistoryFilter();
+
+  const todayEntries = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return state.history.filter(e => e.timestamp >= todayStart);
+  }, [state.history]);
+
+  const filteredHistory = useMemo(() => {
+    return filterHistory(state.history, historyFilter);
+  }, [state.history, historyFilter]);
 
   return (
     <>
@@ -252,11 +262,8 @@ export function App() {
                   <div id="conversationLog" className="conversation-log" role="log" aria-live="polite">
                     {state.incognitoMode ? (
                       <p className="empty-hint">Incognito mode enabled. History is hidden.</p>
-                    ) : (() => {
-                      const now = new Date();
-                      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-                      const todayEntries = state.history.filter(e => e.timestamp >= todayStart);
-                      return todayEntries.length === 0 ? (
+                    ) : (
+                      todayEntries.length === 0 ? (
                         <div className="empty-hint">
                           <div className="empty-hint-icon">
                             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
@@ -268,8 +275,8 @@ export function App() {
                         todayEntries.slice(0, 10).map((entry, i) => (
                           <HistoryRow key={`${entry.timestamp}-${i}`} entry={entry} />
                         ))
-                      );
-                    })()}
+                      )
+                    )}
                   </div>
                 </section>
               </div>
@@ -312,18 +319,17 @@ export function App() {
                 <div id="fullHistoryLog" className="conversation-log full-history-log" role="log" aria-live="polite">
                    {state.incognitoMode ? (
                       <p className="empty-hint">Incognito mode enabled. History is hidden.</p>
-                    ) : (() => {
-                      const filtered = filterHistory(state.history, historyFilter);
-                      return filtered.length === 0 ? (
+                    ) : (
+                      filteredHistory.length === 0 ? (
                         <div className="empty-hint">
                            <h4>No history yet</h4>
                         </div>
                       ) : (
-                        filtered.map((entry, i) => (
+                        filteredHistory.map((entry, i) => (
                           <HistoryRow key={`full-${entry.timestamp}-${i}`} entry={entry} />
                         ))
-                      );
-                    })()}
+                      )
+                    )}
                 </div>
               </div>
             </section>
