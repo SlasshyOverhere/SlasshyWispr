@@ -66,6 +66,7 @@ pub mod constants;
 pub mod security;
 pub mod vad;
 use constants::*;
+use security::validate_base64_input;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -2172,6 +2173,11 @@ async fn save_persisted_local_settings(app: AppHandle, payload: String) -> Resul
         .map_err(|error| format!("Settings payload is not valid JSON: {error}"))?;
     if !parsed.is_object() {
         return Err("Settings payload must be a JSON object.".to_string());
+    }
+
+    // Validate text fields before persisting
+    if let Some(api_key) = parsed.get("apiKey").and_then(|v| v.as_str()) {
+        security::validate_text_input(api_key, 4096, "apiKey").map_err(|e| format!("Invalid apiKey: {e}"))?;
     }
 
     info!("[settings] save requested bytes={}", trimmed.len());
@@ -5255,9 +5261,8 @@ async fn run_assistant_pipeline(
         }
     }
 
-    let audio_bytes = BASE64_STANDARD
-        .decode(request.audio_base64.as_bytes())
-        .map_err(|error| format!("Failed to decode recorded audio: {error}"))?;
+    let audio_bytes = validate_base64_input(&request.audio_base64, 10 * 1024 * 1024)
+        .map_err(|error| format!("Invalid audio input: {error}"))?;
 
     if audio_bytes.is_empty() {
         return Err("Recorded audio is empty".to_string());
@@ -14362,6 +14367,8 @@ pub fn run() {
         std::env::args().any(|arg| arg.eq_ignore_ascii_case(STARTUP_ARG_START_IN_TRAY));
 
     let mut builder = tauri::Builder::default();
+    // window-state plugin — needs to be added before .manage()
+    builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
 
     #[cfg(all(desktop, not(debug_assertions)))]
     {
@@ -14372,6 +14379,7 @@ pub fn run() {
     }
 
     builder
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(app_state)
         .manage(tts_setup_state)
         .setup(move |app| {

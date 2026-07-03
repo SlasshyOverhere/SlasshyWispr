@@ -4,6 +4,7 @@ import { uiStore } from './store';
 import type { UIState } from './store';
 import { AnalyticsPage } from './components/analytics/AnalyticsPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { OnboardingWizard } from './components/OnboardingWizard';
 import type { HomeHistoryEntry, DictionaryTerm, SnippetEntry, QuickNoteEntry } from './types';
 
 function useUIState() {
@@ -27,6 +28,18 @@ function useHistoryFilter(): HistoryFilter {
     return () => window.removeEventListener("slasshy:history-filter", handler);
   }, []);
   return hf;
+}
+
+function useHistorySearch(): string {
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    const el = document.getElementById("historySearchInput") as HTMLInputElement | null;
+    if (!el) return;
+    const handler = () => setQuery(el.value.toLowerCase());
+    el.addEventListener("input", handler);
+    return () => el.removeEventListener("input", handler);
+  }, []);
+  return query;
 }
 
 function filterHistory(entries: HomeHistoryEntry[], hf: HistoryFilter): HomeHistoryEntry[] {
@@ -55,24 +68,27 @@ function filterHistory(entries: HomeHistoryEntry[], hf: HistoryFilter): HomeHist
 export function App() {
   const state = useUIState();
   const historyFilter = useHistoryFilter();
+  const historySearch = useHistorySearch();
+
+  function hf(entries: HomeHistoryEntry[]): HomeHistoryEntry[] {
+    let f = filterHistory(entries, historyFilter);
+    if (historySearch) {
+      f = f.filter(e => e.content.toLowerCase().includes(historySearch));
+    }
+    return f;
+  }
 
   return (
     <>
       <div className={`app-frame ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <header className="app-titlebar">
           <div id="appTitlebarDrag" className="app-titlebar-drag" data-tauri-drag-region="true">
-            <div className="brand-row">
-              <strong>SlasshyWispr{import.meta.env.DEV && " Dev"}</strong>
-            </div>
           </div>
           <div className="app-titlebar-actions">
             <button id="windowMinimizeBtn" className="titlebar-action" type="button" aria-label="Minimize">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
-            <button id="windowMaximizeBtn" className="titlebar-action" type="button" aria-label="Maximize">
-              <svg id="windowMaximizeGlyph" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="1" ry="1"></rect></svg>
-            </button>
-            <button id="windowCloseBtn" className="titlebar-action titlebar-close" type="button" aria-label="Close">
+<button id="windowCloseBtn" className="titlebar-action titlebar-close" type="button" aria-label="Close">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
           </div>
@@ -155,120 +171,91 @@ export function App() {
             <section className={`flow-page ${state.activePage === 'home' ? 'is-active' : ''}`} data-page="home">
               <div className="flow-page-inner home-page">
                 <header className="overview-header">
-                  <div>
-                    <h1 className="overview-title">Overview</h1>
-                    <p className="overview-subtitle">Your SlasshyWispr performance snapshot, recent activity, and productivity trends.</p>
+                  <h1 className="overview-title">Overview</h1>
+
+                  <div className="overview-stats" id="statsHero" aria-label="Today's stats">
+                    <div className="overview-stat">
+                      <span className="overview-stat-label" id="statsTitle">Words</span>
+                      <span className="overview-stat-value" id="metricWords">{((state.usage?.words ?? 0) + (state.usage?.prevWords ?? 0)).toLocaleString()}<span className="overview-stat-unit">w</span></span>
+                      <span className="stat-trend" id="wordsTrend"><span>--</span></span>
+                    </div>
+                    <div className="overview-stat">
+                      <span className="overview-stat-label">Spoken</span>
+                      <span className="overview-stat-value" id="metricSpeakingTime">{state.usage ? Math.floor(((state.usage?.speakingSeconds ?? 0) + (state.usage?.prevSpeakingSeconds ?? 0)) / 60) : 0}<span className="overview-stat-unit">min</span></span>
+                      <span className="stat-trend" id="timeTrend"><span>--</span></span>
+                    </div>
+                    <div className="overview-stat">
+                      <span className="overview-stat-label">Sessions</span>
+                      <span className="overview-stat-value" id="metricSessions">{((state.usage?.sessions ?? 0) + (state.usage?.prevSessions ?? 0)).toLocaleString()}</span>
+                      <span className="stat-trend" id="sessionsTrend"><span>--</span></span>
+                    </div>
+                    <div className="overview-stat">
+                      <span className="overview-stat-label">Pace</span>
+                      <span className="overview-stat-value" id="metricWpm">{state.usage ? (() => { const totalLifeWords = state.usage.words + state.usage.prevWords; const totalLifeTime = state.usage.speakingSeconds + state.usage.prevSpeakingSeconds; return totalLifeTime > 0 ? Math.round((totalLifeWords / totalLifeTime) * 60) : 0; })() : 0}<span className="overview-stat-unit">wpm</span></span>
+                      <span className="stat-trend" id="wpmTrend"><span>--</span></span>
+                    </div>
+                    <button id="clearStatsBtn" className="overview-clear-btn" type="button">Clear</button>
                   </div>
                 </header>
 
-                <div className="section-head">
-                  <div>
-                    <h3 id="statsTitle">Productivity Trends</h3>
-                    <p className="section-sub">Real-time metrics from your dictation sessions.</p>
-                  </div>
-                  <div className="section-actions">
-                    <button id="clearStatsBtn" className="inline-link" type="button">Clear Stats</button>
-                  </div>
-                </div>
-
-                <div className="stat-cards-grid">
-                  <article className="stat-card">
-                    <div className="stat-card-header">
-                      <span className="stat-label">TOTAL WORDS</span>
-                      <span className="stat-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg>
-                      </span>
-                    </div>
-                    <div className="stat-value" id="metricWords">{((state.usage?.words ?? 0) + (state.usage?.prevWords ?? 0))}</div>
-                    <div className="stat-meta">
-                      <span className="stat-trend stat-trend-up" id="wordsTrend">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-                        <span>+0%</span>
-                      </span>
-                      <span className="stat-period">vs last 7 days</span>
-                    </div>
-                  </article>
-                  <article className="stat-card">
-                    <div className="stat-card-header">
-                      <span className="stat-label">SPEAKING TIME</span>
-                      <span className="stat-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                      </span>
-                    </div>
-                    <div className="stat-value" id="metricSpeakingTime">{state.usage ? Math.floor(((state.usage?.speakingSeconds ?? 0) + (state.usage?.prevSpeakingSeconds ?? 0)) / 60) : 0}m</div>
-                    <div className="stat-meta">
-                      <span className="stat-trend stat-trend-up" id="timeTrend">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-                        <span>+0%</span>
-                      </span>
-                      <span className="stat-period">vs last 7 days</span>
-                    </div>
-                  </article>
-                  <article className="stat-card">
-                    <div className="stat-card-header">
-                      <span className="stat-label">SESSIONS</span>
-                      <span className="stat-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
-                      </span>
-                    </div>
-                    <div className="stat-value" id="metricSessions">{((state.usage?.sessions ?? 0) + (state.usage?.prevSessions ?? 0))}</div>
-                    <div className="stat-meta">
-                      <span className="stat-trend stat-trend-up" id="sessionsTrend">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-                        <span>+0%</span>
-                      </span>
-                      <span className="stat-period">vs last 7 days</span>
-                    </div>
-                  </article>
-                  <article className="stat-card">
-                    <div className="stat-card-header">
-                      <span className="stat-label">AVG PACE</span>
-                      <span className="stat-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
-                      </span>
-                    </div>
-                    <div className="stat-value" id="metricWpm">{state.usage ? (() => { const totalLifeWords = state.usage.words + state.usage.prevWords; const totalLifeTime = state.usage.speakingSeconds + state.usage.prevSpeakingSeconds; return totalLifeTime > 0 ? Math.round((totalLifeWords / totalLifeTime) * 60) : 0; })() : 0} <span className="stat-unit">wpm</span></div>
-                    <div className="stat-meta">
-                      <span className="stat-trend stat-trend-up" id="wpmTrend">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-                        <span>+0%</span>
-                      </span>
-                      <span className="stat-period">vs last 7 days</span>
-                    </div>
-                  </article>
-                </div>
-
                 <section className="home-log">
                   <div className="section-head">
-                    <div>
-                      <h3 id="activityDate">Recent Activity</h3>
-                      <p className="section-sub">Your latest transcriptions from this device.</p>
-                    </div>
                     <div className="section-actions">
-                      <button id="viewFullHistoryBtn" className="inline-link" type="button">View Full History</button>
-                      <button id="clearHistoryBtn" className="inline-link" type="button">Clear History</button>
+                      <button id="viewFullHistoryBtn" className="btn-secondary" type="button">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        View Full History
+                      </button>
+                      <button id="clearHistoryBtn" className="btn-ghost" type="button">Clear</button>
                     </div>
                   </div>
                   <div id="conversationLog" className="conversation-log" role="log" aria-live="polite">
                     {state.incognitoMode ? (
                       <p className="empty-hint">Incognito mode enabled. History is hidden.</p>
                     ) : (() => {
-                      const now = new Date();
-                      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-                      const todayEntries = state.history.filter(e => e.timestamp >= todayStart);
-                      return todayEntries.length === 0 ? (
-                        <div className="empty-hint">
-                          <div className="empty-hint-icon">
-                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+                      if (state.history.length === 0) {
+                        return (
+                          <div className="empty-hint">
+                            <div className="empty-hint-icon">
+                              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+                            </div>
+                            <h4>No activity yet</h4>
+                            <p>Start dictating to see your recent transcriptions here.</p>
                           </div>
-                          <h4>No activity yet</h4>
-                          <p>Start dictating to see your recent transcriptions here.</p>
-                        </div>
-                      ) : (
-                        todayEntries.slice(0, 10).map((entry, i) => (
+                        );
+                      }
+
+                      const formatDate = (ts: number) => {
+                        const d = new Date(ts);
+                        const day = d.getDate();
+                        const month = d.toLocaleString('en-US', { month: 'long' }).toUpperCase();
+                        const year = d.getFullYear();
+                        return `${day} ${month} ${year}`;
+                      };
+
+                      const getDateKey = (ts: number) => {
+                        const d = new Date(ts);
+                        return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                      };
+
+                      let lastDateKey = '';
+                      const elements: React.ReactNode[] = [];
+
+                      state.history.forEach((entry, i) => {
+                        const dateKey = getDateKey(entry.timestamp);
+                        if (dateKey !== lastDateKey) {
+                          lastDateKey = dateKey;
+                          elements.push(
+                            <div key={`date-${dateKey}`} className="history-date-header">
+                              <span>{formatDate(entry.timestamp)}</span>
+                            </div>
+                          );
+                        }
+                        elements.push(
                           <HistoryRow key={`${entry.timestamp}-${i}`} entry={entry} />
-                        ))
-                      );
+                        );
+                      });
+
+                      return elements;
                     })()}
                   </div>
                 </section>
@@ -308,12 +295,16 @@ export function App() {
                     </div>
                     <div id="datePickerDays" className="date-picker-days"></div>
                   </div>
+                  <div className="search-input-wrapper" style={{ marginLeft: 'auto', maxWidth: '220px' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input id="historySearchInput" type="text" placeholder="Search history..." autoComplete="off" />
+                  </div>
                 </div>
                 <div id="fullHistoryLog" className="conversation-log full-history-log" role="log" aria-live="polite">
                    {state.incognitoMode ? (
                       <p className="empty-hint">Incognito mode enabled. History is hidden.</p>
                     ) : (() => {
-                      const filtered = filterHistory(state.history, historyFilter);
+                      const filtered = hf(state.history);
                       return filtered.length === 0 ? (
                         <div className="empty-hint">
                            <h4>No history yet</h4>
@@ -548,6 +539,8 @@ export function App() {
 
       <SettingsModal />
 
+      <OnboardingWizard />
+
       <div id="flowBar" className="flow-bar" style={{ display: "none" }} data-tauri-drag-region="true">
         <button className="dock-mic-btn" type="button" aria-label="Toggle recording">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
@@ -580,14 +573,28 @@ export function App() {
 }
 
 function HistoryRow({ entry }: { entry: HomeHistoryEntry }) {
+  const [copied, setCopied] = useState(false);
   const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const isAssistant = entry.tone === "assistant";
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(entry.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
-    <div className={`conversation-entry ${entry.tone === 'assistant' ? 'is-assistant' : 'is-user'}`}>
+    <div className={`conversation-entry ${isAssistant ? 'is-assistant' : 'is-user'}`}>
       <span className="entry-time">{time}</span>
-      <span className="entry-speaker">{entry.speaker}</span>
       <p className="entry-content">{entry.content}</p>
       <div className="entry-actions">
-        <button type="button" className="entry-action" onClick={() => navigator.clipboard.writeText(entry.content)}>Copy</button>
+        {copied ? (
+          <span className="entry-copied">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </span>
+        ) : (
+          <button type="button" className="entry-action" onClick={handleCopy}>Copy</button>
+        )}
       </div>
     </div>
   );
@@ -596,13 +603,17 @@ function HistoryRow({ entry }: { entry: HomeHistoryEntry }) {
 function DictionaryRow({ term }: { term: DictionaryTerm }) {
   return (
     <div className="dictionary-item-row" data-id={term.id}>
-      <div className="dictionary-term-pair">
-        <code className="dictionary-source">{term.source}</code>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-        <span className="dictionary-target">{term.target}</span>
+      <div className="dict-term spoken">
+        <span className="term-label">Spoken</span>
+        <code className="term-value">{term.source}</code>
       </div>
-      <button className="dictionary-remove-btn" type="button" data-action="remove-term">
-         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="dict-connector" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      <div className="dict-term correct">
+        <span className="term-label">Correct</span>
+        <span className="term-value">{term.target}</span>
+      </div>
+      <button className="dictionary-remove-btn" type="button" data-action="remove-term" aria-label="Remove term">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </button>
     </div>
   );
@@ -610,14 +621,14 @@ function DictionaryRow({ term }: { term: DictionaryTerm }) {
 
 function SnippetRow({ snippet }: { snippet: SnippetEntry }) {
   return (
-    <article className="snippet-item-card" data-id={snippet.id}>
-      <div className="snippet-item-header">
+    <article className="snippet-row" data-id={snippet.id}>
+      <div className="managed-row-main">
         <code className="snippet-trigger">{snippet.trigger}</code>
-        <button className="snippet-remove-btn" type="button" data-action="remove-snippet">
-           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-        </button>
       </div>
       <p className="snippet-expansion">{snippet.expansion}</p>
+      <button className="delete-btn" type="button" data-action="remove-snippet" aria-label="Remove snippet">
+        Remove
+      </button>
     </article>
   );
 }
@@ -625,14 +636,12 @@ function SnippetRow({ snippet }: { snippet: SnippetEntry }) {
 function NoteRow({ note }: { note: QuickNoteEntry }) {
   const time = new Date(note.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   return (
-    <div className="note-card" data-id={note.id}>
-      <div className="note-card-header">
-        <span className="note-time">{time}</span>
-        <button className="note-remove-btn" type="button" data-action="remove-note">
-           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-        </button>
+    <div className="conversation-entry" data-id={note.id}>
+      <span className="entry-time">{time}</span>
+      <p className="entry-content">{note.text}</p>
+      <div className="entry-actions">
+        <button type="button" className="entry-action" data-action="remove-note">Remove</button>
       </div>
-      <p className="note-text">{note.text}</p>
     </div>
   );
 }

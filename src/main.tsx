@@ -240,7 +240,7 @@ const sttHardwareAdvisorContinueBtn = requiredElement<HTMLButtonElement>(
 const sttHardwareAdvisorCancelBtn = requiredElement<HTMLButtonElement>("#sttHardwareAdvisorCancelBtn");
 const closeSettingsBtn = requiredElement<HTMLButtonElement>("#closeSettingsBtn");
 const settingsPaneTitle = requiredElement<HTMLElement>("#settingsPaneTitle");
-const settingsMain = requiredElement<HTMLElement>(".settings-main");
+const settingsMain = requiredElement<HTMLElement>(".settings-modal");
 const ttsBootstrapCard = requiredElement<HTMLDivElement>("#ttsBootstrapCard");
 const ttsProfilesArea = requiredElement<HTMLDivElement>("#ttsProfilesArea");
 const ttsSetupStatus = requiredElement<HTMLParagraphElement>("#ttsSetupStatus");
@@ -248,10 +248,8 @@ const ttsSetupLogs = requiredElement<HTMLDivElement>("#ttsSetupLogs");
 const setupAllTtsBtn = requiredElement<HTMLButtonElement>("#setupAllTtsBtn");
 const ttsProfilePiperPanel = requiredElement<HTMLDivElement>("#ttsProfilePiperPanel");
 const ttsProfilePiperTab = requiredElement<HTMLButtonElement>("#ttsProfilePiperTab");
-const appTitlebarDrag = requiredElement<HTMLDivElement>("#appTitlebarDrag");
+void requiredElement<HTMLDivElement>("#appTitlebarDrag");
 const windowMinimizeBtn = requiredElement<HTMLButtonElement>("#windowMinimizeBtn");
-const windowMaximizeBtn = requiredElement<HTMLButtonElement>("#windowMaximizeBtn");
-const windowMaximizeGlyph = requiredElement<HTMLElement>("#windowMaximizeGlyph");
 const windowCloseBtn = requiredElement<HTMLButtonElement>("#windowCloseBtn");
 
 const pageNavButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-page-nav]"));
@@ -268,7 +266,6 @@ const statusDetail = requiredElement<HTMLParagraphElement>("#statusDetail");
 const hotkeyHint = requiredElement<HTMLElement>("#hotkeyHint");
 const captureModeHint = requiredElement<HTMLElement>("#captureModeHint");
 const noticeText = requiredElement<HTMLParagraphElement>("#noticeText");
-const activityDate = requiredElement<HTMLElement>("#activityDate");
 const metricWords = requiredElement<HTMLElement>("#metricWords");
 const metricSpeakingTime = requiredElement<HTMLElement>("#metricSpeakingTime");
 const metricSessions = requiredElement<HTMLElement>("#metricSessions");
@@ -628,11 +625,7 @@ const APP_UPDATE_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED = true;
 let githubReleasesAutoOpenedThisSession = false;
 
-const ACTIVITY_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-});
+
 
 const UPDATE_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -776,7 +769,7 @@ commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
 startBlockedAppShortcutSuppressionMonitor();
 applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
-activityDate.textContent = ACTIVITY_DATE_FORMATTER.format(Date.now());
+
 
 for (const navButton of pageNavButtons) {
   navButton.addEventListener("click", () => {
@@ -2988,13 +2981,11 @@ function initializeUpdaterPanel(): void {
 function setupCustomWindowControls(): void {
   if (!isTauriEnvironment()) {
     windowMinimizeBtn.disabled = true;
-    windowMaximizeBtn.disabled = true;
     windowCloseBtn.disabled = true;
     return;
   }
 
   const appWindow = getCurrentWindow();
-  void syncTitlebarMaximizeState(appWindow);
 
   windowMinimizeBtn.addEventListener("click", () => {
     void appWindow.minimize().catch((error) => {
@@ -3002,52 +2993,11 @@ function setupCustomWindowControls(): void {
     });
   });
 
-  windowMaximizeBtn.addEventListener("click", () => {
-    void toggleWindowMaximize(appWindow);
-  });
-
   windowCloseBtn.addEventListener("click", () => {
     void appWindow.close().catch((error) => {
       setNotice(`Close failed: ${asErrorMessage(error)}`, true);
     });
   });
-
-  appTitlebarDrag.addEventListener("dblclick", () => {
-    void toggleWindowMaximize(appWindow);
-  });
-
-  window.addEventListener("resize", () => {
-    void syncTitlebarMaximizeState(appWindow);
-  });
-}
-
-async function toggleWindowMaximize(appWindow = getCurrentWindow()): Promise<void> {
-  try {
-    const maximized = await appWindow.isMaximized();
-    if (maximized) {
-      await appWindow.unmaximize();
-    } else {
-      await appWindow.maximize();
-    }
-    await syncTitlebarMaximizeState(appWindow);
-  } catch (error) {
-    setNotice(`Window maximize toggle failed: ${asErrorMessage(error)}`, true);
-  }
-}
-
-async function syncTitlebarMaximizeState(appWindow = getCurrentWindow()): Promise<void> {
-  try {
-    const maximized = isTauriEnvironment() ? await appWindow.isMaximized() : false;
-    windowMaximizeBtn.setAttribute("aria-label", maximized ? "Restore" : "Maximize");
-
-    if (maximized) {
-      windowMaximizeGlyph.innerHTML = '<rect x="8" y="4" width="12" height="12" rx="1" ry="1"></rect><path d="M4 8V20H16V16"></path>';
-    } else {
-      windowMaximizeGlyph.innerHTML = '<rect x="4" y="4" width="16" height="16" rx="1" ry="1"></rect>';
-    }
-  } catch {
-    windowMaximizeGlyph.innerHTML = '<rect x="4" y="4" width="16" height="16" rx="1" ry="1"></rect>';
-  }
 }
 
 function setUpdaterStatus(stage: "idle" | "processing" | "speaking" | "error", message: string): void {
@@ -4195,15 +4145,17 @@ function loadUsageStats(): UsageStats {
     const lastReset = parsed.lastPeriodReset || 0;
     
     if (now - lastReset > sevenDaysMs) {
+      const totalPrevWords = (parsed.prevWords || 0) + (parsed.words || 0);
+      const totalPrevSeconds = (parsed.prevSpeakingSeconds || 0) + (parsed.speakingSeconds || 0);
       return {
         sessions: 0,
         words: 0,
         avgWpm: 0,
         speakingSeconds: 0,
         prevSessions: coerceInteger((parsed.prevSessions || 0) + (parsed.sessions || 0), 0, 0, 999_999),
-        prevWords: coerceInteger((parsed.prevWords || 0) + (parsed.words || 0), 0, 0, 99_999_999),
-        prevWpm: 0,
-        prevSpeakingSeconds: coerceInteger((parsed.prevSpeakingSeconds || 0) + (parsed.speakingSeconds || 0), 0, 0, 99_999_999),
+        prevWords: coerceInteger(totalPrevWords, 0, 0, 99_999_999),
+        prevWpm: coerceNumber(totalPrevSeconds > 0 ? Math.round((totalPrevWords / totalPrevSeconds) * 60) : 0, 0, 0, 600),
+        prevSpeakingSeconds: coerceInteger(totalPrevSeconds, 0, 0, 99_999_999),
         lastPeriodReset: now,
       };
     }
@@ -7887,6 +7839,7 @@ function refreshRecordButton(): void {
     recordBtn.disabled = false;
     notesQuickMicBtn.dataset.stage = "recording";
     notesQuickMicBtn.disabled = false;
+    document.querySelector(".app-frame")?.classList.add("is-recording");
     return;
   }
 
@@ -7896,12 +7849,14 @@ function refreshRecordButton(): void {
     recordBtn.disabled = true;
     notesQuickMicBtn.dataset.stage = "processing";
     notesQuickMicBtn.disabled = true;
+    document.querySelector(".app-frame")?.classList.remove("is-recording");
     return;
   }
 
   recordBtn.textContent = settings.captureMode === "push-to-talk" ? "Hold to Talk" : "Start Recording";
   recordBtn.classList.remove("is-recording");
   recordBtn.disabled = false;
+  document.querySelector(".app-frame")?.classList.remove("is-recording");
   notesQuickMicBtn.dataset.stage = "idle";
   notesQuickMicBtn.disabled = false;
 }
@@ -8212,11 +8167,8 @@ async function ensureVoiceIndicatorWindow(): Promise<WebviewWindow> {
   const existing = await WebviewWindow.getByLabel("voice_indicator");
   if (existing) {
     await persistDockPositionFromWindow(existing);
-    try {
-      await existing.close();
-    } catch {
-      // Ignore close errors and proceed with creation attempt.
-    }
+    voiceIndicatorWindow = existing;
+    return existing;
   }
 
   const dockWidth = 160;
