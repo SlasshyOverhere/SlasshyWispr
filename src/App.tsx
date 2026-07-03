@@ -227,37 +227,11 @@ export function App() {
                           <div className="empty-hint-icon">
                             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
                           </div>
-                          </div>
-                        );
-                      }
-
-                      const formatDate = (ts: number) => {
-                        const d = new Date(ts);
-                        const day = d.getDate();
-                        const month = d.toLocaleString('en-US', { month: 'long' }).toUpperCase();
-                        const year = d.getFullYear();
-                        return `${day} ${month} ${year}`;
-                      };
-
-                      const getDateKey = (ts: number) => {
-                        const d = new Date(ts);
-                        return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-                      };
-
-                      let lastDateKey = '';
-                      const elements: React.ReactNode[] = [];
-
-                      state.history.forEach((entry, i) => {
-                        const dateKey = getDateKey(entry.timestamp);
-                        if (dateKey !== lastDateKey) {
-                          lastDateKey = dateKey;
-                          elements.push(
-                            <div key={`date-${dateKey}`} className="history-date-header">
-                              <span>{formatDate(entry.timestamp)}</span>
-                            </div>
-                          );
-                        }
-                        elements.push(
+                          <h4>No activity yet</h4>
+                          <p>Start dictating to see your recent transcriptions here.</p>
+                        </div>
+                      ) : (
+                        todayEntries.map((entry, i) => (
                           <HistoryRow key={`${entry.timestamp}-${i}`} entry={entry} />
                         ))
                       )
