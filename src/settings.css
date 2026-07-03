@@ -914,6 +914,9 @@
   min-height: 26px;
   padding: 2px 8px;
   font-size: 11.5px;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 180px;
 }
 
 /* Inline select wrapper */
