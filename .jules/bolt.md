@@ -1,0 +1,3 @@
+## 2025-02-12 — React Re-render Bottleneck on Global State
+Learning: In `src/App.tsx`, the `useUIState()` hook subscribes to the global `uiStore`, causing the entire `App` component to re-render frequently (e.g., during active recording when timers/visualizers update). Previously, the application was performing expensive array filtering (`state.history.filter` and `filterHistory`) inline within the JSX, causing full list recalculations on every single render.
+Action: Always wrap expensive derived calculations from global state (especially array mapping/filtering like `state.history`) in `useMemo` hooks dependency-mapped to the specific subset of state they require, preventing unnecessary work during unrelated UI updates.
