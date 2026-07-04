@@ -26,8 +26,8 @@ export class ErrorBoundary extends Component<Props, State> {
   render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="analytics-crash-fallback">
-          <p>Something went wrong loading analytics.</p>
+        <div style={{ padding: '20px', textAlign: 'center' }}>
+          <p>Something went wrong.</p>
           <button className="dark-action" onClick={this.handleRetry} type="button">Retry</button>
         </div>
       );

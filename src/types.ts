@@ -1,6 +1,6 @@
 export type Stage = "idle" | "recording" | "processing" | "speaking" | "error";
 export type CaptureMode = "single-tap" | "push-to-talk";
-export type ThemeMode = "system" | "light" | "dark";
+export type ThemeMode = "system" | "dark" | "light" | "mono";
 export type StyleProfile = "adaptive" | "professional" | "casual" | "concise" | "developer";
 export type MainPage = "home" | "history" | "dictionary" | "snippets" | "notes" | "analytics";
 export type SettingsPane =
@@ -238,6 +238,7 @@ export interface PersistedSettings {
   themeMode: ThemeMode;
   dictationSoundEffects: boolean;
   muteMusicWhileDictating: boolean;
+  rawMode: boolean;
   backtrackCorrection: boolean;
   removeFillers: boolean;
   autoPunctuation: boolean;

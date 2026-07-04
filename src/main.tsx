@@ -51,6 +51,8 @@ import {
   LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
+  APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
+  APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY,
   GITHUB_RELEASES_PAGE_URL,
   DEFAULT_SYSTEM_PROMPT,
   DEFAULT_TEMPERATURE,
@@ -240,7 +242,7 @@ const sttHardwareAdvisorContinueBtn = requiredElement<HTMLButtonElement>(
 const sttHardwareAdvisorCancelBtn = requiredElement<HTMLButtonElement>("#sttHardwareAdvisorCancelBtn");
 const closeSettingsBtn = requiredElement<HTMLButtonElement>("#closeSettingsBtn");
 const settingsPaneTitle = requiredElement<HTMLElement>("#settingsPaneTitle");
-const settingsMain = requiredElement<HTMLElement>(".settings-main");
+const settingsMain = requiredElement<HTMLElement>(".settings-modal");
 const ttsBootstrapCard = requiredElement<HTMLDivElement>("#ttsBootstrapCard");
 const ttsProfilesArea = requiredElement<HTMLDivElement>("#ttsProfilesArea");
 const ttsSetupStatus = requiredElement<HTMLParagraphElement>("#ttsSetupStatus");
@@ -248,10 +250,7 @@ const ttsSetupLogs = requiredElement<HTMLDivElement>("#ttsSetupLogs");
 const setupAllTtsBtn = requiredElement<HTMLButtonElement>("#setupAllTtsBtn");
 const ttsProfilePiperPanel = requiredElement<HTMLDivElement>("#ttsProfilePiperPanel");
 const ttsProfilePiperTab = requiredElement<HTMLButtonElement>("#ttsProfilePiperTab");
-const appTitlebarDrag = requiredElement<HTMLDivElement>("#appTitlebarDrag");
 const windowMinimizeBtn = requiredElement<HTMLButtonElement>("#windowMinimizeBtn");
-const windowMaximizeBtn = requiredElement<HTMLButtonElement>("#windowMaximizeBtn");
-const windowMaximizeGlyph = requiredElement<HTMLElement>("#windowMaximizeGlyph");
 const windowCloseBtn = requiredElement<HTMLButtonElement>("#windowCloseBtn");
 
 const pageNavButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-page-nav]"));
@@ -268,7 +267,6 @@ const statusDetail = requiredElement<HTMLParagraphElement>("#statusDetail");
 const hotkeyHint = requiredElement<HTMLElement>("#hotkeyHint");
 const captureModeHint = requiredElement<HTMLElement>("#captureModeHint");
 const noticeText = requiredElement<HTMLParagraphElement>("#noticeText");
-const activityDate = requiredElement<HTMLElement>("#activityDate");
 const metricWords = requiredElement<HTMLElement>("#metricWords");
 const metricSpeakingTime = requiredElement<HTMLElement>("#metricSpeakingTime");
 const metricSessions = requiredElement<HTMLElement>("#metricSessions");
@@ -396,6 +394,9 @@ const copyToClipboardToggle = requiredElement<HTMLInputElement>("#copyToClipboar
 const autoPasteDictationToggle = requiredElement<HTMLInputElement>("#autoPasteDictationToggle");
 const incognitoModeToggle = requiredElement<HTMLInputElement>("#incognitoModeToggle");
 const themeModeSelect = requiredElement<HTMLSelectElement>("#themeModeSelect");
+const themeCardInputs = Array.from(
+  document.querySelectorAll<HTMLInputElement>("input[data-theme-card]"),
+);
 const dictationSoundEffectsToggle = requiredElement<HTMLInputElement>("#dictationSoundEffectsToggle");
 const muteMusicWhileDictatingToggle = requiredElement<HTMLInputElement>(
   "#muteMusicWhileDictatingToggle",
@@ -406,6 +407,7 @@ const pushToTalkSoundVolumeRange = requiredElement<HTMLInputElement>("#pushToTal
 const previewPttSoundBtn = requiredElement<HTMLButtonElement>("#previewPttSoundBtn");
 const previewPttEndSoundBtn = requiredElement<HTMLButtonElement>("#previewPttEndSoundBtn");
 const pttVolumeHint = requiredElement<HTMLSpanElement>("#pttVolumeHint");
+const rawModeToggle = requiredElement<HTMLInputElement>("#rawModeToggle");
 const backtrackToggle = requiredElement<HTMLInputElement>("#backtrackToggle");
 const removeFillersToggle = requiredElement<HTMLInputElement>("#removeFillersToggle");
 const autoPunctuationToggle = requiredElement<HTMLInputElement>("#autoPunctuationToggle");
@@ -430,6 +432,8 @@ const updateInstallProgressText = requiredElement<HTMLParagraphElement>("#update
 const updateManualDownloadRow = requiredElement<HTMLDivElement>("#updateManualDownloadRow");
 const updateManualDownloadText = requiredElement<HTMLParagraphElement>("#updateManualDownloadText");
 const openGithubReleasesBtn = requiredElement<HTMLButtonElement>("#openGithubReleasesBtn");
+const skipUpdateVersionBtn = requiredElement<HTMLButtonElement>("#skipUpdateVersionBtn");
+const snoozeUpdateBtn = requiredElement<HTMLButtonElement>("#snoozeUpdateBtn");
 
 const baseUrlValue = requiredElement<HTMLElement>("#baseUrlValue");
 const sttModelValue = requiredElement<HTMLElement>("#sttModelValue");
@@ -625,13 +629,7 @@ const MAIN_WINDOW_VISIBILITY_EVENT = "slasshy://main-window-visibility";
 const UPDATE_INSTALL_PROGRESS_EVENT = "slasshy://update-install-progress";
 const APP_UPDATE_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED = true;
-let githubReleasesAutoOpenedThisSession = false;
 
-const ACTIVITY_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-});
 
 const UPDATE_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -775,7 +773,7 @@ commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
 startBlockedAppShortcutSuppressionMonitor();
 applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
-activityDate.textContent = ACTIVITY_DATE_FORMATTER.format(Date.now());
+
 
 for (const navButton of pageNavButtons) {
   navButton.addEventListener("click", () => {
@@ -861,6 +859,20 @@ autoCheckUpdatesToggle.addEventListener("change", () => {
 
 installUpdateBtn.addEventListener("click", () => {
   void handleInstallUpdate();
+});
+
+skipUpdateVersionBtn.addEventListener("click", () => {
+  if (cachedUpdateResult?.latestVersion) {
+    localStorage.setItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY, cachedUpdateResult.latestVersion);
+    setNotice(`Version ${cachedUpdateResult.latestVersion} will be skipped. You won't be notified about this version again.`);
+    syncUpdaterButtons();
+  }
+});
+
+snoozeUpdateBtn.addEventListener("click", () => {
+  snoozeUpdateFor24Hours();
+  setNotice("Update notifications snoozed for 24 hours.");
+  syncUpdaterButtons();
 });
 
 window.addEventListener("beforeunload", () => {
@@ -1173,6 +1185,19 @@ copyToClipboardToggle.addEventListener("change", handleSettingsChange);
 autoPasteDictationToggle.addEventListener("change", handleSettingsChange);
 incognitoModeToggle.addEventListener("change", handleSettingsChange);
 themeModeSelect.addEventListener("change", handleSettingsChange);
+
+for (const cardInput of themeCardInputs) {
+  cardInput.addEventListener("change", () => {
+    if (!cardInput.checked) {
+      return;
+    }
+    const next = asThemeMode(cardInput.value);
+    if (themeModeSelect.value !== next) {
+      themeModeSelect.value = next;
+    }
+    void handleSettingsChange();
+  });
+}
 dictationSoundEffectsToggle.addEventListener("change", handleSettingsChange);
 pushToTalkSoundSelect.addEventListener("change", handleSettingsChange);
 pushToTalkEndSoundSelect.addEventListener("change", handleSettingsChange);
@@ -1187,6 +1212,7 @@ previewPttEndSoundBtn.addEventListener("click", () => {
   playDictationSoundEffect("stop", pushToTalkEndSoundSelect.value);
 });
 muteMusicWhileDictatingToggle.addEventListener("change", handleSettingsChange);
+rawModeToggle.addEventListener("change", handleSettingsChange);
 backtrackToggle.addEventListener("change", handleSettingsChange);
 removeFillersToggle.addEventListener("change", handleSettingsChange);
 autoPunctuationToggle.addEventListener("change", handleSettingsChange);
@@ -1780,6 +1806,7 @@ function loadSettings(): PersistedSettings {
     themeMode: "system",
     dictationSoundEffects: true,
     muteMusicWhileDictating: false,
+    rawMode: false,
     backtrackCorrection: true,
     removeFillers: true,
     autoPunctuation: true,
@@ -1877,6 +1904,7 @@ function loadSettings(): PersistedSettings {
         parsed.muteMusicWhileDictating,
         defaults.muteMusicWhileDictating,
       ),
+      rawMode: coerceBoolean(parsed.rawMode, defaults.rawMode),
       backtrackCorrection: coerceBoolean(parsed.backtrackCorrection, defaults.backtrackCorrection),
       removeFillers: coerceBoolean(parsed.removeFillers, defaults.removeFillers),
       autoPunctuation: coerceBoolean(parsed.autoPunctuation, defaults.autoPunctuation),
@@ -2083,6 +2111,7 @@ function readSettingsFromForm(): PersistedSettings {
     themeMode: asThemeMode(themeModeSelect.value),
     dictationSoundEffects: dictationSoundEffectsToggle.checked,
     muteMusicWhileDictating: muteMusicWhileDictatingToggle.checked,
+    rawMode: rawModeToggle.checked,
     backtrackCorrection: backtrackToggle.checked,
     removeFillers: removeFillersToggle.checked,
     autoPunctuation: autoPunctuationToggle.checked,
@@ -2152,6 +2181,7 @@ function applySettingsToForm(next: PersistedSettings): void {
   themeModeSelect.value = next.themeMode;
   dictationSoundEffectsToggle.checked = next.dictationSoundEffects;
   muteMusicWhileDictatingToggle.checked = next.muteMusicWhileDictating;
+  rawModeToggle.checked = next.rawMode;
   backtrackToggle.checked = next.backtrackCorrection;
   removeFillersToggle.checked = next.removeFillers;
   autoPunctuationToggle.checked = next.autoPunctuation;
@@ -2166,9 +2196,16 @@ function applySettingsToForm(next: PersistedSettings): void {
   hotkeyHint.textContent = displayHotkey;
   captureModeHint.textContent = captureModeLabel(next.captureMode);
   applyTheme(next.themeMode);
+  syncThemeCardSelection(next.themeMode);
   updateRuntimeModeNotice(next.sttRuntimeMode, next.aiRuntimeMode);
   syncRuntimeModePaneVisibility(next.sttRuntimeMode, next.aiRuntimeMode);
   syncHybridRuntimeFieldVisibility(next.sttRuntimeMode, next.aiRuntimeMode);
+}
+
+function syncThemeCardSelection(themeMode: ThemeMode): void {
+  for (const input of themeCardInputs) {
+    input.checked = input.value === themeMode;
+  }
 }
 
 async function handleSettingsChange(): Promise<void> {
@@ -2942,6 +2979,8 @@ function syncUpdaterButtons(): void {
   installUpdateBtn.textContent = cachedUpdateResult?.available
     ? `Download & install ${cachedUpdateResult.latestVersion || "update"}`
     : "Download & install";
+  skipUpdateVersionBtn.disabled = updateCheckInFlight || updateInstallInFlight || !cachedUpdateResult?.available;
+  snoozeUpdateBtn.disabled = updateCheckInFlight || updateInstallInFlight;
 }
 
 function initializeUpdaterPanel(): void {
@@ -2982,13 +3021,11 @@ function initializeUpdaterPanel(): void {
 function setupCustomWindowControls(): void {
   if (!isTauriEnvironment()) {
     windowMinimizeBtn.disabled = true;
-    windowMaximizeBtn.disabled = true;
     windowCloseBtn.disabled = true;
     return;
   }
 
   const appWindow = getCurrentWindow();
-  void syncTitlebarMaximizeState(appWindow);
 
   windowMinimizeBtn.addEventListener("click", () => {
     void appWindow.minimize().catch((error) => {
@@ -2996,52 +3033,11 @@ function setupCustomWindowControls(): void {
     });
   });
 
-  windowMaximizeBtn.addEventListener("click", () => {
-    void toggleWindowMaximize(appWindow);
-  });
-
   windowCloseBtn.addEventListener("click", () => {
     void appWindow.close().catch((error) => {
       setNotice(`Close failed: ${asErrorMessage(error)}`, true);
     });
   });
-
-  appTitlebarDrag.addEventListener("dblclick", () => {
-    void toggleWindowMaximize(appWindow);
-  });
-
-  window.addEventListener("resize", () => {
-    void syncTitlebarMaximizeState(appWindow);
-  });
-}
-
-async function toggleWindowMaximize(appWindow = getCurrentWindow()): Promise<void> {
-  try {
-    const maximized = await appWindow.isMaximized();
-    if (maximized) {
-      await appWindow.unmaximize();
-    } else {
-      await appWindow.maximize();
-    }
-    await syncTitlebarMaximizeState(appWindow);
-  } catch (error) {
-    setNotice(`Window maximize toggle failed: ${asErrorMessage(error)}`, true);
-  }
-}
-
-async function syncTitlebarMaximizeState(appWindow = getCurrentWindow()): Promise<void> {
-  try {
-    const maximized = isTauriEnvironment() ? await appWindow.isMaximized() : false;
-    windowMaximizeBtn.setAttribute("aria-label", maximized ? "Restore" : "Maximize");
-
-    if (maximized) {
-      windowMaximizeGlyph.innerHTML = '<rect x="8" y="4" width="12" height="12" rx="1" ry="1"></rect><path d="M4 8V20H16V16"></path>';
-    } else {
-      windowMaximizeGlyph.innerHTML = '<rect x="4" y="4" width="16" height="16" rx="1" ry="1"></rect>';
-    }
-  } catch {
-    windowMaximizeGlyph.innerHTML = '<rect x="4" y="4" width="16" height="16" rx="1" ry="1"></rect>';
-  }
 }
 
 function setUpdaterStatus(stage: "idle" | "processing" | "speaking" | "error", message: string): void {
@@ -3064,6 +3060,21 @@ function readAppUpdateAutoCheckEnabled(): boolean {
     return DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED;
   }
   return raw !== "0";
+}
+
+function readUpdateSnoozedUntilMs(): number {
+  const raw = localStorage.getItem(APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY);
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return parsed;
+}
+
+function isUpdateSnoozed(): boolean {
+  return Date.now() < readUpdateSnoozedUntilMs();
+}
+
+function snoozeUpdateFor24Hours(): void {
+  localStorage.setItem(APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY, String(Date.now() + 24 * 60 * 60 * 1000));
 }
 
 function readLastAppUpdateCheckedAtMs(): number {
@@ -3160,16 +3171,16 @@ function showManualDownloadFallback(detail: string): void {
   updateManualDownloadText.textContent = `Download the latest version from GitHub Releases instead.`;
   updateManualDownloadRow.hidden = false;
   setUpdaterStatus("error", detail);
-
-  if (!githubReleasesAutoOpenedThisSession) {
-    githubReleasesAutoOpenedThisSession = true;
-    openInSystemBrowser(GITHUB_RELEASES_PAGE_URL);
-  }
 }
 
-function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "startup" | "interval"): void {
+function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "startup" | "interval" | "manual"): void {
   const version = result.latestVersion.trim();
   if (!version) {
+    return;
+  }
+
+  // Check localStorage skip before in-memory dedup — user explicitly skipped this version
+  if (localStorage.getItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY) === version) {
     return;
   }
 
@@ -3180,7 +3191,13 @@ function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "start
     return;
   }
 
+  if (isUpdateSnoozed()) {
+    return;
+  }
+
   notifiedVersionsThisSession.add(version);
+  // Persist skipped version to localStorage for cross-session skip tracking
+  localStorage.setItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY, version);
   const message = `Update ${version} is available. Open Updates to download and install it.`;
   setNotice(message);
 
@@ -3275,6 +3292,11 @@ async function handleCheckForUpdates(options?: {
   }
 
   const silent = options?.silent ?? false;
+
+  if (silent && isUpdateSnoozed()) {
+    return;
+  }
+
   const source = options?.source ?? "manual";
   updateCheckInFlight = true;
   syncUpdaterButtons();
@@ -3288,7 +3310,7 @@ async function handleCheckForUpdates(options?: {
     localStorage.setItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY, String(Date.now()));
     refreshUpdateLastCheckedText();
     applyUpdateCheckResult(result, silent);
-    if (result.available && (source === "startup" || source === "interval")) {
+    if (result.available) {
       notifyAppUpdateAvailable(result, source);
     }
   } catch (error) {
@@ -3964,7 +3986,7 @@ function asStyleProfile(value: unknown): StyleProfile {
 }
 
 function asThemeMode(value: unknown): ThemeMode {
-  if (value === "light" || value === "dark") {
+  if (value === "light" || value === "dark" || value === "mono") {
     return value;
   }
   return "system";
@@ -3996,21 +4018,24 @@ function normalizeDictationLanguageCode(value: unknown): string {
 }
 
 function normalizeDictationLanguageAllowList(value: unknown): string[] {
-  const rawValues: unknown[] = Array.isArray(value)
-    ? value
-    : typeof value === "string"
-      ? value
-          .split(",")
-          .map((item) => item.trim())
-          .filter((item) => item.length > 0)
-      : [];
+  let rawValues: unknown[];
+  if (Array.isArray(value)) {
+    rawValues = value;
+  } else if (typeof value === "string") {
+    rawValues = value.split(",");
+  } else {
+    return [];
+  }
 
   const next: string[] = [];
+  const seen = new Set<string>();
+
   for (const item of rawValues) {
     const normalized = normalizeDictationLanguageCode(item);
-    if (!normalized || next.includes(normalized)) {
+    if (!normalized || seen.has(normalized)) {
       continue;
     }
+    seen.add(normalized);
     next.push(normalized);
   }
   return next;
@@ -4189,15 +4214,17 @@ function loadUsageStats(): UsageStats {
     const lastReset = parsed.lastPeriodReset || 0;
     
     if (now - lastReset > sevenDaysMs) {
+      const totalPrevWords = (parsed.prevWords || 0) + (parsed.words || 0);
+      const totalPrevSeconds = (parsed.prevSpeakingSeconds || 0) + (parsed.speakingSeconds || 0);
       return {
         sessions: 0,
         words: 0,
         avgWpm: 0,
         speakingSeconds: 0,
         prevSessions: coerceInteger((parsed.prevSessions || 0) + (parsed.sessions || 0), 0, 0, 999_999),
-        prevWords: coerceInteger((parsed.prevWords || 0) + (parsed.words || 0), 0, 0, 99_999_999),
-        prevWpm: 0,
-        prevSpeakingSeconds: coerceInteger((parsed.prevSpeakingSeconds || 0) + (parsed.speakingSeconds || 0), 0, 0, 99_999_999),
+        prevWords: coerceInteger(totalPrevWords, 0, 0, 99_999_999),
+        prevWpm: coerceNumber(totalPrevSeconds > 0 ? Math.round((totalPrevWords / totalPrevSeconds) * 60) : 0, 0, 0, 600),
+        prevSpeakingSeconds: coerceInteger(totalPrevSeconds, 0, 0, 99_999_999),
         lastPeriodReset: now,
       };
     }
@@ -4740,7 +4767,7 @@ function addQuickNote(text: string): void {
 
 function renderNotesList(): void {
   if (quickNotes.length === 0 || settings.incognitoMode) {
-    notesList.innerHTML = '<p class="notes-empty">No notes found</p>';
+    notesList.innerHTML = "";
     return;
   }
 
@@ -4977,15 +5004,11 @@ async function confirmDestructiveAction(message: string): Promise<boolean> {
     overlay.innerHTML = `
       <div class="confirm-modal">
         <div class="confirm-body">
-          <div class="confirm-icon-wrapper">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-          </div>
-          <h3 class="confirm-title">Confirm Action</h3>
-          <p class="confirm-message">${message}</p>
+          <p class="confirm-message">${escapeHtml(message)}</p>
         </div>
         <div class="confirm-actions">
           <button type="button" class="confirm-btn confirm-btn-cancel">Cancel</button>
-          <button type="button" class="confirm-btn confirm-btn-confirm">Confirm</button>
+          <button type="button" class="confirm-btn confirm-btn-confirm">Delete</button>
         </div>
       </div>
     `;
@@ -5316,7 +5339,16 @@ async function handleSetupAllTts(): Promise<void> {
 }
 
 function renderProviderModelCatalog(models: string[], selectedModel = ""): void {
-  const normalized = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean))).sort();
+  const next: string[] = [];
+  const seen = new Set<string>();
+  for (const model of models) {
+    const trimmed = model.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      next.push(trimmed);
+    }
+  }
+  const normalized = next.sort();
   const fallbackModel =
     selectedModel.trim() ||
     aiModelInput.value.trim() ||
@@ -5351,7 +5383,16 @@ function renderProviderModelCatalog(models: string[], selectedModel = ""): void 
 }
 
 function renderLocalOllamaModelCatalog(models: string[], selectedModel = ""): void {
-  const normalized = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean))).sort();
+  const next: string[] = [];
+  const seen = new Set<string>();
+  for (const model of models) {
+    const trimmed = model.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      next.push(trimmed);
+    }
+  }
+  const normalized = next.sort();
   const fallbackModel =
     selectedModel.trim() || localOllamaModelInput.value.trim() || settings.localOllamaModel.trim();
   const finalModels =
@@ -5382,7 +5423,16 @@ function renderLocalOllamaModelCatalog(models: string[], selectedModel = ""): vo
 }
 
 function renderLocalSttModelCatalog(models: string[], selectedModel = ""): void {
-  const normalized = Array.from(new Set(models.map((model) => model.trim()).filter(Boolean)));
+  const next: string[] = [];
+  const seen = new Set<string>();
+  for (const model of models) {
+    const trimmed = model.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      next.push(trimmed);
+    }
+  }
+  const normalized = next;
   localSttModelCatalog = normalized;
 
   if (normalized.length === 0) {
@@ -7135,6 +7185,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
           trigger: item.trigger,
           expansion: item.expansion,
         })),
+        rawMode: activeSettings.rawMode,
         applyBacktrack: activeSettings.backtrackCorrection,
         removeFillers: activeSettings.removeFillers,
         autoPunctuation: activeSettings.autoPunctuation,
@@ -7279,7 +7330,7 @@ function renderPipelineResponse(response: AssistantPipelineResponse): void {
   }
 
   trackUsage(response.transcript);
-  if (activePage === "notes") {
+  if (lastCaptureIntentLabel === "notes-button") {
     addQuickNote(response.transcript);
   }
 }
@@ -7845,8 +7896,11 @@ function shouldDisplayDock(): boolean {
 }
 
 function resolvedDockTheme(): "light" | "dark" {
-  if (settings.themeMode === "light" || settings.themeMode === "dark") {
-    return settings.themeMode;
+  if (settings.themeMode === "light") {
+    return "light";
+  }
+  if (settings.themeMode === "dark" || settings.themeMode === "mono") {
+    return "dark";
   }
 
   return systemThemeMediaQuery?.matches ? "light" : "dark";
@@ -7880,6 +7934,7 @@ function refreshRecordButton(): void {
     recordBtn.disabled = false;
     notesQuickMicBtn.dataset.stage = "recording";
     notesQuickMicBtn.disabled = false;
+    document.querySelector(".app-frame")?.classList.add("is-recording");
     return;
   }
 
@@ -7889,12 +7944,14 @@ function refreshRecordButton(): void {
     recordBtn.disabled = true;
     notesQuickMicBtn.dataset.stage = "processing";
     notesQuickMicBtn.disabled = true;
+    document.querySelector(".app-frame")?.classList.remove("is-recording");
     return;
   }
 
   recordBtn.textContent = settings.captureMode === "push-to-talk" ? "Hold to Talk" : "Start Recording";
   recordBtn.classList.remove("is-recording");
   recordBtn.disabled = false;
+  document.querySelector(".app-frame")?.classList.remove("is-recording");
   notesQuickMicBtn.dataset.stage = "idle";
   notesQuickMicBtn.disabled = false;
 }
@@ -8205,11 +8262,8 @@ async function ensureVoiceIndicatorWindow(): Promise<WebviewWindow> {
   const existing = await WebviewWindow.getByLabel("voice_indicator");
   if (existing) {
     await persistDockPositionFromWindow(existing);
-    try {
-      await existing.close();
-    } catch {
-      // Ignore close errors and proceed with creation attempt.
-    }
+    voiceIndicatorWindow = existing;
+    return existing;
   }
 
   const dockWidth = 160;
@@ -8474,6 +8528,9 @@ function syncActionAvailability(): void {
   copyToClipboardToggle.disabled = busy;
   incognitoModeToggle.disabled = busy;
   themeModeSelect.disabled = busy;
+  for (const cardInput of themeCardInputs) {
+    cardInput.disabled = busy;
+  }
   backtrackToggle.disabled = busy;
   removeFillersToggle.disabled = busy;
   autoPunctuationToggle.disabled = busy;
@@ -9318,8 +9375,8 @@ function showOfflineModeDiagnostic(issue: string, details?: {
   dialog.innerHTML = `
     <div style="margin-bottom: 20px;">
       <div style="font-size: 32px; margin-bottom: 12px;">${diagnostics.icon}</div>
-      <h3 style="margin: 0 0 8px 0; font-size: 18px; color: var(--text-primary, #fff);">${diagnostics.title}</h3>
-      <p style="margin: 0; color: var(--text-secondary, #aaa); font-size: 14px; line-height: 1.5;">${diagnostics.description}</p>
+      <h3 style="margin: 0 0 8px 0; font-size: 18px; color: var(--text-primary, #fff);">${escapeHtml(diagnostics.title)}</h3>
+      <p style="margin: 0; color: var(--text-secondary, #aaa); font-size: 14px; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(diagnostics.description)}</p>
     </div>
 
     ${details?.model ? `
@@ -9332,14 +9389,14 @@ function showOfflineModeDiagnostic(issue: string, details?: {
     <div style="margin-bottom: 20px;">
       <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-primary, #fff);">How to fix:</div>
       <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary, #aaa); font-size: 13px; line-height: 1.6;">
-        ${diagnostics.steps.map(step => `<li style="margin-bottom: 6px;">${step}</li>`).join('')}
+        ${diagnostics.steps.map(step => `<li style="margin-bottom: 6px;">${escapeHtml(step)}</li>`).join('')}
       </ol>
     </div>
 
     <div style="display: flex; gap: 8px; justify-content: flex-end;">
       ${diagnostics.actions.map(action => `
         <button
-          data-action="${action.id}"
+          data-action="${escapeHtml(action.id)}"
           class="diagnostic-action-btn"
           style="
             padding: 8px 16px;
@@ -9353,7 +9410,7 @@ function showOfflineModeDiagnostic(issue: string, details?: {
             transition: all 0.15s ease;
           "
         >
-          ${action.label}
+          ${escapeHtml(action.label)}
         </button>
       `).join('')}
     </div>
