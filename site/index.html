@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="styles/layout.css" />
   <link rel="stylesheet" href="styles/components.css" />
   <link rel="stylesheet" href="styles/showcase.css" />
+  <script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js"></script>
 </head>
 <body>
 
@@ -34,12 +35,12 @@
        ============================================================ -->
   <header class="titlebar" role="banner">
     <a href="#top" class="titlebar__logo" aria-label="SlasshyWispr home">
-      <span class="logo-mark"></span>
-      <span>SlasshyWispr</span>
+      <img class="titlebar__logo-icon" src="assets/logo.png" alt="" width="20" height="20" />
+      <span class="titlebar__logo-text">SlasshyWispr</span>
     </a>
 
     <nav class="titlebar__nav" aria-label="primary">
-      <a href="#overview" aria-current="page">Overview</a>
+      <a href="#overview">Overview</a>
       <a href="#spec">Spec</a>
       <a href="#sequence">Sequence</a>
       <a href="#hotkeys">Hotkeys</a>
@@ -47,11 +48,11 @@
     </nav>
 
     <div class="titlebar__actions">
-      <span class="titlebar__version">v1.0.7 · Windows</span>
-      <a href="#download" class="btn-ghost">
-        Get for Windows
-        <span class="icon-chev"></span>
+      <span class="titlebar__version">v1.0.7</span>
+      <a href="https://github.com/SlasshyOverhere/SlasshyWispr" class="btn-nav" rel="noopener" target="_blank">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
       </a>
+      <a href="https://github.com/SlasshyOverhere/SlasshyWispr/releases/latest" class="btn-nav-primary" rel="noopener" target="_blank" id="nav-download">Download</a>
     </div>
   </header>
 
@@ -65,45 +66,44 @@
         <div class="hero__grid">
 
           <div class="hero__copy">
-            <div class="t-eyebrow t-rule"><span class="t-mono-sm" style="color: var(--ink-muted)">SLASSHY · DESKTOP · 01</span></div>
-
             <h1 class="t-display-1" id="hero-title">
-              Voice <span class="t-spoken">into</span> text,<br />
-              on a desktop <span class="t-spoken">instrument.</span>
+              Speak. <span class="t-spoken">Get</span> text.<br />
+              No cloud required.
             </h1>
 
             <p class="t-lede">
-              SlasshyWispr is a precision dictation tool for people who dictate for a living.
-              Online, offline, or hybrid. Local STT, local AI. Speak naturally, get clean text,
-              hear assistant replies with built-in TTS.
+              Fast, private dictation that runs on your machine.
+              Press a hotkey, speak, get clean text. Offline or online, your choice.
             </p>
 
             <div class="hero__copy-actions">
-              <a href="#download" class="btn-primary">
-                <span class="icon-disc"></span>
+              <a href="https://github.com/SlasshyOverhere/SlasshyWispr/releases/latest" class="btn-primary" rel="noopener" target="_blank" id="main-download">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
                 Download for Windows
               </a>
-              <a href="#sequence" class="btn-ghost">
-                See it in motion
-                <span class="icon-chev"></span>
+              <a href="https://github.com/SlasshyOverhere/SlasshyWispr" class="btn-ghost" rel="noopener" target="_blank">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                Star on GitHub
               </a>
             </div>
 
             <p class="hero__spec-line t-mono-sm">
-              <span><span class="t-mono-sm" style="color:var(--ink-faint)">RUNTIME</span> &nbsp; Local · cloud · both</span>
+              <span><span class="t-mono-sm" style="color:var(--ink-faint)">v</span>1.0.7</span>
               <span class="hero__spec-sep" aria-hidden="true"></span>
-              <span><span class="t-mono-sm" style="color:var(--ink-faint)">LATENCY</span> &nbsp; &lt; 0.8 s end to end</span>
+              <span><span class="t-mono-sm" style="color:var(--ink-faint)">win</span>10+</span>
               <span class="hero__spec-sep" aria-hidden="true"></span>
-              <span><span class="t-mono-sm" style="color:var(--ink-faint)">PRIVACY</span> &nbsp; Offline by default</span>
+              <span><span class="t-mono-sm" style="color:var(--ink-faint)">local</span>first</span>
+              <span class="hero__spec-sep" aria-hidden="true"></span>
+              <span><span class="t-mono-sm" style="color:var(--ink-faint)">nsis</span>signed</span>
             </p>
           </div>
 
           <!-- The actual captured screenshot, framed like the app's titlebar. -->
-          <figure class="frame-app" aria-label="Actual SlasshyWispr desktop app screenshot">
+          <figure class="frame-app" id="hero-frame" aria-label="Actual SlasshyWispr desktop app screenshot" tabindex="0" role="button" aria-describedby="hero-frame-hint">
             <div class="frame-app__titlebar">
               <span class="frame-app__titlebar-dot"></span>
               <span class="frame-app__titlebar-name">SlasshyWispr · Overview</span>
-              <span class="frame-app__titlebar-meta">captured · 9 May 2026</span>
+              <span class="frame-app__titlebar-meta">captured · 4 Jul 2026</span>
             </div>
             <div class="frame-app__viewport">
               <img
@@ -115,8 +115,9 @@
             </div>
             <figcaption class="frame-app__annotation">
               <span class="rec-dot"></span>
-              <span>LIVE CAPTURE · THE CURRENT BUILD, NOT A MOCK</span>
+              <span>HOVER TO ZOOM</span>
             </figcaption>
+            <p class="visually-hidden" id="hero-frame-hint">Hover to open a larger view of the app.</p>
           </figure>
 
         </div>
@@ -129,65 +130,53 @@
     <section class="section spec" id="spec" aria-labelledby="spec-title">
       <div class="section-inner">
         <div class="section-head">
-          <div class="section-head__eyebrow t-eyebrow">02 · SPECIFICATION</div>
           <h2 class="section-head__title t-display-2" id="spec-title">The surface.</h2>
           <div class="section-head__meta">
-            <div class="t-mono-sm">REVISION 1.0.7 · 2026-05-09</div>
+            <div class="t-mono-sm">VERSION 1.0.7</div>
           </div>
         </div>
 
         <div class="spec__grid">
 
           <div class="spec__lead">
-            <p class="t-eyebrow t-mono-sm" style="color: var(--ink-faint)">WHAT IT IS</p>
-            <h3 class="t-display-3">A precision instrument, not a chat app.</h3>
+            <h3 class="t-display-3">Built for people who dictate all day.</h3>
             <p class="t-body">
-              SlasshyWispr lives in your titlebar and disappears into your flow until
-              you press the hotkey. From the moment you speak, every step of the
-              pipeline (capture, transcription, language model, speech synthesis)
-              is visible and tunable. Online, offline, or hybrid: choose per task,
-              not per account.
+              SlasshyWispr stays out of your way until you need it. Press the hotkey,
+              speak, and watch your words appear instantly. Every step of the process
+              is transparent: you see exactly what's happening and how long it takes.
             </p>
           </div>
 
           <div class="ledger" aria-label="specifications">
             <div class="ledger__row">
-              <span class="ledger__num">/01</span>
               <span class="ledger__label">Speech to text</span>
               <span class="ledger__value">parakeet · whisper · online STT</span>
             </div>
             <div class="ledger__row">
-              <span class="ledger__num">/02</span>
               <span class="ledger__label">Language model</span>
               <span class="ledger__value">ollama · openai-compatible · custom</span>
             </div>
             <div class="ledger__row">
-              <span class="ledger__num">/03</span>
               <span class="ledger__label">Speech synthesis</span>
               <span class="ledger__value">piper · coqui · browser TTS</span>
             </div>
             <div class="ledger__row">
-              <span class="ledger__num">/04</span>
               <span class="ledger__label">Hotkey</span>
               <span class="ledger__value">push-to-talk · toggle · wake phrase</span>
             </div>
             <div class="ledger__row">
-              <span class="ledger__num">/05</span>
               <span class="ledger__label">Wake phrase</span>
               <span class="ledger__value">'hey slasshy' · 'hey jarvis' · custom</span>
             </div>
             <div class="ledger__row">
-              <span class="ledger__num">/06</span>
               <span class="ledger__label">Pipeline visibility</span>
               <span class="ledger__value">stt · ai · tts timings, live</span>
             </div>
             <div class="ledger__row">
-              <span class="ledger__num">/07</span>
               <span class="ledger__label">Credential store</span>
               <span class="ledger__value">os keyring · dpapi fallback</span>
             </div>
             <div class="ledger__row">
-              <span class="ledger__num">/08</span>
               <span class="ledger__label">Auto-update</span>
               <span class="ledger__value">background check · signed nsis</span>
             </div>
@@ -205,17 +194,15 @@
 
         <div class="showcase__head">
           <div>
-            <div class="t-eyebrow">03 · SEQUENCE</div>
             <h2 class="t-display-2" id="showcase-title">
               <span style="display: block;">From the moment</span>
               <span style="display: block;">the <span class="t-spoken">hotkey</span> is pressed.</span>
             </h2>
           </div>
           <p class="t-body">
-            This is a Remotion-style composition rendered live in the page, using
-            the same surface tokens, fonts, and accent logic as the app.
-            Each step is a stage in the dictation pipeline, animated at 60 fps
-            and shaped by the same easing as the real hotkey capture.
+            See the dictation pipeline in action. Press the hotkey, speak,
+            and watch the text appear in real time. The same speed and
+            responsiveness you'll get in the actual app.
           </p>
         </div>
 
@@ -232,7 +219,7 @@
                   <span class="meta__ver">v1.0.7</span>
                 </div>
                 <div class="app__winbar-controls">
-                  <span class="ctrl" aria-hidden="true">—</span>
+                  <span class="ctrl" aria-hidden="true">─</span>
                   <span class="ctrl" aria-hidden="true">▢</span>
                   <span class="ctrl ctrl--close" aria-hidden="true">×</span>
                 </div>
@@ -316,7 +303,7 @@
                 </div>
 
                 <div class="conversation-log" id="conversation-log" role="log" aria-live="polite" aria-hidden="false">
-                  <div class="history-date-header"><span>9 MAY 2026</span></div>
+                  <div class="history-date-header"><span>4 JUL 2026</span></div>
 
                   <div class="conversation-entry is-user" data-conv="user">
                     <span class="entry-time">03:48 AM</span>
@@ -399,26 +386,19 @@
          ============================================================ -->
     <section class="section manifesto" aria-labelledby="manifesto-title">
       <div class="section-inner" style="max-width: 1080px;">
-        <div class="section-head">
-          <div class="section-head__eyebrow t-eyebrow">04 · POSITION</div>
-          <h2 class="section-head__title t-display-2" id="manifesto-title">The hotkey is the product.</h2>
-          <div class="section-head__meta">
-            <div class="t-mono-sm">A STATEMENT · NOT A SLOGAN</div>
-          </div>
-        </div>
+        <h2 class="t-display-2" id="manifesto-title" style="margin-bottom: var(--space-6);">The hotkey is the product.</h2>
 
         <div class="manifesto__quote-mark" aria-hidden="true">&ldquo;</div>
 
         <p class="t-display-italic manifesto__body">
-          A dictation tool, not a chat app. A precision instrument, not a
-          productivity suite. The hotkey is the product. The transcript
-          is the headline. The accent appears only when something
-          deserves your attention; everything else stays out of the way.
+          Not a chat app. Not a productivity suite. A dictation tool
+          that respects your focus. The hotkey is the product. Your
+          voice becomes text, instantly, privately, on your machine.
         </p>
 
         <div class="manifesto__cite">
           <span><span style="color:var(--ink-primary)">/ PRODUCT POSITION</span></span>
-          <span style="margin-left: auto;">DRAFT 1.0 · 9 MAY 2026</span>
+          <span style="margin-left: auto;">DRAFT 1.0 · 4 JUL 2026</span>
         </div>
       </div>
     </section>
@@ -429,7 +409,6 @@
     <section class="section hotkeys" id="hotkeys" aria-labelledby="hotkeys-title">
       <div class="section-inner">
         <div class="section-head">
-          <div class="section-head__eyebrow t-eyebrow">05 · HARDWARE INPUT</div>
           <h2 class="section-head__title t-display-2" id="hotkeys-title">Hands never leave the keys.</h2>
           <div class="section-head__meta">
             <div class="t-mono-sm">CUSTOMIZABLE · 16 BUILT-IN</div>
@@ -437,8 +416,8 @@
         </div>
 
         <div class="hotkeys__lead">
-          <p class="t-display-3" style="margin: 0 0 var(--space-5);">The keyboard is the surface. The mouse is optional. The voice is the input.</p>
-          <p class="t-body">Every action has a hotkey. Every hotkey has a hint visible beside its result. Customize them per session, per workflow, or per language.</p>
+          <p class="t-display-3" style="margin: 0 0 var(--space-5);">Your hands stay on the keyboard.</p>
+          <p class="t-body">Every action has a shortcut. No mouse required. Customize them to match your workflow.</p>
         </div>
 
         <div class="hotkeys__grid" aria-label="hotkey reference">
@@ -551,7 +530,6 @@
     <section class="section pipeline" aria-labelledby="pipeline-title">
       <div class="section-inner">
         <div class="section-head">
-          <div class="section-head__eyebrow t-eyebrow">06 · LATENCY BUDGET</div>
           <h2 class="section-head__title t-display-2" id="pipeline-title">The pipeline is visible.</h2>
           <div class="section-head__meta">
             <div class="t-mono-sm">STT · AI · TTS · LIVE</div>
@@ -561,26 +539,24 @@
         <div class="pipeline__galaxy">
 
           <div class="pipeline__lead">
-            <p class="t-display-3" style="margin: 0 0 var(--space-5);">From speech to reply, in readable timings.</p>
+            <p class="t-display-3" style="margin: 0 0 var(--space-5);">See exactly how fast your dictation is.</p>
             <p class="t-body">
-              Each step of the pipeline reports its duration as soon as it completes.
-              You can see exactly where time is spent, down to the model that handled
-              it. The same numbers surface in the assistant reply so you're never
-              guessing what just happened.
+              Every step shows its timing. Speech-to-text, AI processing,
+              text-to-speech: you see where the time goes, every time.
             </p>
 
             <ul class="sig-list" style="margin-top: var(--space-8);">
               <li>
-                <span class="sig-list__key">UPPER BOUND</span>
-                <span class="sig-list__val">800 ms end to end on the slowest tier.</span>
+                <span class="sig-list__key">SPEED</span>
+                <span class="sig-list__val">Under 1.5 seconds, end to end.</span>
               </li>
               <li>
                 <span class="sig-list__key">FALLBACK</span>
-                <span class="sig-list__val">Cloud STT engages on local silence, never silently.</span>
+                <span class="sig-list__val">Cloud kicks in if local is too slow.</span>
               </li>
               <li>
-                <span class="sig-list__key">VISIBLE</span>
-                <span class="sig-list__val">Every stage reports its own duration, always.</span>
+                <span class="sig-list__key">TRANSPARENT</span>
+                <span class="sig-list__val">Every stage shows its own timing.</span>
               </li>
             </ul>
           </div>
@@ -588,34 +564,34 @@
           <div class="pipeline__console" aria-label="pipeline console">
             <div class="pipeline__console-head">
               <span class="rec-dot"></span>
-              <span class="t-mono">PIPELINE · LIVE · HOTKEY ACTIVE</span>
-              <span class="t-mono" style="margin-left: auto;">online.slasshy.slasshywispr.exe</span>
+              <span class="t-mono">PIPELINE · LIVE</span>
+              <span class="t-mono" style="margin-left: auto;">slasshywispr</span>
             </div>
             <div class="pipeline__console-rows">
-              <span class="pc-label">/01</span>
+              <span class="pc-label"></span>
               <span class="pc-stage">stt</span>
-              <span class="pc-bar"><span style="width: 14%"></span></span>
-              <span class="pc-time">142 ms</span>
+              <span class="pc-bar"><span style="width: 18%"></span></span>
+              <span class="pc-time">180 ms</span>
 
-              <span class="pc-label">/02</span>
+              <span class="pc-label"></span>
               <span class="pc-stage">rewrite</span>
-              <span class="pc-bar"><span style="width: 22%"></span></span>
-              <span class="pc-time">228 ms</span>
+              <span class="pc-bar"><span style="width: 35%"></span></span>
+              <span class="pc-time">340 ms</span>
 
-              <span class="pc-label">/03</span>
+              <span class="pc-label"></span>
               <span class="pc-stage">llm</span>
-              <span class="pc-bar"><span style="width: 60%"></span></span>
-              <span class="pc-time">612 ms</span>
+              <span class="pc-bar"><span style="width: 45%"></span></span>
+              <span class="pc-time">420 ms</span>
 
-              <span class="pc-label">/04</span>
+              <span class="pc-label"></span>
               <span class="pc-stage">tts</span>
-              <span class="pc-bar"><span style="width: 22%"></span></span>
-              <span class="pc-time">220 ms</span>
+              <span class="pc-bar"><span style="width: 20%"></span></span>
+              <span class="pc-time">195 ms</span>
 
-              <span class="pc-label">TOTAL</span>
-              <span class="pc-stage" style="color: var(--accent-live);">end to end</span>
-              <span class="pc-bar"><span style="width: 92%; background: var(--accent-live);"></span></span>
-              <span class="pc-time" style="color: var(--ink-primary);">982 ms</span>
+              <span class="pc-label"></span>
+              <span class="pc-stage" style="color: var(--accent-live);">total</span>
+              <span class="pc-bar"><span style="width: 85%; background: var(--accent-live);"></span></span>
+              <span class="pc-time" style="color: var(--ink-primary);">1.1 s</span>
             </div>
           </div>
 
@@ -628,23 +604,17 @@
          ============================================================ -->
     <section class="section privacy" aria-labelledby="privacy-title">
       <div class="section-inner">
-        <div class="section-head">
-          <div class="section-head__eyebrow t-eyebrow">07 · STANCE</div>
-          <h2 class="section-head__title t-display-2" id="privacy-title">Offline by design.</h2>
-          <div class="section-head__meta">
-            <div class="t-mono-sm">NOT A FEATURE · A DEFAULT</div>
-          </div>
-        </div>
+        <h2 class="t-display-2" id="privacy-title" style="margin-bottom: var(--space-8);">Offline by design.</h2>
 
         <div class="privacy__grid">
           <div>
             <span class="t-eyebrow t-mono-sm">/ POSITION</span>
           </div>
           <div>
-            <h3 class="t-display-3">Your voice never leaves the device unless you tell it to.</h3>
+            <h3 class="t-display-3">Your voice stays on your machine.</h3>
           </div>
           <div>
-            <p class="t-body">Local STT, local AI, and local synthesis are first-class. The remote ones are opt-in per session, with a credential store that uses the OS keyring. The moment you take it online is the moment you ask.</p>
+            <p class="t-body">Offline is the default. Your voice never leaves your device unless you choose to go online. When you do, credentials stay in your OS keyring, not our servers.</p>
           </div>
         </div>
       </div>
@@ -658,22 +628,21 @@
         <div class="get__grid">
 
           <div class="get__copy">
-            <div class="t-eyebrow t-rule">08 · INSTALL</div>
             <h2 class="t-display-2" id="download-title">SlasshyWispr 1.0.7</h2>
-            <p class="t-lede">A Windows installer, signed. About 38 MB. Runs on Windows 10 21H2 and later. No telemetry, no account, no license key.</p>
+            <p class="t-lede">One installer. No account required. No telemetry. Just dictation that works.</p>
 
             <div class="get__primary">
-              <a href="https://github.com/SlasshyOverhere/SlasshyWispr/releases/latest" class="btn-primary get__primary-cta" rel="noopener">
-                <span class="icon-disc"></span>
+              <a href="https://github.com/SlasshyOverhere/SlasshyWispr/releases/latest" class="btn-primary get__primary-cta" rel="noopener" target="_blank" id="hero-download">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
                 Download SlasshyWispr for Windows
               </a>
             </div>
 
-            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: var(--space-6);">
-              <span class="install-meta"><span class="install-meta__dot"></span> NSIS · signed</span>
-              <span class="install-meta"><span class="install-meta__dot"></span> 38 MB</span>
-              <span class="install-meta"><span class="install-meta__dot"></span> Win 10 21H2+</span>
-              <span class="install-meta"><span class="install-meta__dot"></span> No telemetry</span>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: var(--space-6);">
+              <span class="install-meta"><span class="install-meta__dot"></span>NSIS · signed</span>
+              <span class="install-meta"><span class="install-meta__dot"></span>38 MB</span>
+              <span class="install-meta"><span class="install-meta__dot"></span>Win 10 21H2+</span>
+              <span class="install-meta"><span class="install-meta__dot"></span>No telemetry</span>
             </div>
           </div>
 
@@ -697,18 +666,77 @@
        ============================================================ -->
   <footer class="footer">
     <span>SLASSHY · ALEXANDER OVERHEER · CINCINNATI</span>
-    <span class="footer__center">SLASSHY WISPR · BUILD 1.0.7 · 9 MAY 2026</span>
+    <span class="footer__center">SLASSHY WISPR · BUILD 1.0.7 · 4 JUL 2026</span>
     <span class="footer__right">
-      <a href="https://github.com/SlasshyOverhere/SlasshyWispr" rel="noopener">SOURCE</a>
+      <a href="https://github.com/SlasshyOverhere/SlasshyWispr" rel="noopener" target="_blank">SOURCE</a>
       <span style="color:var(--ink-faint)"> / </span>
-      <a href="https://github.com/SlasshyOverhere/SlasshyWispr/blob/main/LICENSE" rel="noopener">LICENSE</a>
+      <a href="https://github.com/SlasshyOverhere/SlasshyWispr/blob/main/LICENSE" rel="noopener" target="_blank">LICENSE</a>
       <span style="color:var(--ink-faint)"> / </span>
-      <a href="https://github.com/SlasshyOverhere/SlasshyWispr/issues" rel="noopener">ISSUES</a>
+      <a href="https://github.com/SlasshyOverhere/SlasshyWispr/issues" rel="noopener" target="_blank">ISSUES</a>
     </span>
   </footer>
 
 </div>
 
+<div class="frame-zoom" id="frame-zoom" aria-hidden="true" role="dialog" aria-modal="true" aria-label="SlasshyWispr screenshot detail">
+  <button type="button" class="frame-zoom__close" id="frame-zoom-close" aria-label="Close zoom view">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+  </button>
+  <div class="frame-zoom__card" role="document">
+    <div class="frame-zoom__chrome">
+      <span class="frame-zoom__dot"></span>
+      <span class="frame-zoom__name">SlasshyWispr · Overview</span>
+      <span class="frame-zoom__meta">captured · 4 Jul 2026</span>
+    </div>
+    <div class="frame-zoom__viewport">
+      <img src="assets/slasshywispr_screenshot.png" alt="SlasshyWispr overview detail" />
+    </div>
+    <div class="frame-zoom__legend">
+      <span class="t-mono-sm">TAP TO DISMISS</span>
+      <span class="t-mono-sm">SLASSHY · 1.0.7 · 4 JUL 2026</span>
+    </div>
+  </div>
+</div>
+
 <script type="module" src="scripts/showcase.mjs"></script>
+<script type="module" src="scripts/hero-zoom.mjs"></script>
+<script>
+  fetch('https://api.github.com/repos/SlasshyOverhere/SlasshyWispr/releases/latest')
+    .then(r => r.json())
+    .then(data => {
+      const exe = data.assets?.find(a => a.name.endsWith('.exe'));
+      if (exe) {
+        document.querySelectorAll('#nav-download, #hero-download, #main-download').forEach(el => {
+          el.href = exe.browser_download_url;
+        });
+      }
+    })
+    .catch(() => {});
+</script>
+    duration: 1.2,
+    easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+    direction: 'vertical',
+    gestureDirection: 'vertical',
+    smooth: true,
+    smoothTouch: false,
+    touchMultiplier: 2,
+  });
+
+  function raf(time) {
+    lenis.raf(time);
+    requestAnimationFrame(raf);
+  }
+  requestAnimationFrame(raf);
+
+  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function(e) {
+      e.preventDefault();
+      const target = document.querySelector(this.getAttribute('href'));
+      if (target) {
+        lenis.scrollTo(target, { offset: -60 });
+      }
+    });
+  });
+</script>
 </body>
 </html>

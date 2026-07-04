@@ -221,3 +221,27 @@ document.addEventListener("DOMContentLoaded", () => {
     isLocked: () => locked,
   };
 });
+
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('.titlebar__nav a');
+
+function updateActiveNav() {
+  let current = '';
+  sections.forEach(section => {
+    const rect = section.getBoundingClientRect();
+    if (rect.top <= 100) current = section.id;
+  });
+  navLinks.forEach(link => {
+    link.removeAttribute('aria-current');
+    if (link.getAttribute('href') === '#' + current) {
+      link.setAttribute('aria-current', 'page');
+    }
+  });
+}
+
+if (typeof lenis !== 'undefined') {
+  lenis.on('scroll', updateActiveNav);
+} else {
+  window.addEventListener('scroll', updateActiveNav, { passive: true });
+}
+updateActiveNav();

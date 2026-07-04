@@ -506,7 +506,6 @@
   color: var(--ink-primary);
   letter-spacing: 0.02em;
   box-shadow: var(--shadow-pop);
-  backdrop-filter: blur(6px);
 }
 .overlay-hotkey .plus {
   color: var(--ink-faint);
