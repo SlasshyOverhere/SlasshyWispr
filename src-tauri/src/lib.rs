@@ -12440,12 +12440,6 @@ fn should_download_huggingface_stt_file(path: &str) -> bool {
         .any(|suffix| normalized.ends_with(suffix))
 }
 
-fn file_name_equals(path: &Path, expected_name: &str) -> bool {
-    path.file_name()
-        .and_then(|segment| segment.to_str())
-        .map(|name| name.eq_ignore_ascii_case(expected_name))
-        .unwrap_or(false)
-}
 
 fn preferred_huggingface_primary_file_names(repo_id: &str) -> &'static [&'static str] {
     match repo_id {
@@ -12473,14 +12467,20 @@ fn select_huggingface_stt_download_entries(
         return Vec::new();
     }
 
+    let mut name_to_index = std::collections::HashMap::new();
+    for (index, (path, _)) in entries.iter().enumerate() {
+        if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+            let lower_name = file_name.to_ascii_lowercase();
+            name_to_index.entry(lower_name).or_insert(index);
+        }
+    }
+
     let mut selected_indices: Vec<usize> = Vec::new();
+    let mut selected_set: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
     for preferred_file_name in preferred_huggingface_primary_file_names(repo_id) {
-        if let Some((index, _)) = entries
-            .iter()
-            .enumerate()
-            .find(|(_, (path, _))| file_name_equals(path, preferred_file_name))
-        {
-            if !selected_indices.iter().any(|existing| *existing == index) {
+        if let Some(&index) = name_to_index.get(&preferred_file_name.to_ascii_lowercase()) {
+            if selected_set.insert(index) {
                 selected_indices.push(index);
             }
         }
@@ -12493,12 +12493,11 @@ fn select_huggingface_stt_download_entries(
             .filter(|(_, (path, _))| {
                 path.extension()
                     .and_then(|value| value.to_str())
-                    .map(|value| value.eq_ignore_ascii_case("nemo"))
-                    .unwrap_or(false)
+                    .is_some_and(|value| value.eq_ignore_ascii_case("nemo"))
             })
             .max_by_key(|(_, (_, size))| size.unwrap_or(0))
         {
-            if !selected_indices.iter().any(|existing| *existing == index) {
+            if selected_set.insert(index) {
                 selected_indices.push(index);
             }
         }
@@ -12506,11 +12505,13 @@ fn select_huggingface_stt_download_entries(
         && repo_id.eq_ignore_ascii_case("FunAudioLLM/SenseVoiceSmall")
     {
         for (index, (path, _)) in entries.iter().enumerate() {
-            if file_name_equals(path, "model.pt")
-                || file_name_equals(path, "chn_jpn_yue_eng_ko_spectok.bpe.model")
-            {
-                if !selected_indices.iter().any(|existing| *existing == index) {
-                    selected_indices.push(index);
+            if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+                if file_name.eq_ignore_ascii_case("model.pt")
+                    || file_name.eq_ignore_ascii_case("chn_jpn_yue_eng_ko_spectok.bpe.model")
+                {
+                    if selected_set.insert(index) {
+                        selected_indices.push(index);
+                    }
                 }
             }
         }
@@ -12524,12 +12525,8 @@ fn select_huggingface_stt_download_entries(
             "model.tflite",
         ];
         for primary_name in primary_file_names {
-            if let Some((index, _)) = entries
-                .iter()
-                .enumerate()
-                .find(|(_, (path, _))| file_name_equals(path, primary_name))
-            {
-                if !selected_indices.iter().any(|existing| *existing == index) {
+            if let Some(&index) = name_to_index.get(primary_name) {
+                if selected_set.insert(index) {
                     selected_indices.push(index);
                 }
                 break;
@@ -12541,19 +12538,20 @@ fn select_huggingface_stt_download_entries(
                 .iter()
                 .enumerate()
                 .filter(|(_, (path, _))| {
-                    let extension = path
-                        .extension()
+                    path.extension()
                         .and_then(|value| value.to_str())
-                        .map(|value| value.to_ascii_lowercase())
-                        .unwrap_or_default();
-                    matches!(
-                        extension.as_str(),
-                        "safetensors" | "bin" | "pt" | "onnx" | "tflite" | "nemo"
-                    )
+                        .is_some_and(|ext| {
+                            ext.eq_ignore_ascii_case("safetensors")
+                                || ext.eq_ignore_ascii_case("bin")
+                                || ext.eq_ignore_ascii_case("pt")
+                                || ext.eq_ignore_ascii_case("onnx")
+                                || ext.eq_ignore_ascii_case("tflite")
+                                || ext.eq_ignore_ascii_case("nemo")
+                        })
                 })
                 .max_by_key(|(_, (_, size))| size.unwrap_or(0))
             {
-                if !selected_indices.iter().any(|existing| *existing == index) {
+                if selected_set.insert(index) {
                     selected_indices.push(index);
                 }
             }
@@ -12577,12 +12575,14 @@ fn select_huggingface_stt_download_entries(
         "chn_jpn_yue_eng_ko_spectok.bpe.model",
     ];
     for (index, (path, _)) in entries.iter().enumerate() {
-        if support_file_names
-            .iter()
-            .any(|file_name| file_name_equals(path, file_name))
-        {
-            if !selected_indices.iter().any(|existing| *existing == index) {
-                selected_indices.push(index);
+        if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+            if support_file_names
+                .iter()
+                .any(|name| file_name.eq_ignore_ascii_case(name))
+            {
+                if selected_set.insert(index) {
+                    selected_indices.push(index);
+                }
             }
         }
     }
