@@ -1699,7 +1699,7 @@ svg:not([width]):not([height]) {
 }
 
 .conversation-entry.is-archive .entry-content {
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1.45;
   color: var(--ink-secondary);
   font-weight: 450;
@@ -1806,7 +1806,7 @@ svg:not([width]):not([height]) {
   font-family: var(--font-display);
   font-variation-settings: "opsz" 36;
   color: var(--ink-primary);
-  font-size: 18px;
+  font-size: 21px;
   line-height: 1.5;
   letter-spacing: -0.005em;
   font-weight: 460;
