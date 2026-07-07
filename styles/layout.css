@@ -346,6 +346,33 @@
 .spec__lead .t-display-3 { margin: var(--space-3) 0 var(--space-5); }
 .spec__lead .t-body { max-width: 48ch; }
 
+.spec__quick-stats {
+  display: flex;
+  gap: var(--space-8);
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-line);
+}
+.spec__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.spec__stat-val {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 36, "wght" 500, "SOFT" 20;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  color: var(--ink-primary);
+}
+.spec__stat-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
 .ledger {
   border-top: 1px solid var(--border-line);
 }

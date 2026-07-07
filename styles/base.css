@@ -80,7 +80,7 @@
 
   /* ---------- type families ---------------------------------------- */
   --font-display: "Fraunces", "Newsreader", "Times New Roman", serif;
-  --font-sans:    "Geist", "Sora", system-ui, sans-serif;
+  --font-sans:    "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
   --font-mono:    "Geist Mono", "JetBrains Mono", "Cascadia Code", monospace;
 
   /* ---------- layout ---------------------------------------------- */
