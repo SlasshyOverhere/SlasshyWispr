@@ -1648,7 +1648,7 @@ svg:not([width]):not([height]) {
   align-items: start;
   column-gap: var(--space-5);
   row-gap: var(--space-2);
-  padding: 14px 20px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--border-subtle);
   transition: background-color var(--transition-fast);
   position: relative;
@@ -1671,8 +1671,8 @@ svg:not([width]):not([height]) {
 /* Hero row — the most recent entry. Bolder, larger transcription,
    brighter metrics, soft amber left edge, always-visible actions. */
 .conversation-entry.is-hero {
-  padding-top: 18px;
-  padding-bottom: 18px;
+  padding-top: 20px;
+  padding-bottom: 20px;
 }
 
 .conversation-entry.is-hero::before {
@@ -1699,7 +1699,7 @@ svg:not([width]):not([height]) {
 }
 
 .conversation-entry.is-archive .entry-content {
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.45;
   color: var(--ink-secondary);
   font-weight: 450;
@@ -1806,7 +1806,7 @@ svg:not([width]):not([height]) {
   font-family: var(--font-display);
   font-variation-settings: "opsz" 36;
   color: var(--ink-primary);
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1.5;
   letter-spacing: -0.005em;
   font-weight: 460;
