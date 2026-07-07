@@ -1446,10 +1446,10 @@ svg:not([width]):not([height]) {
 }
 
 .conversation-log {
-  /* Warm paper tint — picks up 0.005 chroma toward the brand amber so
-     the card reads as paper on a desk, not a slab in a void. */
-  background: oklch(20% 0.014 75);
-  border: 1px solid var(--border-line);
+  /* Subtle card — sits just above the page background.
+     Warm enough to feel like a surface, dark enough to match the void. */
+  background: oklch(14.5% 0.011 250);
+  border: 1px solid var(--border-subtle);
   border-radius: 14px;
   overflow-y: auto;
   flex: 1;
@@ -1462,11 +1462,13 @@ svg:not([width]):not([height]) {
 }
 
 :root[data-theme="light"] .conversation-log {
-  background: oklch(99% 0.006 80);
+  background: oklch(97.5% 0.008 85);
+  border-color: var(--border-subtle);
 }
 
 :root[data-theme="mono"] .conversation-log {
-  background: oklch(22% 0 0);
+  background: oklch(15% 0 0);
+  border-color: var(--border-subtle);
 }
 
 .conversation-log::-webkit-scrollbar {
