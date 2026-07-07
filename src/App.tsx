@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { uiStore } from './store';
@@ -587,9 +587,32 @@ export function App() {
 
 function HistoryRow({ entry }: { entry: HomeHistoryEntry }) {
   const [copied, setCopied] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [playError, setPlayError] = useState<string | null>(null);
+  const [audioSrc, setAudioSrc] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const isAssistant = entry.tone === "assistant";
   const hasMetrics = Boolean(entry.wpm || entry.pipelineMs || entry.spokenSeconds);
+  const hasRecording = Boolean(entry.recordingId);
+
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) {
+      return;
+    }
+    const onEnded = () => setPlaying(false);
+    const onError = () => {
+      setPlaying(false);
+      setPlayError("Unable to play this recording.");
+    };
+    el.addEventListener("ended", onEnded);
+    el.addEventListener("error", onError);
+    return () => {
+      el.removeEventListener("ended", onEnded);
+      el.removeEventListener("error", onError);
+    };
+  }, [audioSrc]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(entry.content);
@@ -597,8 +620,59 @@ function HistoryRow({ entry }: { entry: HomeHistoryEntry }) {
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const handlePlay = async () => {
+    if (!entry.recordingId) {
+      return;
+    }
+    setPlayError(null);
+    const isTauri =
+      typeof (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
+      "undefined";
+    if (!isTauri) {
+      setPlayError("Playback is only available in the desktop app.");
+      return;
+    }
+    try {
+      let dataUrl: string;
+      if (audioSrc) {
+        dataUrl = audioSrc;
+      } else {
+        dataUrl = await invoke<string>("get_dictation_recording", {
+          recordingId: entry.recordingId,
+        });
+        setAudioSrc(dataUrl);
+      }
+      const el = audioRef.current;
+      if (!el) {
+        return;
+      }
+      if (el.src !== dataUrl) {
+        el.src = dataUrl;
+      }
+      if (playing) {
+        el.pause();
+        el.currentTime = 0;
+        setPlaying(false);
+        return;
+      }
+      try {
+        await el.play();
+        setPlaying(true);
+      } catch (playErr) {
+        setPlaying(false);
+        setPlayError(`Playback failed: ${(playErr as Error).message}`);
+      }
+    } catch (err) {
+      setPlaying(false);
+      setPlayError(`Unable to load recording: ${(err as Error).message}`);
+    }
+  };
+
   return (
-    <div className={`conversation-entry ${isAssistant ? 'is-assistant' : 'is-user'}`}>
+    <div
+      className={`conversation-entry ${isAssistant ? 'is-assistant' : 'is-user'}`}
+      data-recording-id={entry.recordingId ?? ""}
+    >
       <span className="entry-time">{time}</span>
       <div className="entry-body">
         <p className="entry-content">{entry.content}</p>
@@ -621,8 +695,33 @@ function HistoryRow({ entry }: { entry: HomeHistoryEntry }) {
             ) : null}
           </div>
         ) : null}
+        {playError ? (
+          <p className="entry-play-error">{playError}</p>
+        ) : null}
       </div>
       <div className="entry-actions">
+        {hasRecording ? (
+          <button
+            type="button"
+            className="entry-play-button"
+            onClick={handlePlay}
+            disabled={playing}
+            aria-label={playing ? "Stop recording" : "Play recording"}
+            title={playing ? "Stop" : "Play recording"}
+            data-recording-id={entry.recordingId}
+          >
+            {playing ? (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+                <rect x="6" y="5" width="4" height="14" rx="1"></rect>
+                <rect x="14" y="5" width="4" height="14" rx="1"></rect>
+              </svg>
+            ) : (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+                <polygon points="8 5 19 12 8 19 8 5"></polygon>
+              </svg>
+            )}
+          </button>
+        ) : null}
         {copied ? (
           <span className="entry-copied">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -630,6 +729,20 @@ function HistoryRow({ entry }: { entry: HomeHistoryEntry }) {
         ) : (
           <button type="button" className="entry-action" onClick={handleCopy}>Copy</button>
         )}
+        {hasRecording ? (
+          <audio
+            ref={audioRef}
+            src={audioSrc ?? undefined}
+            preload="auto"
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onEnded={() => setPlaying(false)}
+            onError={() => {
+              setPlaying(false);
+              setPlayError("Unable to play this recording.");
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );

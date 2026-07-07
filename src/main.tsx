@@ -30,6 +30,7 @@ import {
   validateQuickNote,
   validateSnippetEntry,
 } from "./utils";
+import { matchHistoryToRecordings } from "./store";
 
 import {
   ACHIEVEMENTS_STATE_KEY,
@@ -81,6 +82,7 @@ import {
   DEFAULT_PUSH_TO_TALK_SOUND,
   DEFAULT_PUSH_TO_TALK_END_SOUND,
   DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
+  DEFAULT_SAVE_RECORDINGS,
 } from "./constants";
 
 import type {
@@ -131,6 +133,7 @@ import type {
   DockLayout,
   ForegroundInputBlockStatus,
   HomeHistoryEntry,
+  RecordingsStats,
   DockPlacementBounds,
   ActiveTtsPlayback,
   SelectionPopupPayload,
@@ -395,6 +398,10 @@ const contextAwarenessToggle = requiredElement<HTMLInputElement>("#contextAwaren
 const copyToClipboardToggle = requiredElement<HTMLInputElement>("#copyToClipboardToggle");
 const autoPasteDictationToggle = requiredElement<HTMLInputElement>("#autoPasteDictationToggle");
 const incognitoModeToggle = requiredElement<HTMLInputElement>("#incognitoModeToggle");
+const saveRecordingsToggle = requiredElement<HTMLInputElement>("#saveRecordingsToggle");
+const clearRecordingsBtn = requiredElement<HTMLButtonElement>("#clearRecordingsBtn");
+const recordingsStorageHint = requiredElement<HTMLSpanElement>("#recordingsStorageHint");
+const recordingsStorageHintWeb = requiredElement<HTMLParagraphElement>("#recordingsStorageHintWeb");
 const themeModeSelect = requiredElement<HTMLSelectElement>("#themeModeSelect");
 const themeCardInputs = Array.from(
   document.querySelectorAll<HTMLInputElement>("input[data-theme-card]"),
@@ -491,6 +498,7 @@ let recorderMimeType = "audio/webm";
 let recordedChunks: Blob[] = [];
 let recordingStartedAt = 0;
 let recordingTickerId: number | null = null;
+let lastSavedRecordingId: string | null = null;
 let skipPipelineAfterRecorderStop = false;
 let skipPipelineAfterRecorderStopNotice = "";
 let skipPipelineAfterRecorderStopStatus = "";
@@ -1186,6 +1194,7 @@ contextAwarenessToggle.addEventListener("change", handleSettingsChange);
 copyToClipboardToggle.addEventListener("change", handleSettingsChange);
 autoPasteDictationToggle.addEventListener("change", handleSettingsChange);
 incognitoModeToggle.addEventListener("change", handleSettingsChange);
+saveRecordingsToggle.addEventListener("change", handleSettingsChange);
 themeModeSelect.addEventListener("change", handleSettingsChange);
 
 for (const cardInput of themeCardInputs) {
@@ -1558,6 +1567,7 @@ async function bootstrap(): Promise<void> {
   logClientEvent("[bootstrap] start");
   await hydrateSettingsFromNativeStorage();
   logClientEvent(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
+  void backfillHistoryRecordingIds();
   setStage("idle", "Loading assistant metadata...");
 
   try {
@@ -1820,6 +1830,7 @@ function loadSettings(): PersistedSettings {
     pushToTalkSound: DEFAULT_PUSH_TO_TALK_SOUND,
     pushToTalkEndSound: DEFAULT_PUSH_TO_TALK_END_SOUND,
     pushToTalkSoundVolume: DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
+    saveRecordings: DEFAULT_SAVE_RECORDINGS,
   };
 
   const rawCurrent = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -1918,6 +1929,7 @@ function loadSettings(): PersistedSettings {
       pushToTalkSound: String(parsed.pushToTalkSound ?? defaults.pushToTalkSound),
       pushToTalkEndSound: String(parsed.pushToTalkEndSound ?? defaults.pushToTalkEndSound),
       pushToTalkSoundVolume: coerceNumber(parsed.pushToTalkSoundVolume, defaults.pushToTalkSoundVolume, 0, 1),
+      saveRecordings: coerceBoolean(parsed.saveRecordings, defaults.saveRecordings),
     };
   } catch {
     return defaults;
@@ -2039,6 +2051,44 @@ async function hydrateSettingsFromNativeStorage(): Promise<void> {
   }
 }
 
+async function backfillHistoryRecordingIds(): Promise<void> {
+  if (!isTauriEnvironment()) {
+    return;
+  }
+  try {
+    const recordingIds = await invoke<string[]>("list_dictation_recording_ids");
+    if (!recordingIds || recordingIds.length === 0) {
+      return;
+    }
+    const matches = matchHistoryToRecordings(homeHistoryEntries, recordingIds);
+    if (matches.length === 0) {
+      return;
+    }
+    const byTimestamp = new Map<number, string>(
+      matches.map((m: { timestamp: number; recordingId: string }) => [m.timestamp, m.recordingId]),
+    );
+    let patched = 0;
+    homeHistoryEntries = homeHistoryEntries.map((entry): HomeHistoryEntry => {
+      if (entry.recordingId) {
+        return entry;
+      }
+      const id = byTimestamp.get(entry.timestamp);
+      if (id) {
+        patched += 1;
+        return { ...entry, recordingId: id };
+      }
+      return entry;
+    });
+    if (patched > 0) {
+      persistHomeHistory();
+      window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+      logClientEvent(`[recordings.backfill] attached=${patched} of ${matches.length}`);
+    }
+  } catch (error) {
+    logClientEvent(`[recordings.backfill] failed: ${asErrorMessage(error)}`);
+  }
+}
+
 function readSettingsFromForm(): PersistedSettings {
   const dictationLanguageMode: DictationLanguageMode = dictationLanguageModeMultipleInput.checked
     ? "multiple"
@@ -2121,6 +2171,7 @@ function readSettingsFromForm(): PersistedSettings {
     pushToTalkSound: pushToTalkSoundSelect.value,
     pushToTalkEndSound: pushToTalkEndSoundSelect.value,
     pushToTalkSoundVolume: coerceNumber(Number(pushToTalkSoundVolumeRange.value) / 100, DEFAULT_PUSH_TO_TALK_SOUND_VOLUME, 0, 1),
+    saveRecordings: saveRecordingsToggle.checked,
   };
 }
 
@@ -2192,6 +2243,14 @@ function applySettingsToForm(next: PersistedSettings): void {
   pushToTalkEndSoundSelect.value = next.pushToTalkEndSound;
   pushToTalkSoundVolumeRange.value = String(Math.round(next.pushToTalkSoundVolume * 100));
   pttVolumeHint.textContent = `${Math.round(next.pushToTalkSoundVolume * 100)}%`;
+  saveRecordingsToggle.checked = next.saveRecordings;
+  if (isTauriEnvironment()) {
+    recordingsStorageHintWeb.hidden = true;
+    void refreshRecordingsStorageHint();
+  } else {
+    recordingsStorageHint.textContent = "Desktop only";
+    recordingsStorageHintWeb.hidden = false;
+  }
   temperatureValue.textContent = next.temperature.toFixed(2);
 
   const displayHotkey = formatHotkeyForDisplay(next.pushToTalkHotkey);
@@ -4133,6 +4192,59 @@ function updateWakePhrasePreview(name: string): void {
   const wakeName = name.trim() || DEFAULT_ASSISTANT_NAME;
   wakePhrasePreview.textContent = `Wake phrase examples: "Hey ${wakeName}", "Hi ${wakeName}", "Okay ${wakeName}"`;
 }
+
+function formatRecordingsStorage(stats: RecordingsStats): string {
+  const files = stats.fileCount;
+  const bytes = stats.totalBytes;
+  let sizeLabel: string;
+  if (bytes < 1024) {
+    sizeLabel = `${bytes} B`;
+  } else if (bytes < 1024 * 1024) {
+    sizeLabel = `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 0 : 1)} KB`;
+  } else if (bytes < 1024 * 1024 * 1024) {
+    sizeLabel = `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  } else {
+    sizeLabel = `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+  return `${files} file${files === 1 ? "" : "s"} · ${sizeLabel}`;
+}
+
+async function refreshRecordingsStorageHint(): Promise<void> {
+  if (!isTauriEnvironment()) {
+    recordingsStorageHint.textContent = "Desktop only";
+    recordingsStorageHintWeb.hidden = false;
+    return;
+  }
+  try {
+    const stats = await invoke<RecordingsStats>("list_dictation_recordings_stats");
+    recordingsStorageHint.textContent = formatRecordingsStorage(stats);
+  } catch (error) {
+    recordingsStorageHint.textContent = "Unable to read storage";
+    logClientEvent(`[recordings] stats failed: ${asErrorMessage(error)}`);
+  }
+}
+
+async function handleClearRecordingsClick(): Promise<void> {
+  if (!isTauriEnvironment()) {
+    setNotice("Recordings can only be cleared from the desktop app.");
+    return;
+  }
+  clearRecordingsBtn.disabled = true;
+  try {
+    await invoke<number>("clear_dictation_recordings");
+    await refreshRecordingsStorageHint();
+    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+    setNotice("Recordings cleared.");
+  } catch (error) {
+    setNotice(`Unable to clear recordings: ${asErrorMessage(error)}`, true);
+  } finally {
+    clearRecordingsBtn.disabled = false;
+  }
+}
+
+clearRecordingsBtn.addEventListener("click", () => {
+  void handleClearRecordingsClick();
+});
 
 function applyTheme(themeMode: ThemeMode): void {
   const root = document.documentElement;
@@ -7034,7 +7146,38 @@ async function finalizeRecording(): Promise<void> {
     return;
   }
 
+  const saveRecordingsEnabled = settings.saveRecordings && isTauriEnvironment();
+  if (saveRecordingsEnabled) {
+    try {
+      await saveDictationAudio(blob, recorderMimeType);
+    } catch (error) {
+      logClientEvent(`[record.finalize.save] failed: ${asErrorMessage(error)}`);
+    }
+  }
+
   await runPipeline(blob, recorderMimeType);
+}
+
+async function saveDictationAudio(
+  audioBlob: Blob,
+  audioMimeType: string,
+): Promise<void> {
+  if (!isTauriEnvironment()) {
+    return;
+  }
+  const recordingId = `rec_${recordingStartedAt || Date.now()}_${createId().replace(/-/g, "").slice(0, 8)}`;
+  const audioBase64 = await blobToBase64(audioBlob);
+  const base64Body = audioBase64.startsWith("data:") ? audioBase64.split(",", 2)[1] : audioBase64;
+  await invoke<number>("save_dictation_recording", {
+    recordingId,
+    mimeType: audioMimeType,
+    audioBase64: base64Body,
+  });
+  lastSavedRecordingId = recordingId;
+  logClientEvent(
+    `[record.finalize.save] saved id=${recordingId} bytes=${audioBlob.size} mime=${audioMimeType}`,
+  );
+  void refreshRecordingsStorageHint();
 }
 
 async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void> {
@@ -7331,17 +7474,18 @@ function renderPipelineResponse(response: AssistantPipelineResponse): void {
           spokenSeconds: Math.round(spokenSeconds * 10) / 10,
         }
       : undefined;
-    appendConversationEntry("You", response.transcript, "user", { showInLog: false, metrics: userMetrics });
+    const userRecordingId = lastSavedRecordingId ?? undefined;
+    appendConversationEntry("You", response.transcript, "user", { showInLog: false, metrics: userMetrics, recordingId: userRecordingId });
     if (response.selectionRewrite) {
-      appendConversationEntry("Rewrite", response.assistantResponse, "assistant", { metrics: userMetrics });
+      appendConversationEntry("Rewrite", response.assistantResponse, "assistant", { metrics: userMetrics, recordingId: userRecordingId });
     } else if (response.selectionPending) {
-      appendConversationEntry("Rewrite pending", response.assistantResponse, "assistant", { metrics: userMetrics });
+      appendConversationEntry("Rewrite pending", response.assistantResponse, "assistant", { metrics: userMetrics, recordingId: userRecordingId });
     } else if (response.selectionContextUsed) {
-      appendConversationEntry("Selection", response.assistantResponse, "assistant", { metrics: userMetrics });
+      appendConversationEntry("Selection", response.assistantResponse, "assistant", { metrics: userMetrics, recordingId: userRecordingId });
     } else if (response.mode === "assistant") {
-      appendConversationEntry("SlasshyWispr", response.assistantResponse, "assistant", { metrics: userMetrics });
+      appendConversationEntry("SlasshyWispr", response.assistantResponse, "assistant", { metrics: userMetrics, recordingId: userRecordingId });
     } else {
-      appendConversationEntry("Dictation", response.assistantResponse, "assistant", { metrics: userMetrics });
+      appendConversationEntry("Dictation", response.assistantResponse, "assistant", { metrics: userMetrics, recordingId: userRecordingId });
     }
   }
 
@@ -7355,7 +7499,7 @@ function appendConversationEntry(
   speaker: string,
   content: string,
   tone: "user" | "assistant",
-  options: { showInLog?: boolean; metrics?: HomeHistoryMetrics } = {},
+  options: { showInLog?: boolean; metrics?: HomeHistoryMetrics; recordingId?: string } = {},
 ): void {
   const showInLog = options.showInLog ?? true;
   if (showInLog) {
@@ -7365,6 +7509,7 @@ function appendConversationEntry(
       tone,
       timestamp: Date.now(),
       ...(options.metrics ?? {}),
+      ...(options.recordingId ? { recordingId: options.recordingId } : {}),
     };
 
     homeHistoryEntries.unshift(historyEntry);
