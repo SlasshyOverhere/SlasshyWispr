@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { uiStore } from './store';
 import type { UIState } from './store';
@@ -69,6 +70,24 @@ export function App() {
   const state = useUIState();
   const historyFilter = useHistoryFilter();
   const historySearch = useHistorySearch();
+
+  useEffect(() => {
+    const onDblClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      // Only fire when the user double-clicks the custom titlebar / drag region,
+      // not when double-clicking on content (sidebar / pages / buttons).
+      const inDragRegion = target.closest(
+        '[data-tauri-drag-region="true"], .app-drag-region'
+      );
+      if (!inDragRegion) return;
+      void invoke('toggle_main_window_visibility').catch((err) => {
+        console.error('toggle_main_window_visibility failed', err);
+      });
+    };
+    document.addEventListener('dblclick', onDblClick);
+    return () => document.removeEventListener('dblclick', onDblClick);
+  }, []);
 
   function hf(entries: HomeHistoryEntry[]): HomeHistoryEntry[] {
     let f = filterHistory(entries, historyFilter);
