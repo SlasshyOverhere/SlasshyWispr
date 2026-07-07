@@ -1,8 +1,8 @@
 /* Studio Console — type system.
-   Fraunces (display) + Geist (body) + Geist Mono (data).
-   Loaded via Google Fonts with strong system fallbacks so offline mode
-   still has a polished but functional surface. */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Geist:wght@300..700&display=swap');
+   Inter (body) + Fraunces (display) + Geist Mono (data).
+   Inter loaded via @fontsource (no CDN). Fraunces via Google Fonts for
+   optical-size display headings. Geist Mono local for monospace data. */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&display=swap');
 
 @font-face {
   font-family: 'Geist Mono';
@@ -13,19 +13,10 @@
   font-display: swap;
 }
 
-/* Quiet legacy fallback so existing local font path still works pre-refactor */
-@font-face {
-  font-family: 'Inter';
-  src: url('/fonts/InterVariable.woff2') format('woff2');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
 :root {
   /* ── Type families ── */
   --font-display: "Fraunces", "Newsreader", "PT Serif", Georgia, serif;
-  --font-sans:    "Geist", "Sora", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
   --font-mono:    "Geist Mono", "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
   --font-main:    var(--font-sans);   /* legacy alias */
 
@@ -64,7 +55,7 @@
   /* ── Type scale ── */
   font-size: 16px;
   font-weight: 450;
-  font-feature-settings: "ss01", "cv11";
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -213,7 +204,7 @@ body,
   font-family: var(--font-sans);
   font-size: 15px;
   font-weight: 450;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
