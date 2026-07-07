@@ -108,6 +108,32 @@ impl Default for LocalSttDownloadStatusResponse {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowRect {
+    pub position_x: i32,
+    pub position_y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowVisibilityState {
+    pub hidden: bool,
+    pub last_rect: Option<WindowRect>,
+}
+
+impl WindowVisibilityState {
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    pub fn from_json(value: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(value)
+    }
+}
+
 struct AppState {
     http: Client,
     pending_selection_rewrite: Mutex<Option<PendingSelectionRewrite>>,
@@ -116,6 +142,7 @@ struct AppState {
     last_assistant_response: Mutex<String>,
     local_stt_download_status: Mutex<LocalSttDownloadStatusResponse>,
     local_stt_runtime_loaded: Mutex<bool>,
+    window_visibility: Mutex<WindowVisibilityState>,
 }
 
 impl AppState {
@@ -136,6 +163,7 @@ impl AppState {
             last_assistant_response: Mutex::new(String::new()),
             local_stt_download_status: Mutex::new(LocalSttDownloadStatusResponse::default()),
             local_stt_runtime_loaded: Mutex::new(false),
+            window_visibility: Mutex::new(WindowVisibilityState::default()),
         })
     }
 
