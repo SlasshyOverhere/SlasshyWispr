@@ -136,6 +136,8 @@ import type {
   SelectionPopupPayload,
 } from "./types";
 
+type HomeHistoryMetrics = Pick<HomeHistoryEntry, "wpm" | "pipelineMs" | "spokenSeconds">;
+
 type StopRecordingOptions = {
   cancelPipeline?: boolean;
   cancelNotice?: string;
@@ -4895,9 +4897,11 @@ function trackUsage(transcript: string): void {
   }
   persistAnalyticsSessionDetails();
   checkAndUnlockAchievements(usageStats);
-  if (activePage === "analytics") {
-    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
-  }
+  // Notify the UI on every dictation. The previous `if (activePage === "analytics")`
+  // guard meant that sessions dictated on the Home / History / etc. pages never
+  // reached the React store, so switching to the Analytics tab afterwards showed
+  // stale (empty) data until the page was reloaded.
+  window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
 }
 
 function createId(): string {
@@ -7315,17 +7319,29 @@ function renderPipelineResponse(response: AssistantPipelineResponse): void {
   totalLatency.textContent = formatLatency(response.totalLatencyMs);
 
   if (!settings.incognitoMode) {
-    appendConversationEntry("You", response.transcript, "user", { showInLog: false });
+    const userWords = countWords(response.transcript);
+    const spokenSeconds = Math.max((Date.now() - recordingStartedAt) / 1000, 0);
+    const userWpm = userWords > 0 && spokenSeconds > 0
+      ? Math.round((userWords / spokenSeconds) * 60)
+      : 0;
+    const userMetrics: HomeHistoryMetrics | undefined = userWords > 0
+      ? {
+          wpm: userWpm,
+          pipelineMs: response.totalLatencyMs,
+          spokenSeconds: Math.round(spokenSeconds * 10) / 10,
+        }
+      : undefined;
+    appendConversationEntry("You", response.transcript, "user", { showInLog: false, metrics: userMetrics });
     if (response.selectionRewrite) {
-      appendConversationEntry("Rewrite", response.assistantResponse, "assistant");
+      appendConversationEntry("Rewrite", response.assistantResponse, "assistant", { metrics: userMetrics });
     } else if (response.selectionPending) {
-      appendConversationEntry("Rewrite pending", response.assistantResponse, "assistant");
+      appendConversationEntry("Rewrite pending", response.assistantResponse, "assistant", { metrics: userMetrics });
     } else if (response.selectionContextUsed) {
-      appendConversationEntry("Selection", response.assistantResponse, "assistant");
+      appendConversationEntry("Selection", response.assistantResponse, "assistant", { metrics: userMetrics });
     } else if (response.mode === "assistant") {
-      appendConversationEntry("SlasshyWispr", response.assistantResponse, "assistant");
+      appendConversationEntry("SlasshyWispr", response.assistantResponse, "assistant", { metrics: userMetrics });
     } else {
-      appendConversationEntry("Dictation", response.assistantResponse, "assistant");
+      appendConversationEntry("Dictation", response.assistantResponse, "assistant", { metrics: userMetrics });
     }
   }
 
@@ -7339,7 +7355,7 @@ function appendConversationEntry(
   speaker: string,
   content: string,
   tone: "user" | "assistant",
-  options: { showInLog?: boolean } = {},
+  options: { showInLog?: boolean; metrics?: HomeHistoryMetrics } = {},
 ): void {
   const showInLog = options.showInLog ?? true;
   if (showInLog) {
@@ -7348,6 +7364,7 @@ function appendConversationEntry(
       content,
       tone,
       timestamp: Date.now(),
+      ...(options.metrics ?? {}),
     };
 
     homeHistoryEntries.unshift(historyEntry);

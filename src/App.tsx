@@ -589,6 +589,7 @@ function HistoryRow({ entry }: { entry: HomeHistoryEntry }) {
   const [copied, setCopied] = useState(false);
   const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const isAssistant = entry.tone === "assistant";
+  const hasMetrics = Boolean(entry.wpm || entry.pipelineMs || entry.spokenSeconds);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(entry.content);
@@ -599,7 +600,28 @@ function HistoryRow({ entry }: { entry: HomeHistoryEntry }) {
   return (
     <div className={`conversation-entry ${isAssistant ? 'is-assistant' : 'is-user'}`}>
       <span className="entry-time">{time}</span>
-      <p className="entry-content">{entry.content}</p>
+      <div className="entry-body">
+        <p className="entry-content">{entry.content}</p>
+        {hasMetrics ? (
+          <div className="entry-metrics">
+            {entry.wpm ? (
+              <span><strong>{entry.wpm}</strong> wpm</span>
+            ) : null}
+            {entry.spokenSeconds ? (
+              <span className="entry-metric-sep">·</span>
+            ) : null}
+            {entry.spokenSeconds ? (
+              <span>{entry.spokenSeconds}s spoken</span>
+            ) : null}
+            {entry.pipelineMs ? (
+              <span className="entry-metric-sep">·</span>
+            ) : null}
+            {entry.pipelineMs ? (
+              <span>took {(entry.pipelineMs / 1000).toFixed(1)}s to process</span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
       <div className="entry-actions">
         {copied ? (
           <span className="entry-copied">

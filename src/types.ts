@@ -332,6 +332,9 @@ export interface HomeHistoryEntry {
   content: string;
   tone: "assistant" | "user";
   timestamp: number;
+  wpm?: number;
+  pipelineMs?: number;
+  spokenSeconds?: number;
 }
 
 export interface DockPlacementBounds {

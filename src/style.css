@@ -1667,6 +1667,35 @@ svg:not([width]):not([height]) {
   color: var(--ink-secondary);
 }
 
+.entry-body {
+  min-width: 0;
+}
+
+.entry-metrics {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry-metrics strong {
+  color: var(--ink-secondary);
+  font-weight: 600;
+}
+
+.entry-metric-sep {
+  color: var(--ink-faint);
+  opacity: 0.6;
+}
+
 /* Dictionary & Snippets */
 
 .mini-tab {
