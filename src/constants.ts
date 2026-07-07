@@ -82,6 +82,7 @@ export const BLOCKED_INPUT_NOTICE_COOLDOWN_MS = 2400;
 export const DEFAULT_PUSH_TO_TALK_SOUND = "beep-start";
 export const DEFAULT_PUSH_TO_TALK_END_SOUND = "beep-end";
 export const DEFAULT_PUSH_TO_TALK_SOUND_VOLUME = 0.5;
+export const DEFAULT_SAVE_RECORDINGS = false;
 
 export const PUSH_TO_TALK_SOUND_OPTIONS = [
   { id: "beep-start", label: "Beep (Start)" },

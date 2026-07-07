@@ -90,6 +90,50 @@ function loadHistory(): HomeHistoryEntry[] {
   });
 }
 
+const RECORDING_PREFIX = "rec_";
+const RECORDING_MATCH_WINDOW_MS = 10_000;
+
+function extractRecordingTimestamp(recordingId: string): number | null {
+  if (!recordingId.startsWith(RECORDING_PREFIX)) {
+    return null;
+  }
+  const parts = recordingId.split("_");
+  if (parts.length < 2) {
+    return null;
+  }
+  const ts = Number(parts[1]);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+export interface HistoryRecordingMatch {
+  timestamp: number;
+  recordingId: string;
+}
+
+export function matchHistoryToRecordings(
+  entries: HomeHistoryEntry[],
+  recordingIds: string[],
+): HistoryRecordingMatch[] {
+  const matches: HistoryRecordingMatch[] = [];
+  for (const recordingId of recordingIds) {
+    const recTs = extractRecordingTimestamp(recordingId);
+    if (recTs === null) {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.recordingId) {
+        continue;
+      }
+      const diff = Math.abs(entry.timestamp - recTs);
+      if (diff <= RECORDING_MATCH_WINDOW_MS) {
+        matches.push({ timestamp: entry.timestamp, recordingId });
+        break;
+      }
+    }
+  }
+  return matches;
+}
+
 function loadDictionary(): DictionaryTerm[] {
   const parsed = parseJson<DictionaryTerm[]>(DICTIONARY_STORAGE_KEY, []);
   return normalizeDictionaryEntries(Array.isArray(parsed) ? parsed : []);
@@ -218,3 +262,22 @@ function createUIStore() {
 }
 
 export const uiStore = createUIStore();
+
+/**
+ * Remove a single history entry by its timestamp. History entries don't
+ * carry a stable id, so we match on timestamp. Safe to call when no
+ * entry matches — it's a no-op.
+ */
+export function removeHistoryEntry(timestamp: number): void {
+  try {
+    const raw = localStorage.getItem(HOME_HISTORY_STORAGE_KEY);
+    if (!raw) return;
+    const entries = JSON.parse(raw) as HomeHistoryEntry[];
+    if (!Array.isArray(entries)) return;
+    const filtered = entries.filter((e) => e && e.timestamp !== timestamp);
+    localStorage.setItem(HOME_HISTORY_STORAGE_KEY, JSON.stringify(filtered));
+    window.dispatchEvent(new CustomEvent('slasshy:store-updated'));
+  } catch {
+    /* swallow — UI keeps the entry on screen; next store sync will retry */
+  }
+}

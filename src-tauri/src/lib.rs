@@ -108,6 +108,36 @@ impl Default for LocalSttDownloadStatusResponse {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowRect {
+    pub position_x: i32,
+    pub position_y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowVisibilityState {
+    pub hidden: bool,
+    pub last_rect: Option<WindowRect>,
+    /// Tracks the minimize/restore transition. Set to true when the window
+    /// enters the minimized state; cleared on the first Resized event after
+    /// the user restores. Used to apply the saved rect on restore.
+    pub was_minimized: bool,
+}
+
+impl WindowVisibilityState {
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    pub fn from_json(value: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(value)
+    }
+}
+
 struct AppState {
     http: Client,
     pending_selection_rewrite: Mutex<Option<PendingSelectionRewrite>>,
@@ -116,6 +146,7 @@ struct AppState {
     last_assistant_response: Mutex<String>,
     local_stt_download_status: Mutex<LocalSttDownloadStatusResponse>,
     local_stt_runtime_loaded: Mutex<bool>,
+    window_visibility: Mutex<WindowVisibilityState>,
 }
 
 impl AppState {
@@ -136,6 +167,7 @@ impl AppState {
             last_assistant_response: Mutex::new(String::new()),
             local_stt_download_status: Mutex::new(LocalSttDownloadStatusResponse::default()),
             local_stt_runtime_loaded: Mutex::new(false),
+            window_visibility: Mutex::new(WindowVisibilityState::default()),
         })
     }
 
@@ -2385,6 +2417,259 @@ async fn save_persisted_local_settings(app: AppHandle, payload: String) -> Resul
         secured_payload.len()
     );
     Ok(())
+}
+
+fn recordings_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Failed to resolve app data directory: {error}"))?
+        .join("recordings");
+    fs::create_dir_all(&dir).map_err(|error| {
+        format!(
+            "Failed to create recordings directory '{}': {error}",
+            dir.display()
+        )
+    })?;
+    Ok(dir)
+}
+
+fn recording_extension_for_mime(mime_type: &str) -> &'static str {
+    let normalized = mime_type.trim().to_ascii_lowercase();
+    if normalized.starts_with("audio/webm") {
+        "webm"
+    } else if normalized.starts_with("audio/wav") || normalized.starts_with("audio/x-wav") {
+        "wav"
+    } else if normalized.starts_with("audio/ogg") {
+        "ogg"
+    } else if normalized.starts_with("audio/mp4") {
+        "mp4"
+    } else {
+        "webm"
+    }
+}
+
+fn mime_for_extension(extension: &str) -> &'static str {
+    match extension.to_ascii_lowercase().as_str() {
+        "wav" => "audio/wav",
+        "ogg" => "audio/ogg",
+        "mp4" => "audio/mp4",
+        _ => "audio/webm",
+    }
+}
+
+fn validate_recording_id(id: &str) -> Result<(), String> {
+    security::validate_text_input(id, 128, "recordingId")?;
+    if id.is_empty() {
+        return Err("recordingId must not be empty".to_string());
+    }
+    if id
+        .chars()
+        .any(|c| c.is_whitespace() || c == '.' || c == '/' || c == '\\' || c == ':')
+    {
+        return Err("recordingId contains forbidden characters".to_string());
+    }
+    Ok(())
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct RecordingsStats {
+    file_count: u32,
+    total_bytes: u64,
+}
+
+#[tauri::command]
+async fn save_dictation_recording(
+    app: AppHandle,
+    recording_id: String,
+    mime_type: String,
+    audio_base64: String,
+) -> Result<u64, String> {
+    validate_recording_id(&recording_id)?;
+    let audio_bytes = validate_base64_input(&audio_base64, 64 * 1024 * 1024)?;
+    let extension = recording_extension_for_mime(&mime_type);
+    let dir = recordings_dir(&app)?;
+    let path = dir.join(format!("{recording_id}.{extension}"));
+    fs::write(&path, &audio_bytes).map_err(|error| {
+        format!(
+            "Failed to write dictation recording '{}': {error}",
+            path.display()
+        )
+    })?;
+    let size = audio_bytes.len() as u64;
+    info!(
+        "[recordings] saved id={} bytes={} path='{}'",
+        recording_id,
+        size,
+        path.display()
+    );
+    Ok(size)
+}
+
+#[tauri::command]
+async fn list_dictation_recordings_stats(app: AppHandle) -> Result<RecordingsStats, String> {
+    let dir = recordings_dir(&app)?;
+    let mut total_bytes: u64 = 0;
+    let mut file_count: u32 = 0;
+    let entries = fs::read_dir(&dir).map_err(|error| {
+        format!(
+            "Failed to read recordings directory '{}': {error}",
+            dir.display()
+        )
+    })?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if let Ok(meta) = entry.metadata() {
+            total_bytes = total_bytes.saturating_add(meta.len());
+            file_count = file_count.saturating_add(1);
+        }
+    }
+    Ok(RecordingsStats {
+        file_count,
+        total_bytes,
+    })
+}
+
+#[tauri::command]
+async fn list_dictation_recording_ids(app: AppHandle) -> Result<Vec<String>, String> {
+    let dir = recordings_dir(&app)?;
+    let mut ids: Vec<String> = Vec::new();
+    let entries = fs::read_dir(&dir).map_err(|error| {
+        format!(
+            "Failed to read recordings directory '{}': {error}",
+            dir.display()
+        )
+    })?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            ids.push(stem.to_string());
+        }
+    }
+    Ok(ids)
+}
+
+#[tauri::command]
+async fn clear_dictation_recordings(app: AppHandle) -> Result<u64, String> {
+    let dir = recordings_dir(&app)?;
+    let mut freed: u64 = 0;
+    let entries = match fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            return Err(format!(
+                "Failed to read recordings directory '{}': {error}",
+                dir.display()
+            ));
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        if let Err(error) = fs::remove_file(&path) {
+            warn!(
+                "[recordings] failed to remove '{}': {error}",
+                path.display()
+            );
+            continue;
+        }
+        freed = freed.saturating_add(size);
+    }
+    info!(
+        "[recordings] cleared freedBytes={} dir='{}'",
+        freed,
+        dir.display()
+    );
+    Ok(freed)
+}
+
+#[tauri::command]
+async fn get_dictation_recording(
+    app: AppHandle,
+    recording_id: String,
+) -> Result<String, String> {
+    validate_recording_id(&recording_id)?;
+    let dir = recordings_dir(&app)?;
+    let mut matched: Option<PathBuf> = None;
+    let entries = fs::read_dir(&dir).map_err(|error| {
+        format!(
+            "Failed to read recordings directory '{}': {error}",
+            dir.display()
+        )
+    })?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let stem_matches = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s == recording_id)
+            .unwrap_or(false);
+        if stem_matches {
+            matched = Some(path);
+            break;
+        }
+    }
+    let path = matched.ok_or_else(|| {
+        format!("Dictation recording not found for id '{recording_id}'")
+    })?;
+    let bytes = fs::read(&path).map_err(|error| {
+        format!(
+            "Failed to read dictation recording '{}': {error}",
+            path.display()
+        )
+    })?;
+    let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("webm");
+    let mime = mime_for_extension(extension);
+    let encoded = base64_encode(&bytes);
+    Ok(format!("data:{};base64,{}", mime, encoded))
+}
+
+fn base64_encode(input: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(((input.len() + 2) / 3) * 4);
+    let mut i = 0;
+    while i + 3 <= input.len() {
+        let b0 = input[i];
+        let b1 = input[i + 1];
+        let b2 = input[i + 2];
+        let triple = ((b0 as u32) << 16) | ((b1 as u32) << 8) | (b2 as u32);
+        out.push(ALPHABET[((triple >> 18) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((triple >> 12) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((triple >> 6) & 0x3F) as usize] as char);
+        out.push(ALPHABET[(triple & 0x3F) as usize] as char);
+        i += 3;
+    }
+    let remaining = input.len() - i;
+    if remaining == 1 {
+        let b0 = input[i];
+        let triple = (b0 as u32) << 16;
+        out.push(ALPHABET[((triple >> 18) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((triple >> 12) & 0x3F) as usize] as char);
+        out.push('=');
+        out.push('=');
+    } else if remaining == 2 {
+        let b0 = input[i];
+        let b1 = input[i + 1];
+        let triple = ((b0 as u32) << 16) | ((b1 as u32) << 8);
+        out.push(ALPHABET[((triple >> 18) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((triple >> 12) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((triple >> 6) & 0x3F) as usize] as char);
+        out.push('=');
+    }
+    out
 }
 
 enum StartupLocalSttWarmupTarget {
@@ -14366,6 +14651,22 @@ Explanation:
     }
 }
 
+fn capture_rect(win: &tauri::WebviewWindow) -> WindowRect {
+    let position = win.outer_position().unwrap_or(tauri::PhysicalPosition { x: 0, y: 0 });
+    let size = win
+        .outer_size()
+        .unwrap_or(tauri::PhysicalSize {
+            width: 1280,
+            height: 832,
+        });
+    WindowRect {
+        position_x: position.x,
+        position_y: position.y,
+        width: size.width,
+        height: size.height,
+    }
+}
+
 fn show_main_window(app: &AppHandle) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
         warn!("[tray] dashboard window not found");
@@ -14382,6 +14683,13 @@ fn show_main_window(app: &AppHandle) {
     if let Err(error) = window.set_focus() {
         warn!("[tray] failed to focus main window: {error}");
     }
+
+    // Sync state so the cached boolean matches the OS reality.
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(mut visibility) = state.window_visibility.lock() {
+            visibility.hidden = false;
+        }
+    }
     emit_main_window_visibility(app, false);
 }
 
@@ -14390,10 +14698,108 @@ fn hide_main_window_to_tray(app: &AppHandle) {
         return;
     };
 
+    // Capture the rect first so we can restore to the same place on the
+    // next show — the rect is the size+position the user last saw.
+    let rect_capture = capture_rect(&window);
+
     if let Err(error) = window.hide() {
         warn!("[tray] failed to hide main window to tray: {error}");
     }
+
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(mut visibility) = state.window_visibility.lock() {
+            visibility.last_rect = Some(rect_capture);
+            visibility.hidden = true;
+        }
+    }
     emit_main_window_visibility(app, true);
+}
+
+/// Source-of-truth visibility check against the OS, not the cached flag.
+/// This is what every toggle path should branch on so state can't drift.
+fn is_actually_visible(win: &tauri::WebviewWindow) -> bool {
+    win.is_visible().unwrap_or(false)
+}
+
+/// Click-to-toggle: if the main window is currently visible (per the OS),
+/// hide it; otherwise show it. This is the path used by the tray icon
+/// left-click and the titlebar double-click.
+fn try_main_window_toggle(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
+        warn!("[tray] main window not found for toggle");
+        return;
+    };
+
+    if is_actually_visible(&window) {
+        hide_main_window_to_tray(app);
+    } else {
+        show_main_window(app);
+    }
+}
+
+#[tauri::command]
+fn toggle_main_window_visibility(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
+        warn!("[tray] main window not found for toggle");
+        return Ok(());
+    };
+
+    // Reconcile cached state with the OS before deciding — guards against
+    // drift if the user used Win+D or any other path that hid the window
+    // without going through our helpers.
+    let actually_visible = is_actually_visible(&window);
+    if let Ok(mut visibility) = state.window_visibility.lock() {
+        visibility.hidden = !actually_visible;
+    }
+
+    if actually_visible {
+        // Going from visible → hidden. Capture the rect first.
+        let rect = capture_rect(&window);
+        if let Ok(mut visibility) = state.window_visibility.lock() {
+            visibility.last_rect = Some(rect);
+            visibility.hidden = true;
+        }
+        if let Err(error) = window.hide() {
+            warn!("[tray] failed to hide main window on toggle: {error}");
+        }
+        emit_main_window_visibility(&app, true);
+    } else {
+        // Going from hidden → visible. Restore the last-known rect.
+        let rect = state
+            .window_visibility
+            .lock()
+            .ok()
+            .and_then(|v| v.last_rect);
+        if let Ok(mut visibility) = state.window_visibility.lock() {
+            visibility.hidden = false;
+        }
+        if let Err(error) = window.unminimize() {
+            warn!("[tray] failed to unminimize main window on toggle: {error}");
+        }
+        if let Err(error) = window.show() {
+            warn!("[tray] failed to show main window on toggle: {error}");
+            return Ok(());
+        }
+        if let Some(r) = rect {
+            if let Err(error) = window.set_position(tauri::PhysicalPosition {
+                x: r.position_x,
+                y: r.position_y,
+            }) {
+                warn!("[tray] failed to set position on toggle restore: {error}");
+            }
+            if let Err(error) = window.set_size(tauri::PhysicalSize {
+                width: r.width,
+                height: r.height,
+            }) {
+                warn!("[tray] failed to set size on toggle restore: {error}");
+            }
+        }
+        emit_main_window_visibility(&app, false);
+    }
+    Ok(())
 }
 
 fn copy_last_transcript_to_clipboard(app: &AppHandle) {
@@ -14528,7 +14934,7 @@ fn build_tray_icon(app: &AppHandle) -> tauri::Result<()> {
                 copy_last_response_to_clipboard(app);
             }
             TRAY_MENU_DASHBOARD_ID => {
-                show_main_window(app);
+                try_main_window_toggle(app);
             }
             TRAY_MENU_UPDATE_AVAILABLE_ID => {
                 show_main_window(app);
@@ -14548,7 +14954,7 @@ fn build_tray_icon(app: &AppHandle) -> tauri::Result<()> {
                 ..
             } = event
             {
-                show_main_window(&app_handle_for_click);
+                try_main_window_toggle(&app_handle_for_click);
             }
         });
 
@@ -14574,10 +14980,19 @@ pub fn run() {
     // window-state plugin — needs to be added before .manage()
     builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
 
-    #[cfg(all(desktop, not(debug_assertions)))]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            info!("[app.single-instance] prevented secondary launch and focused existing window");
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            info!(
+                "[app.single-instance] secondary launch blocked args={:?}",
+                args
+            );
+            if args
+                .iter()
+                .any(|a| a.eq_ignore_ascii_case(STARTUP_ARG_START_IN_TRAY))
+            {
+                info!("[app.single-instance] --start-in-tray passed; respecting hidden state");
+                return;
+            }
             show_main_window(app);
         }));
     }
@@ -14606,10 +15021,77 @@ pub fn run() {
 
             if let Some(main_window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
                 let app_handle_for_close = app_handle.clone();
+                let app_handle_for_resize = app_handle.clone();
+                let main_window_for_resize = main_window.clone();
                 main_window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        hide_main_window_to_tray(&app_handle_for_close);
+                    match event {
+                        tauri::WindowEvent::CloseRequested { api, .. } => {
+                            api.prevent_close();
+                            hide_main_window_to_tray(&app_handle_for_close);
+                        }
+                        tauri::WindowEvent::Resized(_) => {
+                            // Track minimize/restore transitions. On every
+                            // resize while the window is NOT minimized, capture
+                            // the current rect into WindowVisibilityState so we
+                            // can restore to that exact size+position after the
+                            // user restores from a taskbar click.
+                            //
+                            // When the transition is minimized -> not-minimized
+                            // (i.e. user restored from taskbar), apply the saved
+                            // pre-minimize rect via set_position + set_size.
+                            let minimized_now = main_window_for_resize
+                                .is_minimized()
+                                .unwrap_or(false);
+
+                            if let Some(state) =
+                                app_handle_for_resize.try_state::<AppState>()
+                            {
+                                if let Ok(mut visibility) =
+                                    state.window_visibility.lock()
+                                {
+                                    if minimized_now {
+                                        // Mark that we just entered the
+                                        // minimized state. The "last_rect"
+                                        // already holds the pre-minimize rect
+                                        // because the previous Resized events
+                                        // kept updating it.
+                                        visibility.was_minimized = true;
+                                    } else if visibility.was_minimized {
+                                        // Transition minimized -> restored.
+                                        // Restore to the saved rect.
+                                        visibility.was_minimized = false;
+                                        let rect = visibility.last_rect;
+                                        drop(visibility);
+                                        if let Some(r) = rect {
+                                            if let Err(error) = main_window_for_resize
+                                                .set_position(
+                                                    tauri::PhysicalPosition {
+                                                        x: r.position_x,
+                                                        y: r.position_y,
+                                                    },
+                                                )
+                                            {
+                                                warn!("[tray] failed to restore position on un-minimize: {error}");
+                                            }
+                                            if let Err(error) = main_window_for_resize
+                                                .set_size(tauri::PhysicalSize {
+                                                    width: r.width,
+                                                    height: r.height,
+                                                })
+                                            {
+                                                warn!("[tray] failed to restore size on un-minimize: {error}");
+                                            }
+                                        }
+                                    } else {
+                                        // Plain resize while visible. Update
+                                        // the saved rect.
+                                        visibility.last_rect =
+                                            Some(capture_rect(&main_window_for_resize));
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 });
             } else {
@@ -14646,6 +15128,11 @@ pub fn run() {
             download_and_install_app_update,
             load_persisted_local_settings,
             save_persisted_local_settings,
+            save_dictation_recording,
+            list_dictation_recordings_stats,
+            list_dictation_recording_ids,
+            clear_dictation_recordings,
+            get_dictation_recording,
             capture_selected_text,
             set_clipboard_text,
             configure_launch_at_login,
@@ -14685,6 +15172,7 @@ pub fn run() {
             run_assistant_pipeline,
             show_update_settings,
             set_tray_update_available,
+            toggle_main_window_visibility,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

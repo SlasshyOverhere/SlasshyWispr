@@ -250,6 +250,12 @@ export interface PersistedSettings {
   pushToTalkSound: string;
   pushToTalkEndSound: string;
   pushToTalkSoundVolume: number;
+  saveRecordings: boolean;
+}
+
+export interface RecordingsStats {
+  fileCount: number;
+  totalBytes: number;
 }
 
 export interface HotkeySpec {
@@ -332,6 +338,10 @@ export interface HomeHistoryEntry {
   content: string;
   tone: "assistant" | "user";
   timestamp: number;
+  wpm?: number;
+  pipelineMs?: number;
+  spokenSeconds?: number;
+  recordingId?: string;
 }
 
 export interface DockPlacementBounds {

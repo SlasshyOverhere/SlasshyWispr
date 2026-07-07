@@ -10,6 +10,8 @@ Desktop voice dictation & AI assistant. Tauri v2 (Rust) + React 19 + Vite 8 + Ta
 | `npm run build` | `tsc && vite build` (typecheck then bundle) |
 | `npm run tauri:dev` | Full Tauri dev — runs `pretauri:dev` first, then `tauri dev --config src-tauri/tauri.conf.dev.json`. Uses separate identifier `online.slasshy.slasshywispr.dev` and window title "SlasshyWispr Dev" so it runs independently from the installed production build. Single-instance lock is disabled in dev — can run side-by-side with production. |
 | `npm run tauri:build` | Production build (NSIS installer on Windows). Uses default `tauri.conf.json`. |
+
+Single-instance enforcement (changes per spec `2026-07-07-tray-window-toggle-and-single-instance-design`): `tauri_plugin_single_instance` is registered unconditionally (was previously gated to release builds only). A second `app.exe` run brings the existing window to front; passing `--start-in-tray` on the second run is respected (no-op). Dev vs prod identifiers differ (`online.slasshy.slasshywispr.dev` vs `online.slasshy.slasshywispr`), so dev and prod builds do not collide on the same Windows machine.
 | `npm run test` | `bun test` (NOT vitest/jest) |
 | `npm run preview` | `vite preview` |
 

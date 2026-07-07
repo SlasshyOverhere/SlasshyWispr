@@ -292,6 +292,18 @@ export function GeneralSettingsPane() {
       </label>
 
       <div className="s-divider" />
+      <p className="s-group-label">Recordings</p>
+      <label className="s-row" htmlFor="saveRecordingsToggle">
+        <span className="s-row-label">Save recordings <span className="switch-desc">(audio of what you said)</span></span>
+        <input id="saveRecordingsToggle" className="switch-input" type="checkbox" />
+      </label>
+      <div className="s-row">
+        <span className="s-row-label">Storage used <span className="s-row-hint" id="recordingsStorageHint">0 files · 0 B</span></span>
+        <button id="clearRecordingsBtn" className="btn-ghost" type="button">Clear all</button>
+      </div>
+      <p id="recordingsStorageHintWeb" className="field-hint" hidden>Recordings are saved only in the desktop app.</p>
+
+      <div className="s-divider" />
       <p className="s-group-label">Sound</p>
       <label className="s-row" htmlFor="dictationSoundEffectsToggle">
         <span className="s-row-label">Dictation sound effects</span>
