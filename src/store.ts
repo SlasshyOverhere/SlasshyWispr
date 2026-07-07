@@ -262,3 +262,22 @@ function createUIStore() {
 }
 
 export const uiStore = createUIStore();
+
+/**
+ * Remove a single history entry by its timestamp. History entries don't
+ * carry a stable id, so we match on timestamp. Safe to call when no
+ * entry matches — it's a no-op.
+ */
+export function removeHistoryEntry(timestamp: number): void {
+  try {
+    const raw = localStorage.getItem(HOME_HISTORY_STORAGE_KEY);
+    if (!raw) return;
+    const entries = JSON.parse(raw) as HomeHistoryEntry[];
+    if (!Array.isArray(entries)) return;
+    const filtered = entries.filter((e) => e && e.timestamp !== timestamp);
+    localStorage.setItem(HOME_HISTORY_STORAGE_KEY, JSON.stringify(filtered));
+    window.dispatchEvent(new CustomEvent('slasshy:store-updated'));
+  } catch {
+    /* swallow — UI keeps the entry on screen; next store sync will retry */
+  }
+}
