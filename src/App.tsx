@@ -646,14 +646,19 @@ function HistoryRow({ entry }: { entry: HomeHistoryEntry }) {
       if (!el) {
         return;
       }
-      if (el.src !== dataUrl) {
-        el.src = dataUrl;
-      }
       if (playing) {
         el.pause();
         el.currentTime = 0;
         setPlaying(false);
         return;
+      }
+      // If audio needs to load, wait for it
+      if (!el.src || el.src !== dataUrl || el.readyState < 2) {
+        setAudioSrc(dataUrl);
+        await new Promise<void>((resolve, reject) => {
+          el.oncanplay = () => resolve();
+          el.onerror = () => reject(new Error("Failed to load audio"));
+        });
       }
       try {
         await el.play();
