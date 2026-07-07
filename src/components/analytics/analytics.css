@@ -62,25 +62,118 @@
   color: var(--ink-primary);
 }
 
+/* ---------- Streak banner ---------- */
+
 .analytics-streak-banner {
-  display: inline-flex;
+  --streak-fg: oklch(58% 0.14 55);
+  --streak-glow: oklch(74% 0.18 55 / 0.32);
+  --streak-rule: oklch(74% 0.18 55 / 0.55);
+
+  position: relative;
+  display: flex;
   align-items: center;
-  gap: var(--space-3);
-  background: var(--bg-card);
-  border: 1px solid var(--border-line);
-  border-radius: var(--radius-card);
-  padding: var(--space-3) var(--space-5);
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-6);
   margin-bottom: var(--space-6);
+  background:
+    radial-gradient(120% 200% at 0% 50%, var(--streak-glow) 0%, transparent 60%),
+    var(--bg-card);
+  border: 1px solid var(--streak-rule);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Tier 1 — 1-2 days: ember, calm */
+.analytics-streak-banner[data-streak-tier="1"] {
+  --streak-fg: oklch(58% 0.10 60);
+  --streak-glow: oklch(74% 0.12 60 / 0.24);
+  --streak-rule: oklch(70% 0.12 60 / 0.50);
+}
+
+/* Tier 2 — 3-6 days: warming */
+.analytics-streak-banner[data-streak-tier="2"] {
+  --streak-fg: oklch(62% 0.14 50);
+  --streak-glow: oklch(74% 0.16 50 / 0.32);
+  --streak-rule: oklch(72% 0.15 50 / 0.60);
+}
+
+/* Tier 3 — 7-29 days: full flame */
+.analytics-streak-banner[data-streak-tier="3"] {
+  --streak-fg: oklch(64% 0.18 40);
+  --streak-glow: oklch(76% 0.20 40 / 0.38);
+  --streak-rule: oklch(72% 0.18 40 / 0.70);
+}
+
+/* Tier 4 — 30-99 days: gold */
+.analytics-streak-banner[data-streak-tier="4"] {
+  --streak-fg: oklch(70% 0.16 75);
+  --streak-glow: oklch(82% 0.16 75 / 0.40);
+  --streak-rule: oklch(76% 0.16 75 / 0.75);
+}
+
+/* Tier 5 — 100+ days: discipline red */
+.analytics-streak-banner[data-streak-tier="5"] {
+  --streak-fg: oklch(58% 0.22 25);
+  --streak-glow: oklch(64% 0.22 25 / 0.45);
+  --streak-rule: oklch(62% 0.22 25 / 0.80);
+}
+
+.streak-icon-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--streak-glow);
+  border: 1px solid var(--streak-rule);
+}
+
+.streak-flame {
+  width: 20px;
+  height: 20px;
+  color: var(--streak-fg);
+  display: block;
+}
+
+.analytics-streak-banner[data-streak-tier="3"] .streak-icon-wrap,
+.analytics-streak-banner[data-streak-tier="4"] .streak-icon-wrap,
+.analytics-streak-banner[data-streak-tier="5"] .streak-icon-wrap {
+  animation: streak-icon-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes streak-icon-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 var(--streak-glow); }
+  50% { transform: scale(1.04); box-shadow: 0 0 0 8px transparent; }
+}
+
+.streak-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.streak-headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
 
 .streak-count {
   font-family: var(--font-display);
-  font-variation-settings: "opsz" 36;
-  font-size: 24px;
+  font-variation-settings: "opsz" 60;
+  font-size: 28px;
   font-weight: 460;
   color: var(--ink-primary);
   line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
 }
 
 .streak-label {
@@ -88,6 +181,82 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--ink-muted);
+  letter-spacing: 0.01em;
+}
+
+.streak-sub {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-variation-settings: "opsz" 30;
+  font-size: 13px;
+  color: var(--streak-fg);
+  line-height: 1.3;
+}
+
+.streak-meter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: var(--space-5);
+  border-left: 1px solid var(--border-line);
+}
+
+.streak-meter-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.streak-meter-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-recess);
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.streak-meter-dot.is-lit {
+  background: var(--streak-fg);
+  transform: scale(1.15);
+}
+
+.streak-meter-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .analytics-streak-banner {
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+  .streak-meter {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px dashed var(--border-line);
+    padding-top: var(--space-3);
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analytics-streak-banner[data-streak-tier="3"] .streak-icon-wrap,
+  .analytics-streak-banner[data-streak-tier="4"] .streak-icon-wrap,
+  .analytics-streak-banner[data-streak-tier="5"] .streak-icon-wrap {
+    animation: none;
+  }
+  .streak-meter-dot {
+    transition: none;
+  }
 }
 
 .analytics-metrics {
@@ -366,7 +535,9 @@
   height: 100%;
   background: var(--accent-live);
   opacity: 0.7;
-  transition: width 300ms ease-out;
+  transform-origin: left center;
+  transform: scaleX(1);
+  transition: transform 300ms ease-out;
 }
 
 .achievement-date {

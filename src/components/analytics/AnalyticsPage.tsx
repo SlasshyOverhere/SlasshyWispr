@@ -78,6 +78,39 @@ function getStreak(sessions: AnalyticsSessionDetail[]): number {
   return streak;
 }
 
+function getStreakTier(streak: number): 1 | 2 | 3 | 4 | 5 {
+  if (streak >= 100) return 5;
+  if (streak >= 30) return 4;
+  if (streak >= 7) return 3;
+  if (streak >= 3) return 2;
+  return 1;
+}
+
+function getStreakSubMessage(streak: number): string {
+  if (streak >= 100) return 'Unstoppable. A hundred days of voice.';
+  if (streak >= 30) return 'Discipline made visible. Keep the fire.';
+  if (streak >= 7) return 'You’re on a roll — a full week of dictation.';
+  if (streak >= 3) return 'Momentum is building. Don’t break the chain.';
+  if (streak === 2) return 'Two days running. One more makes it a habit.';
+  return 'You dictated today. Tomorrow keeps the streak alive.';
+}
+
+function getLast7DaysActivity(sessions: AnalyticsSessionDetail[]): boolean[] {
+  const activeDays = new Set<string>();
+  for (const s of sessions) {
+    activeDays.add(getDayKey(new Date(s.date)));
+  }
+  const out: boolean[] = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    out.push(activeDays.has(getDayKey(d)));
+  }
+  return out;
+}
+
 function formatWpm(wpm: number): string {
   return `${Math.round(wpm)}`;
 }
@@ -256,6 +289,7 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
   }, [filteredSessions]);
 
   const streak = useMemo(() => getStreak(localSessions), [localSessions]);
+  const last7 = useMemo(() => getLast7DaysActivity(localSessions), [localSessions]);
 
   return (
     <div className="analytics-page">
@@ -272,10 +306,37 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
       </header>
 
       {streak > 0 && (
-        <div className="analytics-streak-banner">
-          <span className="streak-fire">🔥</span>
-          <span className="streak-count">{streak}</span>
-          <span className="streak-label">day streak</span>
+        <div
+          className="analytics-streak-banner"
+          data-streak-tier={getStreakTier(streak)}
+          role="status"
+          aria-label={`${streak} day dictation streak`}
+        >
+          <span className="streak-icon-wrap" aria-hidden="true">
+            <svg
+              className="streak-flame"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path d="M12 2.5c.4 2.2-.6 3.7-1.9 5.2-1.4 1.6-3.1 3.2-3.1 5.8 0 1.1.3 2.1.9 2.9-.6-2.4.4-4 1.7-5.1.2 1.6 1.1 2.4 2.2 2.9-.4-2.1.4-3.9 1.7-5.5.3 1.5 1.3 2.4 2.4 3.2 1.2.9 2.3 1.9 2.6 3.6.4 2.3-.6 4.4-2.2 5.8-1.5 1.3-3.6 1.9-5.5 1.5-2.3-.5-4.2-2.2-4.9-4.4-.7-2.2-.1-4.6 1.4-6.3.7-.8 1.6-1.5 2.2-2.4.7-1 1.1-2.2.8-3.4 0-.2.1-.4.3-.4.2 0 .3.1.4.3.5 1.4 1.2 2.7 1 4.1-.1.6-.3 1.2-.6 1.7.6-1.4.6-3 .6-4.5z" />
+            </svg>
+          </span>
+          <div className="streak-body">
+            <div className="streak-headline">
+              <span className="streak-count">{streak}</span>
+              <span className="streak-label">{streak === 1 ? 'day streak' : 'day streak'}</span>
+            </div>
+            <span className="streak-sub">{getStreakSubMessage(streak)}</span>
+          </div>
+          <div className="streak-meter" aria-hidden="true">
+            <span className="streak-meter-label">Last 7</span>
+            <span className="streak-meter-dots">
+              {last7.map((active, i) => (
+                <span key={i} className={`streak-meter-dot ${active ? 'is-lit' : ''}`} />
+              ))}
+            </span>
+          </div>
         </div>
       )}
 
