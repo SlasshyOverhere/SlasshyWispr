@@ -579,7 +579,7 @@
   left: 2px;
   width: 16px;
   height: 16px;
-  background: #fff;
+  background: var(--bg-void);
   border-radius: 50%;
   transition: transform 140ms ease;
   box-shadow: 0 1px 2px oklch(0% 0 0 / 0.18), 0 0 0 1px oklch(0% 0 0 / 0.04);
@@ -587,10 +587,8 @@
 
 .switch-input:checked::after { transform: translateX(16px); }
 
-/* Daylight (light theme) — the dark accent track needs a light thumb.
-   The default is white, which works on the dark accent; in Daylight
-   the accent is dark so the thumb would blend in. Flip to ink. */
-:root[data-theme="light"] .switch-input::after { background: var(--bg-card); }
+/* Daylight (light theme) — the dark amber track needs a light thumb. */
+:root[data-theme="light"] .switch-input::after { background: #fff; }
 
 .switch-desc {
   font-size: 11px;
