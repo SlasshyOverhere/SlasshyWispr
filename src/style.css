@@ -137,7 +137,13 @@
   --ring:               var(--accent-live);
   --text-inverse:       var(--accent-quiet-ink);
 
-  --shadow-card:    0 1px 0 oklch(100% 0 0 / 0.7) inset, 0 12px 28px -18px oklch(20% 0.02 50 / 0.18);
+  /* Polished white surface — cards lift from the page with a 1px hairline
+     border instead of a soft drop shadow. Background is flat paper, no edge
+     vignettes. Warmth lives in the ink + amber accent, not in a wash. */
+  --bg-paper:   oklch(98% 0.005 85);
+  --bg-card:    oklch(100% 0 0);
+
+  --shadow-card:    0 0 0 1px oklch(84% 0.010 85 / 0.9);
   --shadow-modal:   0 24px 64px -16px oklch(20% 0.02 50 / 0.22), 0 0 0 1px oklch(84% 0.010 85 / 0.6) inset;
   --shadow-popover: 0 8px 32px -8px oklch(20% 0.02 50 / 0.18), 0 0 0 1px oklch(84% 0.010 85 / 0.7) inset;
   --shadow-live:    0 0 0 0 oklch(64% 0.20 55 / 0.0);
@@ -221,9 +227,9 @@ body {
 }
 
 :root[data-theme="light"] body {
-  background-image:
-    radial-gradient(ellipse 80% 50% at 20% -10%, oklch(80% 0.10 80 / 0.18), transparent 65%),
-    radial-gradient(ellipse 70% 40% at 100% 110%, oklch(74% 0.16 55 / 0.10), transparent 60%);
+  /* Flat paper — no edge vignettes. Professional white apps read as
+     a single clean surface; warmth comes from ink + amber accent, not wash. */
+  background-image: none;
 }
 
 :root[data-theme="mono"] body {
@@ -640,18 +646,6 @@ body.sidebar-collapsed .nav-keyhint {
   height: 100%;
   contain: layout paint;
   position: relative;
-}
-
-.flow-content::before {
-  /* Paper texture suggestion: very subtle top-bottom vignette */
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(180deg, oklch(15% 0.012 250 / 0.4) 0%, transparent 120px),
-    linear-gradient(0deg,   oklch(11% 0.012 250 / 0.4) 0%, transparent 120px);
-  pointer-events: none;
-  z-index: 0;
 }
 
 .flow-content > * { position: relative; z-index: 1; }
