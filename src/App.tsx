@@ -187,7 +187,7 @@ export function App() {
             <section className={`flow-page ${state.activePage === 'home' ? 'is-active' : ''}`} data-page="home">
               <div className="flow-page-inner home-page">
                 <header className="overview-header">
-                  <h1 className="overview-title">Overview</h1>
+                  <h1 className="overview-title">Look how far you've come</h1>
 
                   <div className="overview-stats" id="statsHero" aria-label="Today's stats">
                     <div className="overview-stat">
