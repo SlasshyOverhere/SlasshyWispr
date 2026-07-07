@@ -14394,6 +14394,22 @@ Explanation:
     }
 }
 
+fn capture_rect(win: &tauri::WebviewWindow) -> WindowRect {
+    let position = win.outer_position().unwrap_or(tauri::PhysicalPosition { x: 0, y: 0 });
+    let size = win
+        .outer_size()
+        .unwrap_or(tauri::PhysicalSize {
+            width: 1280,
+            height: 832,
+        });
+    WindowRect {
+        position_x: position.x,
+        position_y: position.y,
+        width: size.width,
+        height: size.height,
+    }
+}
+
 fn show_main_window(app: &AppHandle) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
         warn!("[tray] dashboard window not found");
@@ -14422,6 +14438,61 @@ fn hide_main_window_to_tray(app: &AppHandle) {
         warn!("[tray] failed to hide main window to tray: {error}");
     }
     emit_main_window_visibility(app, true);
+}
+
+#[tauri::command]
+fn toggle_main_window_visibility(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
+        warn!("[tray] main window not found for toggle");
+        return Ok(());
+    };
+
+    let mut visibility = state
+        .window_visibility
+        .lock()
+        .map_err(|error| format!("visibility mutex poisoned: {error}"))?;
+
+    if !visibility.hidden {
+        visibility.last_rect = Some(capture_rect(&window));
+        visibility.hidden = true;
+        let snapshot = visibility.last_rect;
+        drop(visibility);
+        if let Err(error) = window.hide() {
+            warn!("[tray] failed to hide main window on toggle: {error}");
+        }
+        emit_main_window_visibility(&app, true);
+        info!("[tray] toggle hide rect={snapshot:?}");
+    } else {
+        visibility.hidden = false;
+        let rect = visibility.last_rect;
+        drop(visibility);
+        if let Err(error) = window.unminimize() {
+            warn!("[tray] failed to unminimize main window on toggle: {error}");
+        }
+        if let Err(error) = window.show() {
+            warn!("[tray] failed to show main window on toggle: {error}");
+            return Ok(());
+        }
+        if let Some(r) = rect {
+            if let Err(error) = window.set_position(tauri::PhysicalPosition {
+                x: r.position_x,
+                y: r.position_y,
+            }) {
+                warn!("[tray] failed to set position on toggle restore: {error}");
+            }
+            if let Err(error) = window.set_size(tauri::PhysicalSize {
+                width: r.width,
+                height: r.height,
+            }) {
+                warn!("[tray] failed to set size on toggle restore: {error}");
+            }
+        }
+        emit_main_window_visibility(&app, false);
+    }
+    Ok(())
 }
 
 fn copy_last_transcript_to_clipboard(app: &AppHandle) {
@@ -14713,6 +14784,7 @@ pub fn run() {
             run_assistant_pipeline,
             show_update_settings,
             set_tray_update_available,
+            toggle_main_window_visibility,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
