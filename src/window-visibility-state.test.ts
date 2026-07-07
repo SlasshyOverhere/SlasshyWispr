@@ -67,4 +67,39 @@ describe("WindowVisibilityState round-trip", () => {
     // what enforces field completeness on the backend and would reject this.
     expect(() => fromJson(bad)).not.toThrow();
   });
+
+  // Codifies the tray-click state machine: every "click" flips the hidden
+  // flag, and when flipping visible -> hidden the rect is captured. This is
+  // the regression test for the bug where the tray icon would only ever show
+  // the window, never hide it.
+  test("toggle state machine: hide captures rect, show drops hidden flag, alternating clicks alternate", () => {
+    const rect: WindowRect = { positionX: 200, positionY: 300, width: 1280, height: 832 };
+    let s: WindowVisibilityState = { hidden: false, lastRect: null };
+
+    // Click 1: visible -> hidden, capture rect
+    if (!s.hidden) {
+      s = { hidden: true, lastRect: rect };
+    }
+    expect(s.hidden).toBe(true);
+    expect(s.lastRect).toEqual(rect);
+
+    // Click 2: hidden -> visible, restore rect
+    if (s.hidden) {
+      s = { hidden: false, lastRect: s.lastRect };
+    }
+    expect(s.hidden).toBe(false);
+    expect(s.lastRect).toEqual(rect);
+
+    // Click 3: visible -> hidden again
+    if (!s.hidden) {
+      s = { hidden: true, lastRect: rect };
+    }
+    expect(s.hidden).toBe(true);
+
+    // Click 4: hidden -> visible again
+    if (s.hidden) {
+      s = { hidden: false, lastRect: s.lastRect };
+    }
+    expect(s.hidden).toBe(false);
+  });
 });

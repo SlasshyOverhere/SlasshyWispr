@@ -14426,6 +14426,13 @@ fn show_main_window(app: &AppHandle) {
     if let Err(error) = window.set_focus() {
         warn!("[tray] failed to focus main window: {error}");
     }
+
+    // Sync state so the cached boolean matches the OS reality.
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(mut visibility) = state.window_visibility.lock() {
+            visibility.hidden = false;
+        }
+    }
     emit_main_window_visibility(app, false);
 }
 
@@ -14434,10 +14441,43 @@ fn hide_main_window_to_tray(app: &AppHandle) {
         return;
     };
 
+    // Capture the rect first so we can restore to the same place on the
+    // next show — the rect is the size+position the user last saw.
+    let rect_capture = capture_rect(&window);
+
     if let Err(error) = window.hide() {
         warn!("[tray] failed to hide main window to tray: {error}");
     }
+
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(mut visibility) = state.window_visibility.lock() {
+            visibility.last_rect = Some(rect_capture);
+            visibility.hidden = true;
+        }
+    }
     emit_main_window_visibility(app, true);
+}
+
+/// Source-of-truth visibility check against the OS, not the cached flag.
+/// This is what every toggle path should branch on so state can't drift.
+fn is_actually_visible(win: &tauri::WebviewWindow) -> bool {
+    win.is_visible().unwrap_or(false)
+}
+
+/// Click-to-toggle: if the main window is currently visible (per the OS),
+/// hide it; otherwise show it. This is the path used by the tray icon
+/// left-click and the titlebar double-click.
+fn try_main_window_toggle(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
+        warn!("[tray] main window not found for toggle");
+        return;
+    };
+
+    if is_actually_visible(&window) {
+        hide_main_window_to_tray(app);
+    } else {
+        show_main_window(app);
+    }
 }
 
 #[tauri::command]
@@ -14450,25 +14490,35 @@ fn toggle_main_window_visibility(
         return Ok(());
     };
 
-    let mut visibility = state
-        .window_visibility
-        .lock()
-        .map_err(|error| format!("visibility mutex poisoned: {error}"))?;
+    // Reconcile cached state with the OS before deciding — guards against
+    // drift if the user used Win+D or any other path that hid the window
+    // without going through our helpers.
+    let actually_visible = is_actually_visible(&window);
+    if let Ok(mut visibility) = state.window_visibility.lock() {
+        visibility.hidden = !actually_visible;
+    }
 
-    if !visibility.hidden {
-        visibility.last_rect = Some(capture_rect(&window));
-        visibility.hidden = true;
-        let snapshot = visibility.last_rect;
-        drop(visibility);
+    if actually_visible {
+        // Going from visible → hidden. Capture the rect first.
+        let rect = capture_rect(&window);
+        if let Ok(mut visibility) = state.window_visibility.lock() {
+            visibility.last_rect = Some(rect);
+            visibility.hidden = true;
+        }
         if let Err(error) = window.hide() {
             warn!("[tray] failed to hide main window on toggle: {error}");
         }
         emit_main_window_visibility(&app, true);
-        info!("[tray] toggle hide rect={snapshot:?}");
     } else {
-        visibility.hidden = false;
-        let rect = visibility.last_rect;
-        drop(visibility);
+        // Going from hidden → visible. Restore the last-known rect.
+        let rect = state
+            .window_visibility
+            .lock()
+            .ok()
+            .and_then(|v| v.last_rect);
+        if let Ok(mut visibility) = state.window_visibility.lock() {
+            visibility.hidden = false;
+        }
         if let Err(error) = window.unminimize() {
             warn!("[tray] failed to unminimize main window on toggle: {error}");
         }
@@ -14627,7 +14677,7 @@ fn build_tray_icon(app: &AppHandle) -> tauri::Result<()> {
                 copy_last_response_to_clipboard(app);
             }
             TRAY_MENU_DASHBOARD_ID => {
-                show_main_window(app);
+                try_main_window_toggle(app);
             }
             TRAY_MENU_UPDATE_AVAILABLE_ID => {
                 show_main_window(app);
@@ -14647,7 +14697,7 @@ fn build_tray_icon(app: &AppHandle) -> tauri::Result<()> {
                 ..
             } = event
             {
-                show_main_window(&app_handle_for_click);
+                try_main_window_toggle(&app_handle_for_click);
             }
         });
 
