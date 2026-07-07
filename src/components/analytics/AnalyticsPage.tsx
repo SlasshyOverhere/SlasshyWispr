@@ -44,15 +44,6 @@ function formatDate(ts: number): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function groupByDate(sessions: AnalyticsSessionDetail[]): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const s of sessions) {
-    const key = getDayKey(new Date(s.date));
-    map.set(key, (map.get(key) || 0) + s.words);
-  }
-  return map;
-}
-
 function getDayKey(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -89,47 +80,6 @@ function getStreak(sessions: AnalyticsSessionDetail[]): number {
 
 function formatWpm(wpm: number): string {
   return `${Math.round(wpm)}`;
-}
-
-function DailyChart({ data, range }: { data: Map<string, number>; range: AnalyticsRange }) {
-  const days = useMemo(() => {
-    const maxDays = range === '7d' ? 7 : range === '30d' ? 30 : 90;
-    const result: Array<{ key: string; label: string; words: number }> = [];
-    const now = new Date();
-    now.setHours(23, 59, 59, 999);
-    for (let i = maxDays - 1; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const key = getDayKey(d);
-      result.push({ key, label: d.getDate().toString(), words: data.get(key) || 0 });
-    }
-    return result;
-  }, [data, range]);
-
-  const maxWords = Math.max(...days.map(d => d.words), 1);
-  const barWidth = Math.max(4, Math.min(24, Math.floor(360 / days.length)));
-
-  return (
-    <div className="analytics-chart-section">
-      <h3 className="analytics-section-title">Daily Dictation Volume</h3>
-      <div className="analytics-chart-wrap">
-        <svg viewBox={`0 0 ${days.length * (barWidth + 3) + 20} 160`} className="analytics-svg-chart" preserveAspectRatio="xMidYMid meet">
-          {days.map((day, i) => {
-            const x = i * (barWidth + 3) + 10;
-            const h = (day.words / maxWords) * 120;
-            return (
-              <g key={day.key}>
-                <rect x={x} y={140 - h} width={barWidth} height={Math.max(h, 1)} rx="2" className="analytics-bar" />
-                {i % Math.max(1, Math.floor(days.length / 6)) === 0 && (
-                  <text x={x + barWidth / 2} y="154" textAnchor="middle" className="analytics-bar-label">{day.label}</text>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-    </div>
-  );
 }
 
 function ActivityHeatmap({ sessions, range }: { sessions: AnalyticsSessionDetail[]; range: AnalyticsRange }) {
@@ -190,41 +140,6 @@ function ActivityHeatmap({ sessions, range }: { sessions: AnalyticsSessionDetail
             ))}
           </div>
         ))}
-      </div>
-    </div>
-  );
-}
-
-function DayOfWeekChart({ sessions }: { sessions: AnalyticsSessionDetail[] }) {
-  const buckets = useMemo(() => {
-    const counts = [0, 0, 0, 0, 0, 0, 0];
-    for (const s of sessions) {
-      const day = new Date(s.date).getDay();
-      counts[day] += s.words;
-    }
-    return counts;
-  }, [sessions]);
-
-  const maxVal = Math.max(...buckets, 1);
-  const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-  return (
-    <div className="analytics-chart-section">
-      <h3 className="analytics-section-title">Words by Day of Week</h3>
-      <div className="analytics-chart-wrap">
-        <svg viewBox="0 0 280 150" className="analytics-svg-chart" preserveAspectRatio="xMidYMid meet">
-          {buckets.map((val, i) => {
-            const x = i * 36 + 14;
-            const h = (val / maxVal) * 100;
-            return (
-              <g key={labels[i]}>
-                <rect x={x} y={125 - h} width={24} height={Math.max(h, 1)} rx="3" className="analytics-bar" />
-                <text x={x + 12} y="140" textAnchor="middle" className="analytics-bar-label">{labels[i]}</text>
-                <text x={x + 12} y={125 - h - 6} textAnchor="middle" className="analytics-bar-value">{val > 0 ? val.toLocaleString() : ''}</text>
-              </g>
-            );
-          })}
-        </svg>
       </div>
     </div>
   );
@@ -333,8 +248,6 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
     return localSessions.filter(s => s.date >= cutoff);
   }, [localSessions, range]);
 
-  const dailyData = useMemo(() => groupByDate(filteredSessions), [filteredSessions]);
-
   const periodWords = useMemo(() => filteredSessions.reduce((a, s) => a + s.words, 0), [filteredSessions]);
   const periodSeconds = useMemo(() => filteredSessions.reduce((a, s) => a + s.speakingSeconds, 0), [filteredSessions]);
   const periodSessions = filteredSessions.length;
@@ -387,11 +300,6 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
           <span className="analytics-metric-value">{formatWpm(periodWpm)} <span className="analytics-metric-unit">wpm</span></span>
           <span className="analytics-metric-sub">{formatWpm(localUsage.avgWpm)} wpm overall</span>
         </div>
-      </div>
-
-      <div className="analytics-grid-2col">
-        <DailyChart data={dailyData} range={range} />
-        <DayOfWeekChart sessions={filteredSessions} />
       </div>
 
       <RecentActivity sessions={filteredSessions} />

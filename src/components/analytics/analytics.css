@@ -155,56 +155,6 @@
   margin-bottom: var(--space-4);
 }
 
-.analytics-grid-2col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-8);
-  margin-bottom: var(--space-10);
-}
-
-@media (max-width: 750px) {
-  .analytics-grid-2col {
-    grid-template-columns: 1fr;
-  }
-}
-
-.analytics-chart-section {
-  padding: var(--space-6) 0;
-  border-top: 1px solid var(--border-line);
-}
-
-.analytics-chart-wrap {
-  width: 100%;
-  overflow-x: auto;
-}
-
-.analytics-svg-chart {
-  width: 100%;
-  min-height: 160px;
-  display: block;
-}
-
-.analytics-bar {
-  fill: var(--ink-secondary);
-  opacity: 0.85;
-  transition: opacity var(--transition-fast);
-}
-
-.analytics-bar-label {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
-  fill: var(--ink-faint);
-}
-
-.analytics-bar-value {
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 30;
-  font-size: 11px;
-  font-weight: 460;
-  fill: var(--ink-primary);
-}
-
 .analytics-recent-section {
   border-top: 1px solid var(--border-line);
   padding-top: var(--space-6);
