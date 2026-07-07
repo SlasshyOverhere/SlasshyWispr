@@ -579,7 +579,7 @@
   left: 2px;
   width: 16px;
   height: 16px;
-  background: var(--ink-primary);
+  background: var(--accent-foreground);
   border-radius: 50%;
   transition: transform 140ms ease;
 }
