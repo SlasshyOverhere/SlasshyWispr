@@ -11,10 +11,11 @@ interface WindowRect {
 interface WindowVisibilityState {
   hidden: boolean;
   lastRect: WindowRect | null;
+  wasMinimized: boolean;
 }
 
 function defaultState(): WindowVisibilityState {
-  return { hidden: false, lastRect: null };
+  return { hidden: false, lastRect: null, wasMinimized: false };
 }
 
 function toJson(s: WindowVisibilityState): string {
@@ -27,13 +28,14 @@ function fromJson(value: string): WindowVisibilityState {
 
 describe("WindowVisibilityState round-trip", () => {
   test("default state serialises to camelCase JSON", () => {
-    expect(toJson(defaultState())).toBe('{"hidden":false,"lastRect":null}');
+    expect(toJson(defaultState())).toBe('{"hidden":false,"lastRect":null,"wasMinimized":false}');
   });
 
   test("hidden state round-trips losslessly", () => {
     const s: WindowVisibilityState = {
       hidden: true,
       lastRect: { positionX: 100, positionY: 200, width: 1280, height: 832 },
+      wasMinimized: false,
     };
     expect(fromJson(toJson(s))).toEqual(s);
   });
@@ -42,6 +44,7 @@ describe("WindowVisibilityState round-trip", () => {
     const s: WindowVisibilityState = {
       hidden: true,
       lastRect: { positionX: -1920, positionY: 100, width: 1280, height: 832 },
+      wasMinimized: false,
     };
     expect(fromJson(toJson(s))).toEqual(s);
   });
@@ -50,6 +53,16 @@ describe("WindowVisibilityState round-trip", () => {
     const s: WindowVisibilityState = {
       hidden: false,
       lastRect: { positionX: 8000, positionY: 8000, width: 1920, height: 1080 },
+      wasMinimized: false,
+    };
+    expect(fromJson(toJson(s))).toEqual(s);
+  });
+
+  test("wasMinimized round-trips losslessly", () => {
+    const s: WindowVisibilityState = {
+      hidden: false,
+      lastRect: { positionX: 100, positionY: 200, width: 1280, height: 832 },
+      wasMinimized: true,
     };
     expect(fromJson(toJson(s))).toEqual(s);
   });
@@ -74,32 +87,60 @@ describe("WindowVisibilityState round-trip", () => {
   // the window, never hide it.
   test("toggle state machine: hide captures rect, show drops hidden flag, alternating clicks alternate", () => {
     const rect: WindowRect = { positionX: 200, positionY: 300, width: 1280, height: 832 };
-    let s: WindowVisibilityState = { hidden: false, lastRect: null };
+    let s: WindowVisibilityState = { hidden: false, lastRect: null, wasMinimized: false };
 
     // Click 1: visible -> hidden, capture rect
     if (!s.hidden) {
-      s = { hidden: true, lastRect: rect };
+      s = { hidden: true, lastRect: rect, wasMinimized: false };
     }
     expect(s.hidden).toBe(true);
     expect(s.lastRect).toEqual(rect);
 
     // Click 2: hidden -> visible, restore rect
     if (s.hidden) {
-      s = { hidden: false, lastRect: s.lastRect };
+      s = { hidden: false, lastRect: s.lastRect, wasMinimized: false };
     }
     expect(s.hidden).toBe(false);
     expect(s.lastRect).toEqual(rect);
 
     // Click 3: visible -> hidden again
     if (!s.hidden) {
-      s = { hidden: true, lastRect: rect };
+      s = { hidden: true, lastRect: rect, wasMinimized: false };
     }
     expect(s.hidden).toBe(true);
 
     // Click 4: hidden -> visible again
     if (s.hidden) {
-      s = { hidden: false, lastRect: s.lastRect };
+      s = { hidden: false, lastRect: s.lastRect, wasMinimized: false };
     }
     expect(s.hidden).toBe(false);
+  });
+
+  // Codifies the taskbar minimize/restore state machine: a plain resize
+  // updates the saved rect; minimizing flips wasMinimized; the first resize
+  // event after restoring (transition minimized -> not-minimized) clears
+  // wasMinimized so the saved rect is preserved for the NEXT minimize.
+  test("minimize/restore state machine: pre-minimize rect is preserved across the cycle", () => {
+    const rect: WindowRect = { positionX: 400, positionY: 500, width: 1280, height: 832 };
+    let s: WindowVisibilityState = { hidden: false, lastRect: null, wasMinimized: false };
+
+    // User resizes/moves the window: capture into lastRect.
+    s = { ...s, lastRect: rect };
+    expect(s.lastRect).toEqual(rect);
+
+    // User clicks taskbar to minimize.
+    s = { ...s, wasMinimized: true };
+    expect(s.wasMinimized).toBe(true);
+    expect(s.lastRect).toEqual(rect); // preserved
+
+    // User clicks taskbar to restore. The OS gives us a default size first
+    // (we don't snapshot on transition). wasMinimized is cleared.
+    s = { ...s, wasMinimized: false };
+    expect(s.wasMinimized).toBe(false);
+    expect(s.lastRect).toEqual(rect); // still preserved
+
+    // User clicks again to minimize: wasMinimized flips back on.
+    s = { ...s, wasMinimized: true };
+    expect(s.wasMinimized).toBe(true);
   });
 });

@@ -122,6 +122,10 @@ pub struct WindowRect {
 pub struct WindowVisibilityState {
     pub hidden: bool,
     pub last_rect: Option<WindowRect>,
+    /// Tracks the minimize/restore transition. Set to true when the window
+    /// enters the minimized state; cleared on the first Resized event after
+    /// the user restores. Used to apply the saved rect on restore.
+    pub was_minimized: bool,
 }
 
 impl WindowVisibilityState {
@@ -14764,10 +14768,77 @@ pub fn run() {
 
             if let Some(main_window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
                 let app_handle_for_close = app_handle.clone();
+                let app_handle_for_resize = app_handle.clone();
+                let main_window_for_resize = main_window.clone();
                 main_window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        hide_main_window_to_tray(&app_handle_for_close);
+                    match event {
+                        tauri::WindowEvent::CloseRequested { api, .. } => {
+                            api.prevent_close();
+                            hide_main_window_to_tray(&app_handle_for_close);
+                        }
+                        tauri::WindowEvent::Resized(_) => {
+                            // Track minimize/restore transitions. On every
+                            // resize while the window is NOT minimized, capture
+                            // the current rect into WindowVisibilityState so we
+                            // can restore to that exact size+position after the
+                            // user restores from a taskbar click.
+                            //
+                            // When the transition is minimized -> not-minimized
+                            // (i.e. user restored from taskbar), apply the saved
+                            // pre-minimize rect via set_position + set_size.
+                            let minimized_now = main_window_for_resize
+                                .is_minimized()
+                                .unwrap_or(false);
+
+                            if let Some(state) =
+                                app_handle_for_resize.try_state::<AppState>()
+                            {
+                                if let Ok(mut visibility) =
+                                    state.window_visibility.lock()
+                                {
+                                    if minimized_now {
+                                        // Mark that we just entered the
+                                        // minimized state. The "last_rect"
+                                        // already holds the pre-minimize rect
+                                        // because the previous Resized events
+                                        // kept updating it.
+                                        visibility.was_minimized = true;
+                                    } else if visibility.was_minimized {
+                                        // Transition minimized -> restored.
+                                        // Restore to the saved rect.
+                                        visibility.was_minimized = false;
+                                        let rect = visibility.last_rect;
+                                        drop(visibility);
+                                        if let Some(r) = rect {
+                                            if let Err(error) = main_window_for_resize
+                                                .set_position(
+                                                    tauri::PhysicalPosition {
+                                                        x: r.position_x,
+                                                        y: r.position_y,
+                                                    },
+                                                )
+                                            {
+                                                warn!("[tray] failed to restore position on un-minimize: {error}");
+                                            }
+                                            if let Err(error) = main_window_for_resize
+                                                .set_size(tauri::PhysicalSize {
+                                                    width: r.width,
+                                                    height: r.height,
+                                                })
+                                            {
+                                                warn!("[tray] failed to restore size on un-minimize: {error}");
+                                            }
+                                        }
+                                    } else {
+                                        // Plain resize while visible. Update
+                                        // the saved rect.
+                                        visibility.last_rect =
+                                            Some(capture_rect(&main_window_for_resize));
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 });
             } else {
