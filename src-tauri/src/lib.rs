@@ -14673,10 +14673,19 @@ pub fn run() {
     // window-state plugin — needs to be added before .manage()
     builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
 
-    #[cfg(all(desktop, not(debug_assertions)))]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            info!("[app.single-instance] prevented secondary launch and focused existing window");
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            info!(
+                "[app.single-instance] secondary launch blocked args={:?}",
+                args
+            );
+            if args
+                .iter()
+                .any(|a| a.eq_ignore_ascii_case(STARTUP_ARG_START_IN_TRAY))
+            {
+                info!("[app.single-instance] --start-in-tray passed; respecting hidden state");
+                return;
+            }
             show_main_window(app);
         }));
     }
