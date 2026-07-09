@@ -3275,8 +3275,6 @@ function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "start
   }
 
   notifiedVersionsThisSession.add(version);
-  // Persist skipped version to localStorage for cross-session skip tracking
-  localStorage.setItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY, version);
   const message = `Update ${version} is available. Open Updates to download and install it.`;
   setNotice(message);
 
