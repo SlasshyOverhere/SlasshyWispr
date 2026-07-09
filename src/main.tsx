@@ -427,6 +427,7 @@ const backtrackToggle = requiredElement<HTMLInputElement>("#backtrackToggle");
 const removeFillersToggle = requiredElement<HTMLInputElement>("#removeFillersToggle");
 const autoPunctuationToggle = requiredElement<HTMLInputElement>("#autoPunctuationToggle");
 const numberedListsToggle = requiredElement<HTMLInputElement>("#numberedListsToggle");
+const noiseSuppressionToggle = requiredElement<HTMLInputElement>("#noiseSuppressionToggle");
 const updateStatusPill = requiredElement<HTMLDivElement>("#updateStatusPill");
 const updateStatusText = requiredElement<HTMLParagraphElement>("#updateStatusText");
 const updateCurrentVersion = requiredElement<HTMLElement>("#updateCurrentVersion");
@@ -1234,6 +1235,7 @@ backtrackToggle.addEventListener("change", handleSettingsChange);
 removeFillersToggle.addEventListener("change", handleSettingsChange);
 autoPunctuationToggle.addEventListener("change", handleSettingsChange);
 numberedListsToggle.addEventListener("change", handleSettingsChange);
+noiseSuppressionToggle.addEventListener("change", handleSettingsChange);
 
 providerModelCatalogSelect.addEventListener("change", () => {
   const selected = providerModelCatalogSelect.value.trim();
@@ -1573,6 +1575,12 @@ async function bootstrap(): Promise<void> {
   logClientEvent("[bootstrap] start");
   await hydrateSettingsFromNativeStorage();
   logClientEvent(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
+
+  // Register global hotkeys immediately — user should be able to press the
+  // hotkey as soon as settings are loaded, without waiting for the rest of
+  // the heavy bootstrap chain (Ollama, STT, TTS, model lists, etc.).
+  requestGlobalShortcutSync(true);
+
   void backfillHistoryRecordingIds();
   setStage("idle", "Loading assistant metadata...");
 
@@ -1613,7 +1621,6 @@ async function bootstrap(): Promise<void> {
     // Ignore bootstrap poll failures and continue normal app startup.
   }
   syncActionAvailability();
-  requestGlobalShortcutSync(true);
   startAutomaticUpdateChecks();
   if (analyticsSessionDetails.length > 0 && achievementStates.length === 0) {
     const totalWords = usageStats.words + usageStats.prevWords;
@@ -1829,6 +1836,7 @@ function loadSettings(): PersistedSettings {
     removeFillers: true,
     autoPunctuation: true,
     numberedLists: true,
+    noiseSuppression: false,
     ttsEngine: DEFAULT_TTS_ENGINE,
     piperSpeed: DEFAULT_PIPER_SPEED,
     piperQuality: DEFAULT_PIPER_QUALITY,
@@ -1928,6 +1936,7 @@ function loadSettings(): PersistedSettings {
       removeFillers: coerceBoolean(parsed.removeFillers, defaults.removeFillers),
       autoPunctuation: coerceBoolean(parsed.autoPunctuation, defaults.autoPunctuation),
       numberedLists: coerceBoolean(parsed.numberedLists, defaults.numberedLists),
+      noiseSuppression: coerceBoolean(parsed.noiseSuppression, defaults.noiseSuppression),
       ttsEngine: asTtsEngine(parsed.ttsEngine),
       piperSpeed: coerceNumber(parsed.piperSpeed, defaults.piperSpeed, 0.5, 2),
       piperQuality: asPiperQuality(parsed.piperQuality),
@@ -2174,6 +2183,7 @@ function readSettingsFromForm(): PersistedSettings {
     removeFillers: removeFillersToggle.checked,
     autoPunctuation: autoPunctuationToggle.checked,
     numberedLists: numberedListsToggle.checked,
+    noiseSuppression: noiseSuppressionToggle.checked,
     pushToTalkSound: pushToTalkSoundSelect.value,
     pushToTalkEndSound: pushToTalkEndSoundSelect.value,
     pushToTalkSoundVolume: coerceNumber(Number(pushToTalkSoundVolumeRange.value) / 100, DEFAULT_PUSH_TO_TALK_SOUND_VOLUME, 0, 1),
@@ -2207,8 +2217,9 @@ function applySettingsToForm(next: PersistedSettings): void {
   localOllamaModelInput.value = next.localOllamaModel;
   localSttModelInput.value = next.localSttModel;
   rememberApiKeyInput.checked = next.rememberApiKey;
-  // Bug fix: explicitly sync microphone selection to avoid UI desync on startup
-  if (next.microphoneDeviceId) {
+  // Only set microphone selection when the dropdown already has options populated
+  // (refreshMicrophones runs later during bootstrap and handles the initial selection).
+  if (next.microphoneDeviceId && microphoneSelect.options.length > 0) {
     microphoneSelect.value = next.microphoneDeviceId;
   }
   piperPathInput.value = next.piperPath;
@@ -2245,6 +2256,7 @@ function applySettingsToForm(next: PersistedSettings): void {
   removeFillersToggle.checked = next.removeFillers;
   autoPunctuationToggle.checked = next.autoPunctuation;
   numberedListsToggle.checked = next.numberedLists;
+  noiseSuppressionToggle.checked = next.noiseSuppression;
   pushToTalkSoundSelect.value = next.pushToTalkSound;
   pushToTalkEndSoundSelect.value = next.pushToTalkEndSound;
   pushToTalkSoundVolumeRange.value = String(Math.round(next.pushToTalkSoundVolume * 100));
@@ -3263,8 +3275,6 @@ function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "start
   }
 
   notifiedVersionsThisSession.add(version);
-  // Persist skipped version to localStorage for cross-session skip tracking
-  localStorage.setItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY, version);
   const message = `Update ${version} is available. Open Updates to download and install it.`;
   setNotice(message);
 
@@ -5237,17 +5247,25 @@ async function refreshMicrophones(requestPermission: boolean): Promise<void> {
 
     const currentId = settings.microphoneDeviceId;
     const hasCurrent = microphones.some((device) => device.deviceId === currentId);
-    const selectedId = hasCurrent ? currentId : microphones[0]?.deviceId ?? "";
+    // When the saved device isn't in the current list, select the first device in
+    // the dropdown for display but keep the saved ID so it persists across sessions
+    // (the device may reconnect or be a transient enumeration gap).
+    const displayId = hasCurrent ? currentId : microphones[0]?.deviceId ?? "";
 
     microphoneSelect.innerHTML = microphones
       .map((device, index) => {
         const label = device.label?.trim() || `Microphone ${index + 1}`;
-        const selected = device.deviceId === selectedId ? " selected" : "";
+        const selected = device.deviceId === displayId ? " selected" : "";
         return `<option value="${escapeHtml(device.deviceId)}"${selected}>${escapeHtml(label)}</option>`;
       })
       .join("");
 
-    settings.microphoneDeviceId = selectedId;
+    if (hasCurrent) {
+      // Device found — update in-memory settings to stay in sync with dropdown.
+      settings.microphoneDeviceId = currentId;
+    }
+    // Always persist: if device was found, we updated the id; if not, we preserve
+    // the saved id so the user's choice survives restarts.
     persistSettings(settings);
     updateMicrophoneSummary();
 
@@ -7197,7 +7215,36 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
   try {
     let pipelineAudioBlob = audioBlob;
     let pipelineAudioMimeType = audioMimeType;
-    if (activeSettings.sttRuntimeMode === "local") {
+    let rawPcmBase64: string | null = null;
+    if (activeSettings.noiseSuppression) {
+      // Fast path: decode WebM → raw f32 PCM, send directly to Rust (skip WAV roundtrip)
+      try {
+        const decoded = await decodeAudioSample(audioBlob);
+        const channelData = decoded.getChannelData(0); // mono f32
+        // Pack as: [sample_rate: u32 LE][samples: f32 LE...]
+        const header = new ArrayBuffer(4);
+        new DataView(header).setUint32(0, decoded.sampleRate, true);
+        const pcmBytes = new Uint8Array(header.byteLength + channelData.length * 4);
+        pcmBytes.set(new Uint8Array(header), 0);
+        pcmBytes.set(new Uint8Array(channelData.buffer), header.byteLength);
+        // Convert to base64
+        let binary = "";
+        for (let i = 0; i < pcmBytes.length; i++) {
+          binary += String.fromCharCode(pcmBytes[i]);
+        }
+        rawPcmBase64 = btoa(binary);
+        logClientEvent(`[pipeline.audio] raw PCM ready samples=${channelData.length} sampleRate=${decoded.sampleRate} bytes=${pcmBytes.length}`);
+      } catch (error) {
+        logClientEvent(`raw PCM conversion failed, falling back to WAV: ${asErrorMessage(error)}`);
+        try {
+          const decoded = await decodeAudioSample(audioBlob);
+          pipelineAudioBlob = audioBufferToWavBlob(decoded);
+          pipelineAudioMimeType = "audio/wav";
+        } catch (e2) {
+          logClientEvent(`wav fallback also failed: ${asErrorMessage(e2)}`);
+        }
+      }
+    } else if (activeSettings.sttRuntimeMode === "local") {
       try {
         const decoded = await decodeAudioSample(audioBlob);
         pipelineAudioBlob = audioBufferToWavBlob(decoded);
@@ -7343,6 +7390,8 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
         removeFillers: activeSettings.removeFillers,
         autoPunctuation: activeSettings.autoPunctuation,
         autoNumberedLists: activeSettings.numberedLists,
+        noiseSuppression: activeSettings.noiseSuppression,
+        rawPcmBase64: rawPcmBase64,
         commandMode: commandModeArmed,
         wakeWordEnabled: activeSettings.wakeWordEnabled,
         assistantName: activeSettings.assistantName || DEFAULT_ASSISTANT_NAME,

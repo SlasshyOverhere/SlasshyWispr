@@ -605,9 +605,12 @@ function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; rowIndex
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const contentRef = useRef<HTMLParagraphElement | null>(null);
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const [needsClamp, setNeedsClamp] = useState(false);
   const d = new Date(entry.timestamp);
   const hh = d.getHours();
   const mm = d.getMinutes().toString().padStart(2, "0");
@@ -691,6 +694,14 @@ function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; rowIndex
       window.removeEventListener("resize", onScroll);
     };
   }, [menuOpen]);
+
+  // Measure whether the transcription text overflows 3 lines.
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 21;
+    setNeedsClamp(el.scrollHeight > lineHeight * 3.5);
+  }, [entry.content]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(entry.content);
@@ -785,7 +796,19 @@ function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; rowIndex
         {time}
       </span>
       <div className="entry-content-wrap">
-        <p className="entry-content">{entry.content}</p>
+        <p
+          ref={contentRef}
+          className={`entry-content${needsClamp && !expanded ? ' is-clamped' : ''}`}
+        >{entry.content}</p>
+        {needsClamp ? (
+          <button
+            type="button"
+            className="entry-expand-btn"
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? 'Show less' : 'Show more'}
+          </button>
+        ) : null}
         {playError ? (
           <p className="entry-play-error">{playError}</p>
         ) : null}
