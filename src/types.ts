@@ -243,6 +243,7 @@ export interface PersistedSettings {
   removeFillers: boolean;
   autoPunctuation: boolean;
   numberedLists: boolean;
+  noiseSuppression: boolean;
   ttsEngine: TtsEngine;
   piperSpeed: number;
   piperQuality: PiperQuality;

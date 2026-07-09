@@ -406,6 +406,8 @@ static PIPER_TUNING_SUPPORT: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
 static TRAY_UPDATE_ITEM: OnceLock<MenuItem<tauri::Wry>> = OnceLock::new();
 static SAVED_SYSTEM_AUDIO_VOLUME: Mutex<Option<u32>> = Mutex::new(None);
 
+mod noise_suppression;
+
 #[cfg(target_os = "windows")]
 mod win32_native {
     use windows_sys::Win32::Foundation::RECT;
@@ -563,6 +565,8 @@ struct AssistantPipelineRequest {
     remove_fillers: Option<bool>,
     auto_punctuation: Option<bool>,
     auto_numbered_lists: Option<bool>,
+    noise_suppression: Option<bool>,
+    raw_pcm_base64: Option<String>,
     command_mode: Option<bool>,
     wake_word_enabled: Option<bool>,
     assistant_name: Option<String>,
@@ -5752,6 +5756,70 @@ async fn run_assistant_pipeline(
                 .to_string(),
         );
     }
+
+    // Optional noise suppression: denoise audio before STT
+    let audio_bytes = if request.noise_suppression.unwrap_or(false) {
+        let denoise_start = Instant::now();
+
+        // Use raw PCM if frontend sent it (faster — no WAV decode needed)
+        let (samples, sample_rate) = if let Some(ref raw_pcm) = request.raw_pcm_base64 {
+            let raw_bytes = BASE64_STANDARD
+                .decode(raw_pcm.as_bytes())
+                .map_err(|error| format!("Failed to decode raw PCM base64: {error}"))?;
+            if raw_bytes.len() < 4 {
+                return Err("Raw PCM data too short".to_string());
+            }
+            // Parse: [sample_rate: u32 LE][samples: f32 LE...]
+            let sr = u32::from_le_bytes([
+                raw_bytes[0], raw_bytes[1], raw_bytes[2], raw_bytes[3],
+            ]);
+            let f32_data = &raw_bytes[4..];
+            let num_samples = f32_data.len() / 4;
+            let mut samples = Vec::with_capacity(num_samples);
+            for i in 0..num_samples {
+                let offset = i * 4;
+                let val = f32::from_le_bytes([
+                    f32_data[offset],
+                    f32_data[offset + 1],
+                    f32_data[offset + 2],
+                    f32_data[offset + 3],
+                ]);
+                samples.push(val);
+            }
+            info!("[pipeline.noise_suppression] raw PCM: samples={} sample_rate={}", samples.len(), sr);
+            (samples, sr)
+        } else {
+            // Fallback: decode WAV
+            let (samples, sr) = decode_wav_audio_to_mono_f32(&audio_bytes)
+                .map_err(|error| format!("Failed to decode audio for noise suppression: {error}"))?;
+            info!("[pipeline.noise_suppression] WAV decode: samples={} sample_rate={}", samples.len(), sr);
+            (samples, sr)
+        };
+
+        // Resample to 48kHz if needed (nnnoiseless expects 48kHz)
+        let samples_48k = if sample_rate != 48000 {
+            resample_linear(&samples, sample_rate, 48000)
+        } else {
+            samples
+        };
+
+        // Denoise
+        let denoised = noise_suppression::denoise_audio(&samples_48k, 48000);
+
+        // Re-encode to WAV bytes for STT
+        let denoised_bytes = encode_mono_f32_to_wav(&denoised, 48000)
+            .map_err(|error| format!("Failed to encode denoised audio: {error}"))?;
+        let denoise_ms = denoise_start.elapsed().as_millis();
+        info!(
+            "[pipeline.noise_suppression] done input_bytes={} output_bytes={} denoise_ms={}",
+            audio_bytes.len(),
+            denoised_bytes.len(),
+            denoise_ms
+        );
+        denoised_bytes
+    } else {
+        audio_bytes
+    };
 
     let stt_mode_label = match &pipeline_mode.stt {
         SttModeConfig::Online { .. } => "online",
@@ -12248,6 +12316,51 @@ fn decode_wav_audio_to_mono_f32(audio_bytes: &[u8]) -> Result<(Vec<f32>, u32), S
         mono.push(sum / channels as f32);
     }
     Ok((mono, sample_rate))
+}
+
+/// Linear interpolation resampling. Simple, fast, sufficient for speech.
+fn resample_linear(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
+    if from_rate == to_rate || samples.is_empty() {
+        return samples.to_vec();
+    }
+    let ratio = from_rate as f64 / to_rate as f64;
+    let out_len = (samples.len() as f64 / ratio) as usize;
+    let mut output = Vec::with_capacity(out_len);
+    for i in 0..out_len {
+        let src_pos = i as f64 * ratio;
+        let idx = src_pos as usize;
+        let frac = src_pos - idx as f64;
+        let s0 = samples[idx.min(samples.len() - 1)];
+        let s1 = samples[(idx + 1).min(samples.len() - 1)];
+        output.push(s0 + (s1 - s0) * frac as f32);
+    }
+    output
+}
+
+/// Encode mono f32 samples to WAV bytes using hound.
+fn encode_mono_f32_to_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>, String> {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut buf = std::io::Cursor::new(Vec::new());
+    {
+        let mut writer = hound::WavWriter::new(&mut buf, spec)
+            .map_err(|e| format!("Failed to create WAV writer: {e}"))?;
+        for &sample in samples {
+            let clamped = sample.clamp(-1.0, 1.0);
+            let i16_sample = (clamped * i16::MAX as f32) as i16;
+            writer
+                .write_sample(i16_sample)
+                .map_err(|e| format!("Failed to write WAV sample: {e}"))?;
+        }
+        writer
+            .finalize()
+            .map_err(|e| format!("Failed to finalize WAV: {e}"))?;
+    }
+    Ok(buf.into_inner())
 }
 
 fn decode_local_stt_audio_to_mono_f32(

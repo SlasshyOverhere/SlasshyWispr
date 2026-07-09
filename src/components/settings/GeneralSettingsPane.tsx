@@ -238,6 +238,13 @@ export function GeneralSettingsPane() {
         <span className="s-row-label">Auto numbered lists</span>
         <input id="numberedListsToggle" className="switch-input" type="checkbox" />
       </label>
+      <label className="s-row" htmlFor="noiseSuppressionToggle">
+        <span className="s-row-label">
+          Noise Suppression
+          <span className="switch-desc">(reduces fan/AC noise)</span>
+        </span>
+        <input id="noiseSuppressionToggle" className="switch-input" type="checkbox" />
+      </label>
 
       {/* ── Assistant ── */}
       <h3 className="settings-section-title">Assistant &amp; AI</h3>
