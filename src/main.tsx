@@ -788,6 +788,7 @@ void initializeTrayBackgroundLifecycle();
 hotkeyInput.readOnly = true;
 commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
+void reconcileLaunchAtLoginWithOs();
 startBlockedAppShortcutSuppressionMonitor();
 applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
 
@@ -3536,6 +3537,35 @@ function requestLaunchAtLoginSync(enabled: boolean): void {
     }
     setNotice(`Launch-at-login update failed: ${asErrorMessage(error)}`, true);
   });
+}
+
+async function reconcileLaunchAtLoginWithOs(): Promise<void> {
+  if (!isTauriEnvironment()) {
+    return;
+  }
+  try {
+    const status = await invoke<{
+      enabled: boolean;
+      path_matches: boolean;
+      stored_value: string | null;
+    }>("launch_at_login_status");
+    const wanted = settings.launchAtLogin;
+    if (wanted && (!status.enabled || !status.path_matches)) {
+      logClientEvent(
+        `[startup] launch-at-login registry stale — reapplying wanted=${wanted} stored=${
+          status.stored_value ?? "<missing>"
+        }`,
+      );
+      requestLaunchAtLoginSync(true);
+    } else if (!wanted && status.enabled) {
+      logClientEvent(
+        `[startup] launch-at-login registry still enabled despite preference=false; cleaning up`,
+      );
+      requestLaunchAtLoginSync(false);
+    }
+  } catch (error) {
+    logClientEvent(`[startup] launch-at-login reconcile skipped: ${asErrorMessage(error)}`);
+  }
 }
 
 function handleGlobalShortcutEvent(event: ShortcutEvent): void {

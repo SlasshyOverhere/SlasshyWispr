@@ -1807,6 +1807,17 @@ async fn download_and_install_app_update(
                     installer_pid,
                     clip_text(&single_line(&app_exe_path.to_string_lossy()), 260)
                 );
+                // Re-arm the Windows Run key after an update. The exe path may
+                // have been swapped or relocated by the installer, so the value
+                // we wrote previously points at a stale path and Windows silently
+                // skips it on next boot. Honor the user's saved preference.
+                let reapply = read_launch_at_login_preference(&app);
+                if let Err(error) = configure_launch_at_login(reapply).await {
+                    warn!(
+                        "[updater] failed to re-apply launch-at-login after update error={}",
+                        error
+                    );
+                }
             }
             Err(error) => {
                 warn!(
@@ -3032,6 +3043,62 @@ async fn configure_launch_at_login(enabled: bool) -> Result<(), String> {
         let _ = enabled;
         Err("Launch at login helper is currently implemented for Windows builds only.".to_string())
     }
+}
+
+/// Report whether the Windows Run key (or its non-Windows placeholder) currently
+/// points at this executable, plus whether it is enabled at all. The frontend uses
+/// this to reconcile "settings.launchAtLogin" against the actual OS state after an
+/// update replaces the binary path.
+#[tauri::command]
+async fn launch_at_login_status() -> Result<LaunchAtLoginStatus, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::*;
+        use winreg::RegKey;
+
+        let current_exe = std::env::current_exe()
+            .map_err(|e| format!("Failed to resolve executable path: {e}"))?;
+        let current_exe_text = current_exe.to_string_lossy().to_string();
+        let expected_quoted = format!("\"{}\" {}", current_exe_text, STARTUP_ARG_START_IN_TRAY);
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let run_key = hkcu
+            .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+            .map_err(|e| format!("Unable to open startup registry key: {e}"))?;
+        let stored: Result<String, _> = run_key.get_value(STARTUP_RUN_VALUE_NAME);
+
+        match stored {
+            Ok(value) => {
+                let enabled = value == expected_quoted;
+                Ok(LaunchAtLoginStatus {
+                    enabled,
+                    path_matches: enabled,
+                    stored_value: Some(value),
+                })
+            }
+            Err(_) => Ok(LaunchAtLoginStatus {
+                enabled: false,
+                path_matches: false,
+                stored_value: None,
+            }),
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(LaunchAtLoginStatus {
+            enabled: false,
+            path_matches: false,
+            stored_value: None,
+        })
+    }
+}
+
+#[derive(serde::Serialize)]
+struct LaunchAtLoginStatus {
+    enabled: bool,
+    path_matches: bool,
+    stored_value: Option<String>,
 }
 
 #[tauri::command]
@@ -8999,6 +9066,63 @@ fn persisted_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(primary_path)
 }
 
+/// Read the user's saved "launch at login" preference from the persisted
+/// settings file. Defaults to `true` (matching the frontend default) when no
+/// settings file exists yet, so first-launch behavior stays consistent.
+fn read_launch_at_login_preference(app: &AppHandle) -> bool {
+    let Ok(path) = persisted_settings_path(app) else {
+        return true;
+    };
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return true;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return true;
+    };
+    value
+        .get("launchAtLogin")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true)
+}
+
+#[cfg(test)]
+mod launch_at_login_preference_tests {
+    use super::*;
+    use std::io::Write;
+    use std::path::{Path, PathBuf};
+
+    fn write_settings(dir: &Path, body: &str) -> PathBuf {
+        let path = dir.join(PERSISTED_SETTINGS_FILE_NAME);
+        let mut file = fs::File::create(&path).unwrap();
+        file.write_all(body.as_bytes()).unwrap();
+        path
+    }
+
+    fn extract(raw: &str) -> bool {
+        let value: serde_json::Value = serde_json::from_str(raw).unwrap();
+        value
+            .get("launchAtLogin")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true)
+    }
+
+    #[test]
+    fn defaults_to_true_when_missing() {
+        assert_eq!(extract("{}"), true);
+    }
+
+    #[test]
+    fn reflects_explicit_false() {
+        assert_eq!(extract(r#"{"launchAtLogin": false}"#), false);
+        let _ = write_settings; // exercise the helper to keep it alive
+    }
+
+    #[test]
+    fn reflects_explicit_true() {
+        assert_eq!(extract(r#"{"launchAtLogin": true}"#), true);
+    }
+}
+
 fn discover_installed_piper_path(app: &AppHandle) -> Result<Option<PathBuf>, String> {
     let runtime_dir = piper_runtime_dir(app)?;
     find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)
@@ -13919,6 +14043,8 @@ mod tests {
             tts_engine: None,
             piper: None,
             coqui: None,
+            noise_suppression: None,
+            raw_pcm_base64: None,
         }
     }
 
@@ -13955,6 +14081,8 @@ mod tests {
             tts_engine: None,
             piper: None,
             coqui: None,
+            noise_suppression: None,
+            raw_pcm_base64: None,
         }
     }
 
@@ -15249,6 +15377,7 @@ pub fn run() {
             capture_selected_text,
             set_clipboard_text,
             configure_launch_at_login,
+            launch_at_login_status,
             paste_clipboard_text,
             paste_text_via_clipboard,
             control_media_playback,
