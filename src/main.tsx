@@ -8571,13 +8571,14 @@ function reportDockRuntimeError(message: string): void {
   console.error(message);
 }
 
-async function showVoiceIndicatorWindow(): Promise<void> {
+async function showVoiceIndicatorWindow(): Promise<boolean> {
   if (dockHideTimerId !== null) {
     window.clearTimeout(dockHideTimerId);
     dockHideTimerId = null;
   }
 
   try {
+    const wasMissing = !voiceIndicatorWindow;
     const win = await ensureVoiceIndicatorWindow();
     await win.show();
     dockRuntimeErrorShown = false;
@@ -8587,8 +8588,10 @@ async function showVoiceIndicatorWindow(): Promise<void> {
     // the dock window is shown but the BroadcastChannel subscriber in
     // voice-indicator.html hasn't been set up yet.
     setTimeout(() => publishDockState(), 300);
+    return wasMissing;
   } catch (error) {
     reportDockRuntimeError(`Unable to show floating dock: ${asErrorMessage(error)}`);
+    return false;
   }
 }
 
@@ -8655,7 +8658,17 @@ async function syncFloatingIndicatorWindow(): Promise<void> {
       window.clearTimeout(dockHideTimerId);
       dockHideTimerId = null;
     }
-    await showVoiceIndicatorWindow();
+    const wasMissing = await showVoiceIndicatorWindow();
+    // If the dock window was just (re)created, the BroadcastChannel subscriber
+    // in voice-indicator.html may not have been wired yet when the pre-show
+    // publishDockState() above fired. Re-publish to guarantee it lands on a
+    // live listener; the listener can still drop messages it hasn't bound yet
+    // (e.g. destroyed-and-reborn dock), so publish again shortly after to
+    // cover that race.
+    if (wasMissing) {
+      publishDockState();
+      window.setTimeout(() => publishDockState(), 60);
+    }
     return;
   }
 
