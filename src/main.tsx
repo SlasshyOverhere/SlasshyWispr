@@ -1457,6 +1457,20 @@ viewFullHistoryBtn.addEventListener("click", () => {
   setActivePage("history");
 });
 
+/* Home tab search-button → switch to History and focus the search
+   input. rAF ensures the React tree has time to mount the History
+   section before the input exists in the DOM. */
+window.addEventListener("slasshy:focus-history-search", () => {
+  setActivePage("history");
+  requestAnimationFrame(() => {
+    const input = document.getElementById("historySearchInput");
+    if (input instanceof HTMLInputElement) {
+      input.focus();
+      input.select();
+    }
+  });
+});
+
 document.querySelectorAll(".filter-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
