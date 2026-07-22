@@ -788,6 +788,7 @@ void initializeTrayBackgroundLifecycle();
 hotkeyInput.readOnly = true;
 commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
+void reconcileLaunchAtLoginWithOs();
 startBlockedAppShortcutSuppressionMonitor();
 applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
 
@@ -1454,6 +1455,35 @@ clearHistoryBtnFull.addEventListener("click", async () => {
 
 viewFullHistoryBtn.addEventListener("click", () => {
   setActivePage("history");
+});
+
+/* Home tab search-button → switch to History and focus the search
+   input. rAF ensures the React tree has time to mount the History
+   section before the input exists in the DOM. */
+window.addEventListener("slasshy:focus-history-search", () => {
+  setActivePage("history");
+  requestAnimationFrame(() => {
+    const input = document.getElementById("historySearchInput");
+    if (input instanceof HTMLInputElement) {
+      input.focus();
+      input.select();
+    }
+  });
+});
+
+/* Home rail — Open analytics card-link. */
+window.addEventListener("slasshy:focus-analytics", () => {
+  setActivePage("analytics");
+});
+
+/* Home rail — Edit (Settings) card-link. The settings modal is
+   mounted at all times; we open it via the global openSettings
+   button that already exists in the sidebar. */
+window.addEventListener("slasshy:focus-settings", () => {
+  const btn = document.getElementById("openSettingsBtn");
+  if (btn instanceof HTMLButtonElement) {
+    btn.click();
+  }
 });
 
 document.querySelectorAll(".filter-btn").forEach(btn => {
@@ -3079,7 +3109,7 @@ function initializeUpdaterPanel(): void {
     openInSystemBrowser(updateReleaseLink.href);
   });
   updateInstallProgressWrap.hidden = true;
-  updateInstallProgressBar.style.width = "0%";
+  updateInstallProgressBar.style.setProperty("--p", "0");
   updateInstallProgressTrack.setAttribute("aria-valuenow", "0");
   updateInstallProgressTrack.setAttribute("aria-valuetext", "Waiting to start update download.");
   updateInstallProgressText.textContent = "Waiting to start update download.";
@@ -3232,7 +3262,7 @@ function setUpdateInstallProgress(
 ): void {
   updateInstallProgressWrap.hidden = !visible;
   const normalizedPercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
-  updateInstallProgressBar.style.width = `${normalizedPercent}%`;
+  updateInstallProgressBar.style.setProperty("--p", String(normalizedPercent / 100));
   const progressText = detail ? `${message} ${detail}` : message;
   updateInstallProgressTrack.setAttribute("aria-valuenow", String(Math.round(normalizedPercent)));
   updateInstallProgressTrack.setAttribute("aria-valuetext", progressText);
@@ -3536,6 +3566,35 @@ function requestLaunchAtLoginSync(enabled: boolean): void {
     }
     setNotice(`Launch-at-login update failed: ${asErrorMessage(error)}`, true);
   });
+}
+
+async function reconcileLaunchAtLoginWithOs(): Promise<void> {
+  if (!isTauriEnvironment()) {
+    return;
+  }
+  try {
+    const status = await invoke<{
+      enabled: boolean;
+      path_matches: boolean;
+      stored_value: string | null;
+    }>("launch_at_login_status");
+    const wanted = settings.launchAtLogin;
+    if (wanted && (!status.enabled || !status.path_matches)) {
+      logClientEvent(
+        `[startup] launch-at-login registry stale — reapplying wanted=${wanted} stored=${
+          status.stored_value ?? "<missing>"
+        }`,
+      );
+      requestLaunchAtLoginSync(true);
+    } else if (!wanted && status.enabled) {
+      logClientEvent(
+        `[startup] launch-at-login registry still enabled despite preference=false; cleaning up`,
+      );
+      requestLaunchAtLoginSync(false);
+    }
+  } catch (error) {
+    logClientEvent(`[startup] launch-at-login reconcile skipped: ${asErrorMessage(error)}`);
+  }
 }
 
 function handleGlobalShortcutEvent(event: ShortcutEvent): void {
@@ -4715,14 +4774,14 @@ function renderDictionaryList(): void {
       <div class="dict-item-content">
         <div class="dict-term spoken">
           <span class="term-label">Spoken</span>
-          <span class="term-value">${term.source}</span>
+          <span class="term-value">${escapeHtml(term.source)}</span>
         </div>
         <div class="dict-connector">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
         </div>
         <div class="dict-term correct">
           <span class="term-label">Correct</span>
-          <span class="term-value">${term.target}</span>
+          <span class="term-value">${escapeHtml(term.target)}</span>
         </div>
       </div>
       <div class="dict-item-actions">
@@ -6160,7 +6219,7 @@ function showLocalSttDownloadOverlay(status: LocalSttDownloadStatusResponse): vo
     <div style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:4px;">${escapeHtml(modelLabel)}</div>
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.4;">${escapeHtml(stage)}</div>
     <div style="height:6px;border-radius:999px;background:rgba(255, 255, 255, 0.08);overflow:hidden;margin-bottom:10px;">
-      <div style="height:100%;width:${boundedPercent.toFixed(1)}%;background:var(--text-secondary);transition:width 0.3s ease-out;"></div>
+      <div style="position:absolute;left:0;top:0;height:100%;width:100%;background:var(--text-secondary);transform:scaleX(${boundedPercent/100});transform-origin:left center;transition:transform 0.3s ease-out;"></div>
     </div>
     <div style="font-size:12px;color:var(--text-muted);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(detail)}</div>
   `;
@@ -6433,7 +6492,7 @@ function applyLocalSttDownloadStatus(status: LocalSttDownloadStatusResponse): vo
     Math.min(100, status.completed && status.success ? 100 : rawPercent),
   );
   localSttDownloadActive = status.active;
-  localSttDownloadProgressBar.style.width = `${boundedPercent}%`;
+  localSttDownloadProgressBar.style.setProperty("--p", String(boundedPercent / 100));
   const progressTrack = localSttDownloadProgressBar.parentElement;
   progressTrack?.setAttribute("aria-valuenow", boundedPercent.toFixed(1));
 
@@ -8571,13 +8630,14 @@ function reportDockRuntimeError(message: string): void {
   console.error(message);
 }
 
-async function showVoiceIndicatorWindow(): Promise<void> {
+async function showVoiceIndicatorWindow(): Promise<boolean> {
   if (dockHideTimerId !== null) {
     window.clearTimeout(dockHideTimerId);
     dockHideTimerId = null;
   }
 
   try {
+    const wasMissing = !voiceIndicatorWindow;
     const win = await ensureVoiceIndicatorWindow();
     await win.show();
     dockRuntimeErrorShown = false;
@@ -8587,8 +8647,10 @@ async function showVoiceIndicatorWindow(): Promise<void> {
     // the dock window is shown but the BroadcastChannel subscriber in
     // voice-indicator.html hasn't been set up yet.
     setTimeout(() => publishDockState(), 300);
+    return wasMissing;
   } catch (error) {
     reportDockRuntimeError(`Unable to show floating dock: ${asErrorMessage(error)}`);
+    return false;
   }
 }
 
@@ -8655,7 +8717,17 @@ async function syncFloatingIndicatorWindow(): Promise<void> {
       window.clearTimeout(dockHideTimerId);
       dockHideTimerId = null;
     }
-    await showVoiceIndicatorWindow();
+    const wasMissing = await showVoiceIndicatorWindow();
+    // If the dock window was just (re)created, the BroadcastChannel subscriber
+    // in voice-indicator.html may not have been wired yet when the pre-show
+    // publishDockState() above fired. Re-publish to guarantee it lands on a
+    // live listener; the listener can still drop messages it hasn't bound yet
+    // (e.g. destroyed-and-reborn dock), so publish again shortly after to
+    // cover that race.
+    if (wasMissing) {
+      publishDockState();
+      window.setTimeout(() => publishDockState(), 60);
+    }
     return;
   }
 

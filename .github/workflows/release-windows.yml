@@ -133,21 +133,55 @@ jobs:
             );
             const previousTag = previousRelease?.tag_name || null;
 
+            /* Use SHA refs, not tag names — tag deletion + recreate
+               breaks compare-via-tag and we can't tell at job-run
+               time whether the tag still resolves. Pull the previous
+               release's target_commitish SHA plus the new tag's
+               resolved SHA, then compare those directly. */
+            let baseSha = null;
+            let headSha = null;
+            if (previousRelease) {
+              baseSha = previousRelease.target_commitish || null;
+            }
+            try {
+              const refInfo = await github.rest.git.getRef({
+                owner,
+                repo,
+                ref: `tags/${tag}`,
+              });
+              headSha = refInfo.data.object.sha;
+            } catch (refErr) {
+              core.warning(`Could not resolve tag ${tag} to a SHA: ${refErr.status}`);
+            }
+
             let commits = [];
-            if (previousTag) {
-              const compare = await github.rest.repos.compareCommitsWithBasehead({
-                owner,
-                repo,
-                basehead: `${previousTag}...${tag}`,
-              });
-              commits = compare.data.commits || [];
+            if (baseSha && headSha) {
+              try {
+                const compare = await github.rest.repos.compareCommitsWithBasehead({
+                  owner,
+                  repo,
+                  basehead: `${baseSha}...${headSha}`,
+                });
+                commits = compare.data.commits || [];
+              } catch (cmpErr) {
+                core.warning(`compare ${baseSha.slice(0, 7)}...${headSha.slice(0, 7)} failed: ${cmpErr.status}`);
+                commits = [];
+              }
             } else {
-              const currentCommit = await github.rest.repos.getCommit({
-                owner,
-                repo,
-                ref: tag,
-              });
-              commits = [currentCommit.data];
+              // No previous release recorded (first ever release) — fall
+              // back to the head commit so at minimum the bump commit is
+              // acknowledged in the body.
+              try {
+                const currentCommit = await github.rest.repos.getCommit({
+                  owner,
+                  repo,
+                  ref: tag,
+                });
+                commits = [currentCommit.data];
+              } catch (headErr) {
+                core.warning(`Could not load head commit: ${headErr.status}`);
+                commits = [];
+              }
             }
 
             const categories = [

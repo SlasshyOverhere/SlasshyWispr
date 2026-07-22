@@ -1,23 +1,14 @@
 /* Studio Console — type system.
-   Inter (body) + Fraunces (display) + Geist Mono (data).
-   Inter loaded via @fontsource (no CDN). Fraunces via Google Fonts for
-   optical-size display headings. Geist Mono local for monospace data. */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&display=swap');
-
-@font-face {
-  font-family: 'Geist Mono';
-  src: url('/fonts/geist-mono/GeistMono-Variable.woff2') format('woff2-variations'),
-       url('/fonts/geist-mono/GeistMono-Variable.woff2') format('woff2');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
+   Inter (body) + Inter (display) + Geist Mono local (data).
+   Inter loaded via @fontsource (no CDN). Geist Mono local for
+   monospace data. Inter is variable when light, falls back to
+   weighted siblings when no variable axis is exposed. */
 
 :root {
   /* ── Type families ── */
-  --font-display: "Fraunces", "Newsreader", "PT Serif", Georgia, serif;
   --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
-  --font-mono:    "Geist Mono", "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-display: var(--font-sans);
+  --font-mono:    "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
   --font-main:    var(--font-sans);   /* legacy alias */
 
   /* ── Surface system (tinted OKLCH, never #000 / #fff) ── */
@@ -157,10 +148,10 @@
   --border-strong:  oklch(36% 0 0);
   --border-subtle:  oklch(24% 0 0);
 
-  --ink-primary:    oklch(96% 0 0);
-  --ink-secondary:  oklch(74% 0 0);
-  --ink-muted:      oklch(56% 0 0);
-  --ink-faint:      oklch(42% 0 0);
+  --ink-primary:    oklch(97% 0 0);
+  --ink-secondary:  oklch(78% 0 0);
+  --ink-muted:      oklch(68% 0 0);   /* ~6:1 on --bg-void — WCAG AA large/small text passes */
+  --ink-faint:      oklch(58% 0 0);   /* ~4.7:1 on --bg-void — meets AA for non-large text */
 
   /* The "live" heartbeat — soft white pulse, no hue. Keeps the recording
      signal unmistakable without introducing any chromatic warmth. */
@@ -430,7 +421,7 @@ body.sidebar-collapsed .flow-shell {
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
-  height: 36px;
+  height: 44px;
   overflow: hidden;
   position: relative;
   z-index: 1;
@@ -441,34 +432,77 @@ body.sidebar-collapsed .flow-shell {
   padding: var(--space-2) var(--space-4);
 }
 
-.brand-row strong {
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 60;
-  font-size: 13px;
-  font-weight: 480;
-  letter-spacing: -0.02em;
-  color: var(--ink-primary);
-  transition: opacity var(--transition-main);
+/* Brand mark — square glyph + wordmark. Lives at the top of the
+   sidebar. Fade-out courtesy when the sidebar collapses. */
+.brand-strip {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  height: 44px;
+  position: relative;
+  z-index: 1;
 }
 
-.brand-row strong::before {
-  /* tiny live dot — turns amber when recording */
+body.sidebar-collapsed .brand-strip {
+  justify-content: center;
+  padding: var(--space-2) 0;
+}
+
+.brand-glyph {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: oklch(78% 0.10 250);
+  border: 1px solid oklch(64% 0.10 250);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: oklch(13% 0 0);
+  position: relative;
+}
+
+.brand-glyph::after {
+  /* Pulse dot on the glyph while recording */
   content: "";
-  width: 6px;
-  height: 6px;
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: var(--ink-faint);
+  border: 1.5px solid var(--bg-rail);
   transition: background-color var(--transition-main), box-shadow var(--transition-main);
 }
 
-.app-frame.is-recording .brand-row strong::before {
+.app-frame.is-recording .brand-glyph::after {
   background: var(--accent-live);
-  box-shadow: 0 0 8px var(--accent-live-edge);
+  box-shadow: 0 0 6px var(--accent-live-edge);
   animation: live-blink 1.6s ease-in-out infinite;
 }
+
+.brand-word {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink-primary);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1;
+}
+
+.brand-tagline {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  text-transform: lowercase;
+}
+
+body.sidebar-collapsed .brand-word { display: none; }
 
 @keyframes live-blink {
   0%, 100% { opacity: 1; }
@@ -551,9 +585,18 @@ body.sidebar-collapsed .brand-row strong {
   font-weight: 600;
 }
 
-/* Active indicator: a small leading dot, NOT a stripe. */
+/* Persistent active indicator — a 2px leading bar always visible.
+   Color flips to accent-live while recording. */
 .nav-item.is-active::before {
-  display: none;
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--ink-primary);
+  display: block;
 }
 
 .app-frame.is-recording .nav-item.is-active::before {
@@ -707,140 +750,657 @@ body.sidebar-collapsed .nav-keyhint {
 
 /* Phase 3: All Pages */
 
-/* Home Page — Overview Layout */
+/* Home Page — Wispr-flow archetype.
+   Two-column grid: left = greeting + date-grouped card list;
+   right = summary card + voice-profile progress card.
+   Each entry is its own white card with time / body / icon actions. */
+
 .home-page {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  gap: var(--space-6);
   min-height: 100%;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding-bottom: var(--space-8);
 }
 
-.overview-header {
+@media (max-width: 880px) {
+  .home-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .home-rail {
+    order: -1;
+  }
+}
+
+/* ── Left column: greeting + list region ───────────────────────────*/
+.home-main {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: var(--space-4);
-  padding-bottom: var(--space-5);
-}
-
-.overview-stats {
-  display: flex;
-  align-items: center;
   gap: var(--space-6);
-  flex-wrap: wrap;
-  justify-content: center;
+  min-width: 0;
 }
 
-.overview-stat {
+/* Greeting row — large title with orange keyboard tokens. */
+.home-greeting {
+  font-size: clamp(26px, 3.2vw, 32px);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  color: var(--ink-primary);
+  line-height: 1.15;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.home-greeting .home-greet-name { font-weight: 600; }
+
+/* Orange token pills. Saturation bumped for dark theme so the pills
+   read as warm/vibrant instead of pastel. light theme keeps the
+   softer cream-orange from the prior pass. */
+.home-token {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 9px;
+  border-radius: 5px;
+  background: oklch(76% 0.20 50);
+  color: oklch(18% 0.04 50);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.78em;
+  letter-spacing: 0.01em;
+  margin: 0 2px;
+  vertical-align: baseline;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 0 0 1px oklch(72% 0.18 50 / 0.10) inset;
+}
+
+.home-token-plus {
+  display: inline-block;
+  font-weight: 500;
+  color: var(--ink-muted);
+  font-size: 0.78em;
+  margin: 0 4px;
+  line-height: 1;
+  /* No transform — the previous translateY shifted the glyph off axis
+     and caused it to render as an ambiguous bar when font baseline
+     disagreed with our inline box baseline. */
+}
+
+/* Subgreeting: a one-line whisper about what's current. */
+.home-subgreeting {
+  font-size: 13.5px;
+  font-weight: 400;
+  color: var(--ink-muted);
+  line-height: 1.45;
+  margin: -8px 0 0;
+  max-width: 56ch;
+}
+
+/* List region: search pin in top-right, then date-banded card stacks. */
+.home-list-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-line);
+}
+
+.home-list-head-l {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Right-side group of utilities: clear link + search pin. */
+.home-list-head-r {
+  display: flex;
+  align-items: center;
   gap: var(--space-2);
 }
 
-.overview-stat + .overview-stat::before {
-  content: "";
-  width: 1px;
-  height: 22px;
-  background: var(--border-line);
-  margin-right: var(--space-6);
-}
-
-.overview-stat-label {
-  font-family: var(--font-sans);
-  font-size: 16px;
+.home-list-head-link {
+  font-size: 12px;
   font-weight: 500;
-  color: var(--ink-muted);
-  text-transform: capitalize;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 0;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
 }
 
-.overview-stat-value {
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 48;
-  font-size: 32px;
-  font-weight: 460;
-  letter-spacing: -0.02em;
-  color: var(--ink-primary);
-  font-variant-numeric: tabular-nums lining-nums;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  line-height: 1;
+.home-list-head-link:hover {
+  color: oklch(75% 0.18 25);
+  background: oklch(60% 0.20 25 / 0.10);
 }
 
-.overview-stat-unit {
-  font-family: var(--font-sans);
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--ink-muted);
-  letter-spacing: 0.02em;
-}
-
-.stat-trend {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  margin-left: 4px;
-  vertical-align: super;
-  line-height: 1;
-}
-
-.stat-trend-up {
-  color: oklch(70% 0.15 145);
-}
-
-.stat-trend-down {
-  color: oklch(65% 0.15 25);
-}
-
-.stat-trend-neutral {
+.home-list-head-icon {
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
   color: var(--ink-faint);
 }
 
-.overview-clear-btn {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--ink-primary);
+.home-list-head-action {
+  width: 28px;
+  height: 28px;
   background: transparent;
-  border: 1px solid var(--border-strong);
+  border: 0;
+  border-radius: 6px;
+  color: var(--ink-faint);
+  display: grid;
+  place-items: center;
   cursor: pointer;
-  padding: 5px 10px;
-  border-radius: 4px;
-  transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
-  margin-left: auto;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
 }
 
-.overview-clear-btn:hover {
-  color: oklch(65% 0.15 25);
-  border-color: oklch(65% 0.15 25);
+.home-list-head-action:hover {
+  color: var(--ink-primary);
   background: var(--bg-hover);
 }
 
-.overview-title {
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 96;
-  font-size: clamp(24px, 3vw, 30px);
-  font-weight: 460;
-  letter-spacing: -0.025em;
-  color: var(--ink-primary);
-  line-height: 1.1;
+/* Date band — the user's voice anchors. Mono caps, quiet, with a
+   trailing hairline. Bumped color for dark theme so the date reads as
+   an anchor against the deep navy surface. */
+.home-date-band {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: var(--space-4) 0 var(--space-2);
+}
+
+.home-date-band-count {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  color: var(--ink-faint);
+}
+
+/* Card list — each entry is a card on the page surface. */
+.home-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  padding: 0;
   margin: 0;
 }
 
-.overview-subtitle {
-  font-family: var(--font-sans);
+/* Entry card. In dark theme we raise the surface a touch over the
+   --bg-card default and warm the border so cards read as elevated,
+   not sunk. light theme keeps the soft white from before. */
+.home-entry {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 12px var(--space-4);
+  background: oklch(20% 0.011 250);
+  border: 1px solid oklch(30% 0.010 250);
+  border-radius: 10px;
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset;
+  transition: border-color var(--transition-fast),
+              background-color var(--transition-fast),
+              transform var(--transition-fast);
+}
+
+.home-entry:hover {
+  border-color: oklch(45% 0.012 250);
+  background: oklch(24% 0.011 250);
+}
+
+/* Fresh row signature: warm amber border + soft amber tint, recovered
+   for dark theme so it reads as a soft glow instead of mud. */
+.home-entry.is-fresh {
+  background: oklch(28% 0.060 50);
+  border-color: oklch(60% 0.180 50);
+  box-shadow: 0 0 0 1px oklch(75% 0.18 50 / 0.20) inset;
+}
+.app-frame.is-recording .home-entry.is-fresh {
+  background: oklch(32% 0.080 50);
+  border-color: oklch(68% 0.180 50);
+  box-shadow: 0 0 0 1px oklch(78% 0.18 50 / 0.30) inset,
+              0 0 24px -6px oklch(75% 0.18 50 / 0.45);
+}
+
+.home-entry-time {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  text-align: right;
+}
+
+.home-entry-body {
+  font-size: 15px;
+  font-weight: 450;
+  color: var(--ink-primary);
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.home-entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.home-entry:hover .home-entry-actions,
+.home-entry:focus-within .home-entry-actions { opacity: 1; }
+
+.home-entry-action {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ink-faint);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.home-entry-action:hover {
+  color: var(--ink-primary);
+  background: var(--bg-active);
+}
+
+.home-entry-action.is-copied {
+  color: oklch(70% 0.16 145);
+}
+
+/* Per-entry popover (anchored via createPortal from HomeEntryCard).
+   Sits above other rail entries thanks to z-index: 1000 in JS. */
+.home-entry-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 4px;
+  background: oklch(28% 0.012 250);
+  border: 1px solid oklch(40% 0.012 250);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px -12px oklch(0% 0 0 / 0.7),
+              0 0 0 1px oklch(0% 0 0 / 0.20) inset;
+}
+
+.home-entry-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--transition-fast),
+              color var(--transition-fast);
+}
+
+.home-entry-menu-item:hover {
+  background: var(--bg-hover);
+  color: var(--ink-primary);
+}
+
+.home-entry-menu-item-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-entry-menu-item-danger { color: var(--ink-secondary); }
+
+.home-entry-menu-item-danger:hover,
+.home-entry-menu-item-danger.is-confirming {
+  background: oklch(60% 0.20 25 / 0.18);
+  color: oklch(95% 0.10 25);
+}
+
+/* ── Right rail: stats card + voice-profile card ───────────────────*/
+.home-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* Rail cards raise slightly above the page surface (which is darker
+   than entry cards, deliberately) so the right column reads as a
+   distinct panel. light theme keeps the soft-white variant. */
+.home-card {
+  background: oklch(24% 0.012 250);
+  border: 1px solid oklch(34% 0.010 250);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
+              0 6px 18px -10px oklch(0% 0 0 / 0.5);
+}
+
+.home-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.home-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+.home-card-link {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color var(--transition-fast);
+}
+
+.home-card-link:hover { color: var(--ink-primary); }
+
+/* Card meta line — sits next to the title, mono faint. */
+.home-card-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* Pace sparkline — fades current mark at the right edge warm. */
+.home-sparkline {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 56px;
+  color: oklch(76% 0.20 50);
+}
+
+.home-pace-footnote {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+
+.home-pace-footnote strong {
+  font-weight: 600;
+  color: var(--ink-primary);
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+}
+
+/* Quick start copy + combo. The combo is a chip row reading the
+   user's configured hotkey so they see exactly what to press. */
+.home-quickstart-copy {
   font-size: 13px;
   color: var(--ink-muted);
+  line-height: 1.5;
   margin: 0;
-  line-height: 1.4;
-  font-weight: 400;
 }
 
-/* Bleed off old big-hero / grid-cell classes — none survive */
+.home-quickstart-combo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.home-quickstart-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: oklch(28% 0.080 50);
+  border: 1px solid oklch(60% 0.18 50 / 0.30);
+  color: oklch(84% 0.18 55);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.home-quickstart-set {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+/* Quiet reset link — sits at the bottom of a rail card, doesn't
+   compete with the figure rows. */
+.home-card-reset {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  align-self: flex-start;
+  margin-top: var(--space-1);
+  transition: color var(--transition-fast);
+  font-family: inherit;
+}
+
+.home-card-reset:hover { color: oklch(75% 0.18 25); }
+
+/* Stats card: 3 stacked figure rows. */
+.home-stat-figures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.home-stat-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.home-stat-figure-num {
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+  line-height: 1.1;
+}
+
+.home-stat-figure-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  letter-spacing: 0.005em;
+}
+
+/* Voice profile card with progress bar + status pill. */
+.home-profile-progress {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-recess);
+  overflow: hidden;
+}
+
+.home-profile-progress-fill {
+  --p: 0;
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 100%;
+  background: oklch(76% 0.20 50);
+  border-radius: 999px;
+  transform: scaleX(var(--p));
+  transform-origin: left center;
+  transition: transform var(--transition-main);
+  box-shadow: 0 0 8px -2px oklch(76% 0.20 50 / 0.55);
+}
+
+.home-profile-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  /* Dark-theme pill: warm orange text on a translucent amber pad so it
+     reads as the same accent family as the home-token pills above
+     rather than a wet-blanket CTA battery. */
+  color: oklch(84% 0.18 55);
+  background: oklch(28% 0.080 50);
+  padding: 3px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.01em;
+  box-shadow: 0 0 0 1px oklch(60% 0.16 50 / 0.30) inset;
+}
+
+:root[data-theme="mono"] .home-profile-pill {
+  background: var(--bg-recess);
+  color: var(--ink-secondary);
+}
+
+/* ── Light theme makes the surfaces read paper-like ────────────────*/
+:root[data-theme="light"] {
+  --home-card-bg: oklch(100% 0 0);
+  --home-card-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
+                      0 4px 12px -6px oklch(0% 0 0 / 0.08);
+}
+
+:root[data-theme="light"] .home-card {
+  background: var(--home-card-bg);
+  box-shadow: var(--home-card-shadow);
+}
+:root[data-theme="light"] .home-entry {
+  background: var(--home-card-bg);
+  box-shadow: var(--home-card-shadow);
+}
+:root[data-theme="light"] .home-entry.is-fresh {
+  background: oklch(98% 0.04 50);
+}
+
+:root[data-theme="mono"] .home-entry.is-fresh,
+:root[data-theme="mono"] .home-token {
+  /* In mono theme we don't have the orange accent — fall back. */
+  background: var(--bg-card);
+  color: var(--ink-primary);
+}
+
+/* Existing link buttons (kept so fallback stats clear still works). */
+.home-link-btn {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-secondary);
+  background: transparent;
+  border: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+.home-link-btn:hover { color: var(--ink-primary); background: var(--bg-hover); }
+
+/* ── Empty state — quiet first-run prompt ──────────────────────────*/
+.home-empty {
+  text-align: left;
+  padding: var(--space-8) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--ink-secondary);
+  background: var(--bg-card);
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+}
+
+.home-empty-title {
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  letter-spacing: -0.01em;
+}
+
+.home-empty-sub {
+  font-size: 13.5px;
+  color: var(--ink-muted);
+  max-width: 42ch;
+  line-height: 1.5;
+}
+
+/* Token: also styling for inline kbd when used in empty state. */
+.home-empty .empty-hint-kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  background: var(--bg-active);
+  border: 1px solid var(--border-line);
+  border-radius: 4px;
+  color: var(--ink-secondary);
+  margin: 0 2px;
+}
+
+/* ── Old class bleed — kept neutral until removal in next pass ────────*/
+.overview-stats,
+.overview-stat,
+.overview-stat-label,
+.overview-stat-value,
+.overview-stat-unit,
+.stat-trend,
+.stat-trend-up,
+.stat-trend-down,
+.stat-trend-neutral,
+.overview-clear-btn,
+.overview-title,
+.overview-subtitle,
 .stats-hero,
 .stats-hero-figure,
 .stats-hero-ledger,
@@ -878,28 +1438,30 @@ svg:not([width]):not([height]) {
   display: none !important;
 }
 
-/* focus-card: subtle raised panel, no gradient junk */
+/* focus-card: subtle raised panel, no gradient junk.
+   Dark theme: matches the home-card surface recipe — same lift
+   over the page bg, same warm border. */
 .focus-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-line);
+  background: oklch(24% 0.012 250);
+  border: 1px solid oklch(34% 0.010 250);
   border-radius: var(--radius-card);
   padding: var(--space-6);
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
+              0 6px 18px -10px oklch(0% 0 0 / 0.5);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
 }
 
 .focus-card:hover {
-  border-color: var(--border-strong);
+  border-color: oklch(45% 0.012 250);
 }
 
 .focus-card h2 {
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 36;
-  font-size: 22px;
-  font-weight: 460;
+  font-family: var(--font-sans);
+  font-size: 19px;
+  font-weight: 600;
   margin-bottom: var(--space-2);
   color: var(--ink-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
 }
 
 .focus-card p {
@@ -907,6 +1469,7 @@ svg:not([width]):not([height]) {
   margin-bottom: var(--space-4);
   max-width: 60ch;
   font-size: 14px;
+  line-height: 1.5;
 }
 
 /* Primary action button — quiet light pill on dark surfaces, otherwise the recording-live amber */
@@ -966,19 +1529,22 @@ svg:not([width]):not([height]) {
   color: var(--ink-primary);
 }
 
-/* Form-card used by Dictionary / Snippets — restrained, no gradient hero */
+/* Form-card used by Snippets — same dark-theme lift recipe as
+   .focus-card. light theme handled below with whites + shadow. */
 .snippet-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-line);
+  background: oklch(24% 0.012 250);
+  border: 1px solid oklch(34% 0.010 250);
   border-radius: var(--radius-card);
   padding: var(--space-6);
   transition: border-color var(--transition-fast), background-color var(--transition-fast);
   position: relative;
   margin-bottom: var(--space-6);
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
+              0 6px 18px -10px oklch(0% 0 0 / 0.5);
 }
 
 .snippet-card:hover {
-  border-color: var(--border-strong);
+  border-color: oklch(45% 0.012 250);
 }
 
 .snippet-card.is-collapsed {
@@ -1142,15 +1708,16 @@ svg:not([width]):not([height]) {
   font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--ink-primary);
-  background: transparent;
-  padding: 0;
-  border-radius: 0;
+  background: oklch(28% 0.080 50);
+  border: 1px solid oklch(60% 0.18 50 / 0.30);
+  padding: 3px 9px;
+  border-radius: 6px;
   width: fit-content;
-  border: 0;
   letter-spacing: -0.005em;
+  white-space: nowrap;
 }
 
-.snippet-trigger::before { content: "› "; color: var(--ink-faint); }
+.snippet-trigger::before { content: "› "; color: oklch(84% 0.18 55); opacity: 0.7; }
 
 .snippet-expansion {
   font-family: var(--font-display);
@@ -1228,12 +1795,12 @@ svg:not([width]):not([height]) {
 }
 
 .section-eyebrow {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  /* Eyebrow no longer dressed as a 2023-era monospace kicker.
+     Reads as a plain quiet label. */
+  font-size: 12.5px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: var(--ink-secondary);
+  letter-spacing: -0.005em;
+  color: var(--ink-muted);
   margin: 0;
 }
 
@@ -1286,12 +1853,10 @@ svg:not([width]):not([height]) {
   padding: 6px 12px;
   border: 0;
   background: transparent;
-  color: var(--ink-muted);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+  color: var(--ink-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
   cursor: pointer;
   transition: color var(--transition-fast), background-color var(--transition-fast);
   border-radius: 6px;
@@ -1429,11 +1994,23 @@ svg:not([width]):not([height]) {
 }
 
 .home-log {
+  /* Flat row list on the page background, no card chrome. The full
+     History page keeps the styled conversation-log block. */
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+/* When the home log is the only container on Home, neutralise the
+   .conversation-log card chrome so the rows sit on the page surface
+   instead of inside a sunken card. */
+.home-page .conversation-log {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .conversation-log {
@@ -1635,14 +2212,18 @@ svg:not([width]):not([height]) {
 
 .conversation-entry {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) auto auto;
-  align-items: start;
-  column-gap: var(--space-5);
-  row-gap: var(--space-2);
-  padding: 16px 20px;
+  grid-template-columns: 56px minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
+  padding: 11px var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
   transition: background-color var(--transition-fast);
   position: relative;
+}
+
+.conversation-entry:hover {
+  background: oklch(24% 0.011 250);
 }
 
 .conversation-entry:last-child { border-bottom: 0; }
@@ -1659,22 +2240,18 @@ svg:not([width]):not([height]) {
   background: oklch(100% 0 0 / 0.025);
 }
 
-/* Hero row — the most recent entry. Bolder, larger transcription,
-   brighter metrics, soft amber left edge, always-visible actions. */
+/* Hero row — the most recent entry. Slightly larger metrics and
+   visible actions; no leading colored stripe. Home page uses its
+   own .home-row layout instead, so this only applies in History. */
 .conversation-entry.is-hero {
-  padding-top: 20px;
-  padding-bottom: 20px;
+  padding-top: 18px;
+  padding-bottom: 18px;
 }
 
 .conversation-entry.is-hero::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 18px;
-  bottom: 18px;
-  width: 2px;
-  background: var(--accent-live);
-  border-radius: 0 2px 2px 0;
+  /* Strip removed: status info already lives in the pulsing dot on the
+     home CTA + the warm tint on is-fresh rows. */
+  display: none;
 }
 
 /* Archive rows — condensed, dimmer, smaller metrics. The history
@@ -1774,33 +2351,31 @@ svg:not([width]):not([height]) {
 
 .conversation-entry .entry-time {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--ink-faint);
   font-weight: 500;
   letter-spacing: 0.02em;
   font-feature-settings: "tnum" 1, "ss01" 1;
   grid-column: 1;
-  align-self: start;
+  align-self: center;
   white-space: nowrap;
-  padding-top: 4px;
 }
 
 .entry-content-wrap {
   min-width: 0;
-  align-self: start;
+  align-self: center;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
 .entry-content {
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 36;
+  font-family: var(--font-sans);
   color: var(--ink-primary);
-  font-size: 21px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.45;
   letter-spacing: -0.005em;
-  font-weight: 460;
+  font-weight: 450;
   text-wrap: pretty;
   hyphens: auto;
   word-break: break-word;
@@ -1846,21 +2421,20 @@ svg:not([width]):not([height]) {
 }
 
 /* Metrics: a single quiet line. No separators, no WPM hero treatment,
-   one tier down from the content. The numbers and units share weight. */
+   one tier down from the content. Compact mono so rows scan quietly. */
 .entry-metrics {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 500;
   color: var(--ink-faint);
   font-feature-settings: "tnum" 1, "ss01" 1;
   letter-spacing: 0.02em;
   white-space: nowrap;
-  align-self: start;
+  align-self: center;
   justify-self: end;
-  padding-top: 4px;
 }
 
 .entry-metrics-spacer {
@@ -1888,27 +2462,27 @@ svg:not([width]):not([height]) {
   letter-spacing: 0.04em;
 }
 
-/* Hero metrics — the only ink-bold numbers on the page. WPM is the
-   single most confident number visible. */
+/* Hero metrics — slightly larger than archive rows but staying quiet.
+   No orange-bold weight: we keep visual confidence on Home's right
+   rail, not here. */
 .entry-metrics-hero {
-  gap: 14px;
-  padding-top: 6px;
+  gap: 12px;
 }
 
 .entry-metrics-hero .metric {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .entry-metrics-hero .metric-num {
-  color: var(--ink-primary);
-  font-weight: 600;
-  font-size: 13px;
+  color: var(--ink-secondary);
+  font-weight: 500;
+  font-size: 12px;
   letter-spacing: 0.01em;
 }
 
 .entry-metrics-hero .metric-unit {
-  color: var(--ink-muted);
-  font-size: 11px;
+  color: var(--ink-faint);
+  font-size: 10.5px;
   letter-spacing: 0.04em;
 }
 
@@ -2296,18 +2870,20 @@ textarea:focus-visible {
 
 .quick-note-card {
   position: relative;
-  background: var(--bg-card);
-  border: 1px solid var(--border-line);
+  background: oklch(24% 0.012 250);
+  border: 1px solid oklch(34% 0.010 250);
   border-radius: var(--radius-card);
   padding: var(--space-8) var(--space-10);
   overflow: hidden;
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
+              0 6px 18px -10px oklch(0% 0 0 / 0.5);
 }
 
 .quick-note-card::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 80% 50%, oklch(22% 0.010 250 / 0.5), transparent 70%);
+  background: radial-gradient(ellipse at 80% 50%, oklch(32% 0.080 50 / 0.18), transparent 60%);
   pointer-events: none;
 }
 
@@ -2388,12 +2964,11 @@ textarea:focus-visible {
 }
 
 .notes-ledger-head h3 {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.18em;
-  color: var(--ink-faint);
-  text-transform: uppercase;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--ink-primary);
   margin: 0;
 }
 
@@ -2575,11 +3150,16 @@ textarea:focus-visible {
 }
 
 .viz-bar {
+  /* Anchored at the bottom so transform: scaleY simulates height changes
+     without triggering layout. Ponytail: kept height: 100% + transform
+     for waveform effect; upgrade to SKSL waveform in dock someday. */
   width: 3px;
   height: 100%;
   background: var(--ink-primary);
   border-radius: 2px;
-  transition: height 75ms ease;
+  transform-origin: bottom center;
+  transform: scaleY(0.4);
+  transition: transform 75ms ease;
   opacity: 0.6;
 }
 
@@ -2600,7 +3180,7 @@ textarea:focus-visible {
 
 .app-frame.is-recording .dock-status { color: var(--accent-live); }
 
-/* Page Headers */
+/* Page Headers — used by History, Dictionary, Snippets, Notes. */
 .page-header-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2613,23 +3193,24 @@ textarea:focus-visible {
 
 .page-header-row .dark-action { margin-top: 0; }
 .page-header-row h1 {
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 96;
-  font-size: clamp(28px, 4.5vw, 40px);
-  font-weight: 460;
-  margin-bottom: 4px;
+  font-family: var(--font-sans);
+  font-size: clamp(26px, 3.6vw, 32px);
+  font-weight: 600;
+  margin-bottom: 6px;
   letter-spacing: -0.025em;
-  line-height: 1.05;
+  line-height: 1.1;
+  color: var(--ink-primary);
+  text-wrap: balance;
 }
 
 .page-subtitle {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-variation-settings: "opsz" 30;
-  font-size: 14px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
   color: var(--ink-muted);
   font-weight: 400;
   letter-spacing: -0.005em;
+  line-height: 1.5;
+  margin: 0;
 }
 
 /* Empty State Styling (Improved) */
@@ -2762,24 +3343,23 @@ textarea:focus-visible {
 
 .dictionary-form-card {
   padding: var(--space-6);
-  background: var(--bg-card);
-  border: 1px solid var(--border-line);
+  background: oklch(24% 0.012 250);
+  border: 1px solid oklch(34% 0.010 250);
   border-radius: var(--radius-card);
-  transition: max-height var(--transition-main), opacity var(--transition-main), transform var(--transition-main), border-color var(--transition-fast);
-  max-height: 600px;
-  overflow: hidden;
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
+              0 6px 18px -10px oklch(0% 0 0 / 0.5);
+  transition: opacity var(--transition-main), transform var(--transition-main), border-color var(--transition-fast);
   opacity: 1;
+  transform: translateY(0) scaleY(1);
+  transform-origin: top center;
 }
 
 .dictionary-form-card.is-collapsed {
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  margin-bottom: -8px;
-  border-color: transparent;
+  /* Scale to 0 vertically; width is no longer transitioned. */
   opacity: 0;
-  transform: translateY(-6px);
+  transform: translateY(-4px) scaleY(0);
   pointer-events: none;
+  border-color: transparent;
 }
 
 .card-header-simple {
@@ -2953,46 +3533,65 @@ textarea:focus-visible {
   flex-direction: column;
 }
 
+/* Dictionary rows. Stack spoken → corrected terms as a chip pair:
+   spoken term is a faint mono pill (the user types this), corrected
+   term reads as the actual content. Cards lift on hover like home
+   entries, with divider lines between rows. */
 .dictionary-item-card,
 .dictionary-item-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1.4fr) auto;
   gap: var(--space-4);
-  align-items: baseline;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border-line);
-  transition: background-color var(--transition-fast);
+  align-items: center;
+  padding: 12px var(--space-4);
+  margin: 0 calc(-1 * var(--space-4));
+  background: transparent;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.dictionary-item-card + .dictionary-item-card,
+.dictionary-item-card + .dictionary-item-row,
+.dictionary-item-row + .dictionary-item-card,
+.dictionary-item-row + .dictionary-item-row {
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0;
+  margin-top: 2px;
 }
 
 .dictionary-item-card:hover,
 .dictionary-item-row:hover {
-  background: linear-gradient(90deg, var(--bg-hover), transparent 40%);
+  background: oklch(24% 0.011 250);
+  border-color: oklch(34% 0.010 250);
 }
 
 .dict-item-content { display: contents; }
 
 .dict-term {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
-.term-label {
+.dict-term .term-label {
   font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
   color: var(--ink-faint);
+  flex-shrink: 0;
+  width: 60px;
 }
 
 .term-value {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--ink-secondary);
-  font-style: italic;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3001,22 +3600,22 @@ textarea:focus-visible {
 
 .spoken .term-value {
   color: var(--ink-muted);
-  font-style: italic;
+  background: oklch(20% 0.011 250);
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid oklch(30% 0.010 250);
 }
 
 .correct .term-value {
   color: var(--ink-primary);
-  font-family: var(--font-display);
-  font-style: normal;
-  font-variation-settings: "opsz" 36;
-  font-size: 16px;
-  font-weight: 460;
+  font-size: 15px;
+  font-weight: 500;
   letter-spacing: -0.01em;
 }
 
 .dict-connector {
   color: var(--ink-faint);
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 .icon-delete-btn,
@@ -3171,12 +3770,14 @@ textarea:focus-visible {
   height: 6px;
   border-radius: 999px;
   background: var(--border-line);
-  transition: background-color var(--transition-fast), width var(--transition-fast);
+  transform-origin: center;
+  transform: scaleX(1);
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
 }
 
 .onboarding-dot.active {
   background: var(--ink-primary);
-  width: 18px;
+  transform: scaleX(3);
   border-radius: 999px;
 }
 
