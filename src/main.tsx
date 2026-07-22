@@ -3080,7 +3080,7 @@ function initializeUpdaterPanel(): void {
     openInSystemBrowser(updateReleaseLink.href);
   });
   updateInstallProgressWrap.hidden = true;
-  updateInstallProgressBar.style.width = "0%";
+  updateInstallProgressBar.style.setProperty("--p", "0");
   updateInstallProgressTrack.setAttribute("aria-valuenow", "0");
   updateInstallProgressTrack.setAttribute("aria-valuetext", "Waiting to start update download.");
   updateInstallProgressText.textContent = "Waiting to start update download.";
@@ -3233,7 +3233,7 @@ function setUpdateInstallProgress(
 ): void {
   updateInstallProgressWrap.hidden = !visible;
   const normalizedPercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
-  updateInstallProgressBar.style.width = `${normalizedPercent}%`;
+  updateInstallProgressBar.style.setProperty("--p", String(normalizedPercent / 100));
   const progressText = detail ? `${message} ${detail}` : message;
   updateInstallProgressTrack.setAttribute("aria-valuenow", String(Math.round(normalizedPercent)));
   updateInstallProgressTrack.setAttribute("aria-valuetext", progressText);
@@ -4745,14 +4745,14 @@ function renderDictionaryList(): void {
       <div class="dict-item-content">
         <div class="dict-term spoken">
           <span class="term-label">Spoken</span>
-          <span class="term-value">${term.source}</span>
+          <span class="term-value">${escapeHtml(term.source)}</span>
         </div>
         <div class="dict-connector">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
         </div>
         <div class="dict-term correct">
           <span class="term-label">Correct</span>
-          <span class="term-value">${term.target}</span>
+          <span class="term-value">${escapeHtml(term.target)}</span>
         </div>
       </div>
       <div class="dict-item-actions">
@@ -6190,7 +6190,7 @@ function showLocalSttDownloadOverlay(status: LocalSttDownloadStatusResponse): vo
     <div style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:4px;">${escapeHtml(modelLabel)}</div>
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.4;">${escapeHtml(stage)}</div>
     <div style="height:6px;border-radius:999px;background:rgba(255, 255, 255, 0.08);overflow:hidden;margin-bottom:10px;">
-      <div style="height:100%;width:${boundedPercent.toFixed(1)}%;background:var(--text-secondary);transition:width 0.3s ease-out;"></div>
+      <div style="position:absolute;left:0;top:0;height:100%;width:100%;background:var(--text-secondary);transform:scaleX(${boundedPercent/100});transform-origin:left center;transition:transform 0.3s ease-out;"></div>
     </div>
     <div style="font-size:12px;color:var(--text-muted);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(detail)}</div>
   `;
@@ -6463,7 +6463,7 @@ function applyLocalSttDownloadStatus(status: LocalSttDownloadStatusResponse): vo
     Math.min(100, status.completed && status.success ? 100 : rawPercent),
   );
   localSttDownloadActive = status.active;
-  localSttDownloadProgressBar.style.width = `${boundedPercent}%`;
+  localSttDownloadProgressBar.style.setProperty("--p", String(boundedPercent / 100));
   const progressTrack = localSttDownloadProgressBar.parentElement;
   progressTrack?.setAttribute("aria-valuenow", boundedPercent.toFixed(1));
 
