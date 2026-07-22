@@ -8,6 +8,7 @@ import { AnalyticsPage } from './components/analytics/AnalyticsPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import type { HomeHistoryEntry, DictionaryTerm, SnippetEntry, QuickNoteEntry } from './types';
+import { NOTES_STORAGE_KEY } from './constants';
 
 function useUIState() {
   const [state, setState] = useState<UIState>(uiStore.getState());
@@ -67,10 +68,143 @@ function filterHistory(entries: HomeHistoryEntry[], hf: HistoryFilter): HomeHist
   return entries;
 }
 
+/* Build the date-grouped list of card entries for Home. Splits by
+   calendar day and emits a date band per group; entries are inline
+   single-line cards with copy + more-row actions. */
+function buildHomeList(
+  history: HomeHistoryEntry[],
+  onCopy: (entry: HomeHistoryEntry, setter: (v: boolean) => void) => void
+): React.ReactNode[] {
+  const visible = history.slice(0, 30);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStart = today.getTime();
+  const out: React.ReactNode[] = [];
+  let lastDayKey = "";
+  visible.forEach((entry, i) => {
+    const d = new Date(entry.timestamp);
+    const isToday = entry.timestamp >= todayStart;
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    if (key !== lastDayKey) {
+      lastDayKey = key;
+      out.push(
+        <li
+          key={`date-${key}-${i}`}
+          className="home-date-band"
+          aria-hidden="true"
+        >
+          <span>
+            {isToday
+              ? "TODAY"
+              : d
+                  .toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+                  .toUpperCase()}
+          </span>
+        </li>
+      );
+    }
+    const hh = d.getHours();
+    const mm = d.getMinutes().toString().padStart(2, "0");
+    const ampm = hh >= 12 ? "PM" : "AM";
+    const h12 = ((hh + 11) % 12) + 1;
+    const isFresh = Date.now() - entry.timestamp < 30_000;
+    out.push(
+      <li key={`row-${entry.timestamp}-${i}`}>
+        <HomeEntryCard
+          entry={entry}
+          time={`${h12}:${mm} ${ampm}`}
+          isFresh={isFresh}
+          onCopy={(setCopied) => onCopy(entry, setCopied)}
+        />
+      </li>
+    );
+  });
+  return out;
+}
+
+/* Lightweight card row: time + body + hover-revealed actions. Single
+   line. No multi-line clamp; long entries just truncate. */
+function HomeEntryCard({
+  entry,
+  time,
+  isFresh,
+  onCopy,
+}: {
+  entry: HomeHistoryEntry;
+  time: string;
+  isFresh: boolean;
+  onCopy: (setCopied: (v: boolean) => void) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const icon = (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+  return (
+    <article
+      className={`home-entry ${isFresh ? "is-fresh" : ""}`}
+      tabIndex={0}
+    >
+      <span className="home-entry-time">{time}</span>
+      <span className="home-entry-body" title={entry.content}>{entry.content}</span>
+      <span className="home-entry-actions">
+        {copied ? (
+          <span className={`home-entry-action is-copied`} title="Copied" aria-label="Copied">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="home-entry-action"
+            onClick={() => onCopy(setCopied)}
+            aria-label={`Copy: ${entry.content.slice(0, 48)}`}
+            title="Copy"
+          >
+            {icon}
+          </button>
+        )}
+        <button
+          type="button"
+          className="home-entry-action"
+          aria-label="More actions"
+          title="More"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="5" cy="12" r="1.6" />
+            <circle cx="12" cy="12" r="1.6" />
+            <circle cx="19" cy="12" r="1.6" />
+          </svg>
+        </button>
+      </span>
+    </article>
+  );
+}
+
 export function App() {
   const state = useUIState();
   const historyFilter = useHistoryFilter();
   const historySearch = useHistorySearch();
+
+  /* Copy handler for Home entry cards. Promise-safe with a timeout
+     fallback so the "Copied" tick always clears. */
+  const handleEntryCopy = async (
+    entry: HomeHistoryEntry,
+    setCopied: (v: boolean) => void
+  ) => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(entry.content);
+      }
+    } catch {
+      /* clipboard might not exist in some sandboxes — best effort. */
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
 
   useEffect(() => {
     const onDblClick = (event: MouseEvent) => {
@@ -113,6 +247,17 @@ export function App() {
         <div className="flow-shell">
           <div className="app-drag-region" data-tauri-drag-region="true"></div>
           <aside className="flow-sidebar">
+            <div className="brand-strip">
+              <span className="brand-glyph" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" x2="12" y1="19" y2="22" />
+                </svg>
+              </span>
+              <strong className="brand-word">SlasshyWispr<span className="brand-tagline">voice</span></strong>
+            </div>
+
             <nav className="nav-main" aria-label="Main navigation">
               <button className={`nav-item ${state.activePage === 'home' ? 'is-active' : ''}`} data-page-nav="home" data-label="Home" data-hotkey="Alt+1" aria-label="Home (Alt+1)" type="button">
                 <span className="nav-glyph">
@@ -187,106 +332,150 @@ export function App() {
           <main className="flow-content">
             <section className={`flow-page ${state.activePage === 'home' ? 'is-active' : ''}`} data-page="home">
               <div className="flow-page-inner home-page">
-                <header className="overview-header">
-                  <h1 className="overview-title">Look how far you've come</h1>
+                {/* Left column: greeting + date-grouped entry list. */}
+                <div className="home-main">
+                  {/* Personal greeting + Ctrl+Space tokens. Matches the
+                      Wispr-style greeting pattern; tokens are orange so
+                      the eye snaps to them. */}
+                  <h1 className="home-greeting">
+                    Hey <span className="home-greet-name">Slasshy</span>, get back into the flow with
+                    <span className="home-token">Ctrl</span>
+                    <span className="home-token-plus">+</span>
+                    <span className="home-token">Space</span>
+                  </h1>
+                  <p className="home-subgreeting">
+                    Press the combo, speak freely. Once you stop, your words show up here — grouped by the day you said them.
+                  </p>
 
-                  <div className="overview-stats" id="statsHero" aria-label="Today's stats">
-                    <div className="overview-stat">
-                      <span className="overview-stat-label" id="statsTitle">Words</span>
-                      <span className="overview-stat-value" id="metricWords">{((state.usage?.words ?? 0) + (state.usage?.prevWords ?? 0)).toLocaleString()}<span className="overview-stat-unit">w</span></span>
-                      <span className="stat-trend" id="wordsTrend"><span>--</span></span>
-                    </div>
-                    <div className="overview-stat">
-                      <span className="overview-stat-label">Spoken</span>
-                      <span className="overview-stat-value" id="metricSpeakingTime">{state.usage ? Math.floor(((state.usage?.speakingSeconds ?? 0) + (state.usage?.prevSpeakingSeconds ?? 0)) / 60) : 0}<span className="overview-stat-unit">min</span></span>
-                      <span className="stat-trend" id="timeTrend"><span>--</span></span>
-                    </div>
-                    <div className="overview-stat">
-                      <span className="overview-stat-label">Sessions</span>
-                      <span className="overview-stat-value" id="metricSessions">{((state.usage?.sessions ?? 0) + (state.usage?.prevSessions ?? 0)).toLocaleString()}</span>
-                      <span className="stat-trend" id="sessionsTrend"><span>--</span></span>
-                    </div>
-                    <div className="overview-stat">
-                      <span className="overview-stat-label">Pace</span>
-                      <span className="overview-stat-value" id="metricWpm">{state.usage ? (() => { const totalLifeWords = state.usage.words + state.usage.prevWords; const totalLifeTime = state.usage.speakingSeconds + state.usage.prevSpeakingSeconds; return totalLifeTime > 0 ? Math.round((totalLifeWords / totalLifeTime) * 60) : 0; })() : 0}<span className="overview-stat-unit">wpm</span></span>
-                      <span className="stat-trend" id="wpmTrend"><span>--</span></span>
-                    </div>
-                    <button id="clearStatsBtn" className="overview-clear-btn" type="button">Clear</button>
-                  </div>
-                </header>
-
-                <section className="home-log">
-                  <div className="section-head">
-                    <div className="section-title-block">
-                      <h3 className="section-eyebrow">Recent dictation</h3>
-                      <span className="section-sub">
-                        {state.history.length} {state.history.length === 1 ? 'entry' : 'entries'}
+                  {/* List region: date-banded card stack. */}
+                  <div className="home-list-head">
+                    <span className="home-list-head-l">
+                      <span className="home-list-head-icon" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 8v4l3 2" />
+                          <circle cx="12" cy="12" r="9" />
+                        </svg>
                       </span>
+                      <span style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--ink-muted)', letterSpacing: '0.04em' }}>Where you last left off</span>
+                    </span>
+                    <button
+                      id="historySearchBtn"
+                      className="home-list-head-action"
+                      type="button"
+                      aria-label="Search history"
+                      title="Search history"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <section className="home-log" role="log" aria-live="polite">
+                    <div id="conversationLog" className="conversation-log">
+                      {state.incognitoMode ? (
+                        <p className="empty-hint">Incognito mode enabled. History is hidden.</p>
+                      ) : state.history.length === 0 ? (
+                        <div className="home-empty">
+                          <span className="home-empty-title">Speak first. Edit second.</span>
+                          <span className="home-empty-sub">
+                            Start talking — your words land here, grouped by the day you said them.
+                            Press <kbd className="empty-hint-kbd">⌥ Space</kbd> to begin.
+                          </span>
+                        </div>
+                      ) : (
+                        <ul className="home-list">
+                          {buildHomeList(state.history, handleEntryCopy)}
+                        </ul>
+                      )}
                     </div>
-                    <div className="section-actions">
-                      <button id="clearHistoryBtn" className="btn-ghost" type="button">Clear</button>
-                      <button id="viewFullHistoryBtn" className="btn-secondary" type="button">
-                        View full history
-                        <svg className="btn-chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                  </section>
+                </div>
+
+                {/* Right column: stats summary card + voice-profile card. */}
+                <aside className="home-rail" aria-label="Lifetime stats">
+                  <div className="home-card" id="statsHero">
+                    <div className="home-card-head">
+                      <h3 className="home-card-title">Your numbers</h3>
+                      <button
+                        id="viewFullHistoryBtn"
+                        className="home-card-link"
+                        type="button"
+                      >
+                        Detail
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
                       </button>
                     </div>
+                    <div className="home-stat-figures">
+                      <div className="home-stat-figure">
+                        <span className="home-stat-figure-num" id="metricWords">
+                          {((state.usage?.words ?? 0) + (state.usage?.prevWords ?? 0)).toLocaleString()}
+                        </span>
+                        <span className="home-stat-figure-label">total words</span>
+                      </div>
+                      <div className="home-stat-figure">
+                        <span className="home-stat-figure-num" id="metricWpm">
+                          {state.usage ? Math.round(((state.usage.words + state.usage.prevWords) / Math.max(1, state.usage.speakingSeconds + state.usage.prevSpeakingSeconds)) * 60) : 0}
+                        </span>
+                        <span className="home-stat-figure-label">wpm</span>
+                      </div>
+                      <div className="home-stat-figure">
+                        <span className="home-stat-figure-num" id="metricSessions">
+                          {state.usage?.sessions ?? 0}
+                        </span>
+                        <span className="home-stat-figure-label">sessions</span>
+                      </div>
+                    </div>
+                    {/* Hidden. main.tsx writes to these by id at runtime. */}
+                    <span id="metricSpeakingTime" hidden>{state.usage ? Math.floor(((state.usage?.speakingSeconds ?? 0) + (state.usage?.prevSpeakingSeconds ?? 0)) / 60) : 0}</span>
+                    <span id="statsTitle" hidden>Stats</span>
+                    <span id="wordsTrend" hidden>--</span>
+                    <span id="timeTrend" hidden>--</span>
+                    <span id="sessionsTrend" hidden>--</span>
+                    <span id="wpmTrend" hidden>--</span>
                   </div>
-                  <div id="conversationLog" className="conversation-log" role="log" aria-live="polite">
-                    {state.incognitoMode ? (
-                      <p className="empty-hint">Incognito mode enabled. History is hidden.</p>
-                    ) : (() => {
-                      if (state.history.length === 0) {
-                        return (
-                          <div className="empty-hint">
-                            <div className="empty-hint-icon" aria-hidden="true">
-                              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
-                            </div>
-                            <span className="empty-hint-kicker">Nothing here yet</span>
-                            <h4>Start dictating</h4>
-                            <p>Press <kbd className="empty-hint-kbd">⌥ Space</kbd> to capture speech — your transcriptions will land here, in chronological order.</p>
-                          </div>
-                        );
-                      }
 
-                      const formatDate = (ts: number) => {
-                        const d = new Date(ts);
-                        const day = d.getDate();
-                        const month = d.toLocaleString('en-US', { month: 'long' }).toUpperCase();
-                        const year = d.getFullYear();
-                        return `${day} ${month} ${year}`;
-                      };
-
-                      const getDateKey = (ts: number) => {
-                        const d = new Date(ts);
-                        return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-                      };
-
-                      let lastDateKey = '';
-                      const elements: React.ReactNode[] = [];
-
-                      state.history.forEach((entry, i) => {
-                        const dateKey = getDateKey(entry.timestamp);
-                        if (dateKey !== lastDateKey) {
-                          lastDateKey = dateKey;
-                          // Date headers are suppressed on the home page
-                          // (the section header above the card is the single
-                          // source of truth for "what day is this"). They
-                          // remain useful on the Full History page.
-                          elements.push(
-                            <div key={`date-${dateKey}`} className="history-date-header history-date-header--home">
-                              <span className="history-date-label">{formatDate(entry.timestamp)}</span>
-                            </div>
-                          );
-                        }
-                        elements.push(
-                          <HistoryRow key={`${entry.timestamp}-${i}`} entry={entry} rowIndex={i} />
-                        );
-                      });
-
-                      return elements;
-                    })()}
+                  <div className="home-card">
+                    <div className="home-card-head">
+                      <h3 className="home-card-title">Your Voice Profile</h3>
+                    </div>
+                    <p style={{ fontSize: '13.5px', color: 'var(--ink-muted)', margin: 0, lineHeight: 1.5 }}>
+                      Discover how you use your voice. SlasshyWispr is learning the words you use, the pace you speak, and the apps you dictate into.
+                    </p>
+                    <div>
+                      <span className="home-profile-pill">Unlock in 2K more words</span>
+                    </div>
+                    <div className="home-profile-progress" aria-hidden="true">
+                      <span
+                        className="home-profile-progress-fill"
+                        style={{ ["--p" as string]: Math.min(1, ((state.usage?.words ?? 0)) / 2000) }}
+                      ></span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--ink-faint)', fontFamily: 'var(--font-mono)', letterSpacing: '0.01em' }}>
+                      <span>{((state.usage?.words ?? 0)).toLocaleString()}</span>
+                      <span>2,000</span>
+                    </div>
+                    <button
+                      id="clearHistoryBtn"
+                      className="home-link-btn"
+                      type="button"
+                      style={{ alignSelf: 'flex-start', fontSize: '12px', color: 'var(--ink-faint)' }}
+                    >
+                      Clear all entries
+                    </button>
+                    <button
+                      id="clearStatsBtn"
+                      className="home-link-btn"
+                      type="button"
+                      style={{ alignSelf: 'flex-start', fontSize: '12px', color: 'var(--ink-faint)' }}
+                    >
+                      Reset stats
+                    </button>
                   </div>
-                </section>
+                </aside>
               </div>
             </section>
 
@@ -1014,12 +1203,12 @@ function NoteRow({ note }: { note: QuickNoteEntry }) {
   const time = new Date(note.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   
   const handleRemove = (): void => {
-    const raw = localStorage.getItem('slasshy-desktop-assistant-notes');
+    const raw = localStorage.getItem(NOTES_STORAGE_KEY);
     if (!raw) return;
     try {
       const notes = JSON.parse(raw) as QuickNoteEntry[];
       const filtered = notes.filter(n => n.id !== note.id);
-      localStorage.setItem('slasshy-desktop-assistant-notes', JSON.stringify(filtered));
+      localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(filtered));
       window.dispatchEvent(new CustomEvent('slasshy:store-updated'));
     } catch { /* ignore */ }
   };
