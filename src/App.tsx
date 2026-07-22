@@ -287,76 +287,10 @@ function menuAnchorStyle(anchor: HTMLElement | null): React.CSSProperties {
   };
 }
 
-/* Reads the persisted push-to-talk hotkey from localStorage on mount
-   and re-reads whenever main.tsx emits its settings-changed event so
-   the Home greeting stays in sync with what the user actually set.
-   Returns the hotkey as a token array (["Ctrl","Shift","Space"]).
-   Falls back to empty so the UI skips the token row entirely if the
-   settings payload is unreadable — we never invent a fake combo. */
-function useHotkeyTokens(): string[] {
-  const [tokens, setTokens] = useState<string[]>([]);
-  useEffect(() => {
-    const read = () => {
-      try {
-        const raw = window.localStorage.getItem("slasshy-desktop-assistant-settings-v4");
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as { pushToTalkHotkey?: string };
-        const hotkey = String(parsed.pushToTalkHotkey ?? "").trim();
-        if (!hotkey) return;
-        setTokens(
-          hotkey
-            .split("+")
-            .map((p) => p.trim())
-            .filter(Boolean)
-        );
-      } catch {
-        /* corrupted blob — leave tokens empty so we don't render
-           a misleading combo. */
-      }
-    };
-    read();
-    window.addEventListener("slasshy:store-updated", read);
-    window.addEventListener("storage", read);
-    return () => {
-      window.removeEventListener("slasshy:store-updated", read);
-      window.removeEventListener("storage", read);
-    };
-  }, []);
-  return tokens;
-}
-
-/* Renders the user's hotkey combo as orange token pills with a "+"
-   between each. Mirrors what the Settings pane's hotkey field shows
-   so what the user sees in the greeting matches what they pressed
-   during capture. */
-function HomeHotkeyTokens({ tokens }: { tokens: string[] }) {
-  if (tokens.length === 0) {
-    return (
-      <span className="home-token" aria-label="dictation hotkey not yet set">
-        Not set
-      </span>
-    );
-  }
-  return (
-    <>
-      {tokens.map((token, i) => (
-        <span key={`hotkey-${i}`} className="home-token">
-          {token}
-        </span>
-      )).reduce((acc: React.ReactNode[], el, i) => {
-        if (i > 0) acc.push(<span key={`sep-${i}`} className="home-token-plus">+</span>);
-        acc.push(el);
-        return acc;
-      }, [])}
-    </>
-  );
-}
-
 export function App() {
   const state = useUIState();
   const historyFilter = useHistoryFilter();
   const historySearch = useHistorySearch();
-  const hotkeyTokens = useHotkeyTokens();
 
   /* Copy handler for Home entry cards. Promise-safe with a timeout
      fallback so the "Copied" tick always clears. */
@@ -501,19 +435,8 @@ export function App() {
           <main className="flow-content">
             <section className={`flow-page ${state.activePage === 'home' ? 'is-active' : ''}`} data-page="home">
               <div className="flow-page-inner home-page">
-                {/* Left column: greeting + date-grouped entry list. */}
+                {/* Left column: date-grouped entry list. */}
                 <div className="home-main">
-                  {/* Personal greeting. Each token in the user's push-to-talk
-                      combo renders as an orange pill; what you see here is
-                      whatever the user actually configured in Settings. */}
-                  <h1 className="home-greeting">
-                    Hey <span className="home-greet-name">Slasshy</span>, get back into the flow with
-                    <HomeHotkeyTokens tokens={hotkeyTokens} />
-                  </h1>
-                  <p className="home-subgreeting">
-                    Press the combo, speak freely. Once you stop, your words show up here — grouped by the day you said them.
-                  </p>
-
                   {/* List region: date-banded card stack. */}
                   <div className="home-list-head">
                     <span className="home-list-head-l">
@@ -525,18 +448,28 @@ export function App() {
                       </span>
                       <span style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--ink-muted)', letterSpacing: '0.04em' }}>Where you last left off</span>
                     </span>
-                    <button
-                      id="historySearchBtn"
-                      className="home-list-head-action"
-                      type="button"
-                      aria-label="Search history"
-                      title="Search history"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="11" cy="11" r="8" />
-                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                      </svg>
-                    </button>
+                    <span className="home-list-head-r">
+                      <button
+                        id="clearHistoryBtn"
+                        className="home-list-head-link"
+                        type="button"
+                        title="Clear all entries"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        id="historySearchBtn"
+                        className="home-list-head-action"
+                        type="button"
+                        aria-label="Search history"
+                        title="Search history"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="11" cy="11" r="8" />
+                          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                      </button>
+                    </span>
                   </div>
 
                   <section className="home-log" role="log" aria-live="polite">
@@ -603,41 +536,12 @@ export function App() {
                     <span id="timeTrend" hidden>--</span>
                     <span id="sessionsTrend" hidden>--</span>
                     <span id="wpmTrend" hidden>--</span>
-                  </div>
-
-                  <div className="home-card">
-                    <div className="home-card-head">
-                      <h3 className="home-card-title">Your Voice Profile</h3>
-                    </div>
-                    <p style={{ fontSize: '13.5px', color: 'var(--ink-muted)', margin: 0, lineHeight: 1.5 }}>
-                      Discover how you use your voice. SlasshyWispr is learning the words you use, the pace you speak, and the apps you dictate into.
-                    </p>
-                    <div>
-                      <span className="home-profile-pill">Unlock in 2K more words</span>
-                    </div>
-                    <div className="home-profile-progress" aria-hidden="true">
-                      <span
-                        className="home-profile-progress-fill"
-                        style={{ ["--p" as string]: Math.min(1, ((state.usage?.words ?? 0)) / 2000) }}
-                      ></span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--ink-faint)', fontFamily: 'var(--font-mono)', letterSpacing: '0.01em' }}>
-                      <span>{((state.usage?.words ?? 0)).toLocaleString()}</span>
-                      <span>2,000</span>
-                    </div>
-                    <button
-                      id="clearHistoryBtn"
-                      className="home-link-btn"
-                      type="button"
-                      style={{ alignSelf: 'flex-start', fontSize: '12px', color: 'var(--ink-faint)' }}
-                    >
-                      Clear all entries
-                    </button>
+                    {/* Footer reset link — kept low so it doesn't compete
+                        with the figure rows above. */}
                     <button
                       id="clearStatsBtn"
-                      className="home-link-btn"
+                      className="home-card-reset"
                       type="button"
-                      style={{ alignSelf: 'flex-start', fontSize: '12px', color: 'var(--ink-faint)' }}
                     >
                       Reset stats
                     </button>

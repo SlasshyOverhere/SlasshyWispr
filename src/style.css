@@ -855,6 +855,30 @@ body.sidebar-collapsed .nav-keyhint {
   gap: 6px;
 }
 
+/* Right-side group of utilities: clear link + search pin. */
+.home-list-head-r {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.home-list-head-link {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 0;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.home-list-head-link:hover {
+  color: oklch(75% 0.18 25);
+  background: oklch(60% 0.20 25 / 0.10);
+}
+
 .home-list-head-icon {
   width: 14px;
   height: 14px;
@@ -1112,6 +1136,24 @@ body.sidebar-collapsed .nav-keyhint {
 }
 
 .home-card-link:hover { color: var(--ink-primary); }
+
+/* Quiet reset link — sits at the bottom of a rail card, doesn't
+   compete with the figure rows. */
+.home-card-reset {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  align-self: flex-start;
+  margin-top: var(--space-1);
+  transition: color var(--transition-fast);
+  font-family: inherit;
+}
+
+.home-card-reset:hover { color: oklch(75% 0.18 25); }
 
 /* Stats card: 3 stacked figure rows. */
 .home-stat-figures {
