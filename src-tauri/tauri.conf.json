@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com asset:; img-src 'self' asset: data:; media-src 'self' asset: data: blob:; connect-src 'self' ws: wss: asset:;"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com asset:; img-src 'self' asset: data:; media-src 'self' asset: data: blob:; connect-src 'self' asset:; object-src 'none'; base-uri 'self'; form-action 'self';"
     }
   },
   "bundle": {
