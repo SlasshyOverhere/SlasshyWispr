@@ -800,7 +800,7 @@ body.sidebar-collapsed .nav-keyhint {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 9px;
+  padding: 3px 9px;
   border-radius: 5px;
   background: oklch(80% 0.16 50);
   color: oklch(20% 0.04 50);
@@ -810,17 +810,20 @@ body.sidebar-collapsed .nav-keyhint {
   letter-spacing: 0.01em;
   margin: 0 2px;
   vertical-align: baseline;
+  line-height: 1;
   white-space: nowrap;
-  transform: translateY(-1px);
 }
 
 .home-token-plus {
+  display: inline-block;
   font-weight: 500;
   color: var(--ink-muted);
   font-size: 0.78em;
   margin: 0 4px;
-  vertical-align: baseline;
-  transform: translateY(-1px);
+  line-height: 1;
+  /* No transform — the previous translateY shifted the glyph off axis
+     and caused it to render as an ambiguous bar when font baseline
+     disagreed with our inline box baseline. */
 }
 
 /* Subgreeting: a one-line whisper about what's current. */

@@ -184,10 +184,76 @@ function HomeEntryCard({
   );
 }
 
+/* Reads the persisted push-to-talk hotkey from localStorage on mount
+   and re-reads whenever main.tsx emits its settings-changed event so
+   the Home greeting stays in sync with what the user actually set.
+   Returns the hotkey as a token array (["Ctrl","Shift","Space"]).
+   Falls back to empty so the UI skips the token row entirely if the
+   settings payload is unreadable — we never invent a fake combo. */
+function useHotkeyTokens(): string[] {
+  const [tokens, setTokens] = useState<string[]>([]);
+  useEffect(() => {
+    const read = () => {
+      try {
+        const raw = window.localStorage.getItem("slasshy-desktop-assistant-settings-v4");
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as { pushToTalkHotkey?: string };
+        const hotkey = String(parsed.pushToTalkHotkey ?? "").trim();
+        if (!hotkey) return;
+        setTokens(
+          hotkey
+            .split("+")
+            .map((p) => p.trim())
+            .filter(Boolean)
+        );
+      } catch {
+        /* corrupted blob — leave tokens empty so we don't render
+           a misleading combo. */
+      }
+    };
+    read();
+    window.addEventListener("slasshy:store-updated", read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener("slasshy:store-updated", read);
+      window.removeEventListener("storage", read);
+    };
+  }, []);
+  return tokens;
+}
+
+/* Renders the user's hotkey combo as orange token pills with a "+"
+   between each. Mirrors what the Settings pane's hotkey field shows
+   so what the user sees in the greeting matches what they pressed
+   during capture. */
+function HomeHotkeyTokens({ tokens }: { tokens: string[] }) {
+  if (tokens.length === 0) {
+    return (
+      <span className="home-token" aria-label="dictation hotkey not yet set">
+        Not set
+      </span>
+    );
+  }
+  return (
+    <>
+      {tokens.map((token, i) => (
+        <span key={`hotkey-${i}`} className="home-token">
+          {token}
+        </span>
+      )).reduce((acc: React.ReactNode[], el, i) => {
+        if (i > 0) acc.push(<span key={`sep-${i}`} className="home-token-plus">+</span>);
+        acc.push(el);
+        return acc;
+      }, [])}
+    </>
+  );
+}
+
 export function App() {
   const state = useUIState();
   const historyFilter = useHistoryFilter();
   const historySearch = useHistorySearch();
+  const hotkeyTokens = useHotkeyTokens();
 
   /* Copy handler for Home entry cards. Promise-safe with a timeout
      fallback so the "Copied" tick always clears. */
@@ -334,14 +400,12 @@ export function App() {
               <div className="flow-page-inner home-page">
                 {/* Left column: greeting + date-grouped entry list. */}
                 <div className="home-main">
-                  {/* Personal greeting + Ctrl+Space tokens. Matches the
-                      Wispr-style greeting pattern; tokens are orange so
-                      the eye snaps to them. */}
+                  {/* Personal greeting. Each token in the user's push-to-talk
+                      combo renders as an orange pill; what you see here is
+                      whatever the user actually configured in Settings. */}
                   <h1 className="home-greeting">
                     Hey <span className="home-greet-name">Slasshy</span>, get back into the flow with
-                    <span className="home-token">Ctrl</span>
-                    <span className="home-token-plus">+</span>
-                    <span className="home-token">Space</span>
+                    <HomeHotkeyTokens tokens={hotkeyTokens} />
                   </h1>
                   <p className="home-subgreeting">
                     Press the combo, speak freely. Once you stop, your words show up here — grouped by the day you said them.
