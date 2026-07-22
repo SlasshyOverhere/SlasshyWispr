@@ -1365,28 +1365,30 @@ svg:not([width]):not([height]) {
   display: none !important;
 }
 
-/* focus-card: subtle raised panel, no gradient junk */
+/* focus-card: subtle raised panel, no gradient junk.
+   Dark theme: matches the home-card surface recipe — same lift
+   over the page bg, same warm border. */
 .focus-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-line);
+  background: oklch(24% 0.012 250);
+  border: 1px solid oklch(34% 0.010 250);
   border-radius: var(--radius-card);
   padding: var(--space-6);
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
+              0 6px 18px -10px oklch(0% 0 0 / 0.5);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
 }
 
 .focus-card:hover {
-  border-color: var(--border-strong);
+  border-color: oklch(45% 0.012 250);
 }
 
 .focus-card h2 {
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 36;
-  font-size: 22px;
-  font-weight: 460;
+  font-family: var(--font-sans);
+  font-size: 19px;
+  font-weight: 600;
   margin-bottom: var(--space-2);
   color: var(--ink-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
 }
 
 .focus-card p {
@@ -1394,6 +1396,7 @@ svg:not([width]):not([height]) {
   margin-bottom: var(--space-4);
   max-width: 60ch;
   font-size: 14px;
+  line-height: 1.5;
 }
 
 /* Primary action button — quiet light pill on dark surfaces, otherwise the recording-live amber */
@@ -1453,19 +1456,22 @@ svg:not([width]):not([height]) {
   color: var(--ink-primary);
 }
 
-/* Form-card used by Dictionary / Snippets — restrained, no gradient hero */
+/* Form-card used by Snippets — same dark-theme lift recipe as
+   .focus-card. light theme handled below with whites + shadow. */
 .snippet-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-line);
+  background: oklch(24% 0.012 250);
+  border: 1px solid oklch(34% 0.010 250);
   border-radius: var(--radius-card);
   padding: var(--space-6);
   transition: border-color var(--transition-fast), background-color var(--transition-fast);
   position: relative;
   margin-bottom: var(--space-6);
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
+              0 6px 18px -10px oklch(0% 0 0 / 0.5);
 }
 
 .snippet-card:hover {
-  border-color: var(--border-strong);
+  border-color: oklch(45% 0.012 250);
 }
 
 .snippet-card.is-collapsed {
@@ -1629,15 +1635,16 @@ svg:not([width]):not([height]) {
   font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--ink-primary);
-  background: transparent;
-  padding: 0;
-  border-radius: 0;
+  background: oklch(28% 0.080 50);
+  border: 1px solid oklch(60% 0.18 50 / 0.30);
+  padding: 3px 9px;
+  border-radius: 6px;
   width: fit-content;
-  border: 0;
   letter-spacing: -0.005em;
+  white-space: nowrap;
 }
 
-.snippet-trigger::before { content: "› "; color: var(--ink-faint); }
+.snippet-trigger::before { content: "› "; color: oklch(84% 0.18 55); opacity: 0.7; }
 
 .snippet-expansion {
   font-family: var(--font-display);
@@ -1773,12 +1780,10 @@ svg:not([width]):not([height]) {
   padding: 6px 12px;
   border: 0;
   background: transparent;
-  color: var(--ink-muted);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+  color: var(--ink-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
   cursor: pointer;
   transition: color var(--transition-fast), background-color var(--transition-fast);
   border-radius: 6px;
@@ -2142,6 +2147,10 @@ svg:not([width]):not([height]) {
   border-bottom: 1px solid var(--border-subtle);
   transition: background-color var(--transition-fast);
   position: relative;
+}
+
+.conversation-entry:hover {
+  background: oklch(24% 0.011 250);
 }
 
 .conversation-entry:last-child { border-bottom: 0; }
@@ -2791,18 +2800,20 @@ textarea:focus-visible {
 
 .quick-note-card {
   position: relative;
-  background: var(--bg-card);
-  border: 1px solid var(--border-line);
+  background: oklch(24% 0.012 250);
+  border: 1px solid oklch(34% 0.010 250);
   border-radius: var(--radius-card);
   padding: var(--space-8) var(--space-10);
   overflow: hidden;
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
+              0 6px 18px -10px oklch(0% 0 0 / 0.5);
 }
 
 .quick-note-card::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 80% 50%, oklch(22% 0.010 250 / 0.5), transparent 70%);
+  background: radial-gradient(ellipse at 80% 50%, oklch(32% 0.080 50 / 0.18), transparent 60%);
   pointer-events: none;
 }
 
@@ -2883,12 +2894,11 @@ textarea:focus-visible {
 }
 
 .notes-ledger-head h3 {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.18em;
-  color: var(--ink-faint);
-  text-transform: uppercase;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--ink-primary);
   margin: 0;
 }
 
@@ -3100,7 +3110,7 @@ textarea:focus-visible {
 
 .app-frame.is-recording .dock-status { color: var(--accent-live); }
 
-/* Page Headers */
+/* Page Headers — used by History, Dictionary, Snippets, Notes. */
 .page-header-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -3113,23 +3123,24 @@ textarea:focus-visible {
 
 .page-header-row .dark-action { margin-top: 0; }
 .page-header-row h1 {
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 96;
-  font-size: clamp(28px, 4.5vw, 40px);
-  font-weight: 460;
-  margin-bottom: 4px;
+  font-family: var(--font-sans);
+  font-size: clamp(26px, 3.6vw, 32px);
+  font-weight: 600;
+  margin-bottom: 6px;
   letter-spacing: -0.025em;
-  line-height: 1.05;
+  line-height: 1.1;
+  color: var(--ink-primary);
+  text-wrap: balance;
 }
 
 .page-subtitle {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-variation-settings: "opsz" 30;
-  font-size: 14px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
   color: var(--ink-muted);
   font-weight: 400;
   letter-spacing: -0.005em;
+  line-height: 1.5;
+  margin: 0;
 }
 
 /* Empty State Styling (Improved) */
@@ -3262,9 +3273,11 @@ textarea:focus-visible {
 
 .dictionary-form-card {
   padding: var(--space-6);
-  background: var(--bg-card);
-  border: 1px solid var(--border-line);
+  background: oklch(24% 0.012 250);
+  border: 1px solid oklch(34% 0.010 250);
   border-radius: var(--radius-card);
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
+              0 6px 18px -10px oklch(0% 0 0 / 0.5);
   transition: opacity var(--transition-main), transform var(--transition-main), border-color var(--transition-fast);
   opacity: 1;
   transform: translateY(0) scaleY(1);
@@ -3272,16 +3285,11 @@ textarea:focus-visible {
 }
 
 .dictionary-form-card.is-collapsed {
-  /* Scale to 0 vertically for the collapse animation; max-height is no
-     longer transitioned. The form-card has no children that depend on
-     collapsing height because the parent grid-cell reserves space. */
+  /* Scale to 0 vertically; width is no longer transitioned. */
   opacity: 0;
   transform: translateY(-4px) scaleY(0);
   pointer-events: none;
   border-color: transparent;
-  opacity: 0;
-  transform: translateY(-6px);
-  pointer-events: none;
 }
 
 .card-header-simple {
@@ -3455,46 +3463,65 @@ textarea:focus-visible {
   flex-direction: column;
 }
 
+/* Dictionary rows. Stack spoken → corrected terms as a chip pair:
+   spoken term is a faint mono pill (the user types this), corrected
+   term reads as the actual content. Cards lift on hover like home
+   entries, with divider lines between rows. */
 .dictionary-item-card,
 .dictionary-item-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1.4fr) auto;
   gap: var(--space-4);
-  align-items: baseline;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border-line);
-  transition: background-color var(--transition-fast);
+  align-items: center;
+  padding: 12px var(--space-4);
+  margin: 0 calc(-1 * var(--space-4));
+  background: transparent;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.dictionary-item-card + .dictionary-item-card,
+.dictionary-item-card + .dictionary-item-row,
+.dictionary-item-row + .dictionary-item-card,
+.dictionary-item-row + .dictionary-item-row {
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0;
+  margin-top: 2px;
 }
 
 .dictionary-item-card:hover,
 .dictionary-item-row:hover {
-  background: linear-gradient(90deg, var(--bg-hover), transparent 40%);
+  background: oklch(24% 0.011 250);
+  border-color: oklch(34% 0.010 250);
 }
 
 .dict-item-content { display: contents; }
 
 .dict-term {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
-.term-label {
+.dict-term .term-label {
   font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
   color: var(--ink-faint);
+  flex-shrink: 0;
+  width: 60px;
 }
 
 .term-value {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--ink-secondary);
-  font-style: italic;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3503,22 +3530,22 @@ textarea:focus-visible {
 
 .spoken .term-value {
   color: var(--ink-muted);
-  font-style: italic;
+  background: oklch(20% 0.011 250);
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid oklch(30% 0.010 250);
 }
 
 .correct .term-value {
   color: var(--ink-primary);
-  font-family: var(--font-display);
-  font-style: normal;
-  font-variation-settings: "opsz" 36;
-  font-size: 16px;
-  font-weight: 460;
+  font-size: 15px;
+  font-weight: 500;
   letter-spacing: -0.01em;
 }
 
 .dict-connector {
   color: var(--ink-faint);
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 .icon-delete-btn,
