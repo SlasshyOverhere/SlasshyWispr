@@ -1137,6 +1137,79 @@ body.sidebar-collapsed .nav-keyhint {
 
 .home-card-link:hover { color: var(--ink-primary); }
 
+/* Card meta line — sits next to the title, mono faint. */
+.home-card-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* Pace sparkline — fades current mark at the right edge warm. */
+.home-sparkline {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 56px;
+  color: oklch(76% 0.20 50);
+}
+
+.home-pace-footnote {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+
+.home-pace-footnote strong {
+  font-weight: 600;
+  color: var(--ink-primary);
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+}
+
+/* Quick start copy + combo. The combo is a chip row reading the
+   user's configured hotkey so they see exactly what to press. */
+.home-quickstart-copy {
+  font-size: 13px;
+  color: var(--ink-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.home-quickstart-combo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.home-quickstart-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: oklch(28% 0.080 50);
+  border: 1px solid oklch(60% 0.18 50 / 0.30);
+  color: oklch(84% 0.18 55);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.home-quickstart-set {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
 /* Quiet reset link — sits at the bottom of a rail card, doesn't
    compete with the figure rows. */
 .home-card-reset {

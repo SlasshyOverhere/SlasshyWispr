@@ -7,7 +7,7 @@ import type { UIState } from './store';
 import { AnalyticsPage } from './components/analytics/AnalyticsPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OnboardingWizard } from './components/OnboardingWizard';
-import type { HomeHistoryEntry, DictionaryTerm, SnippetEntry, QuickNoteEntry } from './types';
+import type { HomeHistoryEntry, DictionaryTerm, SnippetEntry, QuickNoteEntry, AnalyticsSessionDetail } from './types';
 import { NOTES_STORAGE_KEY } from './constants';
 
 function useUIState() {
@@ -287,10 +287,130 @@ function menuAnchorStyle(anchor: HTMLElement | null): React.CSSProperties {
   };
 }
 
+/* Reads the persisted push-to-talk hotkey so the rail's Quick start
+   card can echo it back. Returns a token array (["Ctrl","Space"])
+   or empty. Same idea as the deleted greeting helper, but only used
+   for the rail card now. */
+function useUserHotkeyTokens(): string[] {
+  const [tokens, setTokens] = useState<string[]>([]);
+  useEffect(() => {
+    const read = () => {
+      try {
+        const raw = window.localStorage.getItem(
+          "slasshy-desktop-assistant-settings-v4"
+        );
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as { pushToTalkHotkey?: string };
+        const hotkey = String(parsed.pushToTalkHotkey ?? "").trim();
+        if (!hotkey) return;
+        setTokens(
+          hotkey
+            .split("+")
+            .map((p) => p.trim())
+            .filter(Boolean)
+        );
+      } catch {
+        /* corrupted settings — leave empty */
+      }
+    };
+    read();
+    window.addEventListener("slasshy:store-updated", read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener("slasshy:store-updated", read);
+      window.removeEventListener("storage", read);
+    };
+  }, []);
+  return tokens;
+}
+
+/* Inline SVG sparkline for the last 7 days of activity. Pads missing
+   days with zeros so the line still traces a path. Pure component —
+   no DOM manipulation, no library. */
+function PaceSparkline({ points }: { points: number[] }) {
+  if (points.length === 0) {
+    return null;
+  }
+  const width = 240;
+  const height = 56;
+  const padding = 4;
+  const innerW = width - padding * 2;
+  const innerH = height - padding * 2;
+  const max = Math.max(1, ...points);
+  const stepX = innerW / Math.max(1, points.length - 1);
+  const path = points
+    .map((p, i) => {
+      const x = padding + i * stepX;
+      const y = padding + innerH - (p / max) * innerH;
+      return `${i === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(" ");
+  return (
+    <svg
+      className="home-sparkline"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label="Words spoken over the last 7 days"
+    >
+      <path
+        d={path}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {points.map((p, i) => {
+        const x = padding + i * stepX;
+        const y = padding + innerH - (p / Math.max(1, ...points)) * innerH;
+        return (
+          <circle
+            key={`pt-${i}`}
+            cx={x}
+            cy={y}
+            r={i === points.length - 1 ? 3 : 1.6}
+            fill="currentColor"
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+/* Build the last 7 calendar days of words spoken, padded with zeros
+   for missing days. Returns an array of length 7 plus the oldest
+   calendar date for the chip label. */
+function useLastSevenDaysWords(
+  sessions: AnalyticsSessionDetail[]
+): { points: number[]; oldest: string } {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days: number[] = [0, 0, 0, 0, 0, 0, 0];
+  const dayMs = 24 * 60 * 60 * 1000;
+  const oldestStart = today.getTime() - 6 * dayMs;
+  sessions.forEach((s) => {
+    const sessionDay = new Date(s.date);
+    sessionDay.setHours(0, 0, 0, 0);
+    const idx = Math.round((sessionDay.getTime() - oldestStart) / dayMs);
+    if (idx >= 0 && idx < 7) {
+      days[idx] = (days[idx] || 0) + (s.words || 0);
+    }
+  });
+  const oldestDate = new Date(oldestStart);
+  return {
+    points: days,
+    oldest: oldestDate.toLocaleDateString([], { month: "short", day: "numeric" }),
+  };
+}
+
 export function App() {
   const state = useUIState();
   const historyFilter = useHistoryFilter();
   const historySearch = useHistorySearch();
+  const hotkeyTokens = useUserHotkeyTokens();
+  const pace = useLastSevenDaysWords(state.analyticsSessions);
 
   /* Copy handler for Home entry cards. Promise-safe with a timeout
      fallback so the "Copied" tick always clears. */
@@ -555,6 +675,101 @@ export function App() {
                     >
                       Reset stats
                     </button>
+                  </div>
+
+                  {/* Pace sparkline — last 7 calendar days of words
+                      spoken. Fills the previously-empty vertical space
+                      with something productive. */}
+                  <div className="home-card">
+                    <div className="home-card-head">
+                      <h3 className="home-card-title">Pace</h3>
+                      <span className="home-card-meta">
+                        Last 7 days · from {pace.oldest}
+                      </span>
+                    </div>
+                    <PaceSparkline points={pace.points} />
+                    <div className="home-pace-footnote">
+                      <span>
+                        <strong>{state.usage?.words ?? 0}</strong> words today
+                      </span>
+                      <button
+                        id="openAnalyticsBtn"
+                        className="home-card-link"
+                        type="button"
+                        onClick={() => {
+                          window.dispatchEvent(
+                            new CustomEvent("slasshy:focus-analytics")
+                          );
+                        }}
+                      >
+                        Open analytics
+                        <svg
+                          width="11"
+                          height="11"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Quick start — echo the user's configured hotkey
+                      back to them so the muscle memory is obvious. */}
+                  <div className="home-card">
+                    <div className="home-card-head">
+                      <h3 className="home-card-title">Quick start</h3>
+                      <button
+                        id="openSettingsFromHomeBtn"
+                        className="home-card-link"
+                        type="button"
+                        onClick={() => {
+                          window.dispatchEvent(
+                            new CustomEvent("slasshy:focus-settings")
+                          );
+                        }}
+                      >
+                        Edit
+                        <svg
+                          width="11"
+                          height="11"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                      </button>
+                    </div>
+                    <p className="home-quickstart-copy">
+                      Capture speech anywhere on this device. The same combo toggles start and stop.
+                    </p>
+                    <div className="home-quickstart-combo">
+                      {(() => {
+                        if (hotkeyTokens.length === 0) {
+                          return (
+                            <span className="home-quickstart-set">
+                              No hotkey set
+                            </span>
+                          );
+                        }
+                        return hotkeyTokens.map((token, i) => (
+                          <span key={`hk-${i}`} className="home-quickstart-key">
+                            {token}
+                          </span>
+                        ));
+                      })()}
+                    </div>
                   </div>
                 </aside>
               </div>

@@ -1471,6 +1471,21 @@ window.addEventListener("slasshy:focus-history-search", () => {
   });
 });
 
+/* Home rail — Open analytics card-link. */
+window.addEventListener("slasshy:focus-analytics", () => {
+  setActivePage("analytics");
+});
+
+/* Home rail — Edit (Settings) card-link. The settings modal is
+   mounted at all times; we open it via the global openSettings
+   button that already exists in the sidebar. */
+window.addEventListener("slasshy:focus-settings", () => {
+  const btn = document.getElementById("openSettingsBtn");
+  if (btn instanceof HTMLButtonElement) {
+    btn.click();
+  }
+});
+
 document.querySelectorAll(".filter-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
