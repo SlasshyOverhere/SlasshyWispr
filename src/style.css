@@ -2139,11 +2139,11 @@ svg:not([width]):not([height]) {
 
 .conversation-entry {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) auto auto;
-  align-items: start;
-  column-gap: var(--space-5);
-  row-gap: var(--space-2);
-  padding: 16px 20px;
+  grid-template-columns: 56px minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
+  padding: 11px var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
   transition: background-color var(--transition-fast);
   position: relative;
@@ -2278,33 +2278,31 @@ svg:not([width]):not([height]) {
 
 .conversation-entry .entry-time {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--ink-faint);
   font-weight: 500;
   letter-spacing: 0.02em;
   font-feature-settings: "tnum" 1, "ss01" 1;
   grid-column: 1;
-  align-self: start;
+  align-self: center;
   white-space: nowrap;
-  padding-top: 4px;
 }
 
 .entry-content-wrap {
   min-width: 0;
-  align-self: start;
+  align-self: center;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
 .entry-content {
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 36;
+  font-family: var(--font-sans);
   color: var(--ink-primary);
-  font-size: 21px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.45;
   letter-spacing: -0.005em;
-  font-weight: 460;
+  font-weight: 450;
   text-wrap: pretty;
   hyphens: auto;
   word-break: break-word;
@@ -2350,21 +2348,20 @@ svg:not([width]):not([height]) {
 }
 
 /* Metrics: a single quiet line. No separators, no WPM hero treatment,
-   one tier down from the content. The numbers and units share weight. */
+   one tier down from the content. Compact mono so rows scan quietly. */
 .entry-metrics {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 500;
   color: var(--ink-faint);
   font-feature-settings: "tnum" 1, "ss01" 1;
   letter-spacing: 0.02em;
   white-space: nowrap;
-  align-self: start;
+  align-self: center;
   justify-self: end;
-  padding-top: 4px;
 }
 
 .entry-metrics-spacer {
@@ -2392,27 +2389,27 @@ svg:not([width]):not([height]) {
   letter-spacing: 0.04em;
 }
 
-/* Hero metrics — the only ink-bold numbers on the page. WPM is the
-   single most confident number visible. */
+/* Hero metrics — slightly larger than archive rows but staying quiet.
+   No orange-bold weight: we keep visual confidence on Home's right
+   rail, not here. */
 .entry-metrics-hero {
-  gap: 14px;
-  padding-top: 6px;
+  gap: 12px;
 }
 
 .entry-metrics-hero .metric {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .entry-metrics-hero .metric-num {
-  color: var(--ink-primary);
-  font-weight: 600;
-  font-size: 13px;
+  color: var(--ink-secondary);
+  font-weight: 500;
+  font-size: 12px;
   letter-spacing: 0.01em;
 }
 
 .entry-metrics-hero .metric-unit {
-  color: var(--ink-muted);
-  font-size: 11px;
+  color: var(--ink-faint);
+  font-size: 10.5px;
   letter-spacing: 0.04em;
 }
 
