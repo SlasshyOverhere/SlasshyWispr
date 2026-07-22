@@ -796,14 +796,17 @@ body.sidebar-collapsed .nav-keyhint {
 
 .home-greeting .home-greet-name { font-weight: 600; }
 
+/* Orange token pills. Saturation bumped for dark theme so the pills
+   read as warm/vibrant instead of pastel. light theme keeps the
+   softer cream-orange from the prior pass. */
 .home-token {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 3px 9px;
   border-radius: 5px;
-  background: oklch(80% 0.16 50);
-  color: oklch(20% 0.04 50);
+  background: oklch(76% 0.20 50);
+  color: oklch(18% 0.04 50);
   font-family: var(--font-mono);
   font-weight: 600;
   font-size: 0.78em;
@@ -812,6 +815,7 @@ body.sidebar-collapsed .nav-keyhint {
   vertical-align: baseline;
   line-height: 1;
   white-space: nowrap;
+  box-shadow: 0 0 0 1px oklch(72% 0.18 50 / 0.10) inset;
 }
 
 .home-token-plus {
@@ -878,14 +882,15 @@ body.sidebar-collapsed .nav-keyhint {
 }
 
 /* Date band — the user's voice anchors. Mono caps, quiet, with a
-   trailing hairline. */
+   trailing hairline. Bumped color for dark theme so the date reads as
+   an anchor against the deep navy surface. */
 .home-date-band {
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
+  font-weight: 700;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--ink-muted);
+  color: var(--ink-secondary);
   display: flex;
   align-items: baseline;
   gap: 10px;
@@ -910,15 +915,17 @@ body.sidebar-collapsed .nav-keyhint {
   margin: 0;
 }
 
-/* Entry card: small white-ish surface with hover lift. */
+/* Entry card. In dark theme we raise the surface a touch over the
+   --bg-card default and warm the border so cards read as elevated,
+   not sunk. light theme keeps the soft white from before. */
 .home-entry {
   display: grid;
   grid-template-columns: 60px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-3);
   padding: 12px var(--space-4);
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
+  background: oklch(20% 0.011 250);
+  border: 1px solid oklch(30% 0.010 250);
   border-radius: 10px;
   box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset;
   transition: border-color var(--transition-fast),
@@ -927,17 +934,22 @@ body.sidebar-collapsed .nav-keyhint {
 }
 
 .home-entry:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-hover);
+  border-color: oklch(45% 0.012 250);
+  background: oklch(24% 0.011 250);
 }
 
+/* Fresh row signature: warm amber border + soft amber tint, recovered
+   for dark theme so it reads as a soft glow instead of mud. */
 .home-entry.is-fresh {
-  background: oklch(80% 0.16 50 / 0.06);
-  border-color: oklch(75% 0.16 50 / 0.40);
+  background: oklch(28% 0.060 50);
+  border-color: oklch(60% 0.180 50);
+  box-shadow: 0 0 0 1px oklch(75% 0.18 50 / 0.20) inset;
 }
 .app-frame.is-recording .home-entry.is-fresh {
-  background: oklch(80% 0.16 50 / 0.10);
-  border-color: oklch(75% 0.16 50 / 0.55);
+  background: oklch(32% 0.080 50);
+  border-color: oklch(68% 0.180 50);
+  box-shadow: 0 0 0 1px oklch(78% 0.18 50 / 0.30) inset,
+              0 0 24px -6px oklch(75% 0.18 50 / 0.45);
 }
 
 .home-entry-time {
@@ -997,6 +1009,55 @@ body.sidebar-collapsed .nav-keyhint {
   color: oklch(70% 0.16 145);
 }
 
+/* Per-entry popover (anchored via createPortal from HomeEntryCard).
+   Sits above other rail entries thanks to z-index: 1000 in JS. */
+.home-entry-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 4px;
+  background: oklch(28% 0.012 250);
+  border: 1px solid oklch(40% 0.012 250);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px -12px oklch(0% 0 0 / 0.7),
+              0 0 0 1px oklch(0% 0 0 / 0.20) inset;
+}
+
+.home-entry-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--transition-fast),
+              color var(--transition-fast);
+}
+
+.home-entry-menu-item:hover {
+  background: var(--bg-hover);
+  color: var(--ink-primary);
+}
+
+.home-entry-menu-item-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-entry-menu-item-danger { color: var(--ink-secondary); }
+
+.home-entry-menu-item-danger:hover,
+.home-entry-menu-item-danger.is-confirming {
+  background: oklch(60% 0.20 25 / 0.18);
+  color: oklch(95% 0.10 25);
+}
+
 /* ── Right rail: stats card + voice-profile card ───────────────────*/
 .home-rail {
   display: flex;
@@ -1005,15 +1066,20 @@ body.sidebar-collapsed .nav-keyhint {
   min-width: 0;
 }
 
+/* Rail cards raise slightly above the page surface (which is darker
+   than entry cards, deliberately) so the right column reads as a
+   distinct panel. light theme keeps the soft-white variant. */
 .home-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-line);
+  background: oklch(24% 0.012 250);
+  border: 1px solid oklch(34% 0.010 250);
+  border: 1px solid var(--border-strong);
   border-radius: 12px;
   padding: var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset;
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
+              0 6px 18px -10px oklch(0% 0 0 / 0.5);
 }
 
 .home-card-head {
@@ -1092,11 +1158,12 @@ body.sidebar-collapsed .nav-keyhint {
   top: 0;
   height: 100%;
   width: 100%;
-  background: oklch(80% 0.16 50);
+  background: oklch(76% 0.20 50);
   border-radius: 999px;
   transform: scaleX(var(--p));
   transform-origin: left center;
   transition: transform var(--transition-main);
+  box-shadow: 0 0 8px -2px oklch(76% 0.20 50 / 0.55);
 }
 
 .home-profile-pill {
@@ -1105,11 +1172,15 @@ body.sidebar-collapsed .nav-keyhint {
   gap: 6px;
   font-size: 11.5px;
   font-weight: 500;
-  color: oklch(40% 0.10 50);
-  background: oklch(94% 0.06 50);
+  /* Dark-theme pill: warm orange text on a translucent amber pad so it
+     reads as the same accent family as the home-token pills above
+     rather than a wet-blanket CTA battery. */
+  color: oklch(84% 0.18 55);
+  background: oklch(28% 0.080 50);
   padding: 3px 8px;
   border-radius: 999px;
   letter-spacing: 0.01em;
+  box-shadow: 0 0 0 1px oklch(60% 0.16 50 / 0.30) inset;
 }
 
 :root[data-theme="mono"] .home-profile-pill {
