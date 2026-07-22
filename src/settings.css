@@ -866,10 +866,16 @@
 .progress-fill {
   display: block;
   height: 100%;
-  width: 0%;
+  width: 100%;
+  /* Width of the bar is driven by --p (0..1) so the JS sets
+     `--p` on the element; transform: scaleX paints the change
+     without a layout pass — width isn't even touched. */
+  --p: 0;
   border-radius: inherit;
   background: linear-gradient(90deg, rgba(158, 211, 106, 0.85), rgba(126, 240, 177, 0.95));
-  transition: width 180ms ease;
+  transform: scaleX(var(--p));
+  transform-origin: left center;
+  transition: transform 180ms ease;
 }
 
 .progress-text {

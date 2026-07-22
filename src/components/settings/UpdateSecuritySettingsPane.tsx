@@ -59,7 +59,7 @@ export function UpdateSecuritySettingsPane() {
 
       <div id="updateInstallProgressWrap" className="s-row-block" hidden>
         <div id="updateInstallProgressTrack" className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0} aria-valuetext="Waiting to start update download.">
-          <span id="updateInstallProgressBar" className="progress-fill" style={{ width: "0%" }}></span>
+          <span id="updateInstallProgressBar" className="progress-fill" style={{ ["--p" as string]: 0 }}></span>
         </div>
         <p id="updateInstallProgressText" className="progress-text">Waiting to start update download.</p>
       </div>
