@@ -613,7 +613,6 @@ let effectAudioContext: AudioContext | null = null;
 let externalMediaMutedForDictation = false;
 let externalMediaControlInFlight: Promise<void> | null = null;
 let externalMediaControlErrorShown = false;
-let launchAtLoginSyncNonce = 0;
 let updateCheckInFlight = false;
 let updateInstallInFlight = false;
 let cachedUpdateResult: AppUpdateCheckResponse | null = null;
@@ -787,8 +786,9 @@ setupCustomWindowControls();
 void initializeTrayBackgroundLifecycle();
 hotkeyInput.readOnly = true;
 commandHotkeyInput.readOnly = true;
-requestLaunchAtLoginSync(settings.launchAtLogin);
-void reconcileLaunchAtLoginWithOs();
+// Registry sync is now atomic with settings save (handled in the Rust
+// `save_persisted_local_settings` command). Reconcile runs after native
+// settings hydration, inside bootstrap().
 startBlockedAppShortcutSuppressionMonitor();
 applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
 
@@ -1606,6 +1606,10 @@ async function bootstrap(): Promise<void> {
   await hydrateSettingsFromNativeStorage();
   logClientEvent(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
 
+  // Reconcile registry AFTER native settings hydrate so the comparison uses
+  // the user's actual saved preference instead of a stale localStorage default.
+  await reconcileLaunchAtLoginWithOs();
+
   // Register global hotkeys immediately — user should be able to press the
   // hotkey as soon as settings are loaded, without waiting for the rest of
   // the heavy bootstrap chain (Ollama, STT, TTS, model lists, etc.).
@@ -2326,7 +2330,6 @@ async function handleSettingsChange(): Promise<void> {
   const previousTtsEngine = settings.ttsEngine;
   const previousSttRuntimeMode = settings.sttRuntimeMode;
   const previousAiRuntimeMode = settings.aiRuntimeMode;
-  const previousLaunchAtLogin = settings.launchAtLogin;
   const previousShortcutSignature = buildShortcutSyncSignature(settings);
   const previousMode = settings.captureMode;
 
@@ -2430,9 +2433,9 @@ async function handleSettingsChange(): Promise<void> {
   if (previousShortcutSignature !== nextShortcutSignature) {
     requestGlobalShortcutSync();
   }
-  if (previousLaunchAtLogin !== settings.launchAtLogin) {
-    requestLaunchAtLoginSync(settings.launchAtLogin);
-  }
+  // Note: launch-at-login sync happens atomically inside the Rust
+  // `save_persisted_local_settings` command invoked by persistSettings().
+  // No separate IPC needed — the previous second-write race was Bug #2.
   if (previousTtsEngine !== settings.ttsEngine) {
     interruptTtsPlaybackForCaptureIntent();
   }
@@ -3559,12 +3562,12 @@ function requestLaunchAtLoginSync(enabled: boolean): void {
     return;
   }
 
-  const syncNonce = ++launchAtLoginSyncNonce;
+  // Always surface registry-write failures — never swallow silently even if
+  // the nonce has been superseded. The earlier suppression hid persistent
+  // failures when users toggled twice quickly against a locked registry hive.
   void invoke("configure_launch_at_login", { enabled }).catch((error) => {
-    if (syncNonce !== launchAtLoginSyncNonce) {
-      return;
-    }
     setNotice(`Launch-at-login update failed: ${asErrorMessage(error)}`, true);
+    logClientEvent(`[startup] launch-at-login IPC failed: ${asErrorMessage(error)}`);
   });
 }
 

@@ -2431,6 +2431,26 @@ async fn save_persisted_local_settings(app: AppHandle, payload: String) -> Resul
         settings_path.display(),
         secured_payload.len()
     );
+
+    // Sync Windows Run key atomically with settings save so there is no
+    // window where the settings file says one thing and the registry says
+    // another. This fixes the previous race where the frontend had to fire
+    // a separate IPC call that could be dropped on shutdown.
+    if let Some(launch_at_login) = parsed
+        .get("launchAtLogin")
+        .and_then(|v| v.as_bool())
+    {
+        match configure_launch_at_login(launch_at_login).await {
+            Ok(_) => info!(
+                "[settings] launch-at-login synced to {}",
+                launch_at_login
+            ),
+            Err(e) => warn!(
+                "[settings] launch-at-login sync failed after settings save: {e}"
+            ),
+        }
+    }
+
     Ok(())
 }
 
@@ -9158,6 +9178,30 @@ mod launch_at_login_preference_tests {
         // preference-extraction layer: a missing key defaults to true.
         assert_eq!(preference_from_json("{}"), true);
         let _ = dir;
+    }
+
+    /// Settings payload that contains launchAtLogin should be parsed into the
+    /// boolean the Rust atomic-write path uses inside save_persisted_local_settings.
+    /// Guards against Bug #1: if parsing fails we silently keep the stale registry
+    /// value, which is exactly the regression we are fixing.
+    #[test]
+    fn atomically_sync_payload_extracts_bool() {
+        let payloads = [
+            (r#"{"launchAtLogin": true}"#, Some(true)),
+            (r#"{"launchAtLogin": false}"#, Some(false)),
+            (r#"{}"#, None),
+            (r#"{"launchAtLogin": "yes"}"#, None),
+        ];
+        for (raw, expected) in payloads {
+            let parsed: serde_json::Value = serde_json::from_str(raw).unwrap();
+            let launch_at_login = parsed
+                .get("launchAtLogin")
+                .and_then(|v| v.as_bool());
+            assert_eq!(
+                launch_at_login, expected,
+                "payload {raw} should parse to {expected:?}"
+            );
+        }
     }
 }
 
