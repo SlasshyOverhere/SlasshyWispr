@@ -60,6 +60,7 @@ import {
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
   APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY,
+  APP_EVENT_TOGGLE_DICTATION,
   GITHUB_RELEASES_PAGE_URL,
   DEFAULT_SYSTEM_PROMPT,
   DEFAULT_TEMPERATURE,
@@ -783,6 +784,7 @@ refreshRecordButton();
 syncActionAvailability();
 initializeUpdaterPanel();
 void registerUpdateInstallProgressListener();
+void registerLinuxDictationToggleListener();
 setupCustomWindowControls();
 void initializeTrayBackgroundLifecycle();
 hotkeyInput.readOnly = true;
@@ -3516,6 +3518,20 @@ async function registerUpdateInstallProgressListener(): Promise<void> {
       handleUpdateInstallProgressEvent(event.payload);
     },
   );
+}
+
+async function registerLinuxDictationToggleListener(): Promise<void> {
+  if (!isTauriEnvironment() || !navigator.userAgent.toLowerCase().includes("linux")) {
+    return;
+  }
+
+  await listen(APP_EVENT_TOGGLE_DICTATION, () => {
+    logClientEvent("[hotkey.linux] GNOME CLI toggle received");
+    void getCurrentWindow().show().then(() => getCurrentWindow().setFocus()).catch((error) => {
+      logClientEvent(`[hotkey.linux] failed to focus window: ${asErrorMessage(error)}`);
+    });
+    void handleRecordToggle();
+  });
 }
 
 function startAutomaticUpdateChecks(): void {

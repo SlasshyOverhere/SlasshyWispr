@@ -37,6 +37,7 @@ pub const APP_EVENT_MAIN_WINDOW_VISIBILITY: &str = "slasshy://main-window-visibi
 pub const APP_EVENT_UPDATE_INSTALL_PROGRESS: &str = "slasshy://update-install-progress";
 pub const TRAY_MENU_UPDATE_AVAILABLE_ID: &str = "update-available";
 pub const APP_EVENT_UPDATE_AVAILABLE: &str = "slasshy://update-available";
+pub const APP_EVENT_TOGGLE_DICTATION: &str = "slasshy://toggle-dictation";
 pub const LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS: u64 = 90;
 pub const LOCAL_STT_DAEMON_IDLE_TIMEOUT_SECS: u64 = 15 * 60;
 pub const LOCAL_STT_DAEMON_SWEEP_INTERVAL_SECS: u64 = 15;
@@ -76,15 +77,20 @@ pub const LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_MAX: usize = 8;
 pub const LOCAL_STT_ARCHIVE_MIN_BYTES_PER_CHUNK: u64 = 24 * 1024 * 1024;
 pub const LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_ENV: &str = "SLASSHY_STT_ARCHIVE_PARALLEL_CHUNKS";
 
+#[cfg(target_os = "linux")]
+pub const PIPER_ARCHIVE_URL: &str =
+    "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz";
+#[cfg(target_os = "linux")]
+pub const PIPER_ARCHIVE_FILE: &str = "piper_linux_x86_64.tar.gz";
 #[cfg(target_os = "windows")]
 pub const PIPER_ARCHIVE_URL: &str =
     "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip";
 #[cfg(target_os = "windows")]
 pub const PIPER_ARCHIVE_FILE: &str = "piper_windows_amd64.zip";
+#[cfg(target_os = "linux")]
+pub const PIPER_BINARY_NAME: &str = "piper";
 #[cfg(target_os = "windows")]
 pub const PIPER_BINARY_NAME: &str = "piper.exe";
-#[cfg(not(target_os = "windows"))]
-pub const PIPER_BINARY_NAME: &str = "piper";
 #[cfg(target_os = "windows")]
 pub const OLLAMA_WINDOWS_INSTALLER_URL: &str = "https://ollama.com/download/OllamaSetup.exe";
 #[cfg(target_os = "windows")]

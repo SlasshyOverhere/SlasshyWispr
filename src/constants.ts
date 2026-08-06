@@ -31,6 +31,7 @@ export const APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY = "slasshy-wispr-app-upda
 export const ANALYTICS_SESSIONS_KEY = "slasshy-wispr-analytics-sessions-v1";
 export const ACHIEVEMENTS_STATE_KEY = "slasshy-wispr-achievements-state-v1";
 export const ACTIVE_PAGE_STORAGE_KEY = "slasshy-wispr-active-page-v1";
+export const APP_EVENT_TOGGLE_DICTATION = "slasshy://toggle-dictation";
 export const EMPTY_HISTORY_HINT = "No turns yet. Start dictating to see your recent activity.";
 export const DEFAULT_SYSTEM_PROMPT =
   "You are SlasshyWispr, a helpful desktop voice assistant. Keep replies concise and easy to speak aloud.";

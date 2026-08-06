@@ -2977,9 +2977,112 @@ fn apply_no_window(command: &mut Command) {
 #[cfg(not(target_os = "windows"))]
 fn apply_no_window(_command: &mut Command) {}
 
-#[cfg(target_os = "windows")]
-fn set_clipboard_text_windows(text: &str) -> Result<(), String> {
-    native_set_clipboard_text(text)
+#[cfg(target_os = "linux")]
+fn linux_wayland_session() -> bool {
+    std::env::var_os("WAYLAND_DISPLAY").is_some_and(|value| !value.is_empty())
+        || std::env::var("XDG_SESSION_TYPE")
+            .map(|value| value.eq_ignore_ascii_case("wayland"))
+            .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_kde_session() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .or_else(|_| std::env::var("XDG_SESSION_DESKTOP"))
+        .map(|value| value.to_ascii_lowercase().contains("kde"))
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_clipboard_write(text: &str) -> Result<(), String> {
+    if linux_wayland_session() {
+        info!(
+            "[linux.clipboard] selected wl-copy backend desktop={} chars={}",
+            if linux_kde_session() { "kde" } else { "wayland" },
+            text.chars().count()
+        );
+        let mut child = Command::new("wl-copy")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| {
+                format!(
+                    "Wayland clipboard helper 'wl-copy' is unavailable. Install wl-clipboard: {error}"
+                )
+            })?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(text.as_bytes())
+                .map_err(|error| format!("Wayland clipboard write failed: {error}"))?;
+        }
+        // wl-copy owns the clipboard offer after stdin closes. Reap it in
+        // the background so the clipboard daemon can outlive this command
+        // without blocking the Rust process or leaving a zombie child.
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        return Ok(());
+    }
+
+    info!("[linux.clipboard] selected arboard X11 fallback chars={}", text.chars().count());
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|error| format!("X11 clipboard could not be opened: {error}"))?;
+    clipboard
+        .set_text(text.to_owned())
+        .map_err(|error| format!("X11 clipboard write failed: {error}"))
+}
+
+#[cfg(target_os = "linux")]
+fn linux_paste_chord() -> Result<(), String> {
+    if linux_wayland_session() {
+        info!(
+            "[linux.paste] selected wtype backend desktop={}",
+            if linux_kde_session() { "kde" } else { "gnome/wayland" }
+        );
+        let output = Command::new("wtype")
+            .args(["-M", "ctrl", "-k", "v"])
+            .output()
+            .map_err(|error| {
+                format!(
+                    "Wayland paste helper 'wtype' is unavailable. Install wtype (it may not support KDE Wayland): {error}"
+                )
+            })?;
+        if !output.status.success() {
+            return Err(format_process_failure("wtype", output));
+        }
+        return Ok(());
+    }
+
+    info!("[linux.paste] selected xdotool backend");
+    let output = Command::new("xdotool")
+        .args(["key", "--clearmodifiers", "ctrl+v"])
+        .output()
+        .map_err(|error| format!("X11 paste helper 'xdotool' is unavailable: {error}"))?;
+    if !output.status.success() {
+        return Err(format_process_failure("xdotool", output));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn format_process_failure(name: &str, output: std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.is_empty() {
+        format!("{name} failed with status {}", output.status)
+    } else {
+        format!("{name} failed with status {}: {stderr}", output.status)
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn set_clipboard_text_linux(text: &str) -> Result<(), String> {
+    linux_clipboard_write(text)
+}
+
+#[cfg(target_os = "linux")]
+fn set_clipboard_text_for_tray(text: &str) -> Result<(), String> {
+    set_clipboard_text_linux(text)
 }
 
 #[tauri::command]
@@ -2993,8 +3096,17 @@ async fn set_clipboard_text(text: String) -> Result<(), String> {
 
     #[cfg(not(target_os = "windows"))]
     {
+        #[cfg(target_os = "linux")]
+        {
+            set_clipboard_text_linux(&text)?;
+            info!("[client] clipboard updated chars={}", text.chars().count());
+            return Ok(());
+        }
+
+        #[cfg(not(target_os = "linux"))]
         let _ = text;
-        Err("Clipboard write helper is currently implemented for Windows builds only.".to_string())
+        #[cfg(not(target_os = "linux"))]
+        return Err("Clipboard write helper is currently implemented for Windows and Linux builds only.".to_string());
     }
 }
 
@@ -3123,7 +3235,16 @@ async fn paste_clipboard_text() -> Result<(), String> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        Err("Auto-paste is currently implemented for Windows builds only.".to_string())
+        #[cfg(target_os = "linux")]
+        {
+            std::thread::sleep(Duration::from_millis(70));
+            linux_paste_chord().map_err(|error| format!("Auto-paste failed: {error}"))?;
+            info!("[client] Linux auto-paste triggered");
+            return Ok(());
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        return Err("Auto-paste is currently implemented for Windows and Linux builds only.".to_string());
     }
 }
 
@@ -3141,10 +3262,22 @@ async fn paste_text_via_clipboard(text: String) -> Result<(), String> {
         return Ok(());
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
+    {
+        set_clipboard_text_linux(&text)?;
+        std::thread::sleep(Duration::from_millis(90));
+        linux_paste_chord().map_err(|error| format!("Dictation paste failed: {error}"))?;
+        info!(
+            "[client] Linux dictation clipboard+paste triggered chars={}",
+            text.chars().count()
+        );
+        return Ok(());
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         let _ = text;
-        Err("Dictation paste helper is currently implemented for Windows builds only.".to_string())
+        Err("Dictation paste helper is currently implemented for Windows and Linux builds only.".to_string())
     }
 }
 
@@ -8854,13 +8987,30 @@ async fn ensure_piper_binary(app: &AppHandle, client: &Client) -> Result<PathBuf
             .ok_or_else(|| "Piper archive was extracted but piper.exe was not found".to_string());
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
+    {
+        let runtime_dir = piper_runtime_dir(app)?;
+
+        if let Some(existing_path) = find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)? {
+            validate_piper_binary_path(&existing_path.to_string_lossy())?;
+            return Ok(existing_path);
+        }
+
+        let archive_path = runtime_dir.join(PIPER_ARCHIVE_FILE);
+        download_file(client, PIPER_ARCHIVE_URL, &archive_path).await?;
+        extract_tar_gz_archive(&archive_path, &runtime_dir)?;
+        let _ = fs::remove_file(&archive_path);
+
+        let path = find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)?
+            .ok_or_else(|| "Piper archive was extracted but the piper executable was not found".to_string())?;
+        validate_piper_binary_path(&path.to_string_lossy())?;
+        return Ok(path);
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         let _ = (app, client);
-        Err(
-            "Automatic Piper download is currently implemented for Windows in this build."
-                .to_string(),
-        )
+        Err("Automatic Piper download is currently implemented for Windows and Linux builds only.".to_string())
     }
 }
 
@@ -15114,10 +15264,22 @@ fn copy_last_transcript_to_clipboard(app: &AppHandle) {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
+    {
+        if let Err(error) = set_clipboard_text_for_tray(&transcript) {
+            error!(
+                "[tray] failed to copy last transcript to clipboard: {}",
+                single_line(&error)
+            );
+        } else {
+            info!("[tray] copied last transcript chars={}", transcript.chars().count());
+        }
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "linux")))]
     {
         let _ = transcript;
-        warn!("[tray] clipboard copy from tray is implemented for Windows only");
+        warn!("[tray] clipboard copy is not implemented for this platform");
     }
 }
 
@@ -15154,10 +15316,25 @@ fn copy_last_response_to_clipboard(app: &AppHandle) {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
+    {
+        if let Err(error) = set_clipboard_text_for_tray(&response) {
+            error!(
+                "[tray] failed to copy last assistant response to clipboard: {}",
+                single_line(&error)
+            );
+        } else {
+            info!(
+                "[tray] copied last assistant response chars={}",
+                response.chars().count()
+            );
+        }
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "linux")))]
     {
         let _ = response;
-        warn!("[tray] clipboard copy from tray is implemented for Windows only");
+        warn!("[tray] clipboard copy is not implemented for this platform");
     }
 }
 
@@ -15270,6 +15447,14 @@ pub fn run() {
                 .any(|a| a.eq_ignore_ascii_case(STARTUP_ARG_START_IN_TRAY))
             {
                 info!("[app.single-instance] --start-in-tray passed; respecting hidden state");
+                return;
+            }
+            #[cfg(target_os = "linux")]
+            if args.iter().any(|a| a.eq_ignore_ascii_case("--toggle-dictation")) {
+                show_main_window(app);
+                if let Err(error) = app.emit(APP_EVENT_TOGGLE_DICTATION, json!({})) {
+                    warn!("[app.single-instance] failed to emit dictation toggle: {error}");
+                }
                 return;
             }
             show_main_window(app);

@@ -27,6 +27,34 @@ Speak naturally, get clean transcription, generate AI responses, and hear replie
 - High-DPI and multi-resolution support
 - Usage dashboard with trend tracking
 
+## Linux (CachyOS / Arch, GNOME Wayland)
+
+Linux development mode is supported with:
+
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=1 npm run tauri:dev
+```
+
+Install the runtime prerequisites without letting the app modify your system:
+
+```bash
+sudo pacman -S webkit2gtk-4.1 gtk3 libayatana-appindicator librsvg patchelf gcc-libs pkg-config libsecret wtype wl-clipboard
+```
+
+GNOME Wayland uses `wl-copy` for the clipboard and `wtype` for Ctrl+V injection. On X11, the app falls back to `arboard` for clipboard writes and `xdotool` for paste; install the latter when needed:
+
+```bash
+sudo pacman -S xdotool
+```
+
+For a GNOME global shortcut, open **Settings → Keyboard → Keyboard Shortcuts → Custom Shortcuts** and add:
+
+- Command: `slasshywispr --toggle-dictation`
+
+In development mode, use the full executable path if `slasshywispr` is not on `PATH`. GNOME starts a second process; the running instance receives the request through the single-instance channel and toggles the existing recording pipeline.
+
+Linux API keys use GNOME Secret Service/libsecret through the system keyring. If the keyring is unavailable, settings persistence reports an actionable error rather than writing plaintext credentials.
+
 ## Download
 
 Get the latest Windows installer from Releases:
