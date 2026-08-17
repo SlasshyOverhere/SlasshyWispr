@@ -566,7 +566,7 @@ export function App() {
                           <circle cx="12" cy="12" r="9" />
                         </svg>
                       </span>
-                      <span style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--ink-muted)', letterSpacing: '0.04em' }}>Where you last left off</span>
+                      <span className="home-list-head-label">Where you last left off</span>
                     </span>
                     <span className="home-list-head-r">
                       <button
@@ -1070,11 +1070,13 @@ export function App() {
         <div className="popup-actions">
           <button className="ghost-action mini" type="button">Copy</button>
           <button className="ghost-action mini" type="button">Replace</button>
-          <button className="close-settings mini" type="button">✕</button>
+          <button className="icon-close-btn mini" type="button" aria-label="Close assistant popup">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
         </div>
       </div>
 
-      <div className="hidden-runtime-state" aria-hidden="true" hidden>
+      <div className="hidden-runtime-state" hidden>
         <span id="recordTimer">00.0s</span>
         <button id="recordBtn" className="hidden-record" type="button">Start Recording</button>
       </div>

@@ -410,7 +410,7 @@
   border-right: 1px solid var(--border-line);
   position: relative;
   background: transparent;
-  opacity: 0.5;
+  opacity: 0.85;
   transition: opacity var(--transition-fast), background-color var(--transition-fast);
 }
 

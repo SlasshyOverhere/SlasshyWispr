@@ -132,10 +132,11 @@
 }
 
 .preview-dot {
-  width: 3px;
-  height: 3px;
-  border-radius: 999px;
+  width: 6px;
+  height: 2px;
+  border-radius: 1px;
   background: oklch(42% 0.010 80);
+  opacity: 0.6;
 }
 
 .preview-body {
@@ -865,7 +866,7 @@
      without a layout pass — width isn't even touched. */
   --p: 0;
   border-radius: inherit;
-  background: linear-gradient(90deg, rgba(158, 211, 106, 0.85), rgba(126, 240, 177, 0.95));
+  background: linear-gradient(90deg, oklch(74% 0.18 55 / 0.75), oklch(74% 0.18 55));
   transform: scaleX(var(--p));
   transform-origin: left center;
   transition: transform 180ms ease;
@@ -962,7 +963,7 @@
 }
 
 .release-link {
-  color: rgba(126, 240, 177, 0.95);
+  color: var(--accent-live);
   font-size: 12px;
   font-weight: 600;
   text-decoration: none;

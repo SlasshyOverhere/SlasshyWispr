@@ -1,23 +1,31 @@
 import { useEffect, useState } from 'react';
 
 const ONBOARDING_DISMISSED_KEY = 'slasshy-wispr-onboarding-dismissed-v1';
+const SETTINGS_KEY = 'slasshy-desktop-assistant-settings-v4';
+const DEFAULT_HOTKEY = 'Ctrl+Space';
 
 type Step = 'welcome' | 'hotkey' | 'tts' | 'done';
+
+function readSettings(): Record<string, unknown> {
+  const raw = localStorage.getItem(SETTINGS_KEY);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
 
 export function OnboardingWizard() {
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState<Step>('welcome');
+  const [settings, setSettings] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
     if (localStorage.getItem(ONBOARDING_DISMISSED_KEY)) return;
-    const raw = localStorage.getItem('slasshy-desktop-assistant-settings-v4');
-    if (!raw) setVisible(true);
-    else {
-      try {
-        const s = JSON.parse(raw);
-        if (!s.apiKey && !s.localSttModel) setVisible(true);
-      } catch { setVisible(true); }
-    }
+    const s = readSettings();
+    setSettings(s);
+    if (!s.apiKey && !s.localSttModel) setVisible(true);
   }, []);
 
   const dismiss = () => {
@@ -51,7 +59,16 @@ export function OnboardingWizard() {
             <h2 id="onboardingTitle">Push-to-Talk Hotkey</h2>
             <p>Press this key combination to start and stop recording.</p>
             <div className="onboarding-hotkey-demo">
-              <kbd>Ctrl</kbd><span>+</span><kbd>Space</kbd>
+              {(() => {
+                const hotkey = String(settings.pushToTalkHotkey ?? '').trim();
+                const tokens = hotkey ? hotkey.split('+').map(t => t.trim()).filter(Boolean) : DEFAULT_HOTKEY.split('+');
+                return tokens.map((token, i) => (
+                  <span key={`ohk-${i}`} className="onboarding-hotkey-token">
+                    {i > 0 && <span className="onboarding-hotkey-plus">+</span>}
+                    <kbd>{token}</kbd>
+                  </span>
+                ));
+              })()}
             </div>
             <p className="onboarding-hint">
               You can change this later in <strong>Settings &gt; General</strong>.
@@ -77,7 +94,7 @@ export function OnboardingWizard() {
         {step === 'done' && (
           <>
             <h2 id="onboardingTitle">You're all set!</h2>
-            <p>Press your hotkey to start dictating, or say <strong>"Hey {localStorage.getItem('slasshy-desktop-assistant-settings-v4') ? JSON.parse(localStorage.getItem('slasshy-desktop-assistant-settings-v4') || '{}').assistantName || 'Lily' : 'Lily'}"</strong> for assistant mode.</p>
+            <p>Press your hotkey to start dictating, or say <strong>Hey {String(settings.assistantName || 'Lily')}</strong> for assistant mode.</p>
             <p className="onboarding-hint">Need help? Check Settings or hit <kbd>Alt+S</kbd>.</p>
             <div className="onboarding-actions">
               <button className="dark-action" type="button" onClick={dismiss}>Start dictating</button>

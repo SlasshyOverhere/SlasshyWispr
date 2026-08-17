@@ -327,6 +327,8 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
               <span className="streak-count">{streak}</span>
               <span className="streak-label">{streak === 1 ? 'day streak' : 'day streak'}</span>
             </div>
+            {/* ponytail: streak-label is fixed at "day streak" — an "N-day streak"
+                label needs pluralization, add when the streak layout is revisited. */}
             <span className="streak-sub">{getStreakSubMessage(streak)}</span>
           </div>
           <div className="streak-meter" aria-hidden="true">

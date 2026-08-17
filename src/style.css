@@ -490,7 +490,8 @@ body.sidebar-collapsed .brand-strip {
 }
 
 .brand-word {
-  font-size: 13.5px;
+  font-family: var(--font-display);
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.015em;
   color: var(--ink-primary);
@@ -826,6 +827,12 @@ body.sidebar-collapsed .nav-keyhint {
   background: oklch(60% 0.20 25 / 0.10);
 }
 
+.home-list-head-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+
 .home-list-head-icon {
   width: 14px;
   height: 14px;
@@ -957,6 +964,11 @@ body.sidebar-collapsed .nav-keyhint {
 
 .home-entry:hover .home-entry-actions,
 .home-entry:focus-within .home-entry-actions { opacity: 1; }
+
+/* Touch/pen devices have no hover — always show the actions. */
+@media (hover: none) {
+  .home-entry-actions { opacity: 1; }
+}
 
 .home-entry-action {
   width: 28px;
@@ -1269,43 +1281,6 @@ body.sidebar-collapsed .nav-keyhint {
   margin: 0 2px;
 }
 
-/* ── Old class bleed — kept neutral until removal in next pass ────────*/
-.overview-stats,
-.overview-stat,
-.overview-stat-label,
-.overview-stat-value,
-.overview-stat-unit,
-.stat-trend,
-.stat-trend-up,
-.stat-trend-down,
-.stat-trend-neutral,
-.overview-clear-btn,
-.overview-title,
-.overview-subtitle,
-.stats-hero,
-.stats-hero-figure,
-.stats-hero-ledger,
-.stats-hero-label,
-.stats-hero-value,
-.stats-hero-unit,
-.stats-hero-caption,
-.stat-row,
-.stat-row-label,
-.stat-row-value,
-.stat-row-unit,
-.stat-row-trend,
-.stat-cards-grid,
-.stat-card,
-.stat-card-header,
-.stat-label,
-.stat-icon,
-.stat-value,
-.stat-unit,
-.stat-meta,
-.stat-period,
-.home-stats,
-.home-stat { display: none; }
-
 /* Inline SVG default — never balloon */
 svg:not([width]):not([height]) {
   width: 14px;
@@ -1596,7 +1571,6 @@ svg:not([width]):not([height]) {
   white-space: nowrap;
 }
 
-.snippet-trigger::before { content: "› "; color: oklch(84% 0.18 55); opacity: 0.7; }
 
 .snippet-expansion {
   font-family: var(--font-display);
@@ -1631,6 +1605,10 @@ svg:not([width]):not([height]) {
 
 .snippet-row:hover .delete-btn,
 .snippet-row:focus-within .delete-btn { opacity: 1; }
+
+@media (hover: none) {
+  .snippet-row .delete-btn { opacity: 1; }
+}
 
 .delete-btn:hover {
   color: oklch(74% 0.18 25);
@@ -2117,7 +2095,7 @@ svg:not([width]):not([height]) {
 /* Archive rows — condensed, dimmer, smaller metrics. The history
    recedes so the hero can speak. */
 .conversation-entry.is-archive {
-  opacity: 0.78;
+  opacity: 0.85;
   padding-top: 11px;
   padding-bottom: 11px;
 }
@@ -2127,7 +2105,7 @@ svg:not([width]):not([height]) {
 }
 
 .conversation-entry.is-archive .entry-content {
-  font-size: 18px;
+  font-size: 14px;
   line-height: 1.45;
   color: var(--ink-secondary);
   font-weight: 450;
@@ -2761,7 +2739,7 @@ textarea:focus-visible {
 .notes-mic-btn {
   width: 64px;
   height: 64px;
-  border-radius: 999px;
+  border-radius: var(--radius-container);
   background: var(--ink-primary);
   color: var(--bg-void);
   border: 0;
@@ -2913,11 +2891,9 @@ textarea:focus-visible {
   height: 52px;
   min-width: 240px;
   max-width: 360px;
-  background: oklch(16% 0.012 250 / 0.85);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  backdrop-filter: blur(20px) saturate(1.4);
+  background: oklch(18% 0.012 250);
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-container);
   display: flex;
   align-items: center;
   padding: 0 18px 0 6px;
@@ -2947,7 +2923,7 @@ textarea:focus-visible {
 .dock-mic-btn {
   width: 40px;
   height: 40px;
-  border-radius: 999px;
+  border-radius: var(--radius-button);
   background: oklch(95% 0.012 80);
   color: oklch(15% 0.012 80);
   border: 0;
@@ -3306,11 +3282,15 @@ textarea:focus-visible {
   color: var(--ink-faint);
   cursor: pointer;
   padding: 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-button);
   display: flex;
   align-items: center;
   justify-content: center;
   transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.icon-close-btn.mini {
+  padding: 4px;
 }
 
 .icon-close-btn:hover { background: var(--bg-hover); color: var(--ink-primary); }
@@ -3334,15 +3314,15 @@ textarea:focus-visible {
 
 .badge-count {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 500;
-  background: transparent;
-  color: var(--ink-faint);
-  padding: 0;
-  border-radius: 0;
-  border: 0;
-  letter-spacing: 0.04em;
+  background: var(--bg-hover);
+  color: var(--ink-secondary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-line);
   margin-right: 6px;
+  white-space: nowrap;
 }
 
 .dictionary-list-enhanced {
@@ -3453,6 +3433,11 @@ textarea:focus-visible {
 .dictionary-item-card:focus-within .icon-delete-btn,
 .dictionary-item-row:focus-within .dictionary-remove-btn { opacity: 1; }
 
+@media (hover: none) {
+  .dictionary-item-card .icon-delete-btn,
+  .dictionary-item-row .dictionary-remove-btn { opacity: 1; }
+}
+
 .icon-delete-btn:hover,
 .dictionary-remove-btn:hover {
   color: oklch(74% 0.18 25);
@@ -3545,6 +3530,17 @@ textarea:focus-visible {
   margin: var(--space-6) 0;
 }
 
+.onboarding-hotkey-token {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.onboarding-hotkey-plus {
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
 .onboarding-hotkey-demo kbd {
   background: var(--bg-recess);
   border: 1px solid var(--border-line);
@@ -3581,19 +3577,16 @@ textarea:focus-visible {
 }
 
 .onboarding-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
+  width: 18px;
+  height: 4px;
+  border-radius: 2px;
   background: var(--border-line);
-  transform-origin: center;
-  transform: scaleX(1);
-  transition: background-color var(--transition-fast), transform var(--transition-fast);
+  transition: background-color var(--transition-fast), width var(--transition-fast);
 }
 
 .onboarding-dot.active {
+  width: 28px;
   background: var(--ink-primary);
-  transform: scaleX(3);
-  border-radius: 999px;
 }
 
 /* kbd element anywhere else */
