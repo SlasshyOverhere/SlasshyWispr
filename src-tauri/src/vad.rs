@@ -57,10 +57,15 @@ fn get_or_load_session(
     let mut guard = cell.lock().map_err(|_| "VAD model lock poisoned.")?;
 
     if guard.is_none() {
+        // Silero VAD is a tiny frame-level model; capping intra threads avoids
+        // spinning up an ORT thread pool sized to the whole machine for a
+        // sub-millisecond inference.
         let session = Session::builder()
             .map_err(|e| format!("VAD session builder failed: {e}"))?
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(|e| format!("VAD optimization level failed: {e}"))?
+            .with_intra_threads(2)
+            .map_err(|e| format!("VAD intra-thread config failed: {e}"))?
             .commit_from_file(model_path)
             .map_err(|e| format!("Failed to load VAD model: {e}"))?;
 

@@ -38,7 +38,7 @@ pub const APP_EVENT_UPDATE_INSTALL_PROGRESS: &str = "slasshy://update-install-pr
 pub const TRAY_MENU_UPDATE_AVAILABLE_ID: &str = "update-available";
 pub const APP_EVENT_UPDATE_AVAILABLE: &str = "slasshy://update-available";
 pub const LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS: u64 = 90;
-pub const LOCAL_STT_DAEMON_IDLE_TIMEOUT_SECS: u64 = 15 * 60;
+pub const LOCAL_STT_DAEMON_IDLE_TIMEOUT_SECS: u64 = 5 * 60;
 pub const LOCAL_STT_DAEMON_SWEEP_INTERVAL_SECS: u64 = 15;
 pub const LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_ENV: &str =
     "SLASSHY_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS";

@@ -73,9 +73,7 @@
   gap: var(--space-5);
   padding: var(--space-4) var(--space-6);
   margin-bottom: var(--space-6);
-  background:
-    radial-gradient(120% 200% at 0% 50%, var(--streak-glow) 0%, transparent 60%),
-    var(--bg-card);
+  background: var(--bg-card);
   border: 1px solid var(--streak-rule);
   border-radius: var(--radius-card);
   overflow: hidden;
@@ -137,16 +135,6 @@
   display: block;
 }
 
-.analytics-streak-banner[data-streak-tier="3"] .streak-icon-wrap,
-.analytics-streak-banner[data-streak-tier="4"] .streak-icon-wrap,
-.analytics-streak-banner[data-streak-tier="5"] .streak-icon-wrap {
-  animation: streak-icon-pulse 2.4s ease-in-out infinite;
-}
-
-@keyframes streak-icon-pulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 var(--streak-glow); }
-  50% { transform: scale(1.04); box-shadow: 0 0 0 8px transparent; }
-}
 
 .streak-body {
   display: flex;
@@ -220,11 +208,9 @@
 }
 
 .streak-meter-label {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
   font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--ink-faint);
   white-space: nowrap;
 }
@@ -243,17 +229,6 @@
     padding-top: var(--space-3);
     width: 100%;
     justify-content: space-between;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .analytics-streak-banner[data-streak-tier="3"] .streak-icon-wrap,
-  .analytics-streak-banner[data-streak-tier="4"] .streak-icon-wrap,
-  .analytics-streak-banner[data-streak-tier="5"] .streak-icon-wrap {
-    animation: none;
-  }
-  .streak-meter-dot {
-    transition: none;
   }
 }
 
@@ -281,11 +256,9 @@
 }
 
 .analytics-metric-label {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--ink-faint);
 }
 
@@ -313,11 +286,9 @@
 }
 
 .analytics-section-title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
   color: var(--ink-faint);
   margin-bottom: var(--space-4);
 }

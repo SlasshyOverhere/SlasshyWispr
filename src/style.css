@@ -1,14 +1,24 @@
 /* Studio Console — type system.
-   Inter (body) + Inter (display) + Geist Mono local (data).
-   Inter loaded via @fontsource (no CDN). Geist Mono local for
-   monospace data. Inter is variable when light, falls back to
-   weighted siblings when no variable axis is exposed. */
+   Geist Variable (display) + Inter (body) + Geist Mono local (data).
+   Inter loaded via @fontsource (no CDN). Geist Variable carries the
+   display voice; Geist Mono (bundled in public/fonts) is reserved for
+   real data — timestamps, hotkeys, metrics, version, terms. */
+
+/* Bundled Geist Mono — variable face for data, not costume. */
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2-variations"),
+       url("/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2");
+}
 
 :root {
   /* ── Type families ── */
   --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
-  --font-display: var(--font-sans);
-  --font-mono:    "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-display: 'Geist Variable', var(--font-sans);
+  --font-mono:    "Geist Mono", "Cascadia Code", ui-monospace, monospace;
   --font-main:    var(--font-sans);   /* legacy alias */
 
   /* ── Surface system (tinted OKLCH, never #000 / #fff) ── */
@@ -243,10 +253,8 @@ h2 {
   color: var(--ink-primary);
 }
 h3 {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--ink-muted);
 }
 h4 {
@@ -479,7 +487,6 @@ body.sidebar-collapsed .brand-strip {
 .app-frame.is-recording .brand-glyph::after {
   background: var(--accent-live);
   box-shadow: 0 0 6px var(--accent-live-edge);
-  animation: live-blink 1.6s ease-in-out infinite;
 }
 
 .brand-word {
@@ -494,10 +501,9 @@ body.sidebar-collapsed .brand-strip {
 }
 
 .brand-tagline {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-family: var(--font-display);
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.04em;
   color: var(--ink-faint);
   text-transform: lowercase;
 }
@@ -537,11 +543,9 @@ body.sidebar-collapsed .brand-row strong {
 }
 
 .nav-section-kicker {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-sans);
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--ink-faint);
   padding: 12px 14px 6px;
 }
@@ -781,63 +785,6 @@ body.sidebar-collapsed .nav-keyhint {
   flex-direction: column;
   gap: var(--space-6);
   min-width: 0;
-}
-
-/* Greeting row — large title with orange keyboard tokens. */
-.home-greeting {
-  font-size: clamp(26px, 3.2vw, 32px);
-  font-weight: 500;
-  letter-spacing: -0.025em;
-  color: var(--ink-primary);
-  line-height: 1.15;
-  margin: 0;
-  text-wrap: balance;
-}
-
-.home-greeting .home-greet-name { font-weight: 600; }
-
-/* Orange token pills. Saturation bumped for dark theme so the pills
-   read as warm/vibrant instead of pastel. light theme keeps the
-   softer cream-orange from the prior pass. */
-.home-token {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px 9px;
-  border-radius: 5px;
-  background: oklch(76% 0.20 50);
-  color: oklch(18% 0.04 50);
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 0.78em;
-  letter-spacing: 0.01em;
-  margin: 0 2px;
-  vertical-align: baseline;
-  line-height: 1;
-  white-space: nowrap;
-  box-shadow: 0 0 0 1px oklch(72% 0.18 50 / 0.10) inset;
-}
-
-.home-token-plus {
-  display: inline-block;
-  font-weight: 500;
-  color: var(--ink-muted);
-  font-size: 0.78em;
-  margin: 0 4px;
-  line-height: 1;
-  /* No transform — the previous translateY shifted the glyph off axis
-     and caused it to render as an ambiguous bar when font baseline
-     disagreed with our inline box baseline. */
-}
-
-/* Subgreeting: a one-line whisper about what's current. */
-.home-subgreeting {
-  font-size: 13.5px;
-  font-weight: 400;
-  color: var(--ink-muted);
-  line-height: 1.45;
-  margin: -8px 0 0;
-  max-width: 56ch;
 }
 
 /* List region: search pin in top-right, then date-banded card stacks. */
@@ -1139,11 +1086,9 @@ body.sidebar-collapsed .nav-keyhint {
 
 /* Card meta line — sits next to the title, mono faint. */
 .home-card-meta {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-sans);
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
   color: var(--ink-faint);
 }
 
@@ -1257,52 +1202,6 @@ body.sidebar-collapsed .nav-keyhint {
   letter-spacing: 0.005em;
 }
 
-/* Voice profile card with progress bar + status pill. */
-.home-profile-progress {
-  position: relative;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--bg-recess);
-  overflow: hidden;
-}
-
-.home-profile-progress-fill {
-  --p: 0;
-  position: absolute;
-  left: 0;
-  top: 0;
-  height: 100%;
-  width: 100%;
-  background: oklch(76% 0.20 50);
-  border-radius: 999px;
-  transform: scaleX(var(--p));
-  transform-origin: left center;
-  transition: transform var(--transition-main);
-  box-shadow: 0 0 8px -2px oklch(76% 0.20 50 / 0.55);
-}
-
-.home-profile-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  font-weight: 500;
-  /* Dark-theme pill: warm orange text on a translucent amber pad so it
-     reads as the same accent family as the home-token pills above
-     rather than a wet-blanket CTA battery. */
-  color: oklch(84% 0.18 55);
-  background: oklch(28% 0.080 50);
-  padding: 3px 8px;
-  border-radius: 999px;
-  letter-spacing: 0.01em;
-  box-shadow: 0 0 0 1px oklch(60% 0.16 50 / 0.30) inset;
-}
-
-:root[data-theme="mono"] .home-profile-pill {
-  background: var(--bg-recess);
-  color: var(--ink-secondary);
-}
-
 /* ── Light theme makes the surfaces read paper-like ────────────────*/
 :root[data-theme="light"] {
   --home-card-bg: oklch(100% 0 0);
@@ -1322,29 +1221,11 @@ body.sidebar-collapsed .nav-keyhint {
   background: oklch(98% 0.04 50);
 }
 
-:root[data-theme="mono"] .home-entry.is-fresh,
-:root[data-theme="mono"] .home-token {
+:root[data-theme="mono"] .home-entry.is-fresh {
   /* In mono theme we don't have the orange accent — fall back. */
   background: var(--bg-card);
   color: var(--ink-primary);
 }
-
-/* Existing link buttons (kept so fallback stats clear still works). */
-.home-link-btn {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink-secondary);
-  background: transparent;
-  border: 0;
-  padding: 6px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: color var(--transition-fast), background-color var(--transition-fast);
-}
-.home-link-btn:hover { color: var(--ink-primary); background: var(--bg-hover); }
 
 /* ── Empty state — quiet first-run prompt ──────────────────────────*/
 .home-empty {
@@ -1472,7 +1353,7 @@ svg:not([width]):not([height]) {
   line-height: 1.5;
 }
 
-/* Primary action button — quiet light pill on dark surfaces, otherwise the recording-live amber */
+/* Primary action button — quiet light fill on dark surfaces, otherwise the recording-live amber. Single source of truth; settings.css no longer redefines these. */
 .dark-action {
   display: inline-flex;
   align-items: center;
@@ -1483,7 +1364,7 @@ svg:not([width]):not([height]) {
   color: var(--accent-quiet-ink);
   border: 0;
   padding: 9px 18px;
-  border-radius: 999px;
+  border-radius: var(--radius-button);
   font-weight: 600;
   font-size: 13.5px;
   letter-spacing: -0.003em;
@@ -1516,7 +1397,7 @@ svg:not([width]):not([height]) {
   color: var(--ink-secondary);
   border: 1px solid var(--border-line);
   padding: 7px 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-button);
   font-weight: 500;
   font-size: 13px;
   cursor: pointer;
@@ -1605,12 +1486,10 @@ svg:not([width]):not([height]) {
 }
 
 .snippet-field label {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
   color: var(--ink-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
 }
 
 .snippet-field input {
@@ -1738,16 +1617,14 @@ svg:not([width]):not([height]) {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: transparent;
   color: var(--ink-faint);
-  font-size: 11.5px;
-  font-family: var(--font-mono);
+  font-size: 12px;
+  font-family: var(--font-sans);
   font-weight: 500;
   cursor: pointer;
   border: 0;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   transition: color var(--transition-fast);
   opacity: 0;
 }
@@ -1785,11 +1662,9 @@ svg:not([width]):not([height]) {
 
 .section-head h3,
 .section-head .section-title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--ink-secondary);
   margin: 0;
 }
@@ -1805,17 +1680,14 @@ svg:not([width]):not([height]) {
 }
 
 .section-sub {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
   color: var(--ink-faint);
   margin: 0;
   display: inline-flex;
   align-items: baseline;
   gap: 8px;
-  font-feature-settings: "tnum" 1;
 }
 
 .section-sub-sep {
@@ -1874,11 +1746,9 @@ svg:not([width]):not([height]) {
   border: 0;
   background: transparent;
   color: var(--ink-muted);
-  font-size: 11.5px;
-  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-family: var(--font-sans);
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
   cursor: pointer;
 }
 
@@ -1946,12 +1816,10 @@ svg:not([width]):not([height]) {
 
 .date-picker-weekdays span {
   text-align: center;
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-sans);
+  font-size: 11px;
   font-weight: 500;
   color: var(--ink-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   padding: 4px 0;
 }
 
@@ -2075,11 +1943,9 @@ svg:not([width]):not([height]) {
 }
 
 .empty-hint-kicker {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-family: var(--font-sans);
+  font-size: 12px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
   color: var(--ink-faint);
   margin-bottom: -2px;
 }
@@ -2125,11 +1991,9 @@ svg:not([width]):not([height]) {
   background: transparent;
   border: 0;
   color: var(--ink-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
   cursor: pointer;
   padding: 4px 8px;
   position: relative;
@@ -2154,11 +2018,9 @@ svg:not([width]):not([height]) {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
   color: var(--ink-muted);
   background: transparent;
   border: 0;
@@ -2191,11 +2053,9 @@ svg:not([width]):not([height]) {
 }
 
 .btn-ghost {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
   color: var(--ink-faint);
   background: transparent;
   border: 0;
@@ -2212,7 +2072,7 @@ svg:not([width]):not([height]) {
 
 .conversation-entry {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto auto;
+  grid-template-columns: 56px minmax(0, 1fr) 150px 96px;
   align-items: center;
   column-gap: var(--space-4);
   row-gap: var(--space-1);
@@ -2297,13 +2157,6 @@ svg:not([width]):not([height]) {
   background: var(--accent-live);
   margin-right: 6px;
   vertical-align: 1px;
-  animation: fresh-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  box-shadow: 0 0 0 0 var(--accent-live-edge);
-}
-
-@keyframes fresh-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 var(--accent-live-edge); opacity: 1; }
-  50%      { box-shadow: 0 0 0 4px transparent; opacity: 0.65; }
 }
 
 .history-date-header {
@@ -2315,23 +2168,18 @@ svg:not([width]):not([height]) {
 }
 
 .history-date-header .history-date-label {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
   color: var(--ink-secondary);
   white-space: nowrap;
 }
 
 .history-date-header .history-date-count {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-family: var(--font-sans);
+  font-size: 12px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
   color: var(--ink-faint);
-  font-feature-settings: "tnum" 1;
   white-space: nowrap;
 }
 
@@ -2439,6 +2287,7 @@ svg:not([width]):not([height]) {
 
 .entry-metrics-spacer {
   display: block;
+  min-width: 1px;
 }
 
 .entry-metrics .metric {
@@ -2529,6 +2378,7 @@ svg:not([width]):not([height]) {
 .entry-actions {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 2px;
   justify-self: end;
   align-self: start;
@@ -2576,12 +2426,6 @@ svg:not([width]):not([height]) {
   color: var(--accent-quiet-ink);
   background: var(--accent-live);
   opacity: 1;
-  animation: pulse-live 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse-live {
-  0%, 100% { box-shadow: 0 0 0 0 var(--accent-live-edge); }
-  50%      { box-shadow: 0 0 0 5px transparent; }
 }
 
 .entry-icon-copied {
@@ -2747,11 +2591,9 @@ svg:not([width]):not([height]) {
   border: 0;
   padding: 6px 12px;
   border-radius: 0;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
   color: var(--ink-muted);
   cursor: pointer;
   transition: color var(--transition-fast);
@@ -2846,15 +2688,13 @@ textarea:focus-visible {
 .managed-row-main span {
   font-size: 13px;
   color: var(--ink-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 .managed-row-meta {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
   color: var(--ink-faint);
   background: transparent;
   padding: 0;
@@ -2883,7 +2723,7 @@ textarea:focus-visible {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 80% 50%, oklch(32% 0.080 50 / 0.18), transparent 60%);
+  background: linear-gradient(120deg, oklch(32% 0.080 50 / 0.10), transparent 55%);
   pointer-events: none;
 }
 
@@ -2902,12 +2742,10 @@ textarea:focus-visible {
 }
 
 .quick-note-label {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
   font-weight: 500;
-  letter-spacing: 0.18em;
   color: var(--ink-faint);
-  text-transform: uppercase;
 }
 
 .quick-note-info h3 {
@@ -2942,13 +2780,6 @@ textarea:focus-visible {
 .notes-mic-btn[data-stage="recording"] {
   background: var(--accent-live);
   color: oklch(15% 0.005 250);
-  animation: pulse-recording 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-}
-
-@keyframes pulse-recording {
-  0%   { box-shadow: 0 0 0 0 var(--accent-live-edge); }
-  70%  { box-shadow: 0 0 0 16px transparent; }
-  100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 .notes-ledger {
@@ -3133,12 +2964,6 @@ textarea:focus-visible {
 .app-frame.is-recording .dock-mic-btn {
   background: var(--accent-live);
   color: oklch(15% 0.005 250);
-  animation: dock-mic-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes dock-mic-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 var(--accent-live-edge); }
-  50%      { box-shadow: 0 0 0 6px transparent; }
 }
 
 .visualizer-container {
@@ -3327,11 +3152,9 @@ textarea:focus-visible {
   padding: var(--space-4);
   border: 0;
   background: transparent;
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 13px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
   cursor: pointer;
   transition: background-color 120ms cubic-bezier(0.22, 1, 0.36, 1), color 120ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -3389,11 +3212,9 @@ textarea:focus-visible {
 }
 
 .card-icon-title h3 {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--ink-faint);
   margin: 0;
 }
@@ -3423,11 +3244,9 @@ textarea:focus-visible {
 }
 
 .input-group label {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
   color: var(--ink-faint);
 }
 
@@ -3506,11 +3325,9 @@ textarea:focus-visible {
 }
 
 .dictionary-list-header h3 {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--ink-faint);
   margin: 0;
 }
@@ -3577,11 +3394,9 @@ textarea:focus-visible {
 }
 
 .dict-term .term-label {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-family: var(--font-sans);
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--ink-faint);
   flex-shrink: 0;
   width: 60px;

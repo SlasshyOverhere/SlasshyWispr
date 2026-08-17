@@ -421,10 +421,9 @@
 .settings-version {
   padding: 8px 20px 0;
   margin: 0;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ink-faint);
-  font-family: var(--font-mono);
-  letter-spacing: 0.04em;
+  font-family: var(--font-sans);
 }
 
 /* ── Pane Container ── */
@@ -478,10 +477,8 @@
    ═══════════════════════════════════════════════ */
 
 .settings-section-title {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
   color: var(--ink-faint);
   padding: 20px 0 8px;
   border-bottom: 1px solid var(--border-subtle);
@@ -539,10 +536,8 @@
 
 /* ── Group label (inside a block) ── */
 .s-group-label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
   color: var(--ink-faint);
   padding-bottom: 4px;
 }
@@ -653,10 +648,8 @@
 }
 
 .field-label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.11em;
   color: var(--ink-muted);
 }
 
@@ -1151,35 +1144,12 @@
 }
 
 /* ═══════════════════════════════════════════════
-   LEGACY BUTTON CLASSES — used outside settings
+   LEGACY BUTTON CLASSES — used outside settings.
+   Single source of truth lives in style.css (.dark-action/.ghost-action).
+   This file only adds the .mini variant used by the selection popup.
    ═══════════════════════════════════════════════ */
-
-.ghost-action {
-  background: var(--bg-card);
-  border: 1px solid var(--border-line);
-  color: var(--ink-secondary);
-  padding: 7px 14px;
-  border-radius: 8px;
-  font-size: 12.5px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
-  white-space: nowrap;
-}
 
 .ghost-action.mini {
   padding: 4px 9px;
   font-size: 11px;
-}
-
-.dark-action {
-  background: var(--bg-hover);
-  border: 1px solid var(--border-strong);
-  color: var(--ink-primary);
-  padding: 7px 14px;
-  border-radius: 8px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
 }

@@ -385,8 +385,8 @@ def _load_parakeet_model(model_path: Path) -> tuple[Any, bool, str, str]:
     except Exception:
         pass
 
-    _evict_model_cache_except(resolved)
     MODEL_CACHE[resolved] = model
+    _evict_model_cache_except(resolved)
     return model, False, device, precision
 
 
@@ -416,8 +416,8 @@ def _load_faster_whisper_runner(model_path: Path) -> tuple[dict[str, Any], bool,
         "model": model,
         "computeType": compute_type,
     }
-    _evict_model_cache_except(cache_key)
     MODEL_CACHE[cache_key] = runner
+    _evict_model_cache_except(cache_key)
     return runner, False, device
 
 
@@ -477,8 +477,8 @@ def _load_hf_asr_runner(
                 "processor": processor,
                 "torch_dtype": str(torch_dtype).replace("torch.", ""),
             }
-            _evict_model_cache_except(cache_key)
             MODEL_CACHE[cache_key] = runner
+            _evict_model_cache_except(cache_key)
             return runner, False, device
         except Exception:
             # Fallback to generic ASR pipeline if Moonshine class is unavailable
@@ -500,8 +500,8 @@ def _load_hf_asr_runner(
         "kind": "pipeline",
         "pipeline": asr,
     }
-    _evict_model_cache_except(cache_key)
     MODEL_CACHE[cache_key] = runner
+    _evict_model_cache_except(cache_key)
     return runner, False, device
 
 
@@ -538,11 +538,12 @@ def action_transcribe_parakeet(request: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(
             f"Parakeet returned repetitive transcript noise. raw={_preview_object(raw)}"
         )
-    unloaded_after_transcribe = False
     if unload_after_transcribe:
         MODEL_CACHE.clear()
         _compact_memory(force_cuda_empty_cache=True)
         unloaded_after_transcribe = True
+    else:
+        unloaded_after_transcribe = False
     return {
         "text": text,
         "modelCached": model_cached,

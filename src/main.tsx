@@ -1,3 +1,4 @@
+import "@fontsource-variable/geist";
 import "@fontsource/inter/300.css";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
@@ -7977,6 +7978,14 @@ function startBlockedAppShortcutSuppressionMonitor(): void {
   void refreshBlockedAppShortcutSuppression();
 }
 
+function stopBlockedAppShortcutSuppressionMonitor(): void {
+  if (foregroundBlockMonitorId !== null) {
+    window.clearInterval(foregroundBlockMonitorId);
+    foregroundBlockMonitorId = null;
+  }
+  foregroundBlockCheckedAt = 0;
+}
+
 async function closeSelectionAssistantWindowForTray(): Promise<void> {
   latestSelectionPopupPayload = null;
   if (!selectionAssistantWindow) {
@@ -8001,6 +8010,7 @@ function stopNonEssentialUiPollingForTray(): void {
   stopTtsSetupPolling();
   stopLocalSttDownloadStatusPolling();
   hideLocalSttLoadOverlay();
+  stopBlockedAppShortcutSuppressionMonitor();
 }
 
 function resumeNonEssentialUiPollingAfterTray(): void {
@@ -8012,6 +8022,7 @@ function resumeNonEssentialUiPollingAfterTray(): void {
     startLocalSttDownloadStatusPolling();
     void pollLocalSttDownloadStatusOnce({ quiet: true });
   }
+  startBlockedAppShortcutSuppressionMonitor();
 }
 
 async function applyMainWindowTrayVisibility(hidden: boolean): Promise<void> {
