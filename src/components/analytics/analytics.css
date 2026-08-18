@@ -64,7 +64,6 @@
 
 .analytics-streak-banner {
   --streak-fg: oklch(58% 0.14 55);
-  --streak-glow: oklch(74% 0.18 55 / 0.32);
   --streak-rule: oklch(74% 0.18 55 / 0.55);
 
   position: relative;
@@ -83,49 +82,41 @@
 /* Tier 1 — 1-2 days: ember, calm */
 .analytics-streak-banner[data-streak-tier="1"] {
   --streak-fg: oklch(58% 0.10 60);
-  --streak-glow: oklch(74% 0.12 60 / 0.24);
   --streak-rule: oklch(70% 0.12 60 / 0.50);
 }
 
 /* Tier 2 — 3-6 days: warming */
 .analytics-streak-banner[data-streak-tier="2"] {
   --streak-fg: oklch(62% 0.14 50);
-  --streak-glow: oklch(74% 0.16 50 / 0.32);
   --streak-rule: oklch(72% 0.15 50 / 0.60);
 }
 
 /* Tier 3 — 7-29 days: full flame */
 .analytics-streak-banner[data-streak-tier="3"] {
   --streak-fg: oklch(64% 0.18 40);
-  --streak-glow: oklch(76% 0.20 40 / 0.38);
   --streak-rule: oklch(72% 0.18 40 / 0.70);
 }
 
 /* Tier 4 — 30-99 days: gold */
 .analytics-streak-banner[data-streak-tier="4"] {
   --streak-fg: oklch(70% 0.16 75);
-  --streak-glow: oklch(82% 0.16 75 / 0.40);
   --streak-rule: oklch(76% 0.16 75 / 0.75);
 }
 
 /* Tier 5 — 100+ days: discipline red */
 .analytics-streak-banner[data-streak-tier="5"] {
   --streak-fg: oklch(58% 0.22 25);
-  --streak-glow: oklch(64% 0.22 25 / 0.45);
   --streak-rule: oklch(62% 0.22 25 / 0.80);
 }
 
 .streak-icon-wrap {
   position: relative;
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
-  background: var(--streak-glow);
-  border: 1px solid var(--streak-rule);
 }
 
 .streak-flame {
@@ -458,7 +449,7 @@
   height: 16px;
   border-radius: 999px;
   background: oklch(78% 0.16 145);
-  color: oklch(15% 0.005 250);
+  color: var(--bg-void);
   font-size: 9.5px;
   font-weight: 700;
   display: flex;

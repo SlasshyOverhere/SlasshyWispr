@@ -114,84 +114,67 @@
   width: 100%;
   aspect-ratio: 16 / 10;
   border-radius: 10px;
-  border: 1px solid oklch(28% 0.008 250);
+  border: 1px solid oklch(29% 0.006 60);
   overflow: hidden;
   isolation: isolate;
 }
 
-.preview-titlebar {
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 8px;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 0 5px;
-  background: oklch(16% 0.012 250);
-  border-bottom: 1px solid oklch(24% 0.006 250);
-}
-
-.preview-dot {
-  width: 6px;
-  height: 2px;
-  border-radius: 1px;
-  background: oklch(42% 0.010 80);
-  opacity: 0.6;
-}
-
+/* Abstract app mini: rail + page + a live mark. No fake window chrome,
+   no traffic dots. Reads as "surface + accent", which is what a theme
+   actually is. */
 .preview-body {
   position: absolute;
-  inset: 8px 0 0 0;
+  inset: 0;
   display: grid;
-  grid-template-columns: 9px 1fr;
-  gap: 3px;
-  padding: 4px;
+  grid-template-columns: 14px 1fr;
+  gap: 4px;
+  padding: 5px;
 }
 
 .preview-sidebar {
-  background: oklch(16% 0.012 250);
-  border-radius: 2px;
-  padding: 2px;
+  background: oklch(16% 0.006 60);
+  border-radius: 3px;
+  padding: 3px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .preview-row {
-  height: 2px;
-  border-radius: 1px;
-  background: oklch(42% 0.010 80);
-  opacity: 0.5;
+  height: 2.5px;
+  border-radius: 1.5px;
+  background: oklch(42% 0.006 70);
+  opacity: 0.55;
 }
 
 .preview-row.is-active {
-  background: oklch(74% 0.18 55);
+  background: oklch(96% 0.008 70);
   opacity: 1;
 }
 
 .preview-main {
-  background: oklch(19% 0.010 250);
-  border-radius: 2px;
-  padding: 4px 5px;
+  background: oklch(19% 0.005 60);
+  border-radius: 3px;
+  padding: 5px 6px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 3.5px;
   align-items: flex-start;
   position: relative;
 }
 
 .preview-h {
   width: 35%;
-  height: 4px;
-  border-radius: 1px;
-  background: oklch(95% 0.012 80);
+  height: 4.5px;
+  border-radius: 1.5px;
+  background: oklch(96% 0.008 70);
 }
 
 .preview-line {
   width: 90%;
   height: 1.5px;
   border-radius: 1px;
-  background: oklch(72% 0.015 80);
+  background: oklch(74% 0.008 70);
   opacity: 0.7;
 }
 
@@ -201,45 +184,38 @@
 
 .preview-record {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
+  right: 5px;
+  bottom: 5px;
   width: 5px;
   height: 5px;
   border-radius: 999px;
-  background: oklch(74% 0.18 55);
-  box-shadow: 0 0 0 2px oklch(74% 0.18 55 / 0.14);
+  background: oklch(72% 0.19 55);
+  box-shadow: 0 0 0 2px oklch(72% 0.19 55 / 0.14);
 }
 
 /* Light theme miniature — Daylight paper palette. */
 .theme-card[data-theme-target="light"] .theme-card-preview {
-  background: oklch(96.5% 0.012 85);
-  border-color: oklch(84% 0.010 85);
-}
-.theme-card[data-theme-target="light"] .preview-titlebar {
-  background: oklch(92% 0.014 85);
-  border-bottom-color: oklch(89% 0.008 85);
-}
-.theme-card[data-theme-target="light"] .preview-dot {
-  background: oklch(66% 0.010 50);
+  background: oklch(96.5% 0.012 80);
+  border-color: oklch(84% 0.010 80);
 }
 .theme-card[data-theme-target="light"] .preview-sidebar {
-  background: oklch(92% 0.014 85);
+  background: oklch(91% 0.014 80);
 }
 .theme-card[data-theme-target="light"] .preview-row {
-  background: oklch(66% 0.010 50);
+  background: oklch(64% 0.010 70);
 }
 .theme-card[data-theme-target="light"] .preview-row.is-active {
-  background: oklch(64% 0.20 55);
+  background: oklch(18% 0.02 60);
   opacity: 1;
 }
 .theme-card[data-theme-target="light"] .preview-main {
-  background: oklch(98.5% 0.008 85);
+  background: oklch(98.5% 0.006 80);
 }
 .theme-card[data-theme-target="light"] .preview-h {
-  background: oklch(20% 0.018 50);
+  background: oklch(20% 0.02 60);
 }
 .theme-card[data-theme-target="light"] .preview-line {
-  background: oklch(36% 0.014 50);
+  background: oklch(40% 0.014 60);
 }
 .theme-card[data-theme-target="light"] .preview-record {
   background: oklch(64% 0.20 55);
@@ -250,13 +226,6 @@
 .theme-card[data-theme-target="mono"] .theme-card-preview {
   background: oklch(13% 0 0);
   border-color: oklch(28% 0 0);
-}
-.theme-card[data-theme-target="mono"] .preview-titlebar {
-  background: oklch(16% 0 0);
-  border-bottom-color: oklch(24% 0 0);
-}
-.theme-card[data-theme-target="mono"] .preview-dot {
-  background: oklch(42% 0 0);
 }
 .theme-card[data-theme-target="mono"] .preview-sidebar {
   background: oklch(16% 0 0);
@@ -286,7 +255,7 @@
 .settings-overlay {
   position: fixed;
   inset: 0;
-  background: oklch(13% 0.012 250 / 0.55);
+  background: oklch(11% 0.006 60 / 0.6);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   z-index: 100;
@@ -963,10 +932,17 @@
 }
 
 .release-link {
-  color: var(--accent-live);
+  color: var(--ink-primary);
   font-size: 12px;
   font-weight: 600;
   text-decoration: none;
+  border-bottom: 1px solid var(--border-strong);
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.release-link:hover {
+  color: var(--ink-primary);
+  border-color: var(--ink-primary);
 }
 
 /* ═══════════════════════════════════════════════

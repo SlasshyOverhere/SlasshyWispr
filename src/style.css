@@ -21,40 +21,49 @@
   --font-mono:    "Geist Mono", "Cascadia Code", ui-monospace, monospace;
   --font-main:    var(--font-sans);   /* legacy alias */
 
-  /* ── Surface system (tinted OKLCH, never #000 / #fff) ── */
-  --bg-void:    oklch(13% 0.012 250);
-  --bg-rail:    oklch(16% 0.012 250);
-  --bg-paper:   oklch(19% 0.010 250);
-  --bg-recess:  oklch(11% 0.010 245);
-  --bg-card:    oklch(22% 0.010 250);
-  --bg-hover:   oklch(25% 0.010 250);
-  --bg-active:  oklch(28% 0.012 250);
+  /* ── Surface system — warm charcoal, Wispr-Flow-inspired.
+     Tinted OKLCH, never #000 / #fff. The hue is a warm neutral (~60),
+     not the old cool navy (250). Depth via value, not chroma. ── */
+  --bg-void:    oklch(13% 0.006 60);
+  --bg-rail:    oklch(16% 0.006 60);
+  --bg-paper:   oklch(19% 0.005 60);
+  --bg-recess:  oklch(11% 0.005 60);
+  --bg-card:    oklch(22% 0.005 60);
+  --bg-hover:   oklch(25% 0.005 60);
+  --bg-active:  oklch(29% 0.006 60);
 
-  --border-line:    oklch(28% 0.008 250);
-  --border-strong:  oklch(36% 0.008 250);
-  --border-subtle:  oklch(24% 0.006 250);
+  --border-line:    oklch(29% 0.004 60);
+  --border-strong:  oklch(38% 0.004 60);
+  --border-subtle:  oklch(25% 0.003 60);
 
-  --ink-primary:    oklch(95% 0.012 80);
-  --ink-secondary:  oklch(72% 0.015 80);
-  --ink-muted:      oklch(55% 0.012 80);
-  --ink-faint:      oklch(42% 0.010 80);
+  --ink-primary:    oklch(96% 0.006 70);
+  --ink-secondary:  oklch(74% 0.008 70);
+  --ink-muted:      oklch(58% 0.006 70);
+  --ink-faint:      oklch(45% 0.004 70);
 
   /* ── Accents ── */
   /* Single recording-active signal: warm amber, reserved. */
-  --accent-live:        oklch(74% 0.18 55);
-  --accent-live-soft:   oklch(74% 0.18 55 / 0.14);
-  --accent-live-edge:   oklch(74% 0.18 55 / 0.55);
+  --accent-live:        oklch(72% 0.19 55);
+  --accent-live-soft:   oklch(72% 0.19 55 / 0.14);
+  --accent-live-edge:   oklch(72% 0.19 55 / 0.55);
   --accent-quiet:       var(--ink-primary);
   --accent-quiet-ink:   var(--bg-void);
   /* Legacy aliases (kept so existing rules don't crash mid-refactor) */
   --accent:             var(--accent-quiet);
   --accent-foreground:  var(--accent-quiet-ink);
-  --primary:            oklch(74% 0.18 55);
-  --ring:               oklch(74% 0.18 55);
+  --primary:            oklch(72% 0.19 55);
+  --ring:               oklch(72% 0.19 55);
   --text-inverse:       var(--accent-quiet-ink);
 
+  /* ── Dynamic dialog tokens (main.tsx inline dialogs) ── */
+  --surface-elevated:  var(--bg-card);
+  --surface-raised:    var(--bg-paper);
+  --text-primary:      var(--ink-primary);
+  --text-secondary:    var(--ink-secondary);
+  --text-muted:        var(--ink-muted);
+
   /* ── Type scale ── */
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 450;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
@@ -78,20 +87,20 @@
   /* ── Radius ── */
   --radius-input: 8px;
   --radius-button: 8px;
-  --radius-card: 14px;
-  --radius-modal: 18px;
-  --radius-container: 16px;
+  --radius-card: 12px;
+  --radius-modal: 16px;
+  --radius-container: 12px;
 
-  /* ── Shadows ── */
-  --shadow-card:    0 1px 0 oklch(28% 0.008 250 / 0.6) inset, 0 12px 32px -16px oklch(0% 0 0 / 0.5);
-  --shadow-modal:   0 24px 64px -16px oklch(0% 0 0 / 0.6), 0 0 0 1px oklch(28% 0.008 250 / 0.4) inset;
-  --shadow-popover: 0 8px 32px -8px oklch(0% 0 0 / 0.5), 0 0 0 1px oklch(28% 0.008 250 / 0.6) inset;
-  --shadow-live:    0 0 0 0 oklch(74% 0.18 55 / 0.0);
+  /* ── Shadows — tight, low-offset, tinted to the surface. No bloom. ── */
+  --shadow-card:    0 1px 0 oklch(29% 0.004 60 / 0.5) inset, 0 8px 24px -16px oklch(0% 0 0 / 0.5);
+  --shadow-modal:   0 24px 64px -20px oklch(0% 0 0 / 0.7), 0 0 0 1px oklch(29% 0.004 60 / 0.4) inset;
+  --shadow-popover: 0 8px 28px -12px oklch(0% 0 0 / 0.6), 0 0 0 1px oklch(29% 0.004 60 / 0.5) inset;
+  --shadow-live:    0 0 0 0 oklch(72% 0.19 55 / 0.0);
 
   /* ── Layout ── */
-  --titlebar-height: 32px;
-  --sidebar-width: 248px;
-  --sidebar-collapsed-width: 64px;
+  --titlebar-height: 36px;
+  --sidebar-width: 232px;
+  --sidebar-collapsed-width: 60px;
   --transition-main: 180ms cubic-bezier(0.22, 1, 0.36, 1);
   --transition-fast: 120ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -101,44 +110,38 @@
      Warm ivory paper, deep ink, amber live accent. */
   color-scheme: light;
 
-  --bg-void:    oklch(96.5% 0.012 85);
-  --bg-rail:    oklch(92% 0.014 85);
-  --bg-paper:   oklch(98.5% 0.008 85);
-  --bg-recess:  oklch(93% 0.012 85);
-  --bg-card:    oklch(99% 0.006 85);
-  --bg-hover:   oklch(91% 0.012 85);
-  --bg-active:  oklch(86% 0.016 85);
+  --bg-void:    oklch(97% 0.006 80);
+  --bg-rail:    oklch(93% 0.008 80);
+  --bg-paper:   oklch(99% 0.004 80);
+  --bg-recess:  oklch(94% 0.006 80);
+  --bg-card:    oklch(100% 0 0);
+  --bg-hover:   oklch(92% 0.008 80);
+  --bg-active:  oklch(88% 0.01 80);
 
-  --border-line:    oklch(84% 0.010 85);
-  --border-strong:  oklch(72% 0.014 85);
-  --border-subtle:  oklch(89% 0.008 85);
+  --border-line:    oklch(85% 0.006 80);
+  --border-strong:  oklch(74% 0.008 80);
+  --border-subtle:  oklch(90% 0.004 80);
 
-  --ink-primary:    oklch(20% 0.018 50);
-  --ink-secondary:  oklch(36% 0.014 50);
-  --ink-muted:      oklch(52% 0.012 50);
-  --ink-faint:      oklch(66% 0.010 50);
+  --ink-primary:    oklch(22% 0.012 55);
+  --ink-secondary:  oklch(38% 0.01 55);
+  --ink-muted:      oklch(52% 0.008 55);
+  --ink-faint:      oklch(66% 0.006 55);
 
-  --accent-live:        oklch(64% 0.20 55);
-  --accent-live-soft:   oklch(64% 0.20 55 / 0.14);
-  --accent-live-edge:   oklch(64% 0.20 55 / 0.55);
-  --accent-quiet:       oklch(20% 0.018 50);
-  --accent-quiet-ink:   oklch(99% 0.006 85);
+  --accent-live:        oklch(62% 0.20 55);
+  --accent-live-soft:   oklch(62% 0.20 55 / 0.12);
+  --accent-live-edge:   oklch(62% 0.20 55 / 0.5);
+  --accent-quiet:       oklch(22% 0.012 55);
+  --accent-quiet-ink:   oklch(100% 0 0);
   --accent:             var(--accent-quiet);
   --accent-foreground:  var(--accent-quiet-ink);
   --primary:            var(--accent-live);
   --ring:               var(--accent-live);
   --text-inverse:       var(--accent-quiet-ink);
 
-  /* Polished white surface — cards lift from the page with a 1px hairline
-     border instead of a soft drop shadow. Background is flat paper, no edge
-     vignettes. Warmth lives in the ink + amber accent, not in a wash. */
-  --bg-paper:   oklch(98% 0.005 85);
-  --bg-card:    oklch(100% 0 0);
-
-  --shadow-card:    0 0 0 1px oklch(84% 0.010 85 / 0.9);
-  --shadow-modal:   0 24px 64px -16px oklch(20% 0.02 50 / 0.22), 0 0 0 1px oklch(84% 0.010 85 / 0.6) inset;
-  --shadow-popover: 0 8px 32px -8px oklch(20% 0.02 50 / 0.18), 0 0 0 1px oklch(84% 0.010 85 / 0.7) inset;
-  --shadow-live:    0 0 0 0 oklch(64% 0.20 55 / 0.0);
+  --shadow-card:    0 0 0 1px oklch(85% 0.006 80 / 0.8);
+  --shadow-modal:   0 24px 64px -20px oklch(22% 0.012 55 / 0.25), 0 0 0 1px oklch(85% 0.006 80 / 0.6) inset;
+  --shadow-popover: 0 8px 28px -12px oklch(22% 0.012 55 / 0.18), 0 0 0 1px oklch(85% 0.006 80 / 0.6) inset;
+  --shadow-live:    0 0 0 0 oklch(62% 0.20 55 / 0.0);
 }
 
 :root[data-theme="mono"] {
@@ -152,11 +155,11 @@
   --bg-recess:  oklch(11% 0 0);
   --bg-card:    oklch(22% 0 0);
   --bg-hover:   oklch(25% 0 0);
-  --bg-active:  oklch(28% 0 0);
+  --bg-active:  oklch(29% 0 0);
 
-  --border-line:    oklch(28% 0 0);
-  --border-strong:  oklch(36% 0 0);
-  --border-subtle:  oklch(24% 0 0);
+  --border-line:    oklch(29% 0 0);
+  --border-strong:  oklch(38% 0 0);
+  --border-subtle:  oklch(25% 0 0);
 
   --ink-primary:    oklch(97% 0 0);
   --ink-secondary:  oklch(78% 0 0);
@@ -176,9 +179,9 @@
   --ring:               var(--accent-live);
   --text-inverse:       var(--accent-quiet-ink);
 
-  --shadow-card:    0 1px 0 oklch(100% 0 0 / 0.05) inset, 0 12px 32px -16px oklch(0% 0 0 / 0.5);
-  --shadow-modal:   0 24px 64px -16px oklch(0% 0 0 / 0.6), 0 0 0 1px oklch(28% 0 0 / 0.4) inset;
-  --shadow-popover: 0 8px 32px -8px oklch(0% 0 0 / 0.5), 0 0 0 1px oklch(28% 0 0 / 0.6) inset;
+  --shadow-card:    0 1px 0 oklch(100% 0 0 / 0.05) inset, 0 8px 24px -16px oklch(0% 0 0 / 0.5);
+  --shadow-modal:   0 24px 64px -20px oklch(0% 0 0 / 0.7), 0 0 0 1px oklch(29% 0 0 / 0.4) inset;
+  --shadow-popover: 0 8px 28px -12px oklch(0% 0 0 / 0.6), 0 0 0 1px oklch(29% 0 0 / 0.5) inset;
   --shadow-live:    0 0 0 0 oklch(94% 0 0 / 0.0);
 }
 
@@ -212,9 +215,10 @@ body,
 }
 
 body {
+  /* A single soft warm lift at the very top — no glow blobs, no grid.
+     The amber never reads until recording. */
   background-image:
-    radial-gradient(ellipse 80% 50% at 20% -10%, oklch(74% 0.18 55 / 0.06), transparent 60%),
-    radial-gradient(ellipse 60% 40% at 100% 110%, oklch(70% 0.10 250 / 0.06), transparent 55%);
+    radial-gradient(ellipse 90% 45% at 15% -8%, oklch(72% 0.19 55 / 0.05), transparent 60%);
   background-attachment: fixed;
 }
 
@@ -235,33 +239,33 @@ body {
   border-radius: 6px;
 }
 
-/* Fluid Typography */
+/* Fluid Typography — Geist display for headings, sentence case, real hierarchy */
 h1, .h1 {
   font-family: var(--font-display);
-  font-size: clamp(28px, 4.5vw, 36px);
-  font-weight: 460;
-  font-variation-settings: "opsz" 60;
-  letter-spacing: -0.025em;
+  font-size: clamp(26px, 3.6vw, 32px);
+  font-weight: 580;
+  letter-spacing: -0.03em;
   line-height: 1.08;
   color: var(--ink-primary);
 }
 h2 {
-  font-family: var(--font-sans);
-  font-size: clamp(20px, 3vw, 24px);
-  font-weight: 600;
-  letter-spacing: -0.015em;
+  font-family: var(--font-display);
+  font-size: clamp(18px, 2.4vw, 22px);
+  font-weight: 580;
+  letter-spacing: -0.02em;
   color: var(--ink-primary);
 }
 h3 {
-  font-size: 13px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
   font-weight: 600;
-  color: var(--ink-muted);
+  color: var(--ink-secondary);
 }
 h4 {
   font-family: var(--font-display);
-  font-weight: 460;
-  font-size: 20px;
-  letter-spacing: -0.02em;
+  font-weight: 580;
+  font-size: 17px;
+  letter-spacing: -0.015em;
   color: var(--ink-primary);
 }
 p { line-height: 1.55; }
@@ -279,15 +283,14 @@ button, input, select, textarea {
 /* Phase 2.1: Custom Titlebar */
 .app-titlebar {
   height: var(--titlebar-height);
-  background:
-    linear-gradient(180deg, oklch(16% 0.012 250 / 0.6), oklch(13% 0.012 250 / 0.0)),
-    var(--bg-void);
+  background: var(--bg-rail);
   border-bottom: 1px solid var(--border-line);
   display: flex;
   align-items: center;
   justify-content: space-between;
   position: relative;
   z-index: 2;
+  flex-shrink: 0;
 }
 
 .app-titlebar::after {
@@ -296,7 +299,7 @@ button, input, select, textarea {
   position: absolute;
   left: 0; right: 0; bottom: -1px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, oklch(74% 0.18 55 / 0.12) 50%, transparent);
+  background: linear-gradient(90deg, transparent, oklch(74% 0.19 55 / 0.10) 50%, transparent);
   opacity: 0.5;
   transition: opacity var(--transition-main);
 }
@@ -310,11 +313,14 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  padding-left: var(--space-4);
+  min-width: 0;
 }
 
 .app-titlebar-actions {
   display: flex;
   height: 100%;
+  flex-shrink: 0;
 }
 
 .titlebar-action {
@@ -322,7 +328,7 @@ button, input, select, textarea {
   height: 100%;
   border: 0;
   background: transparent;
-  color: var(--ink-secondary);
+  color: var(--ink-faint);
   display: grid;
   place-items: center;
   font-size: 16px;
@@ -337,8 +343,70 @@ button, input, select, textarea {
 }
 
 .titlebar-close:hover {
-  background: oklch(60% 0.20 25);
+  background: oklch(62% 0.21 25);
   color: oklch(98% 0 0);
+}
+
+/* Brand strip — lives in the titlebar, left of the window controls. */
+.brand-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  user-select: none;
+}
+
+.brand-glyph {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--bg-paper);
+  border: 1px solid var(--border-line);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--ink-secondary);
+  position: relative;
+}
+
+.brand-glyph::after {
+  /* Pulse dot on the glyph while recording */
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ink-faint);
+  border: 1.5px solid var(--bg-rail);
+  transition: background-color var(--transition-main), box-shadow var(--transition-main);
+}
+
+.app-frame.is-recording .brand-glyph::after {
+  background: var(--accent-live);
+  box-shadow: 0 0 6px var(--accent-live-edge);
+}
+
+.brand-word {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink-primary);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.brand-tagline {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  text-transform: lowercase;
 }
 
 /* Phase 2.2: Shell Layout */
@@ -347,45 +415,6 @@ button, input, select, textarea {
   display: flex;
   flex-direction: column;
   position: relative;
-}
-
-.window-controls {
-  position: absolute;
-  top: 0;
-  right: 0;
-  display: flex;
-  z-index: 100;
-}
-
-.window-btn {
-  width: 44px;
-  height: 32px;
-  border: 0;
-  background: transparent;
-  color: var(--ink-secondary);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
-}
-
-.window-btn:hover {
-  background: var(--bg-hover);
-  color: var(--ink-primary);
-}
-
-.window-close:hover {
-  background: oklch(60% 0.20 25);
-  color: oklch(98% 0 0);
-}
-
-.app-drag-region {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 32px;
-  z-index: 1;
 }
 
 .flow-shell {
@@ -404,8 +433,7 @@ body.sidebar-collapsed .flow-shell {
 .flow-sidebar {
   background: var(--bg-rail);
   border-right: 1px solid var(--border-line);
-  padding: var(--space-2);
-  padding-top: calc(32px + var(--space-2));
+  padding: var(--space-3) var(--space-2);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -414,110 +442,13 @@ body.sidebar-collapsed .flow-shell {
   position: relative;
 }
 
-/* Subtle internal border to feel like a recessed instrument panel */
+/* Soft tonal lift at the top of the rail — a panel catching light,
+   not a cool-blue wash. */
 .flow-sidebar::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, oklch(20% 0.014 255 / 0.6), transparent 30%);
-  pointer-events: none;
-}
-
-
-.brand-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  height: 44px;
-  overflow: hidden;
-  position: relative;
-  z-index: 1;
-}
-
-.app-titlebar-drag .brand-row {
-  height: 100%;
-  padding: var(--space-2) var(--space-4);
-}
-
-/* Brand mark — square glyph + wordmark. Lives at the top of the
-   sidebar. Fade-out courtesy when the sidebar collapses. */
-.brand-strip {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  height: 44px;
-  position: relative;
-  z-index: 1;
-}
-
-body.sidebar-collapsed .brand-strip {
-  justify-content: center;
-  padding: var(--space-2) 0;
-}
-
-.brand-glyph {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  background: oklch(78% 0.10 250);
-  border: 1px solid oklch(64% 0.10 250);
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  color: oklch(13% 0 0);
-  position: relative;
-}
-
-.brand-glyph::after {
-  /* Pulse dot on the glyph while recording */
-  content: "";
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--ink-faint);
-  border: 1.5px solid var(--bg-rail);
-  transition: background-color var(--transition-main), box-shadow var(--transition-main);
-}
-
-.app-frame.is-recording .brand-glyph::after {
-  background: var(--accent-live);
-  box-shadow: 0 0 6px var(--accent-live-edge);
-}
-
-.brand-word {
-  font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  color: var(--ink-primary);
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  line-height: 1;
-}
-
-.brand-tagline {
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--ink-faint);
-  text-transform: lowercase;
-}
-
-body.sidebar-collapsed .brand-word { display: none; }
-
-@keyframes live-blink {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.55; }
-}
-
-body.sidebar-collapsed .brand-row strong {
-  opacity: 0;
+  background: linear-gradient(180deg, oklch(30% 0.006 60 / 0.35), transparent 26%);
   pointer-events: none;
 }
 
@@ -537,7 +468,7 @@ body.sidebar-collapsed .brand-row strong {
 .nav-divider {
   height: 1px;
   background: var(--border-line);
-  margin: var(--space-3) var(--space-3);
+  margin: var(--space-3) var(--space-2);
   flex-shrink: 0;
   position: relative;
   z-index: 1;
@@ -545,25 +476,25 @@ body.sidebar-collapsed .brand-row strong {
 
 .nav-section-kicker {
   font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11.5px;
+  font-weight: 600;
   color: var(--ink-faint);
-  padding: 12px 14px 6px;
+  padding: 12px 12px 6px;
 }
 
 .nav-item,
 .secondary-link {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 9px 12px;
+  gap: 11px;
+  padding: 8px 11px;
   border: 0;
   background: transparent;
   color: var(--ink-secondary);
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 500;
   letter-spacing: -0.003em;
-  border-radius: 9px;
+  border-radius: 8px;
   cursor: pointer;
   transition: background-color var(--transition-fast), color var(--transition-fast);
   text-align: left;
@@ -607,12 +538,6 @@ body.sidebar-collapsed .brand-row strong {
 .app-frame.is-recording .nav-item.is-active::before {
   background: var(--accent-live);
   box-shadow: 0 0 0 3px var(--accent-live-soft);
-}
-
-@keyframes indicator-pop {
-  0%   { transform: translateY(-50%) scale(0); opacity: 0; }
-  60%  { transform: translateY(-50%) scale(1.4); opacity: 1; }
-  100% { transform: translateY(-50%) scale(1); opacity: 1; }
 }
 
 .nav-glyph,
@@ -823,8 +748,8 @@ body.sidebar-collapsed .nav-keyhint {
 }
 
 .home-list-head-link:hover {
-  color: oklch(75% 0.18 25);
-  background: oklch(60% 0.20 25 / 0.10);
+  color: var(--ink-primary);
+  background: var(--bg-hover);
 }
 
 .home-list-head-label {
@@ -859,14 +784,13 @@ body.sidebar-collapsed .nav-keyhint {
   background: var(--bg-hover);
 }
 
-/* Date band — the user's voice anchors. Mono caps, quiet, with a
-   trailing hairline. Bumped color for dark theme so the date reads as
-   an anchor against the deep navy surface. */
+/* Date band — the user's voice anchors. A real data label in mono:
+   the date is data, and it anchors the day's entries. */
 .home-date-band {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-secondary);
   display: flex;
@@ -893,17 +817,15 @@ body.sidebar-collapsed .nav-keyhint {
   margin: 0;
 }
 
-/* Entry card. In dark theme we raise the surface a touch over the
-   --bg-card default and warm the border so cards read as elevated,
-   not sunk. light theme keeps the soft white from before. */
+/* Entry card — raised over the page surface on the warm paper tone. */
 .home-entry {
   display: grid;
   grid-template-columns: 60px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-3);
   padding: 12px var(--space-4);
-  background: oklch(20% 0.011 250);
-  border: 1px solid oklch(30% 0.010 250);
+  background: var(--bg-card);
+  border: 1px solid var(--border-line);
   border-radius: 10px;
   box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset;
   transition: border-color var(--transition-fast),
@@ -912,22 +834,20 @@ body.sidebar-collapsed .nav-keyhint {
 }
 
 .home-entry:hover {
-  border-color: oklch(45% 0.012 250);
-  background: oklch(24% 0.011 250);
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
 }
 
-/* Fresh row signature: warm amber border + soft amber tint, recovered
-   for dark theme so it reads as a soft glow instead of mud. */
+/* Fresh row signature: warm amber border + soft amber tint. */
 .home-entry.is-fresh {
-  background: oklch(28% 0.060 50);
-  border-color: oklch(60% 0.180 50);
-  box-shadow: 0 0 0 1px oklch(75% 0.18 50 / 0.20) inset;
+  background: var(--accent-live-soft);
+  border-color: var(--accent-live-edge);
+  box-shadow: 0 0 0 1px oklch(75% 0.18 50 / 0.14) inset;
 }
 .app-frame.is-recording .home-entry.is-fresh {
-  background: oklch(32% 0.080 50);
-  border-color: oklch(68% 0.180 50);
-  box-shadow: 0 0 0 1px oklch(78% 0.18 50 / 0.30) inset,
-              0 0 24px -6px oklch(75% 0.18 50 / 0.45);
+  background: oklch(28% 0.05 55);
+  border-color: var(--accent-live);
+  box-shadow: 0 0 0 1px oklch(78% 0.18 50 / 0.24) inset;
 }
 
 .home-entry-time {
@@ -999,8 +919,8 @@ body.sidebar-collapsed .nav-keyhint {
   flex-direction: column;
   min-width: 180px;
   padding: 4px;
-  background: oklch(28% 0.012 250);
-  border: 1px solid oklch(40% 0.012 250);
+  background: var(--bg-paper);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   box-shadow: 0 12px 32px -12px oklch(0% 0 0 / 0.7),
               0 0 0 1px oklch(0% 0 0 / 0.20) inset;
@@ -1049,20 +969,18 @@ body.sidebar-collapsed .nav-keyhint {
   min-width: 0;
 }
 
-/* Rail cards raise slightly above the page surface (which is darker
-   than entry cards, deliberately) so the right column reads as a
-   distinct panel. light theme keeps the soft-white variant. */
+/* Rail cards raise slightly above the page surface so the right
+   column reads as a distinct panel. Light theme keeps the paper
+   variant below. */
 .home-card {
-  background: oklch(24% 0.012 250);
-  border: 1px solid oklch(34% 0.010 250);
-  border: 1px solid var(--border-strong);
+  background: var(--bg-card);
+  border: 1px solid var(--border-line);
   border-radius: 12px;
   padding: var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
-              0 6px 18px -10px oklch(0% 0 0 / 0.5);
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset;
 }
 
 .home-card-head {
@@ -1096,7 +1014,7 @@ body.sidebar-collapsed .nav-keyhint {
 
 .home-card-link:hover { color: var(--ink-primary); }
 
-/* Card meta line — sits next to the title, mono faint. */
+/* Card meta line — sits next to the title. */
 .home-card-meta {
   font-family: var(--font-sans);
   font-size: 12px;
@@ -1104,13 +1022,15 @@ body.sidebar-collapsed .nav-keyhint {
   color: var(--ink-faint);
 }
 
-/* Pace sparkline — fades current mark at the right edge warm. */
+/* Pace sparkline — the one place amber speaks when idle: it's the
+   user's own recorded pace, a real data trace. */
 .home-sparkline {
   display: block;
   width: 100%;
   height: auto;
   max-height: 56px;
-  color: oklch(76% 0.20 50);
+  color: var(--accent-live);
+  opacity: 0.85;
 }
 
 .home-pace-footnote {
@@ -1129,7 +1049,7 @@ body.sidebar-collapsed .nav-keyhint {
   margin-right: 4px;
 }
 
-/* Quick start copy + combo. The combo is a chip row reading the
+/* Quick start copy + combo. The combo is a keycap row reading the
    user's configured hotkey so they see exactly what to press. */
 .home-quickstart-copy {
   font-size: 13px;
@@ -1151,9 +1071,9 @@ body.sidebar-collapsed .nav-keyhint {
   justify-content: center;
   padding: 4px 10px;
   border-radius: 6px;
-  background: oklch(28% 0.080 50);
-  border: 1px solid oklch(60% 0.18 50 / 0.30);
-  color: oklch(84% 0.18 55);
+  background: var(--bg-recess);
+  border: 1px solid var(--border-strong);
+  color: var(--ink-primary);
   font-family: var(--font-mono);
   font-size: 11.5px;
   font-weight: 600;
@@ -1183,7 +1103,7 @@ body.sidebar-collapsed .nav-keyhint {
   font-family: inherit;
 }
 
-.home-card-reset:hover { color: oklch(75% 0.18 25); }
+.home-card-reset:hover { color: var(--ink-primary); }
 
 /* Stats card: 3 stacked figure rows. */
 .home-stat-figures {
@@ -1215,26 +1135,18 @@ body.sidebar-collapsed .nav-keyhint {
 }
 
 /* ── Light theme makes the surfaces read paper-like ────────────────*/
-:root[data-theme="light"] {
-  --home-card-bg: oklch(100% 0 0);
-  --home-card-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
-                      0 4px 12px -6px oklch(0% 0 0 / 0.08);
-}
-
-:root[data-theme="light"] .home-card {
-  background: var(--home-card-bg);
-  box-shadow: var(--home-card-shadow);
-}
+:root[data-theme="light"] .home-card,
 :root[data-theme="light"] .home-entry {
-  background: var(--home-card-bg);
-  box-shadow: var(--home-card-shadow);
+  background: oklch(100% 0 0);
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
+              0 4px 12px -6px oklch(0% 0 0 / 0.08);
 }
 :root[data-theme="light"] .home-entry.is-fresh {
   background: oklch(98% 0.04 50);
 }
 
 :root[data-theme="mono"] .home-entry.is-fresh {
-  /* In mono theme we don't have the orange accent — fall back. */
+  /* In mono theme we don't have the amber accent — fall back. */
   background: var(--bg-card);
   color: var(--ink-primary);
 }
@@ -1298,17 +1210,16 @@ svg:not([width]):not([height]) {
    Dark theme: matches the home-card surface recipe — same lift
    over the page bg, same warm border. */
 .focus-card {
-  background: oklch(24% 0.012 250);
-  border: 1px solid oklch(34% 0.010 250);
+  background: var(--bg-card);
+  border: 1px solid var(--border-line);
   border-radius: var(--radius-card);
   padding: var(--space-6);
-  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
-              0 6px 18px -10px oklch(0% 0 0 / 0.5);
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
 }
 
 .focus-card:hover {
-  border-color: oklch(45% 0.012 250);
+  border-color: var(--border-strong);
 }
 
 .focus-card h2 {
@@ -1388,19 +1299,18 @@ svg:not([width]):not([height]) {
 /* Form-card used by Snippets — same dark-theme lift recipe as
    .focus-card. light theme handled below with whites + shadow. */
 .snippet-card {
-  background: oklch(24% 0.012 250);
-  border: 1px solid oklch(34% 0.010 250);
+  background: var(--bg-card);
+  border: 1px solid var(--border-line);
   border-radius: var(--radius-card);
   padding: var(--space-6);
   transition: border-color var(--transition-fast), background-color var(--transition-fast);
   position: relative;
   margin-bottom: var(--space-6);
-  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
-              0 6px 18px -10px oklch(0% 0 0 / 0.5);
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset;
 }
 
 .snippet-card:hover {
-  border-color: oklch(45% 0.012 250);
+  border-color: var(--border-strong);
 }
 
 .snippet-card.is-collapsed {
@@ -1415,11 +1325,7 @@ svg:not([width]):not([height]) {
 }
 
 .snippet-card-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  background: var(--bg-active);
-  color: var(--ink-secondary);
+  color: var(--ink-faint);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1482,7 +1388,7 @@ svg:not([width]):not([height]) {
 .snippet-field input:focus {
   border-color: var(--border-strong);
   outline: none;
-  background: oklch(13% 0.010 245);
+  background: var(--bg-void);
 }
 
 .snippet-form-actions {
@@ -1562,8 +1468,8 @@ svg:not([width]):not([height]) {
   font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--ink-primary);
-  background: oklch(28% 0.080 50);
-  border: 1px solid oklch(60% 0.18 50 / 0.30);
+  background: var(--bg-recess);
+  border: 1px solid var(--border-line);
   padding: 3px 9px;
   border-radius: 6px;
   width: fit-content;
@@ -1697,6 +1603,7 @@ svg:not([width]):not([height]) {
   border-bottom: 1px solid var(--border-line);
   margin-bottom: var(--space-4);
   flex-wrap: wrap;
+  position: relative;
 }
 
 .filter-btn {
@@ -1860,9 +1767,9 @@ svg:not([width]):not([height]) {
 }
 
 .conversation-log {
-  /* Subtle card — sits just above the page background.
-     Warm enough to feel like a surface, dark enough to match the void. */
-  background: oklch(14.5% 0.011 250);
+  /* Subtle card — sits just above the page background, on the warm
+     paper tone. */
+  background: var(--bg-paper);
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   overflow-y: auto;
@@ -1876,12 +1783,12 @@ svg:not([width]):not([height]) {
 }
 
 :root[data-theme="light"] .conversation-log {
-  background: oklch(97.5% 0.008 85);
+  background: oklch(97.5% 0.008 80);
   border-color: var(--border-subtle);
 }
 
 :root[data-theme="mono"] .conversation-log {
-  background: oklch(15% 0 0);
+  background: var(--bg-paper);
   border-color: var(--border-subtle);
 }
 
@@ -2061,21 +1968,17 @@ svg:not([width]):not([height]) {
 }
 
 .conversation-entry:hover {
-  background: oklch(24% 0.011 250);
+  background: var(--bg-hover);
 }
 
 .conversation-entry:last-child { border-bottom: 0; }
-
-.conversation-entry:hover {
-  background: oklch(100% 0 0 / 0.025);
-}
 
 :root[data-theme="light"] .conversation-entry:hover {
   background: oklch(20% 0.018 50 / 0.03);
 }
 
 :root[data-theme="mono"] .conversation-entry:hover {
-  background: oklch(100% 0 0 / 0.025);
+  background: var(--bg-hover);
 }
 
 /* Hero row — the most recent entry. Slightly larger metrics and
@@ -2429,7 +2332,7 @@ svg:not([width]):not([height]) {
   top: calc(100% + 6px);
   right: 0;
   min-width: 220px;
-  background: oklch(16% 0.012 250);
+  background: var(--bg-paper);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
   box-shadow:
@@ -2688,13 +2591,12 @@ textarea:focus-visible {
 
 .quick-note-card {
   position: relative;
-  background: oklch(24% 0.012 250);
-  border: 1px solid oklch(34% 0.010 250);
+  background: var(--bg-card);
+  border: 1px solid var(--border-line);
   border-radius: var(--radius-card);
   padding: var(--space-8) var(--space-10);
   overflow: hidden;
-  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
-              0 6px 18px -10px oklch(0% 0 0 / 0.5);
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset;
 }
 
 .quick-note-card::before {
@@ -2757,7 +2659,7 @@ textarea:focus-visible {
 
 .notes-mic-btn[data-stage="recording"] {
   background: var(--accent-live);
-  color: oklch(15% 0.005 250);
+  color: var(--bg-void);
 }
 
 .notes-ledger {
@@ -2794,7 +2696,6 @@ textarea:focus-visible {
     grid-template-columns: var(--sidebar-collapsed-width) 1fr;
   }
 
-  .flow-sidebar .brand-row strong,
   .flow-sidebar .nav-item span:not(.nav-glyph):not(.nav-keyhint),
   .flow-sidebar .secondary-link span:not(.secondary-glyph):not(.nav-keyhint) {
     opacity: 0;
@@ -2843,143 +2744,6 @@ textarea:focus-visible {
 .ghost-action {
   will-change: background-color, color;
 }
-
-/* Selection Popup & Additional Components */
-.selection-popup {
-  position: fixed;
-  z-index: 300;
-  background: var(--bg-card);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-popover);
-  padding: var(--space-4);
-  max-width: 380px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  animation: pop-enter 200ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes pop-enter {
-  from { opacity: 0; transform: scale(0.96) translateY(4px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-.popup-text {
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 30;
-  font-size: 14px;
-  line-height: 1.55;
-  color: var(--ink-primary);
-  max-height: 200px;
-  overflow-y: auto;
-  letter-spacing: -0.005em;
-}
-
-.popup-actions {
-  display: flex;
-  gap: var(--space-2);
-  justify-content: flex-end;
-}
-
-/* Floating Dock — restrained instrument, not glassmorphism */
-.flow-bar {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  height: 52px;
-  min-width: 240px;
-  max-width: 360px;
-  background: oklch(18% 0.012 250);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-container);
-  display: flex;
-  align-items: center;
-  padding: 0 18px 0 6px;
-  gap: 14px;
-  box-shadow: 0 12px 32px -12px oklch(0% 0 0 / 0.6);
-  z-index: 400;
-  cursor: grab;
-  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.flow-bar:hover {
-  border-color: var(--border-strong);
-  box-shadow: 0 16px 40px -12px oklch(0% 0 0 / 0.7);
-}
-
-.app-frame.is-recording .flow-bar {
-  border-color: var(--accent-live-edge);
-  box-shadow: 0 12px 32px -12px oklch(74% 0.18 55 / 0.4),
-              0 0 0 1px oklch(74% 0.18 55 / 0.5) inset;
-}
-
-.flow-bar:active {
-  cursor: grabbing;
-  transform: translateX(-50%) translateY(0);
-}
-
-.dock-mic-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-button);
-  background: oklch(95% 0.012 80);
-  color: oklch(15% 0.012 80);
-  border: 0;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: transform var(--transition-fast), background-color var(--transition-fast);
-}
-
-.dock-mic-btn:hover { background: oklch(98% 0.012 80); }
-.dock-mic-btn:active { transform: scale(0.96); }
-
-.app-frame.is-recording .dock-mic-btn {
-  background: var(--accent-live);
-  color: oklch(15% 0.005 250);
-}
-
-.visualizer-container {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  height: 18px;
-}
-
-.viz-bar {
-  /* Anchored at the bottom so transform: scaleY simulates height changes
-     without triggering layout. Ponytail: kept height: 100% + transform
-     for waveform effect; upgrade to SKSL waveform in dock someday. */
-  width: 3px;
-  height: 100%;
-  background: var(--ink-primary);
-  border-radius: 2px;
-  transform-origin: bottom center;
-  transform: scaleY(0.4);
-  transition: transform 75ms ease;
-  opacity: 0.6;
-}
-
-.app-frame.is-recording .viz-bar {
-  background: var(--accent-live);
-  opacity: 1;
-}
-
-.dock-status {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--ink-muted);
-  white-space: nowrap;
-}
-
-.app-frame.is-recording .dock-status { color: var(--accent-live); }
 
 /* Page Headers — used by History, Dictionary, Snippets, Notes. */
 .page-header-row {
@@ -3084,7 +2848,7 @@ textarea:focus-visible {
 .confirm-overlay {
   position: fixed;
   inset: 0;
-  background: oklch(13% 0.012 250 / 0.7);
+  background: oklch(11% 0.006 60 / 0.72);
   backdrop-filter: blur(8px);
   z-index: 10000;
   display: grid;
@@ -3142,11 +2906,10 @@ textarea:focus-visible {
 
 .dictionary-form-card {
   padding: var(--space-6);
-  background: oklch(24% 0.012 250);
-  border: 1px solid oklch(34% 0.010 250);
+  background: var(--bg-card);
+  border: 1px solid var(--border-line);
   border-radius: var(--radius-card);
-  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset,
-              0 6px 18px -10px oklch(0% 0 0 / 0.5);
+  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset;
   transition: opacity var(--transition-main), transform var(--transition-main), border-color var(--transition-fast);
   opacity: 1;
   transform: translateY(0) scaleY(1);
@@ -3172,19 +2935,12 @@ textarea:focus-visible {
 .card-icon-title {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
-.card-icon-bg {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  background: var(--bg-active);
-  color: var(--ink-secondary);
-  border-radius: 999px;
-  border: 1px solid var(--border-line);
+.card-icon-title svg {
+  color: var(--ink-faint);
+  flex-shrink: 0;
 }
 
 .card-icon-title h3 {
@@ -3256,7 +3012,7 @@ textarea:focus-visible {
 .input-with-icon input::placeholder { color: var(--ink-faint); }
 
 .input-with-icon input:focus {
-  border-color: var(--accent-live-edge);
+  border-color: var(--border-strong);
   background: var(--bg-paper);
   outline: none;
 }
@@ -3359,8 +3115,8 @@ textarea:focus-visible {
 
 .dictionary-item-card:hover,
 .dictionary-item-row:hover {
-  background: oklch(24% 0.011 250);
-  border-color: oklch(34% 0.010 250);
+  background: var(--bg-hover);
+  border-color: var(--border-line);
 }
 
 .dict-item-content { display: contents; }
@@ -3395,10 +3151,10 @@ textarea:focus-visible {
 
 .spoken .term-value {
   color: var(--ink-muted);
-  background: oklch(20% 0.011 250);
+  background: var(--bg-recess);
   padding: 3px 8px;
   border-radius: 6px;
-  border: 1px solid oklch(30% 0.010 250);
+  border: 1px solid var(--border-subtle);
 }
 
 .correct .term-value {
@@ -3460,7 +3216,7 @@ textarea:focus-visible {
 .onboarding-overlay {
   position: fixed;
   inset: 0;
-  background: oklch(13% 0.012 250 / 0.7);
+  background: oklch(11% 0.006 60 / 0.72);
   backdrop-filter: blur(14px);
   z-index: 9999;
   display: grid;
@@ -3606,7 +3362,7 @@ kbd {
 .stt-advisor-overlay {
   position: fixed;
   inset: 0;
-  background: oklch(13% 0.012 250 / 0.6);
+  background: oklch(11% 0.006 60 / 0.62);
   backdrop-filter: blur(10px);
   display: grid;
   place-items: center;

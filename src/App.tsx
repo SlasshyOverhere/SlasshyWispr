@@ -458,18 +458,8 @@ export function App() {
   return (
     <>
       <div className={`app-frame ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-        <div className="window-controls">
-          <button id="windowMinimizeBtn" className="window-btn" type="button" aria-label="Minimize">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          </button>
-          <button id="windowCloseBtn" className="window-btn window-close" type="button" aria-label="Close">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          </button>
-        </div>
-
-        <div className="flow-shell">
-          <div className="app-drag-region" data-tauri-drag-region="true"></div>
-          <aside className="flow-sidebar">
+        <header className="app-titlebar">
+          <div className="app-titlebar-drag" data-tauri-drag-region="true">
             <div className="brand-strip">
               <span className="brand-glyph" aria-hidden="true">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -480,7 +470,19 @@ export function App() {
               </span>
               <strong className="brand-word">SlasshyWispr<span className="brand-tagline">voice</span></strong>
             </div>
+          </div>
+          <div className="app-titlebar-actions">
+            <button id="windowMinimizeBtn" className="titlebar-action" type="button" aria-label="Minimize">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+            <button id="windowCloseBtn" className="titlebar-action titlebar-close" type="button" aria-label="Close">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        </header>
 
+        <div className="flow-shell">
+          <aside className="flow-sidebar">
             <nav className="nav-main" aria-label="Main navigation">
               <button className={`nav-item ${state.activePage === 'home' ? 'is-active' : ''}`} data-page-nav="home" data-label="Home" data-hotkey="Alt+1" aria-label="Home (Alt+1)" type="button">
                 <span className="nav-glyph">
@@ -849,9 +851,7 @@ export function App() {
                   <article id="dictionaryFormCard" className="focus-card dictionary-form-card is-collapsed">
                     <div className="card-header-simple">
                       <div className="card-icon-title">
-                        <div className="card-icon-bg">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
-                        </div>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
                         <h3>Vocabulary Training</h3>
                       </div>
                       <button id="dictionaryFormCloseBtn" className="icon-close-btn" type="button">
@@ -1050,31 +1050,6 @@ export function App() {
       <SettingsModal />
 
       <OnboardingWizard />
-
-      <div id="flowBar" className="flow-bar" style={{ display: "none" }} data-tauri-drag-region="true">
-        <button className="dock-mic-btn" type="button" aria-label="Toggle recording">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
-        </button>
-        <div className="visualizer-container">
-          <div className="viz-bar" style={{ height: "40%" }}></div>
-          <div className="viz-bar" style={{ height: "70%" }}></div>
-          <div className="viz-bar" style={{ height: "50%" }}></div>
-          <div className="viz-bar" style={{ height: "90%" }}></div>
-          <div className="viz-bar" style={{ height: "30%" }}></div>
-        </div>
-        <span id="dockStatus" className="dock-status">Ready</span>
-      </div>
-
-      <div id="selectionPopup" className="selection-popup" style={{ display: "none" }}>
-        <div className="popup-text" id="selectionAssistantText">Processing...</div>
-        <div className="popup-actions">
-          <button className="ghost-action mini" type="button">Copy</button>
-          <button className="ghost-action mini" type="button">Replace</button>
-          <button className="icon-close-btn mini" type="button" aria-label="Close assistant popup">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          </button>
-        </div>
-      </div>
 
       <div className="hidden-runtime-state" hidden>
         <span id="recordTimer">00.0s</span>
