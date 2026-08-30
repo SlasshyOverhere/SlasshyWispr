@@ -89,7 +89,7 @@ function getStreakTier(streak: number): 1 | 2 | 3 | 4 | 5 {
 function getStreakSubMessage(streak: number): string {
   if (streak >= 100) return 'Unstoppable. A hundred days of voice.';
   if (streak >= 30) return 'Discipline made visible. Keep the fire.';
-  if (streak >= 7) return 'You’re on a roll — a full week of dictation.';
+  if (streak >= 7) return 'You’re on a roll: a full week of dictation.';
   if (streak >= 3) return 'Momentum is building. Don’t break the chain.';
   if (streak === 2) return 'Two days running. One more makes it a habit.';
   return 'You dictated today. Tomorrow keeps the streak alive.';

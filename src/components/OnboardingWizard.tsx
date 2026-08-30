@@ -58,7 +58,7 @@ export function OnboardingWizard() {
             </p>
             <div className="onboarding-actions">
               <button className="dark-action" type="button" onClick={() => setStep('tts')}>Next</button>
-              <button className="ghost-action" type="button" onClick={() => setStep('tts')}>Skip</button>
+              <button className="ghost-action" type="button" onClick={() => setStep('done')}>Skip</button>
             </div>
           </>
         )}
@@ -66,8 +66,8 @@ export function OnboardingWizard() {
         {step === 'tts' && (
           <>
             <h2 id="onboardingTitle">Voice Output</h2>
-            <p>SlasshyWispr can speak responses aloud. Go to <strong>Settings &gt; Update &amp; Security</strong> to download the voice model when you're ready.</p>
-            <p className="onboarding-hint">TTS works offline — no internet needed once installed.</p>
+            <p>SlasshyWispr can speak responses aloud. Go to <strong>Settings &gt; Models</strong> to download the voice model when you're ready.</p>
+            <p className="onboarding-hint">TTS works offline. No internet needed once installed.</p>
             <div className="onboarding-actions">
               <button className="dark-action" type="button" onClick={() => setStep('done')}>Next</button>
             </div>

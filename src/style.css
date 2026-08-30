@@ -268,71 +268,6 @@ button, input, select, textarea {
   color: var(--ink-primary);
 }
 
-/* Phase 2.1: Custom Titlebar */
-.app-titlebar {
-  height: var(--titlebar-height);
-  background:
-    linear-gradient(180deg, oklch(16% 0.012 250 / 0.6), oklch(13% 0.012 250 / 0.0)),
-    var(--bg-void);
-  border-bottom: 1px solid var(--border-line);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: relative;
-  z-index: 2;
-}
-
-.app-titlebar::after {
-  /* hairline glint across the bottom */
-  content: "";
-  position: absolute;
-  left: 0; right: 0; bottom: -1px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, oklch(74% 0.18 55 / 0.12) 50%, transparent);
-  opacity: 0.5;
-  transition: opacity var(--transition-main);
-}
-
-.app-frame.is-recording .app-titlebar::after { opacity: 1; }
-
-
-.app-titlebar-drag {
-  flex: 1;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.app-titlebar-actions {
-  display: flex;
-  height: 100%;
-}
-
-.titlebar-action {
-  width: 44px;
-  height: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--ink-secondary);
-  display: grid;
-  place-items: center;
-  font-size: 16px;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
-  cursor: pointer;
-  position: relative;
-}
-
-.titlebar-action:hover {
-  background: var(--bg-hover);
-  color: var(--ink-primary);
-}
-
-.titlebar-close:hover {
-  background: oklch(60% 0.20 25);
-  color: oklch(98% 0 0);
-}
-
 /* Phase 2.2: Shell Layout */
 .app-frame {
   height: 100%;
@@ -416,22 +351,6 @@ body.sidebar-collapsed .flow-shell {
 }
 
 
-.brand-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  height: 44px;
-  overflow: hidden;
-  position: relative;
-  z-index: 1;
-}
-
-.app-titlebar-drag .brand-row {
-  height: 100%;
-  padding: var(--space-2) var(--space-4);
-}
-
 /* Brand mark — square glyph + wordmark. Lives at the top of the
    sidebar. Fade-out courtesy when the sidebar collapses. */
 .brand-strip {
@@ -453,8 +372,8 @@ body.sidebar-collapsed .brand-strip {
   width: 24px;
   height: 24px;
   border-radius: 7px;
-  background: oklch(78% 0.10 250);
-  border: 1px solid oklch(64% 0.10 250);
+  background: oklch(78% 0.12 55);
+  border: 1px solid oklch(64% 0.12 55);
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -507,11 +426,6 @@ body.sidebar-collapsed .brand-word { display: none; }
 @keyframes live-blink {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.55; }
-}
-
-body.sidebar-collapsed .brand-row strong {
-  opacity: 0;
-  pointer-events: none;
 }
 
 .nav-main,
@@ -783,63 +697,6 @@ body.sidebar-collapsed .nav-keyhint {
   min-width: 0;
 }
 
-/* Greeting row — large title with orange keyboard tokens. */
-.home-greeting {
-  font-size: clamp(26px, 3.2vw, 32px);
-  font-weight: 500;
-  letter-spacing: -0.025em;
-  color: var(--ink-primary);
-  line-height: 1.15;
-  margin: 0;
-  text-wrap: balance;
-}
-
-.home-greeting .home-greet-name { font-weight: 600; }
-
-/* Orange token pills. Saturation bumped for dark theme so the pills
-   read as warm/vibrant instead of pastel. light theme keeps the
-   softer cream-orange from the prior pass. */
-.home-token {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px 9px;
-  border-radius: 5px;
-  background: oklch(76% 0.20 50);
-  color: oklch(18% 0.04 50);
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 0.78em;
-  letter-spacing: 0.01em;
-  margin: 0 2px;
-  vertical-align: baseline;
-  line-height: 1;
-  white-space: nowrap;
-  box-shadow: 0 0 0 1px oklch(72% 0.18 50 / 0.10) inset;
-}
-
-.home-token-plus {
-  display: inline-block;
-  font-weight: 500;
-  color: var(--ink-muted);
-  font-size: 0.78em;
-  margin: 0 4px;
-  line-height: 1;
-  /* No transform — the previous translateY shifted the glyph off axis
-     and caused it to render as an ambiguous bar when font baseline
-     disagreed with our inline box baseline. */
-}
-
-/* Subgreeting: a one-line whisper about what's current. */
-.home-subgreeting {
-  font-size: 13.5px;
-  font-weight: 400;
-  color: var(--ink-muted);
-  line-height: 1.45;
-  margin: -8px 0 0;
-  max-width: 56ch;
-}
-
 /* List region: search pin in top-right, then date-banded card stacks. */
 .home-list-head {
   display: flex;
@@ -905,6 +762,18 @@ body.sidebar-collapsed .nav-keyhint {
   background: var(--bg-hover);
 }
 
+.home-list-head-caption {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  letter-spacing: 0.04em;
+}
+
+.history-filters .search-input-wrapper {
+  margin-left: auto;
+  max-width: 220px;
+}
+
 /* Date band — the user's voice anchors. Mono caps, quiet, with a
    trailing hairline. Bumped color for dark theme so the date reads as
    an anchor against the deep navy surface. */
@@ -950,7 +819,7 @@ body.sidebar-collapsed .nav-keyhint {
   padding: 12px var(--space-4);
   background: oklch(20% 0.011 250);
   border: 1px solid oklch(30% 0.010 250);
-  border-radius: 10px;
+  border-radius: var(--radius-card);
   box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset;
   transition: border-color var(--transition-fast),
               background-color var(--transition-fast),
@@ -1097,7 +966,7 @@ body.sidebar-collapsed .nav-keyhint {
   background: oklch(24% 0.012 250);
   border: 1px solid oklch(34% 0.010 250);
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   padding: var(--space-5);
   display: flex;
   flex-direction: column;
@@ -1288,8 +1157,7 @@ body.sidebar-collapsed .nav-keyhint {
   font-size: 11.5px;
   font-weight: 500;
   /* Dark-theme pill: warm orange text on a translucent amber pad so it
-     reads as the same accent family as the home-token pills above
-     rather than a wet-blanket CTA battery. */
+     matches the single-app accent rather than a wet-blanket CTA battery. */
   color: oklch(84% 0.18 55);
   background: oklch(28% 0.080 50);
   padding: 3px 8px;
@@ -1322,29 +1190,11 @@ body.sidebar-collapsed .nav-keyhint {
   background: oklch(98% 0.04 50);
 }
 
-:root[data-theme="mono"] .home-entry.is-fresh,
-:root[data-theme="mono"] .home-token {
+:root[data-theme="mono"] .home-entry.is-fresh {
   /* In mono theme we don't have the orange accent — fall back. */
   background: var(--bg-card);
   color: var(--ink-primary);
 }
-
-/* Existing link buttons (kept so fallback stats clear still works). */
-.home-link-btn {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink-secondary);
-  background: transparent;
-  border: 0;
-  padding: 6px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: color var(--transition-fast), background-color var(--transition-fast);
-}
-.home-link-btn:hover { color: var(--ink-primary); background: var(--bg-hover); }
 
 /* ── Empty state — quiet first-run prompt ──────────────────────────*/
 .home-empty {
@@ -1387,43 +1237,6 @@ body.sidebar-collapsed .nav-keyhint {
   color: var(--ink-secondary);
   margin: 0 2px;
 }
-
-/* ── Old class bleed — kept neutral until removal in next pass ────────*/
-.overview-stats,
-.overview-stat,
-.overview-stat-label,
-.overview-stat-value,
-.overview-stat-unit,
-.stat-trend,
-.stat-trend-up,
-.stat-trend-down,
-.stat-trend-neutral,
-.overview-clear-btn,
-.overview-title,
-.overview-subtitle,
-.stats-hero,
-.stats-hero-figure,
-.stats-hero-ledger,
-.stats-hero-label,
-.stats-hero-value,
-.stats-hero-unit,
-.stats-hero-caption,
-.stat-row,
-.stat-row-label,
-.stat-row-value,
-.stat-row-unit,
-.stat-row-trend,
-.stat-cards-grid,
-.stat-card,
-.stat-card-header,
-.stat-label,
-.stat-icon,
-.stat-value,
-.stat-unit,
-.stat-meta,
-.stat-period,
-.home-stats,
-.home-stat { display: none; }
 
 /* Inline SVG default — never balloon */
 svg:not([width]):not([height]) {
@@ -2985,7 +2798,6 @@ textarea:focus-visible {
     grid-template-columns: var(--sidebar-collapsed-width) 1fr;
   }
 
-  .flow-sidebar .brand-row strong,
   .flow-sidebar .nav-item span:not(.nav-glyph):not(.nav-keyhint),
   .flow-sidebar .secondary-link span:not(.secondary-glyph):not(.nav-keyhint) {
     opacity: 0;

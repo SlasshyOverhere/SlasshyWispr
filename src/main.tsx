@@ -159,9 +159,6 @@ if (!appRoot) {
   throw new Error("Missing #app root element");
 }
 
-document.body.classList.add("shadcn-ui");
-document.body.classList.add("mono-ui");
-document.body.classList.add("overhaul-v3");
 
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { uiStore, removeHistoryEntry } from './store';
@@ -7,8 +6,9 @@ import type { UIState } from './store';
 import { AnalyticsPage } from './components/analytics/AnalyticsPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OnboardingWizard } from './components/OnboardingWizard';
+import { AnchoredMenu } from './components/AnchoredMenu';
 import type { HomeHistoryEntry, DictionaryTerm, SnippetEntry, QuickNoteEntry, AnalyticsSessionDetail } from './types';
-import { NOTES_STORAGE_KEY } from './constants';
+import { DEFAULT_HOTKEY, NOTES_STORAGE_KEY } from './constants';
 
 function useUIState() {
   const [state, setState] = useState<UIState>(uiStore.getState());
@@ -142,7 +142,6 @@ function HomeEntryCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const icon = (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -151,35 +150,10 @@ function HomeEntryCard({
     </svg>
   );
 
-  /* Close the popover on outside click / Esc. Anchor math mirrors the
-     HistoryRow pattern but portals into document.body so the stack
-     context doesn't clip the menu. */
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDocClick = (e: MouseEvent) => {
-      const tgt = e.target as Node | null;
-      if (
-        tgt &&
-        !menuRef.current?.contains(tgt) &&
-        !moreBtnRef.current?.contains(tgt)
-      ) {
-        setMenuOpen(false);
-        setConfirmingDelete(false);
-      }
-    };
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMenuOpen(false);
-        setConfirmingDelete(false);
-      }
-    };
-    document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("keydown", onEsc);
-    return () => {
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onEsc);
-    };
-  }, [menuOpen]);
+  const closeMenu = () => {
+    setMenuOpen(false);
+    setConfirmingDelete(false);
+  };
 
   const handleDelete = () => {
     if (!confirmingDelete) {
@@ -188,8 +162,7 @@ function HomeEntryCard({
       return;
     }
     removeHistoryEntry(entry.timestamp);
-    setMenuOpen(false);
-    setConfirmingDelete(false);
+    closeMenu();
   };
 
   return (
@@ -236,55 +209,36 @@ function HomeEntryCard({
             <circle cx="19" cy="12" r="1.6" />
           </svg>
         </button>
-        {menuOpen
-          ? createPortal(
-              <div
-                ref={menuRef}
-                className="home-entry-menu"
-                role="menu"
-                aria-label="Entry actions"
-                style={menuAnchorStyle(moreBtnRef.current)}
-              >
-                <button
-                  type="button"
-                  className={`home-entry-menu-item home-entry-menu-item-danger ${
-                    confirmingDelete ? "is-confirming" : ""
-                  }`}
-                  role="menuitem"
-                  onClick={handleDelete}
-                >
-                  <span className="home-entry-menu-item-main">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6" />
-                      <path d="M10 11v6" />
-                      <path d="M14 11v6" />
-                      <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
-                    </svg>
-                    {confirmingDelete ? "Click again to confirm" : "Delete entry"}
-                  </span>
-                </button>
-              </div>,
-              document.body
-            )
-          : null}
+        <AnchoredMenu
+          open={menuOpen}
+          anchorRef={moreBtnRef}
+          onClose={closeMenu}
+          label="Entry actions"
+          className="home-entry-menu"
+        >
+          <button
+            type="button"
+            className={`home-entry-menu-item home-entry-menu-item-danger ${
+              confirmingDelete ? "is-confirming" : ""
+            }`}
+            role="menuitem"
+            onClick={handleDelete}
+          >
+            <span className="home-entry-menu-item-main">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6" />
+                <path d="M14 11v6" />
+                <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+              </svg>
+              {confirmingDelete ? "Click again to confirm" : "Delete entry"}
+            </span>
+          </button>
+        </AnchoredMenu>
       </span>
     </article>
   );
-}
-
-/* Compute the popover anchor coordinates from the more button's rect
-   so the menu opens to the bottom-right of the trigger. Pure function
-   — returns a style object safe to spread inline. */
-function menuAnchorStyle(anchor: HTMLElement | null): React.CSSProperties {
-  if (!anchor) return { visibility: "hidden" };
-  const r = anchor.getBoundingClientRect();
-  return {
-    position: "fixed",
-    top: r.bottom + 6,
-    right: window.innerWidth - r.right,
-    zIndex: 1000,
-  };
 }
 
 /* Reads the persisted push-to-talk hotkey so the rail's Quick start
@@ -410,6 +364,10 @@ export function App() {
   const historyFilter = useHistoryFilter();
   const historySearch = useHistorySearch();
   const hotkeyTokens = useUserHotkeyTokens();
+  const homeHotkeyTokens =
+    hotkeyTokens.length > 0
+      ? hotkeyTokens
+      : DEFAULT_HOTKEY.split("+").map((p) => p.trim());
   const pace = useLastSevenDaysWords(state.analyticsSessions);
 
   /* Copy handler for Home entry cards. Promise-safe with a timeout
@@ -566,7 +524,7 @@ export function App() {
                           <circle cx="12" cy="12" r="9" />
                         </svg>
                       </span>
-                      <span style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--ink-muted)', letterSpacing: '0.04em' }}>Where you last left off</span>
+                      <span className="home-list-head-caption">Where you last left off</span>
                     </span>
                     <span className="home-list-head-r">
                       <button
@@ -610,8 +568,14 @@ export function App() {
                         <div className="home-empty">
                           <span className="home-empty-title">Speak first. Edit second.</span>
                           <span className="home-empty-sub">
-                            Start talking — your words land here, grouped by the day you said them.
-                            Press <kbd className="empty-hint-kbd">⌥ Space</kbd> to begin.
+                            Start talking. Your words land here, grouped by the day you said them.
+                            Press{" "}
+                            {homeHotkeyTokens.map((token, i) => (
+                              <kbd key={`hk-${i}`} className="empty-hint-kbd">
+                                {token}
+                              </kbd>
+                            ))}{" "}
+                            to begin.
                           </span>
                         </div>
                       ) : (
@@ -808,7 +772,7 @@ export function App() {
                     </div>
                     <div id="datePickerDays" className="date-picker-days"></div>
                   </div>
-                  <div className="search-input-wrapper" style={{ marginLeft: 'auto', maxWidth: '220px' }}>
+                  <div className="search-input-wrapper">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     <input id="historySearchInput" type="text" placeholder="Search history..." autoComplete="off" />
                   </div>
@@ -1088,13 +1052,11 @@ function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; rowIndex
   const [playError, setPlayError] = useState<string | null>(null);
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const contentRef = useRef<HTMLParagraphElement | null>(null);
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
   const [needsClamp, setNeedsClamp] = useState(false);
   const d = new Date(entry.timestamp);
   const hh = d.getHours();
@@ -1126,59 +1088,10 @@ function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; rowIndex
     };
   }, [audioSrc]);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const computePos = () => {
-      const btn = moreBtnRef.current;
-      if (!btn) return;
-      const r = btn.getBoundingClientRect();
-      setMenuPos({
-        top: r.bottom + 6,
-        right: window.innerWidth - r.right,
-      });
-    };
-    computePos();
-    const onDocClick = (e: MouseEvent) => {
-      const target = e.target as Node | null;
-      const btn = moreBtnRef.current;
-      const inMenu = menuRef.current && target && menuRef.current.contains(target);
-      const inBtn = btn && target && btn.contains(target);
-      if (!inMenu && !inBtn) {
-        setMenuOpen(false);
-        setConfirmDelete(false);
-      }
-    };
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMenuOpen(false);
-        setConfirmDelete(false);
-      }
-    };
-    const onScroll = () => {
-      // Reposition (or close) the menu as the page scrolls so it stays anchored.
-      const btn = moreBtnRef.current;
-      if (!btn) {
-        setMenuOpen(false);
-        return;
-      }
-      const r = btn.getBoundingClientRect();
-      if (r.bottom < 0 || r.top > window.innerHeight) {
-        setMenuOpen(false);
-      } else {
-        computePos();
-      }
-    };
-    document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("keydown", onEsc);
-    window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", onScroll);
-    return () => {
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onEsc);
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", onScroll);
-    };
-  }, [menuOpen]);
+  const closeMenu = () => {
+    setMenuOpen(false);
+    setConfirmDelete(false);
+  };
 
   // Measure whether the transcription text overflows 3 lines.
   useEffect(() => {
@@ -1213,8 +1126,7 @@ function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; rowIndex
       return;
     }
     removeHistoryEntry(entry.timestamp);
-    setMenuOpen(false);
-    setConfirmDelete(false);
+    closeMenu();
   };
 
   const handlePlay = async () => {
@@ -1397,15 +1309,13 @@ function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; rowIndex
             <circle cx="19" cy="12" r="1.6"></circle>
           </svg>
         </button>
-        {menuOpen && menuPos
-          ? createPortal(
-              <div
-                ref={menuRef}
-                className="entry-menu entry-menu-portal"
-                role="menu"
-                aria-label="Entry actions"
-                style={{ top: `${menuPos.top}px`, right: `${menuPos.right}px` }}
-              >
+        <AnchoredMenu
+          open={menuOpen}
+          anchorRef={moreBtnRef}
+          onClose={closeMenu}
+          label="Entry actions"
+          className="entry-menu entry-menu-portal"
+        >
                 <button
                   type="button"
                   className="entry-menu-item"
@@ -1439,10 +1349,7 @@ function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; rowIndex
                     {confirmDelete ? "Click again to confirm" : "Delete entry"}
                   </span>
                 </button>
-              </div>,
-              document.body
-            )
-          : null}
+        </AnchoredMenu>
         {hasRecording ? (
           <audio
             ref={audioRef}
