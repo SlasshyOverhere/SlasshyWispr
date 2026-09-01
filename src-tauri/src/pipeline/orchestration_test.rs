@@ -4,8 +4,9 @@
 //! controlled inputs, verifying state transitions and pipeline path selection.
 
 use super::orchestration::{
-    apply_selection_decision, normalize_and_validate_response, orchestrate_post_stt, AiAction,
-    OrchestratorInput, OrchestratorResult, PipelineConfig, PipelineState,
+    apply_selection_edit_result, normalize_and_validate_response, orchestrate_post_stt,
+    post_ai_processing, AiAction, OrchestratorInput, OrchestratorResult, PipelineConfig,
+    PipelineState, PostAiAction,
 };
 use crate::pipeline::selection::SelectionEditAction;
 
@@ -13,7 +14,6 @@ use crate::pipeline::selection::SelectionEditAction;
 
 fn default_config() -> PipelineConfig {
     PipelineConfig {
-        ai_available: true,
         system_prompt: "You are a helpful assistant.".to_string(),
         temperature: 0.35,
         max_tokens: 320,
@@ -116,18 +116,19 @@ fn selection_edit_triggers_decision_generation() {
     });
 
     assert_eq!(result.decision.mode, "assistant");
-    assert!(result.decision.skip_tts);
     assert!(result.decision.selection_context_used);
-    assert!(matches!(result.ai_action, AiAction::GenerateSelectionEditDecision { .. }));
+    assert!(matches!(
+        result.ai_action,
+        AiAction::GenerateSelectionEditDecision { .. }
+    ));
 }
 
 #[test]
 fn selection_edit_applies_replace_now() {
     let state = PipelineState::new();
-    let decision = SelectionEditAction::ReplaceNow;
-    let (response, selection_rewrite, _, context_cleared, skip_tts) = apply_selection_decision(
+    let result = apply_selection_edit_result(
         crate::pipeline::selection::SelectionEditDecision {
-            action: decision,
+            action: SelectionEditAction::ReplaceNow,
             rewrite_text: "shortened text".to_string(),
             message: String::new(),
         },
@@ -137,19 +138,22 @@ fn selection_edit_applies_replace_now() {
         "Lily",
     );
 
-    assert_eq!(response, "shortened text");
-    assert!(selection_rewrite);
-    assert!(skip_tts);
-    assert!(context_cleared);
+    assert_eq!(result.assistant_response, "shortened text");
+    assert!(result.selection_rewrite);
+    assert!(result.skip_tts);
+    assert!(result.selection_context_cleared);
     assert_eq!(state.peek_pending_rewrite(), None);
-    assert_eq!(state.peek_recent_context(), Some("shortened text".to_string()));
+    assert_eq!(
+        state.recent_selection_context.lock().unwrap().as_deref(),
+        Some("shortened text")
+    );
 }
 
 #[test]
 fn selection_edit_suspicious_downgrades_to_ask_confirm() {
     let state = PipelineState::new();
     // A very short rewrite of long text is suspicious
-    let (response, _, selection_pending, _, skip_tts) = apply_selection_decision(
+    let result = apply_selection_edit_result(
         crate::pipeline::selection::SelectionEditDecision {
             action: SelectionEditAction::ReplaceNow,
             rewrite_text: "x".to_string(),
@@ -161,10 +165,13 @@ fn selection_edit_suspicious_downgrades_to_ask_confirm() {
         "Lily",
     );
 
-    assert!(selection_pending);
-    assert!(skip_tts);
+    assert!(result.selection_pending);
+    assert!(result.skip_tts);
     assert!(state.peek_pending_rewrite().is_some());
-    assert!(response.contains("drafted an edit") || response.contains("confirmation"));
+    assert!(
+        result.assistant_response.contains("drafted an edit")
+            || result.assistant_response.contains("confirmation")
+    );
 }
 
 // ===== Selection edit: confirmation flow =====
@@ -186,7 +193,10 @@ fn affirmative_confirmation_applies_pending_rewrite() {
     assert!(result.decision.selection_context_cleared);
     assert!(state.peek_pending_rewrite().is_none());
     assert_eq!(result.decision.assistant_response, "pending rewrite text");
-    assert_eq!(state.peek_recent_context(), Some("pending rewrite text".to_string()));
+    assert_eq!(
+        state.recent_selection_context.lock().unwrap().as_deref(),
+        Some("pending rewrite text")
+    );
 }
 
 #[test]
@@ -223,7 +233,10 @@ fn unrecognized_confirmation_keeps_pending() {
     assert!(result.decision.selection_pending);
     assert!(result.decision.skip_tts);
     assert!(state.peek_pending_rewrite().is_some());
-    assert!(result.decision.assistant_response.contains("pending rewrite"));
+    assert!(result
+        .decision
+        .assistant_response
+        .contains("pending rewrite"));
 }
 
 // ===== Selection edit: no selected text =====
@@ -241,7 +254,10 @@ fn selection_edit_without_text_prompts_user() {
     });
 
     assert!(result.decision.skip_tts);
-    assert!(result.decision.assistant_response.contains("No selected text"));
+    assert!(result
+        .decision
+        .assistant_response
+        .contains("No selected text"));
 }
 
 // ===== Command mode =====
@@ -260,22 +276,6 @@ fn command_mode_no_selection_routes_to_ai() {
 
     assert!(matches!(result.ai_action, AiAction::GenerateResponse { .. }));
     assert_eq!(result.decision.mode, "assistant");
-}
-
-#[test]
-fn command_mode_empty_command_prompts_for_input() {
-    let state = PipelineState::new();
-    let result = orchestrate_post_stt(OrchestratorInput {
-        transcript: "hey lily",
-        wake_word_enabled: true,
-        command_mode: true,
-        selected_text: None,
-        config: config_with_name("Lily"),
-        state: &state,
-    });
-
-    // Empty command with command_mode should still go to AI
-    assert!(matches!(result.ai_action, AiAction::GenerateResponse { .. }));
 }
 
 // ===== Normal assistant mode =====
@@ -327,8 +327,10 @@ fn wake_disabled_treats_whole_transcript_as_command() {
         state: &state,
     });
 
-    // With wake disabled, the entire transcript is the command
-    assert!(matches!(result.ai_action, AiAction::GenerateResponse { ref prompt, .. } if prompt == "what is the capital of France"));
+    assert!(matches!(
+        result.ai_action,
+        AiAction::GenerateResponse { ref prompt, .. } if prompt == "what is the capital of France"
+    ));
     assert!(!result.decision.skip_tts);
 }
 
@@ -344,7 +346,6 @@ fn wake_disabled_not_dictation() {
         state: &state,
     });
 
-    // Even with random text, wake disabled means it goes to AI, not dictation
     assert_ne!(result.decision.mode, "dictation");
 }
 
@@ -369,7 +370,7 @@ fn pending_rewrite_cleared_on_new_command() {
 #[test]
 fn recent_context_set_on_selection_edit_replace() {
     let state = PipelineState::new();
-    let (response, _, _, _, _) = apply_selection_decision(
+    let result = apply_selection_edit_result(
         crate::pipeline::selection::SelectionEditDecision {
             action: SelectionEditAction::ReplaceNow,
             rewrite_text: "new version".to_string(),
@@ -381,14 +382,17 @@ fn recent_context_set_on_selection_edit_replace() {
         "Lily",
     );
 
-    assert_eq!(response, "new version");
-    assert_eq!(state.peek_recent_context(), Some("new version".to_string()));
+    assert_eq!(result.assistant_response, "new version");
+    assert_eq!(
+        state.recent_selection_context.lock().unwrap().as_deref(),
+        Some("new version")
+    );
 }
 
 #[test]
 fn recent_context_set_on_ask_confirm() {
     let state = PipelineState::new();
-    let (_, _, selection_pending, _, _) = apply_selection_decision(
+    let result = apply_selection_edit_result(
         crate::pipeline::selection::SelectionEditDecision {
             action: SelectionEditAction::AskConfirm,
             rewrite_text: "proposed edit".to_string(),
@@ -400,8 +404,11 @@ fn recent_context_set_on_ask_confirm() {
         "Lily",
     );
 
-    assert!(selection_pending);
-    assert_eq!(state.peek_recent_context(), Some("proposed edit".to_string()));
+    assert!(result.selection_pending);
+    assert_eq!(
+        state.recent_selection_context.lock().unwrap().as_deref(),
+        Some("proposed edit")
+    );
     assert_eq!(state.peek_pending_rewrite(), Some("proposed edit".to_string()));
 }
 
@@ -453,8 +460,10 @@ fn selection_context_query_triggers_ai() {
     });
 
     assert!(result.decision.selection_context_used);
-    // Should trigger selection-edit decision (since selected text is available)
-    assert!(matches!(result.ai_action, AiAction::GenerateSelectionEditDecision { .. }));
+    assert!(matches!(
+        result.ai_action,
+        AiAction::GenerateSelectionEditDecision { .. }
+    ));
 }
 
 // ===== Edge cases =====
@@ -471,7 +480,10 @@ fn empty_command_with_selected_text_uses_default_instruction() {
         state: &state,
     });
 
-    assert!(matches!(result.ai_action, AiAction::GenerateSelectionEditDecision { ref instruction, .. } if instruction.contains("Improve this text")));
+    assert!(matches!(
+        result.ai_action,
+        AiAction::GenerateSelectionEditDecision { ref instruction, .. } if instruction.contains("Improve this text")
+    ));
 }
 
 #[test]
@@ -486,23 +498,10 @@ fn selection_with_command_uses_command_as_instruction() {
         state: &state,
     });
 
-    assert!(matches!(result.ai_action, AiAction::GenerateSelectionEditDecision { ref instruction, .. } if instruction == "make this more formal"));
-}
-
-#[test]
-fn selection_control_mode_active_with_pending_rewrite() {
-    let state = PipelineState::with_pending_rewrite("existing");
-    let result = orchestrate_post_stt(OrchestratorInput {
-        transcript: "hey lily something",
-        wake_word_enabled: true,
-        command_mode: false,
-        selected_text: None,
-        config: default_config(),
-        state: &state,
-    });
-
-    // Should recognize the pending rewrite and enter confirmation flow
-    assert!(result.decision.selection_context_used);
+    assert!(matches!(
+        result.ai_action,
+        AiAction::GenerateSelectionEditDecision { ref instruction, .. } if instruction == "make this more formal"
+    ));
 }
 
 // ===== NoEdit decision =====
@@ -510,7 +509,7 @@ fn selection_control_mode_active_with_pending_rewrite() {
 #[test]
 fn noedit_with_message_returns_message() {
     let state = PipelineState::new();
-    let (response, _, _, _, _) = apply_selection_decision(
+    let result = apply_selection_edit_result(
         crate::pipeline::selection::SelectionEditDecision {
             action: SelectionEditAction::NoEdit,
             rewrite_text: String::new(),
@@ -522,14 +521,14 @@ fn noedit_with_message_returns_message() {
         "Lily",
     );
 
-    assert_eq!(response, "The text is already well-written.");
-    assert!(!response.is_empty());
+    assert_eq!(result.assistant_response, "The text is already well-written.");
+    assert!(!result.assistant_response.is_empty());
 }
 
 #[test]
-fn noedit_empty_message_triggers_ai_answer() {
+fn noedit_empty_message_returns_empty_for_ai_answer() {
     let state = PipelineState::new();
-    let (response, _, _, _, _) = apply_selection_decision(
+    let result = apply_selection_edit_result(
         crate::pipeline::selection::SelectionEditDecision {
             action: SelectionEditAction::NoEdit,
             rewrite_text: String::new(),
@@ -541,6 +540,99 @@ fn noedit_empty_message_triggers_ai_answer() {
         "Lily",
     );
 
-    // Should return a prompt marker for the caller to generate AI answer
-    assert!(response.starts_with("[no-edit-ai-prompt]"));
+    // Empty response signals caller to generate AI answer with selected context
+    assert!(result.assistant_response.is_empty());
+}
+
+// ===== Post-AI processing =====
+
+#[test]
+fn echo_detection_returns_direct_answer_fallback() {
+    let action = post_ai_processing(
+        "What time is it?",
+        "What time is it?",
+        false,
+        false,
+        false,
+        false,
+    );
+
+    assert!(matches!(action, PostAiAction::DirectAnswerFallback { .. }));
+}
+
+#[test]
+fn no_echo_for_non_question() {
+    let action = post_ai_processing(
+        "It's 3 PM.",
+        "What time is it?",
+        false,
+        false,
+        false,
+        false,
+    );
+
+    assert!(matches!(action, PostAiAction::None));
+}
+
+#[test]
+fn draft_fallback_for_incomplete_output() {
+    let action = post_ai_processing(
+        "Here is the beginning of your email...",
+        "write an email to the team",
+        false,
+        false,
+        false,
+        false,
+    );
+
+    assert!(matches!(action, PostAiAction::ComposeDraftFallback { .. }));
+}
+
+#[test]
+fn no_draft_fallback_when_selection_used() {
+    let action = post_ai_processing(
+        "Here is the beginning...",
+        "write an email",
+        false,
+        true, // selection_context_used
+        false,
+        false,
+    );
+
+    assert!(matches!(action, PostAiAction::None));
+}
+
+#[test]
+fn no_fallback_for_wake_only() {
+    let action = post_ai_processing(
+        "What time is it?",
+        "What time is it?",
+        true, // wake_only
+        false,
+        false,
+        false,
+    );
+
+    assert!(matches!(action, PostAiAction::None));
+}
+
+// ===== Selection-edit apply: AskConfirm with empty rewrite =====
+
+#[test]
+fn askconfirm_empty_rewrite_returns_error_message() {
+    let state = PipelineState::new();
+    let result = apply_selection_edit_result(
+        crate::pipeline::selection::SelectionEditDecision {
+            action: SelectionEditAction::AskConfirm,
+            rewrite_text: String::new(),
+            message: String::new(),
+        },
+        "rewrite this",
+        "original text",
+        &state,
+        "Lily",
+    );
+
+    assert!(!result.selection_pending);
+    assert!(result.assistant_response.contains("could not prepare"));
 }

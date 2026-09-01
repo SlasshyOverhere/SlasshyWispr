@@ -5920,183 +5920,75 @@ async fn run_assistant_pipeline(
         selected_text_source,
         selected_chars
     );
-    let mut selection_rewrite = false;
-    let mut selection_pending = false;
-    let mut selection_context_cleared = false;
-    let mut skip_tts = false;
-
-    let ai_start = Instant::now();
+    // --- Delegate decision logic to the orchestrator ---
     let system_prompt = request
         .system_prompt
         .as_deref()
         .map(str::trim)
         .filter(|prompt| !prompt.is_empty())
         .unwrap_or(DEFAULT_SYSTEM_PROMPT);
-
     let temperature = request.temperature.unwrap_or(0.35).clamp(0.0, 1.2);
     let max_tokens = request.max_tokens.unwrap_or(320).clamp(64, 1024);
 
-    let mut ai_latency_ms = 0_u64;
-    let mut assistant_response = if wake_only {
-        info!("[pipeline] wake phrase detected without trailing command");
-        "I'm listening.".to_string()
-    } else {
-        if selection_control_mode {
-            if let Some(selected) = selected_text.as_deref() {
-                let instruction = if command_for_ai.trim().is_empty() {
-                    "Improve this text while keeping the original meaning and tone."
-                } else {
-                    command_for_ai.as_str()
-                };
-                let mut decision = generate_selection_edit_decision(
-                    &state.http,
-                    &pipeline_mode.ai,
-                    instruction,
-                    selected,
-                    temperature,
-                )
-                .await?;
-                if decision.action == SelectionEditAction::ReplaceNow
-                    && is_rewrite_suspicious(instruction, selected, &decision.rewrite_text)
-                {
-                    decision.action = SelectionEditAction::AskConfirm;
-                    if decision.message.trim().is_empty() {
-                        decision.message =
-                            "I drafted an edit but want confirmation before replacing.".to_string();
-                    }
-                    info!(
-                        "[pipeline] downgraded auto replace to ask_confirm due to suspicious rewrite shape"
-                    );
-                }
-                ai_latency_ms = elapsed_ms(ai_start);
-                info!(
-                    "[pipeline] ai edit decision latency_ms={} action={} rewrite_chars={} message_chars={}",
-                    ai_latency_ms,
-                    selection_action_label(decision.action),
-                    decision.rewrite_text.chars().count(),
-                    decision.message.chars().count()
-                );
+    let orch_state = pipeline::orchestration::PipelineState::new();
+    // Seed orchestrator state with any existing pending rewrite
+    if let Some(pending) = state.peek_pending_selection_rewrite()? {
+        orch_state.set_pending_rewrite(&pending);
+    }
 
-                match decision.action {
-                    SelectionEditAction::ReplaceNow => {
-                        let rewrite = decision.rewrite_text;
-                        state.set_recent_selection_context(rewrite.clone())?;
-                        selection_rewrite = true;
-                        selection_context_cleared =
-                            state.clear_pending_selection_rewrite()? || selection_context_cleared;
-                        skip_tts = true;
-                        rewrite
-                    }
-                    SelectionEditAction::AskConfirm => {
-                        if decision.rewrite_text.trim().is_empty() {
-                            selection_context_cleared = state.clear_pending_selection_rewrite()?
-                                || selection_context_cleared;
-                            "I could not prepare a safe rewrite. Try a clearer edit instruction."
-                                .to_string()
-                        } else {
-                            let rewrite = decision.rewrite_text;
-                            state.set_recent_selection_context(rewrite.clone())?;
-                            state.set_pending_selection_rewrite(rewrite)?;
-                            selection_pending = true;
-                            skip_tts = true;
-                            if decision.message.trim().is_empty() {
-                                format!(
-                                    "I drafted an edit. Say \"hey {}, yes replace it\" to apply or \"hey {}, cancel\" to discard.",
-                                    assistant_name, assistant_name
-                                )
-                            } else {
-                                decision.message
-                            }
-                        }
-                    }
-                    SelectionEditAction::NoEdit => {
-                        selection_context_cleared =
-                            state.clear_pending_selection_rewrite()? || selection_context_cleared;
-                        if decision.message.trim().is_empty()
-                            || looks_like_missing_selection_prompt(&decision.message)
-                        {
-                            let response = generate_assistant_response(
-                                &state.http,
-                                &pipeline_mode.ai,
-                                &build_selected_context_answer_prompt(&command_for_ai, selected),
-                                system_prompt,
-                                temperature,
-                                max_tokens,
-                            )
-                            .await?;
-                            ai_latency_ms = elapsed_ms(ai_start);
-                            info!(
-                                "[pipeline] ai selected-context answer latency_ms={} response_chars={}",
-                                ai_latency_ms,
-                                response.chars().count()
-                            );
-                            response
-                        } else {
-                            decision.message
-                        }
-                    }
-                }
-            } else if let Some(pending) = state.peek_pending_selection_rewrite()? {
-                if is_negative_selection_confirmation(&command_for_ai) {
-                    selection_context_cleared =
-                        state.clear_pending_selection_rewrite()? || selection_context_cleared;
-                    skip_tts = true;
-                    info!("[pipeline] pending rewrite canceled by user");
-                    "Pending rewrite canceled.".to_string()
-                } else if is_affirmative_selection_confirmation(&command_for_ai) {
-                    let rewrite = state.take_pending_selection_rewrite()?.unwrap_or(pending);
-                    state.set_recent_selection_context(rewrite.clone())?;
-                    selection_rewrite = true;
-                    selection_context_cleared = true;
-                    skip_tts = true;
-                    info!(
-                        "[pipeline] pending rewrite confirmed by user rewrite_chars={}",
-                        rewrite.chars().count()
-                    );
-                    rewrite
-                } else {
-                    selection_pending = true;
-                    skip_tts = true;
-                    "I still have a pending rewrite. Say \"yes replace it\" to apply or \"cancel\" to discard."
-                        .to_string()
-                }
-            } else {
-                if selection_edit_intent || selection_context_query_intent {
-                    skip_tts = true;
-                    "No selected text detected. Select text first, then repeat your selection command."
-                        .to_string()
-                } else {
-                    let transcript_for_ai = if command_for_ai.is_empty() {
-                        "Command mode is active. Ask the user what to edit next.".to_string()
-                    } else {
-                        format!("Command mode request: {}", command_for_ai)
-                    };
-                    let assistant_response = generate_assistant_response(
-                        &state.http,
-                        &pipeline_mode.ai,
-                        &transcript_for_ai,
-                        system_prompt,
-                        temperature,
-                        max_tokens,
-                    )
-                    .await?;
-                    ai_latency_ms = elapsed_ms(ai_start);
-                    info!(
-                        "[pipeline] ai done latency_ms={} response_chars={}",
-                        ai_latency_ms,
-                        assistant_response.chars().count()
-                    );
-                    assistant_response
-                }
+    let orch_result = pipeline::orchestration::orchestrate_post_stt(
+        pipeline::orchestration::OrchestratorInput {
+            transcript: &transcript,
+            wake_word_enabled,
+            command_mode,
+            selected_text: selected_text.as_deref(),
+            config: pipeline::orchestration::PipelineConfig {
+                system_prompt: system_prompt.to_string(),
+                temperature,
+                max_tokens,
+                assistant_name: assistant_name.clone(),
+            },
+            state: &orch_state,
+        },
+    );
+
+    // Sync orchestrator state transitions to AppState
+    let mut selection_rewrite = orch_result.decision.selection_rewrite;
+    let mut selection_pending = orch_result.decision.selection_pending;
+    let mut selection_context_cleared = false;
+    let mut skip_tts = orch_result.decision.skip_tts;
+    let selection_context_used = orch_result.decision.selection_context_used;
+
+    // Sync pending rewrite state
+    if orch_state.peek_pending_rewrite().is_none() {
+        state.clear_pending_selection_rewrite()?;
+    } else if let Some(pending) = orch_state.peek_pending_rewrite() {
+        state.set_pending_selection_rewrite(pending)?;
+    }
+    selection_context_cleared = orch_result.decision.selection_context_cleared;
+
+    let mut ai_latency_ms = 0_u64;
+    let mut assistant_response;
+
+    match orch_result.ai_action {
+        pipeline::orchestration::AiAction::None => {
+            assistant_response = orch_result.decision.assistant_response;
+            if wake_only {
+                info!("[pipeline] wake phrase detected without trailing command");
             }
-        } else {
-            selection_context_cleared =
-                state.clear_pending_selection_rewrite()? || selection_context_cleared;
-            let assistant_response = generate_assistant_response(
+        }
+        pipeline::orchestration::AiAction::GenerateResponse {
+            prompt,
+            system_prompt,
+            temperature,
+            max_tokens,
+        } => {
+            let ai_start = Instant::now();
+            assistant_response = generate_assistant_response(
                 &state.http,
                 &pipeline_mode.ai,
-                &command_for_ai,
-                system_prompt,
+                &prompt,
+                &system_prompt,
                 temperature,
                 max_tokens,
             )
@@ -6107,94 +5999,161 @@ async fn run_assistant_pipeline(
                 ai_latency_ms,
                 assistant_response.chars().count()
             );
-            assistant_response
-        }
-    };
 
-    if !wake_only
-        && looks_like_direct_question(&command_for_ai)
-        && looks_like_question_echo(&command_for_ai, &assistant_response)
-    {
-        warn!(
-            "[pipeline] detected question echo; retrying with strict direct-answer fallback command={}",
-            clip_text(&command_for_ai, 220)
-        );
-        match generate_direct_answer_fallback(
-            &state.http,
-            &pipeline_mode.ai,
-            &command_for_ai,
+            // Post-AI processing: echo detection and draft fallback
+            match pipeline::orchestration::post_ai_processing(
+                &assistant_response,
+                &command_for_ai,
+                wake_only,
+                selection_context_used,
+                selection_rewrite,
+                selection_pending,
+            ) {
+                pipeline::orchestration::PostAiAction::DirectAnswerFallback {
+                    command,
+                    temperature,
+                    max_tokens,
+                } => {
+                    warn!(
+                        "[pipeline] detected question echo; retrying with strict direct-answer fallback command={}",
+                        clip_text(&command, 220)
+                    );
+                    match generate_direct_answer_fallback(
+                        &state.http,
+                        &pipeline_mode.ai,
+                        &command,
+                        temperature,
+                        max_tokens,
+                    )
+                    .await
+                    {
+                        Ok(recovered) if !recovered.trim().is_empty() => {
+                            assistant_response = recovered;
+                            ai_latency_ms = elapsed_ms(ai_start);
+                            info!(
+                                "[pipeline] fallback answer success latency_ms={} response_chars={}",
+                                ai_latency_ms,
+                                assistant_response.chars().count()
+                            );
+                        }
+                        Ok(_) => {
+                            warn!("[pipeline] fallback answer returned empty response");
+                        }
+                        Err(error) => {
+                            warn!(
+                                "[pipeline] fallback answer failed: {}",
+                                clip_text(&single_line(&error), 320)
+                            );
+                        }
+                    }
+                }
+                pipeline::orchestration::PostAiAction::ComposeDraftFallback {
+                    command,
+                    temperature,
+                    max_tokens,
+                } => {
+                    warn!(
+                        "[pipeline] detected incomplete draft output; retrying with strict compose fallback command={}",
+                        clip_text(&command, 220)
+                    );
+                    match generate_compose_draft_fallback(
+                        &state.http,
+                        &pipeline_mode.ai,
+                        &command,
+                        temperature,
+                        max_tokens,
+                    )
+                    .await
+                    {
+                        Ok(recovered) if !recovered.trim().is_empty() => {
+                            assistant_response = recovered;
+                            ai_latency_ms = elapsed_ms(ai_start);
+                            info!(
+                                "[pipeline] compose fallback success latency_ms={} response_chars={}",
+                                ai_latency_ms,
+                                assistant_response.chars().count()
+                            );
+                        }
+                        Ok(_) => {
+                            warn!("[pipeline] compose fallback returned empty response");
+                        }
+                        Err(error) => {
+                            warn!(
+                                "[pipeline] compose fallback failed: {}",
+                                clip_text(&single_line(&error), 320)
+                            );
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        pipeline::orchestration::AiAction::GenerateSelectionEditDecision {
+            instruction,
+            selected_text,
             temperature,
-            max_tokens,
-        )
-        .await
-        {
-            Ok(recovered) if !recovered.trim().is_empty() => {
-                assistant_response = recovered;
+        } => {
+            let ai_start = Instant::now();
+            let mut decision = generate_selection_edit_decision(
+                &state.http,
+                &pipeline_mode.ai,
+                &instruction,
+                &selected_text,
+                temperature,
+            )
+            .await?;
+            ai_latency_ms = elapsed_ms(ai_start);
+            info!(
+                "[pipeline] ai edit decision latency_ms={} action={} rewrite_chars={} message_chars={}",
+                ai_latency_ms,
+                selection_action_label(decision.action),
+                decision.rewrite_text.chars().count(),
+                decision.message.chars().count()
+            );
+
+            let edit_result = pipeline::orchestration::apply_selection_edit_result(
+                decision,
+                &instruction,
+                &selected_text,
+                &orch_state,
+                &assistant_name,
+            );
+            assistant_response = edit_result.assistant_response;
+            selection_rewrite = edit_result.selection_rewrite;
+            selection_pending = edit_result.selection_pending;
+            selection_context_cleared = edit_result.selection_context_cleared;
+            skip_tts = edit_result.skip_tts;
+
+            // Sync orchestrator state to AppState after selection-edit apply
+            if orch_state.peek_pending_rewrite().is_none() {
+                state.clear_pending_selection_rewrite()?;
+            } else if let Some(pending) = orch_state.peek_pending_rewrite() {
+                state.set_pending_selection_rewrite(pending)?;
+            }
+
+            // NoEdit with empty response → generate AI answer with selected context
+            if assistant_response.is_empty() {
+                let response = generate_assistant_response(
+                    &state.http,
+                    &pipeline_mode.ai,
+                    &build_selected_context_answer_prompt(&instruction, &selected_text),
+                    system_prompt,
+                    temperature,
+                    max_tokens,
+                )
+                .await?;
                 ai_latency_ms = elapsed_ms(ai_start);
                 info!(
-                    "[pipeline] fallback answer success latency_ms={} response_chars={}",
+                    "[pipeline] ai selected-context answer latency_ms={} response_chars={}",
                     ai_latency_ms,
-                    assistant_response.chars().count()
+                    response.chars().count()
                 );
-            }
-            Ok(_) => {
-                warn!("[pipeline] fallback answer returned empty response");
-            }
-            Err(error) => {
-                warn!(
-                    "[pipeline] fallback answer failed: {}",
-                    clip_text(&single_line(&error), 320)
-                );
+                assistant_response = response;
             }
         }
     }
 
-    if !wake_only
-        && !selection_context_used
-        && !selection_rewrite
-        && !selection_pending
-        && seems_like_draft_generation_instruction(&command_for_ai)
-        && looks_like_incomplete_draft_output(&assistant_response)
-    {
-        warn!(
-            "[pipeline] detected incomplete draft output; retrying with strict compose fallback command={}",
-            clip_text(&command_for_ai, 220)
-        );
-        match generate_compose_draft_fallback(
-            &state.http,
-            &pipeline_mode.ai,
-            &command_for_ai,
-            temperature,
-            max_tokens,
-        )
-        .await
-        {
-            Ok(recovered) if !recovered.trim().is_empty() => {
-                assistant_response = recovered;
-                ai_latency_ms = elapsed_ms(ai_start);
-                info!(
-                    "[pipeline] compose fallback success latency_ms={} response_chars={}",
-                    ai_latency_ms,
-                    assistant_response.chars().count()
-                );
-            }
-            Ok(_) => {
-                warn!("[pipeline] compose fallback returned empty response");
-            }
-            Err(error) => {
-                warn!(
-                    "[pipeline] compose fallback failed: {}",
-                    clip_text(&single_line(&error), 320)
-                );
-            }
-        }
-    }
-
-    assistant_response = normalize_assistant_response_text(&assistant_response);
-
-    if assistant_response.trim().is_empty() {
-        return Err("AI model returned an empty response".to_string());
-    }
+    assistant_response = pipeline::orchestration::normalize_and_validate_response(&assistant_response)?;
 
     if wake_only {
         let total_latency_ms = elapsed_ms(overall_start);

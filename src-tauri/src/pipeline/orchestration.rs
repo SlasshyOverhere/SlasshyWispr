@@ -37,6 +37,7 @@ impl PipelineState {
         }
     }
 
+    #[cfg(test)]
     pub fn with_pending_rewrite(rewrite: &str) -> Self {
         Self {
             pending_selection_rewrite: Mutex::new(Some(rewrite.to_string())),
@@ -44,6 +45,7 @@ impl PipelineState {
         }
     }
 
+    #[cfg(test)]
     pub fn with_recent_context(context: &str) -> Self {
         Self {
             pending_selection_rewrite: Mutex::new(None),
@@ -74,6 +76,7 @@ impl PipelineState {
         *self.recent_selection_context.lock().unwrap() = Some(text.to_string());
     }
 
+    #[cfg(test)]
     pub fn peek_recent_context(&self) -> Option<String> {
         self.recent_selection_context.lock().unwrap().clone()
     }
@@ -82,8 +85,6 @@ impl PipelineState {
 /// Resolved pipeline configuration for the orchestrator.
 /// Contains everything the orchestrator needs to make decisions.
 pub struct PipelineConfig {
-    /// Whether AI is available (online or local).
-    pub ai_available: bool,
     /// System prompt for AI calls.
     pub system_prompt: String,
     /// Temperature for AI calls.
@@ -115,6 +116,9 @@ pub struct OrchestratorDecision {
     /// The pipeline mode.
     pub mode: String,
     /// The assistant response text.
+    /// For most paths, this is the final response.
+    /// For AiAction::GenerateResponse or GenerateSelectionEditDecision,
+    /// this is a placeholder — the caller must produce the real response.
     pub assistant_response: String,
     /// Whether TTS should be skipped.
     pub skip_tts: bool,
@@ -130,9 +134,10 @@ pub struct OrchestratorDecision {
 
 /// The AI action the orchestrator requests the caller to execute.
 pub enum AiAction {
-    /// No AI call needed (dictation or wake-only).
+    /// No AI call needed (dictation, wake-only, or state-only paths).
     None,
     /// Standard AI response generation.
+    /// Caller must also run post_ai_processing on the result.
     GenerateResponse {
         prompt: String,
         system_prompt: String,
@@ -140,22 +145,11 @@ pub enum AiAction {
         max_tokens: u32,
     },
     /// Selection-edit decision generation.
+    /// Caller must: call AI → get SelectionEditDecision → call apply_selection_edit_result.
     GenerateSelectionEditDecision {
         instruction: String,
         selected_text: String,
         temperature: f64,
-    },
-    /// Direct answer fallback (echo detection).
-    DirectAnswerFallback {
-        command: String,
-        temperature: f64,
-        max_tokens: u32,
-    },
-    /// Compose draft fallback (incomplete draft detection).
-    ComposeDraftFallback {
-        command: String,
-        temperature: f64,
-        max_tokens: u32,
     },
 }
 
@@ -163,6 +157,20 @@ pub enum AiAction {
 pub struct OrchestratorResult {
     pub decision: OrchestratorDecision,
     pub ai_action: AiAction,
+}
+
+/// Result of applying a selection-edit decision to the orchestrator state.
+pub struct SelectionEditResult {
+    /// The final assistant response text.
+    pub assistant_response: String,
+    /// Whether a selection rewrite was applied.
+    pub selection_rewrite: bool,
+    /// Whether a selection rewrite is pending confirmation.
+    pub selection_pending: bool,
+    /// Whether pending selection context was cleared.
+    pub selection_context_cleared: bool,
+    /// Whether TTS should be skipped.
+    pub skip_tts: bool,
 }
 
 // ===== Orchestrator =====
@@ -234,17 +242,14 @@ pub fn orchestrate_post_stt(input: OrchestratorInput) -> OrchestratorResult {
             } else {
                 command_for_ai.as_str()
             };
-            // Request selection-edit decision from AI
             ai_action = AiAction::GenerateSelectionEditDecision {
                 instruction: instruction.to_string(),
                 selected_text: selected.clone(),
                 temperature: input.config.temperature,
             };
-            // The caller will call the AI and then call apply_selection_decision
-            // For now, return a placeholder that signals the caller to handle
-            "[selection-edit-pending]".to_string()
+            // Placeholder — caller executes AI and calls apply_selection_edit_result
+            String::new()
         } else if input.state.peek_pending_rewrite().is_some() {
-            // Pending rewrite confirmation handling
             if is_negative_selection_confirmation(&command_for_ai) {
                 selection_context_cleared = input.state.clear_pending_rewrite() || selection_context_cleared;
                 skip_tts = true;
@@ -281,7 +286,7 @@ pub fn orchestrate_post_stt(input: OrchestratorInput) -> OrchestratorResult {
                     temperature: input.config.temperature,
                     max_tokens: input.config.max_tokens,
                 };
-                "[ai-pending]".to_string()
+                String::new() // Placeholder — caller produces response
             }
         }
     } else {
@@ -292,7 +297,7 @@ pub fn orchestrate_post_stt(input: OrchestratorInput) -> OrchestratorResult {
             temperature: input.config.temperature,
             max_tokens: input.config.max_tokens,
         };
-        "[ai-pending]".to_string()
+        String::new() // Placeholder — caller produces response
     };
 
     // --- Wake-only early return ---
@@ -342,20 +347,23 @@ pub fn orchestrate_post_stt(input: OrchestratorInput) -> OrchestratorResult {
     }
 }
 
-/// Apply a selection-edit decision result to the orchestrator state.
-/// This is called after the AI generates a selection-edit decision.
-pub fn apply_selection_decision(
+/// Apply a selection-edit AI result to the orchestrator state.
+///
+/// This is called after the caller gets a `SelectionEditDecision` from the AI
+/// in response to `AiAction::GenerateSelectionEditDecision`.
+/// It handles:
+/// - Suspicious rewrite downgrade (ReplaceNow → AskConfirm)
+/// - State mutations (pending rewrite, recent context, selection flags)
+/// - Response text generation
+/// - NoEdit fallback to AI answer prompt
+pub fn apply_selection_edit_result(
     decision: SelectionEditDecision,
     instruction: &str,
     selected_text: &str,
     state: &PipelineState,
     assistant_name: &str,
-) -> (String, bool, bool, bool, bool) {
+) -> SelectionEditResult {
     let mut decision = decision;
-    let mut selection_rewrite = false;
-    let mut selection_pending = false;
-    let mut selection_context_cleared = false;
-    let mut skip_tts = false;
 
     if decision.action == SelectionEditAction::ReplaceNow
         && is_rewrite_suspicious(instruction, selected_text, &decision.rewrite_text)
@@ -366,18 +374,23 @@ pub fn apply_selection_decision(
         }
     }
 
+    let mut selection_rewrite = false;
+    let mut selection_pending = false;
+    let mut selection_context_cleared = false;
+    let mut skip_tts = false;
+
     let response = match decision.action {
         SelectionEditAction::ReplaceNow => {
             let rewrite = decision.rewrite_text;
             state.set_recent_context(&rewrite);
             selection_rewrite = true;
-            selection_context_cleared = state.clear_pending_rewrite() || selection_context_cleared;
+            selection_context_cleared = state.clear_pending_rewrite();
             skip_tts = true;
             rewrite
         }
         SelectionEditAction::AskConfirm => {
             if decision.rewrite_text.trim().is_empty() {
-                selection_context_cleared = state.clear_pending_rewrite() || selection_context_cleared;
+                selection_context_cleared = state.clear_pending_rewrite();
                 "I could not prepare a safe rewrite. Try a clearer edit instruction.".to_string()
             } else {
                 let rewrite = decision.rewrite_text;
@@ -396,47 +409,67 @@ pub fn apply_selection_decision(
             }
         }
         SelectionEditAction::NoEdit => {
-            selection_context_cleared = state.clear_pending_rewrite() || selection_context_cleared;
+            selection_context_cleared = state.clear_pending_rewrite();
             if decision.message.trim().is_empty()
                 || crate::pipeline::selection::looks_like_missing_selection_prompt(&decision.message)
             {
-                // The caller should call generate_assistant_response with the selected-context prompt
-                // For now, return a marker
-                let prompt = build_selected_context_answer_prompt(instruction, selected_text);
+                // NoEdit with empty/prompt-like message → generate AI answer with selected context
                 skip_tts = false;
-                return (format!("[no-edit-ai-prompt]{}", prompt), selection_rewrite, selection_pending, selection_context_cleared, skip_tts);
+                // Return empty response to signal caller to generate AI answer
+                String::new()
             } else {
                 decision.message
             }
         }
     };
 
-    (response, selection_rewrite, selection_pending, selection_context_cleared, skip_tts)
+    SelectionEditResult {
+        assistant_response: response,
+        selection_rewrite,
+        selection_pending,
+        selection_context_cleared,
+        skip_tts,
+    }
+}
+
+/// The post-AI fallback action to take.
+pub enum PostAiAction {
+    /// No fallback needed.
+    None,
+    /// Echo detected — retry with direct answer.
+    DirectAnswerFallback {
+        command: String,
+        temperature: f64,
+        max_tokens: u32,
+    },
+    /// Incomplete draft — retry with compose fallback.
+    ComposeDraftFallback {
+        command: String,
+        temperature: f64,
+        max_tokens: u32,
+    },
 }
 
 /// Post-AI processing: check for echo and incomplete drafts.
-/// Returns (possibly updated) assistant_response and whether TTS should be skipped.
+/// Returns a fallback action if the response needs retry.
 pub fn post_ai_processing(
-    mut assistant_response: String,
+    assistant_response: &str,
     command_for_ai: &str,
     wake_only: bool,
     selection_context_used: bool,
     selection_rewrite: bool,
     selection_pending: bool,
-) -> (String, AiAction) {
+) -> PostAiAction {
     // Echo detection
     if !wake_only
         && looks_like_direct_question(command_for_ai)
-        && looks_like_question_echo(command_for_ai, &assistant_response)
+        && looks_like_question_echo(command_for_ai, assistant_response)
     {
-        return (
-            assistant_response,
-            AiAction::DirectAnswerFallback {
-                command: command_for_ai.to_string(),
-                temperature: 0.35,
-                max_tokens: 320,
-            },
-        );
+        return PostAiAction::DirectAnswerFallback {
+            command: command_for_ai.to_string(),
+            temperature: 0.35,
+            max_tokens: 320,
+        };
     }
 
     // Incomplete draft detection
@@ -445,19 +478,16 @@ pub fn post_ai_processing(
         && !selection_rewrite
         && !selection_pending
         && seems_like_draft_generation_instruction(command_for_ai)
-        && looks_like_incomplete_draft_output(&assistant_response)
+        && looks_like_incomplete_draft_output(assistant_response)
     {
-        return (
-            assistant_response,
-            AiAction::ComposeDraftFallback {
-                command: command_for_ai.to_string(),
-                temperature: 0.35,
-                max_tokens: 320,
-            },
-        );
+        return PostAiAction::ComposeDraftFallback {
+            command: command_for_ai.to_string(),
+            temperature: 0.35,
+            max_tokens: 320,
+        };
     }
 
-    (assistant_response, AiAction::None)
+    PostAiAction::None
 }
 
 /// Normalize and validate the final assistant response.
