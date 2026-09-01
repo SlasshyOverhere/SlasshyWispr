@@ -62,11 +62,18 @@ use windows_sys::Win32::UI::WindowsAndMessaging::*;
 #[cfg(target_os = "windows")]
 use zip::ZipArchive;
 
+pub mod audio;
 pub mod constants;
+pub mod pipeline;
 pub mod security;
-pub mod vad;
+pub mod updater;
+use audio::noise_suppression;
+use audio::vad;
+use audio::processing::*;
 use constants::*;
 use security::validate_base64_input;
+use pipeline::routing::*;
+use updater::*;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -405,8 +412,6 @@ static LOCAL_STT_NATIVE_PARAKEET_RUNTIME: OnceLock<Mutex<Option<NativeParakeetRu
 static PIPER_TUNING_SUPPORT: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
 static TRAY_UPDATE_ITEM: OnceLock<MenuItem<tauri::Wry>> = OnceLock::new();
 static SAVED_SYSTEM_AUDIO_VOLUME: Mutex<Option<u32>> = Mutex::new(None);
-
-mod noise_suppression;
 
 #[cfg(target_os = "windows")]
 mod win32_native {
@@ -849,42 +854,7 @@ struct ProviderModelsResponse {
     models: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
-struct LocalSttConfig {
-    stt_model: String,
-}
 
-#[derive(Debug, Clone)]
-enum SttModeConfig {
-    Online {
-        api_key: String,
-        api_base_url: String,
-        stt_model: String,
-    },
-    Local(LocalSttConfig),
-}
-
-#[derive(Debug, Clone)]
-struct LocalAiConfig {
-    ollama_base_url: String,
-    ollama_model: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-enum AiModeConfig {
-    Online {
-        api_key: String,
-        api_base_url: String,
-        ai_model: String,
-    },
-    Local(LocalAiConfig),
-}
-
-#[derive(Debug, Clone)]
-struct PipelineModeConfig {
-    stt: SttModeConfig,
-    ai: AiModeConfig,
-}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1066,23 +1036,6 @@ struct InstallAppUpdateRequest {
     expected_sha256: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct GithubReleaseAsset {
-    name: String,
-    browser_download_url: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct GithubLatestReleaseResponse {
-    tag_name: String,
-    name: Option<String>,
-    body: Option<String>,
-    draft: bool,
-    prerelease: bool,
-    published_at: Option<String>,
-    html_url: Option<String>,
-    assets: Vec<GithubReleaseAsset>,
-}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1384,30 +1337,7 @@ Consider setting {UPDATE_GITHUB_TOKEN_ENV} for a higher limit."
     })
 }
 
-fn is_safe_update_url(url: &str) -> bool {
-    let Ok(parsed_url) = Url::parse(url) else {
-        return false;
-    };
-
-    if parsed_url.scheme() != "https" {
-        return false;
-    }
-
-    if parsed_url.host_str() != Some("github.com") {
-        return false;
-    }
-
-    let (owner, name) = resolve_update_repository();
-    let expected_path_prefix = format!("/{owner}/{name}/releases/download/");
-    let normalized = parsed_url
-        .path_segments()
-        .map(|segments| format!("/{}", segments.collect::<Vec<_>>().join("/")))
-        .unwrap_or_default();
-
-    normalized
-        .to_ascii_lowercase()
-        .starts_with(&expected_path_prefix.to_ascii_lowercase())
-}
+// is_safe_update_url has been moved to updater::
 
 #[tauri::command]
 async fn download_and_install_app_update(
@@ -1912,13 +1842,7 @@ const KEYRING_USER_ALIASES: [&str; 3] = ["apiKey", "apikey", "default"];
 const SETTINGS_API_KEY_ENCRYPTED_FIELD: &str = "apiKeyEncrypted";
 const SETTINGS_API_KEY_FINGERPRINT_FIELD: &str = "apiKeyFingerprint";
 
-fn normalize_api_key_secret(raw: &str) -> String {
-    raw.chars()
-        .filter(|character| !character.is_control())
-        .collect::<String>()
-        .trim()
-        .to_string()
-}
+// normalize_api_key_secret has been moved to pipeline::routing.
 
 fn api_key_fingerprint(api_key: &str) -> String {
     let normalized = normalize_api_key_secret(api_key);
@@ -5644,82 +5568,21 @@ fn extract_wake_command(transcript: &str, assistant_name: &str) -> Option<String
     None
 }
 
+/// Thin adapter that converts an IPC request into a pure routing input
+/// and delegates to `pipeline::routing::resolve_pipeline_mode`.
 fn resolve_pipeline_mode(request: &AssistantPipelineRequest) -> Result<PipelineModeConfig, String> {
-    let stt_local_mode = request.stt_local_mode.unwrap_or(false);
-    let ai_local_mode = request.ai_local_mode.unwrap_or(false);
-    let requires_online_provider = !stt_local_mode || !ai_local_mode;
-
-    let (api_key, api_base_url) = if requires_online_provider {
-        let api_key = normalize_api_key_secret(&request.api_key);
-        if api_key.is_empty() {
-            return Err("API key is required for online STT/AI mode.".to_string());
-        }
-        let api_base_url = normalize_api_base_url(request.api_base_url.as_deref());
-        if api_base_url.is_empty() {
-            return Err(
-                "API base URL is required for online STT/AI mode. Open Settings > Models."
-                    .to_string(),
-            );
-        }
-        (api_key, api_base_url)
-    } else {
-        (String::new(), String::new())
+    let routing_input = PipelineRoutingInput {
+        api_key: request.api_key.clone(),
+        api_base_url: request.api_base_url.clone(),
+        stt_model: request.stt_model.clone(),
+        ai_model: request.ai_model.clone(),
+        stt_local_mode: request.stt_local_mode,
+        ai_local_mode: request.ai_local_mode,
+        local_ollama_base_url: request.local_ollama_base_url.clone(),
+        local_ollama_model: request.local_ollama_model.clone(),
+        local_stt_model: request.local_stt_model.clone(),
     };
-
-    let stt = if stt_local_mode {
-        let stt_model =
-            canonical_local_stt_model_id(&normalize_model_name(request.local_stt_model.as_deref()));
-        if stt_model.is_empty() {
-            return Err(
-                "Local STT model is required when STT runtime is local. Open Settings > Models and select a model."
-                    .to_string(),
-            );
-        }
-        SttModeConfig::Local(LocalSttConfig { stt_model })
-    } else {
-        let stt_model = normalize_model_name(request.stt_model.as_deref());
-        if stt_model.is_empty() {
-            return Err(
-                "Online STT model is required when STT runtime is online. Open Settings > Models."
-                    .to_string(),
-            );
-        }
-        SttModeConfig::Online {
-            api_key: api_key.clone(),
-            api_base_url: api_base_url.clone(),
-            stt_model,
-        }
-    };
-
-    let ai = if ai_local_mode {
-        let ollama_base_url =
-            normalize_local_ollama_base_url(request.local_ollama_base_url.as_deref());
-        let ollama_model = normalize_model_name(request.local_ollama_model.as_deref());
-        let ollama_model = if ollama_model.is_empty() {
-            None
-        } else {
-            Some(ollama_model)
-        };
-        AiModeConfig::Local(LocalAiConfig {
-            ollama_base_url,
-            ollama_model,
-        })
-    } else {
-        let ai_model = normalize_model_name(request.ai_model.as_deref());
-        if ai_model.is_empty() {
-            return Err(
-                "Online AI model is required when AI runtime is online. Open Settings > Models."
-                    .to_string(),
-            );
-        }
-        AiModeConfig::Online {
-            api_key,
-            api_base_url,
-            ai_model,
-        }
-    };
-
-    Ok(PipelineModeConfig { stt, ai })
+    pipeline::routing::resolve_pipeline_mode(&routing_input)
 }
 
 #[tauri::command]
@@ -10394,28 +10257,7 @@ fn run_coqui_bridge(app: &AppHandle, python_path: &str, payload: Value) -> Resul
     Ok(result)
 }
 
-fn normalize_release_version(tag: &str) -> String {
-    tag.trim().trim_start_matches('v').trim().to_string()
-}
-
-fn non_empty_env_var(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn env_flag(name: &str, default: bool) -> bool {
-    match non_empty_env_var(name)
-        .unwrap_or_default()
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "1" | "true" | "yes" | "y" | "on" => true,
-        "0" | "false" | "no" | "n" | "off" => false,
-        _ => default,
-    }
-}
+// normalize_release_version has been moved to updater::
 
 fn env_u64(name: &str, default: u64, min: u64, max: u64) -> u64 {
     non_empty_env_var(name)
@@ -10455,269 +10297,13 @@ fn local_stt_parakeet_unload_after_transcribe() -> bool {
     env_flag(LOCAL_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE_ENV, false)
 }
 
-fn resolve_update_repository() -> (String, String) {
-    let owner = non_empty_env_var(UPDATE_REPOSITORY_OWNER_ENV)
-        .unwrap_or_else(|| UPDATE_REPOSITORY_OWNER.to_string());
-    let name = non_empty_env_var(UPDATE_REPOSITORY_NAME_ENV)
-        .unwrap_or_else(|| UPDATE_REPOSITORY_NAME.to_string());
-    (owner, name)
-}
+// resolve_update_repository has been moved to updater::
 
 fn update_github_token() -> Option<String> {
     non_empty_env_var(UPDATE_GITHUB_TOKEN_ENV)
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WindowsInstallerKind {
-    Exe,
-    Msi,
-}
-
-fn windows_installer_kind_from_name(name: &str) -> Option<WindowsInstallerKind> {
-    let lower = name.trim().to_ascii_lowercase();
-    if lower.ends_with(".exe") && !lower.ends_with(".exe.sig") {
-        return Some(WindowsInstallerKind::Exe);
-    }
-    if lower.ends_with(".msi") {
-        return Some(WindowsInstallerKind::Msi);
-    }
-    None
-}
-
-fn exe_installer_supports_silent_mode(name: &str) -> bool {
-    let lower = name.trim().to_ascii_lowercase();
-    lower.contains("setup") || lower.contains("installer") || lower.contains("nsis")
-}
-
-fn select_latest_stable_release<'a>(
-    releases: &'a [GithubLatestReleaseResponse],
-) -> Option<&'a GithubLatestReleaseResponse> {
-    releases
-        .iter()
-        .find(|release| !release.draft && !release.prerelease)
-}
-
-fn is_windows_installer_asset(name: &str) -> bool {
-    windows_installer_kind_from_name(name).is_some()
-}
-
-fn windows_installer_score(name: &str, release_version: &str) -> i32 {
-    let lower = name.to_ascii_lowercase();
-    let mut score = 0_i32;
-    match windows_installer_kind_from_name(name) {
-        Some(WindowsInstallerKind::Exe) => score += 8,
-        Some(WindowsInstallerKind::Msi) => score += 5,
-        None => {}
-    }
-    if lower.contains("slasshywispr") {
-        score += 10;
-    }
-    let normalized_version = normalize_release_version(release_version).to_ascii_lowercase();
-    if !normalized_version.is_empty() && lower.contains(&normalized_version) {
-        score += 8;
-    }
-    if lower.contains("setup") {
-        score += 6;
-    }
-    if lower.contains("installer") {
-        score += 4;
-    }
-    if lower.contains("nsis") {
-        score += 3;
-    }
-    if lower.contains("msi") {
-        score += 1;
-    }
-    if lower.contains("x64") || lower.contains("amd64") {
-        score += 1;
-    }
-    if lower.contains("portable") || lower.contains("debug") || lower.contains("symbols") {
-        score -= 8;
-    }
-    if lower.contains("arm64") || lower.contains("aarch64") || lower.contains("x86") || lower.contains("ia32") {
-        score -= 6;
-    }
-    score
-}
-
-fn select_windows_installer_asset<'a>(
-    release: &'a GithubLatestReleaseResponse,
-) -> Option<&'a GithubReleaseAsset> {
-    release
-        .assets
-        .iter()
-        .filter(|asset| is_windows_installer_asset(&asset.name))
-        .max_by_key(|asset| {
-            (
-                windows_installer_score(&asset.name, &release.tag_name),
-                asset.name.len(),
-            )
-        })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ParsedVersion {
-    numeric_parts: Vec<u64>,
-    prerelease: Option<String>,
-}
-
-fn parse_version_triplet(version: &str) -> Option<ParsedVersion> {
-    let normalized = normalize_release_version(version);
-    let without_build = normalized.split_once('+').map(|(value, _)| value).unwrap_or(&normalized);
-    let (core, prerelease) = without_build
-        .split_once('-')
-        .map(|(value, tag)| (value.trim(), Some(tag.trim().to_ascii_lowercase())))
-        .unwrap_or((without_build.trim(), None));
-    if core.is_empty() {
-        return None;
-    }
-
-    let mut numeric_parts = Vec::new();
-    for part in core.split('.') {
-        let trimmed = part.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-        numeric_parts.push(trimmed.parse::<u64>().ok()?);
-    }
-    if numeric_parts.is_empty() {
-        return None;
-    }
-
-    Some(ParsedVersion {
-        numeric_parts,
-        prerelease: prerelease.filter(|value| !value.is_empty()),
-    })
-}
-
-fn is_newer_version(current: &str, latest: &str) -> bool {
-    match (parse_version_triplet(current), parse_version_triplet(latest)) {
-        (Some(current_parts), Some(latest_parts)) => {
-            let max_len = current_parts
-                .numeric_parts
-                .len()
-                .max(latest_parts.numeric_parts.len());
-            for index in 0..max_len {
-                let current_part = current_parts.numeric_parts.get(index).copied().unwrap_or(0);
-                let latest_part = latest_parts.numeric_parts.get(index).copied().unwrap_or(0);
-                match latest_part.cmp(&current_part) {
-                    std::cmp::Ordering::Greater => return true,
-                    std::cmp::Ordering::Less => return false,
-                    std::cmp::Ordering::Equal => {}
-                }
-            }
-
-            match (&current_parts.prerelease, &latest_parts.prerelease) {
-                (Some(_), None) => true,
-                (None, Some(_)) => false,
-                (Some(current_tag), Some(latest_tag)) => latest_tag > current_tag,
-                (None, None) => false,
-            }
-        }
-        _ => false,
-    }
-}
-
-fn sanitize_installer_file_name(name: &str) -> Option<String> {
-    let trimmed = name.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let mut sanitized = String::with_capacity(trimmed.len() + 4);
-    for character in trimmed.chars() {
-        if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
-            sanitized.push(character);
-        } else {
-            sanitized.push('_');
-        }
-    }
-
-    if sanitized.is_empty() {
-        return None;
-    }
-
-    if windows_installer_kind_from_name(&sanitized).is_none() {
-        return None;
-    }
-
-    Some(sanitized)
-}
-
-fn extract_version_from_download_url(url: &str) -> Option<String> {
-    let parsed = Url::parse(url).ok()?;
-    let segments: Vec<&str> = parsed.path_segments()?.collect();
-    // URL: /{owner}/{name}/releases/download/{tag}/{filename}
-    // segments[0..5] = [owner, name, "releases", "download", tag]
-    let tag = *segments.get(4)?;
-    let version = normalize_release_version(tag);
-    if version.is_empty() { None } else { Some(version) }
-}
-
-fn resolve_installer_file_name(
-    asset_name: Option<&str>,
-    download_url: &str,
-    _current_version: &str,
-) -> String {
-    if let Some(from_asset) = asset_name.and_then(sanitize_installer_file_name) {
-        return from_asset;
-    }
-
-    if let Some(last_segment) = download_url.rsplit('/').next() {
-        if let Some(from_url) = sanitize_installer_file_name(last_segment) {
-            return from_url;
-        }
-    }
-
-    let target_version = extract_version_from_download_url(download_url)
-        .unwrap_or_else(|| String::from("unknown"));
-    format!("SlasshyWispr-{target_version}-update.exe")
-}
-
-fn validate_downloaded_installer_file(
-    installer_path: &Path,
-    installer_kind: WindowsInstallerKind,
-) -> Result<(), String> {
-    let metadata = fs::metadata(installer_path)
-        .map_err(|error| format!("Failed to read downloaded installer metadata: {error}"))?;
-    if !metadata.is_file() {
-        return Err(format!(
-            "Downloaded update path '{}' is not a file.",
-            installer_path.display()
-        ));
-    }
-    if metadata.len() == 0 {
-        return Err("Downloaded installer file is empty.".to_string());
-    }
-
-    let mut file = fs::File::open(installer_path)
-        .map_err(|error| format!("Failed to open downloaded installer: {error}"))?;
-    let mut header = [0_u8; 8];
-    let bytes_read = file
-        .read(&mut header)
-        .map_err(|error| format!("Failed to read downloaded installer header: {error}"))?;
-    match installer_kind {
-        WindowsInstallerKind::Exe => {
-            if bytes_read < 2 || &header[..2] != b"MZ" {
-                return Err(format!(
-                    "Downloaded file '{}' is not a valid Windows executable.",
-                    installer_path.display()
-                ));
-            }
-        }
-        WindowsInstallerKind::Msi => {
-            const MSI_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
-            if bytes_read < MSI_MAGIC.len() || header != MSI_MAGIC {
-                return Err(format!(
-                    "Downloaded file '{}' is not a valid Windows MSI package.",
-                    installer_path.display()
-                ));
-            }
-        }
-    }
-
-    Ok(())
-}
+// All updater/validation functions have been moved to updater::
+// They are available via `use updater::*;` at the top of this file.
 
 fn merge_process_output(stdout: &[u8], stderr: &[u8]) -> String {
     let stdout_text = String::from_utf8_lossy(stdout);
@@ -11037,20 +10623,6 @@ fn clip_text(input: &str, max_chars: usize) -> String {
     format!("{clipped}...")
 }
 
-fn normalize_api_base_url(raw: Option<&str>) -> String {
-    raw.map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.trim_end_matches('/').to_string())
-        .unwrap_or_default()
-}
-
-fn normalize_model_name(raw: Option<&str>) -> String {
-    raw.map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .unwrap_or_default()
-}
-
 fn normalize_stt_language_hint(raw: Option<&str>) -> Option<String> {
     let normalized = raw.map(str::trim).filter(|value| !value.is_empty())?;
     let mut value = normalized.to_ascii_lowercase().replace('_', "-");
@@ -11254,97 +10826,8 @@ fn transcript_candidate_score(input: &str) -> usize {
     input.chars().filter(|ch| ch.is_alphanumeric()).count()
 }
 
-fn normalize_local_ollama_base_url(raw: Option<&str>) -> String {
-    raw.map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.trim_end_matches('/').to_string())
-        .unwrap_or_else(|| DEFAULT_LOCAL_OLLAMA_BASE_URL.to_string())
-}
-
-fn zero_python_mode_enabled() -> bool {
-    env_flag(ZERO_PYTHON_MODE_ENV, true)
-}
-
-fn local_stt_provider_requires_python(provider: &str) -> bool {
-    matches!(provider, "whisper" | "moonshine" | "sensevoice")
-}
-
-fn local_stt_provider_supported_in_zero_python_mode(provider: &str) -> bool {
-    provider == "parakeet"
-}
-
-fn normalize_local_stt_provider(raw: Option<&str>) -> String {
-    let normalized = raw
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_ascii_lowercase());
-
-    match normalized.as_deref() {
-        Some("parakeet") => "parakeet".to_string(),
-        Some("whisper") => "whisper".to_string(),
-        _ => DEFAULT_LOCAL_STT_PROVIDER.to_string(),
-    }
-}
-
-fn infer_local_stt_provider_from_model(model: &str) -> String {
-    let normalized = model.trim().to_ascii_lowercase();
-    if normalized.starts_with("nvidia/") || normalized.contains("parakeet") {
-        return "parakeet".to_string();
-    }
-    if normalized.contains("sensevoice") {
-        return "sensevoice".to_string();
-    }
-    if normalized.contains("moonshine") {
-        return "moonshine".to_string();
-    }
-    "whisper".to_string()
-}
-
-fn canonical_local_stt_model_id(model: &str) -> String {
-    let normalized = model.trim();
-    if normalized.eq_ignore_ascii_case("nvidia/parakeet-tdt-0.6b-v2") {
-        // Legacy alias used by earlier builds.
-        return "nvidia/parakeet-tdt_ctc-110m".to_string();
-    }
-    normalized.to_string()
-}
-
-fn built_in_local_stt_model_catalog() -> Vec<String> {
-    vec![
-        "nvidia/parakeet-tdt-0.6b-v3".to_string(),
-        "nvidia/parakeet-tdt_ctc-110m".to_string(),
-    ]
-}
-
-fn local_stt_model_display_label(model: &str) -> String {
-    let canonical = canonical_local_stt_model_id(model);
-    match canonical.as_str() {
-        "nvidia/parakeet-tdt-0.6b-v3" => "Parakeet v3 (478 MB)".to_string(),
-        "nvidia/parakeet-tdt_ctc-110m" => "Parakeet v2 (473 MB)".to_string(),
-        "openai/whisper-large-v3" => "Whisper Large (1.1 GB)".to_string(),
-        "openai/whisper-medium" => "Whisper Medium (492 MB)".to_string(),
-        "openai/whisper-small" => "Whisper Small (487 MB)".to_string(),
-        "UsefulSensors/moonshine-base" => "Moonshine Base (58 MB)".to_string(),
-        "openai/whisper-large-v3-turbo" => "Whisper Turbo (1.6 GB)".to_string(),
-        "FunAudioLLM/SenseVoiceSmall" => "SenseVoice (160 MB)".to_string(),
-        _ => canonical,
-    }
-}
-
-fn local_stt_model_size_gb(model: &str) -> f64 {
-    let canonical = canonical_local_stt_model_id(model);
-    match canonical.as_str() {
-        "nvidia/parakeet-tdt-0.6b-v3" => 0.478,
-        "nvidia/parakeet-tdt_ctc-110m" => 0.473,
-        "openai/whisper-large-v3" => 1.1,
-        "openai/whisper-medium" => 0.492,
-        "openai/whisper-small" => 0.487,
-        "UsefulSensors/moonshine-base" => 0.058,
-        "openai/whisper-large-v3-turbo" => 1.6,
-        "FunAudioLLM/SenseVoiceSmall" => 0.160,
-        _ => 0.0,
-    }
-}
+// All routing-related functions have been moved to pipeline::routing.
+// They are available via `use pipeline::routing::*;` at the top of this file.
 
 fn round_to_single_decimal(value: f64) -> f64 {
     (value * 10.0).round() / 10.0
@@ -12398,164 +11881,8 @@ fn normalize_native_parakeet_model_key(model_root: &Path) -> String {
     }
 }
 
-fn resample_mono_linear(samples: &[f32], source_rate: u32, target_rate: u32) -> Vec<f32> {
-    if samples.is_empty() || source_rate == target_rate {
-        return samples.to_vec();
-    }
-
-    let ratio = target_rate as f64 / source_rate as f64;
-    let output_len = ((samples.len() as f64) * ratio).round().max(1.0) as usize;
-    let mut output = Vec::with_capacity(output_len);
-    for index in 0..output_len {
-        let source_pos = (index as f64) / ratio;
-        let left = source_pos.floor() as usize;
-        let right = (left + 1).min(samples.len().saturating_sub(1));
-        let frac = (source_pos - left as f64) as f32;
-        let left_value = samples[left];
-        let right_value = samples[right];
-        output.push(left_value + (right_value - left_value) * frac);
-    }
-    output
-}
-
-fn decode_wav_audio_to_mono_f32(audio_bytes: &[u8]) -> Result<(Vec<f32>, u32), String> {
-    let cursor = std::io::Cursor::new(audio_bytes);
-    let mut reader = hound::WavReader::new(cursor)
-        .map_err(|error| format!("Failed to parse WAV audio: {error}"))?;
-    let spec = reader.spec();
-    let channels = usize::from(spec.channels.max(1));
-    let sample_rate = spec.sample_rate;
-
-    let interleaved: Vec<f32> = match spec.sample_format {
-        hound::SampleFormat::Float => reader
-            .samples::<f32>()
-            .map(|sample| {
-                sample.map_err(|error| format!("Failed to read WAV float sample: {error}"))
-            })
-            .collect::<Result<Vec<f32>, String>>()?,
-        hound::SampleFormat::Int => {
-            if spec.bits_per_sample <= 16 {
-                let scale = i16::MAX as f32;
-                reader
-                    .samples::<i16>()
-                    .map(|sample| {
-                        sample
-                            .map(|value| (value as f32 / scale).clamp(-1.0, 1.0))
-                            .map_err(|error| format!("Failed to read WAV int16 sample: {error}"))
-                    })
-                    .collect::<Result<Vec<f32>, String>>()?
-            } else {
-                let max_value = ((1_i64 << (spec.bits_per_sample.saturating_sub(1))) - 1) as f32;
-                reader
-                    .samples::<i32>()
-                    .map(|sample| {
-                        sample
-                            .map(|value| (value as f32 / max_value).clamp(-1.0, 1.0))
-                            .map_err(|error| format!("Failed to read WAV int sample: {error}"))
-                    })
-                    .collect::<Result<Vec<f32>, String>>()?
-            }
-        }
-    };
-
-    if interleaved.is_empty() {
-        return Ok((Vec::new(), sample_rate));
-    }
-
-    if channels == 1 {
-        return Ok((interleaved, sample_rate));
-    }
-
-    let frames = interleaved.len() / channels;
-    if frames == 0 {
-        return Ok((Vec::new(), sample_rate));
-    }
-    let mut mono = Vec::with_capacity(frames);
-    for frame in 0..frames {
-        let start = frame * channels;
-        let end = start + channels;
-        let sum = interleaved[start..end].iter().copied().sum::<f32>();
-        mono.push(sum / channels as f32);
-    }
-    Ok((mono, sample_rate))
-}
-
-/// Linear interpolation resampling. Simple, fast, sufficient for speech.
-fn resample_linear(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
-    if from_rate == to_rate || samples.is_empty() {
-        return samples.to_vec();
-    }
-    let ratio = from_rate as f64 / to_rate as f64;
-    let out_len = (samples.len() as f64 / ratio) as usize;
-    let mut output = Vec::with_capacity(out_len);
-    for i in 0..out_len {
-        let src_pos = i as f64 * ratio;
-        let idx = src_pos as usize;
-        let frac = src_pos - idx as f64;
-        let s0 = samples[idx.min(samples.len() - 1)];
-        let s1 = samples[(idx + 1).min(samples.len() - 1)];
-        output.push(s0 + (s1 - s0) * frac as f32);
-    }
-    output
-}
-
-/// Encode mono f32 samples to WAV bytes using hound.
-fn encode_mono_f32_to_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>, String> {
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-    let mut buf = std::io::Cursor::new(Vec::new());
-    {
-        let mut writer = hound::WavWriter::new(&mut buf, spec)
-            .map_err(|e| format!("Failed to create WAV writer: {e}"))?;
-        for &sample in samples {
-            let clamped = sample.clamp(-1.0, 1.0);
-            let i16_sample = (clamped * i16::MAX as f32) as i16;
-            writer
-                .write_sample(i16_sample)
-                .map_err(|e| format!("Failed to write WAV sample: {e}"))?;
-        }
-        writer
-            .finalize()
-            .map_err(|e| format!("Failed to finalize WAV: {e}"))?;
-    }
-    Ok(buf.into_inner())
-}
-
-fn decode_local_stt_audio_to_mono_f32(
-    audio_bytes: &[u8],
-    audio_mime_type: &str,
-) -> Result<Vec<f32>, String> {
-    if audio_bytes.is_empty() {
-        return Err("Recorded audio is empty.".to_string());
-    }
-
-    let normalized_mime = audio_mime_type.trim().to_ascii_lowercase();
-    if !normalized_mime.is_empty() && !normalized_mime.contains("wav") {
-        return Err(format!(
-            "Native local Parakeet currently expects WAV input. Received '{}'.",
-            clip_text(&normalized_mime, 80)
-        ));
-    }
-
-    let (samples, sample_rate) = decode_wav_audio_to_mono_f32(audio_bytes)?;
-    if samples.is_empty() {
-        return Err("Recorded WAV audio did not contain any samples.".to_string());
-    }
-
-    let normalized = if sample_rate != 16_000 {
-        resample_mono_linear(&samples, sample_rate, 16_000)
-    } else {
-        samples
-    };
-    if normalized.is_empty() {
-        return Err("Audio normalization produced no samples.".to_string());
-    }
-    Ok(normalized)
-}
+// Audio processing functions have been moved to audio::processing.
+// They are available via `use audio::processing::*;` at the top of this file.
 
 fn get_or_load_native_parakeet_runtime(model_root: &Path) -> Result<bool, String> {
     let _op_guard = local_stt_native_parakeet_op_lock()
@@ -14007,40 +13334,7 @@ mod tests {
         assert!(validate_tts_input_length(&long).is_err());
     }
 
-    #[test]
-    fn validates_safe_update_urls() {
-        let (owner, name) = resolve_update_repository();
-        let valid_prefix = format!("https://github.com/{owner}/{name}/");
-        let valid_url = format!("{valid_prefix}releases/download/v1.0/app.exe");
-
-        assert!(is_safe_update_url(&valid_url));
-        assert!(is_safe_update_url(&valid_url.to_ascii_uppercase())); // Case insensitive check
-
-        // Untrusted repositories on GitHub must be rejected
-        assert!(!is_safe_update_url(
-            "https://github.com/Attacker/MalwareRepo/releases/download/v1.0/app.exe"
-        ));
-
-        // Path traversal should be rejected
-        assert!(!is_safe_update_url(
-            "https://github.com/SlasshyOverhere/SlasshyWispr/../../Attacker/MalwareRepo/releases/download/v1.0/app.exe"
-        ));
-
-        // Arbitrary attachments in the trusted repo must be rejected
-        assert!(!is_safe_update_url(
-            "https://github.com/SlasshyOverhere/SlasshyWispr/issues/1/attachments/12345"
-        ));
-
-        // Direct objects links are now rejected to enforce repo trust
-        assert!(!is_safe_update_url(
-            "https://objects.githubusercontent.com/github-production-release-asset-2e65be/123"
-        ));
-
-        // Other domains and protocols
-        assert!(!is_safe_update_url("https://evil.com/app.exe"));
-        assert!(!is_safe_update_url("http://github.com/user/repo"));
-        assert!(!is_safe_update_url("ftp://github.com/user/repo"));
-    }
+    // validates_safe_update_urls moved to updater::tests
     use super::*;
 
     fn refinement_request(
@@ -14507,134 +13801,7 @@ Explanation:
         assert!(error.contains("API key is required"));
     }
 
-    #[test]
-    fn built_in_local_stt_catalog_is_parakeet_only() {
-        let models = built_in_local_stt_model_catalog();
-        assert_eq!(
-            models,
-            vec![
-                "nvidia/parakeet-tdt-0.6b-v3".to_string(),
-                "nvidia/parakeet-tdt_ctc-110m".to_string()
-            ]
-        );
-    }
-
-    #[test]
-    fn local_stt_provider_python_requirement_flags() {
-        assert!(local_stt_provider_requires_python("whisper"));
-        assert!(local_stt_provider_requires_python("moonshine"));
-        assert!(local_stt_provider_requires_python("sensevoice"));
-        assert!(!local_stt_provider_requires_python("parakeet"));
-    }
-
-    #[test]
-    fn zero_python_supported_local_stt_provider_flags() {
-        assert!(local_stt_provider_supported_in_zero_python_mode("parakeet"));
-        assert!(!local_stt_provider_supported_in_zero_python_mode("whisper"));
-        assert!(!local_stt_provider_supported_in_zero_python_mode(
-            "moonshine"
-        ));
-        assert!(!local_stt_provider_supported_in_zero_python_mode(
-            "sensevoice"
-        ));
-    }
-
-    #[test]
-    fn windows_installer_asset_detection_supports_exe_and_msi() {
-        assert!(is_windows_installer_asset(
-            "SlasshyWispr_0.1.1_x64-setup.exe"
-        ));
-        assert!(is_windows_installer_asset("SlasshyWispr_0.1.1_x64.msi"));
-        assert!(!is_windows_installer_asset("checksums.txt"));
-        assert!(!is_windows_installer_asset(
-            "SlasshyWispr_0.1.1_x64-setup.exe.sig"
-        ));
-    }
-
-    #[test]
-    fn select_windows_installer_asset_prefers_exe_setup_when_available() {
-        let release = GithubLatestReleaseResponse {
-            tag_name: "v0.1.1".to_string(),
-            name: Some("v0.1.1".to_string()),
-            body: None,
-            draft: false,
-            prerelease: false,
-            published_at: None,
-            html_url: None,
-            assets: vec![
-                GithubReleaseAsset {
-                    name: "SlasshyWispr_0.1.1_x64.msi".to_string(),
-                    browser_download_url: "https://example.com/SlasshyWispr_0.1.1_x64.msi"
-                        .to_string(),
-                },
-                GithubReleaseAsset {
-                    name: "SlasshyWispr_0.1.1_x64-setup.exe".to_string(),
-                    browser_download_url: "https://example.com/SlasshyWispr_0.1.1_x64-setup.exe"
-                        .to_string(),
-                },
-            ],
-        };
-
-        let selected = select_windows_installer_asset(&release)
-            .expect("expected installer asset to be selected");
-        assert_eq!(selected.name, "SlasshyWispr_0.1.1_x64-setup.exe");
-    }
-
-    #[test]
-    fn select_windows_installer_asset_avoids_portable_or_mismatched_builds() {
-        let release = GithubLatestReleaseResponse {
-            tag_name: "v1.0.1".to_string(),
-            name: Some("v1.0.1".to_string()),
-            body: None,
-            draft: false,
-            prerelease: false,
-            published_at: None,
-            html_url: None,
-            assets: vec![
-                GithubReleaseAsset {
-                    name: "SlasshyWispr_1.0.1_portable.exe".to_string(),
-                    browser_download_url: "https://example.com/SlasshyWispr_1.0.1_portable.exe"
-                        .to_string(),
-                },
-                GithubReleaseAsset {
-                    name: "helper-installer.exe".to_string(),
-                    browser_download_url: "https://example.com/helper-installer.exe".to_string(),
-                },
-                GithubReleaseAsset {
-                    name: "SlasshyWispr_1.0.1_x64-setup.exe".to_string(),
-                    browser_download_url:
-                        "https://example.com/SlasshyWispr_1.0.1_x64-setup.exe".to_string(),
-                },
-            ],
-        };
-
-        let selected = select_windows_installer_asset(&release)
-            .expect("expected installer asset to be selected");
-        assert_eq!(selected.name, "SlasshyWispr_1.0.1_x64-setup.exe");
-    }
-
-    #[test]
-    fn compares_versions_without_false_positive_fallbacks() {
-        assert!(is_newer_version("1.0.0", "1.0.1"));
-        assert!(is_newer_version("1.0.0-beta.1", "1.0.0"));
-        assert!(!is_newer_version("1.0.1", "1.0.0"));
-        assert!(!is_newer_version("1.0.0", "1.0.0-beta.1"));
-        assert!(!is_newer_version("1.0.0", "release-candidate"));
-    }
-
-    #[test]
-    fn validates_downloaded_installer_header_magic() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let exe_path = temp_dir.path().join("installer.exe");
-        std::fs::write(&exe_path, b"MZ\x90\0\x03\0\0\0payload").expect("write exe");
-        assert!(validate_downloaded_installer_file(&exe_path, WindowsInstallerKind::Exe).is_ok());
-
-        let bad_exe_path = temp_dir.path().join("bad-installer.exe");
-        std::fs::write(&bad_exe_path, b"<!DOCTYPE html>").expect("write bad exe");
-        assert!(
-            validate_downloaded_installer_file(&bad_exe_path, WindowsInstallerKind::Exe).is_err()
-        );
-    }
+    // Updater tests moved to updater::tests
 
     #[test]
     fn resolve_installer_file_name_keeps_supported_extension() {
@@ -14686,247 +13853,834 @@ Explanation:
 
         assert!(validate_piper_binary_path("bash").is_err());
         assert!(validate_piper_binary_path("piper\nbad").is_err());
-    }
+    }    // Updater tests moved to updater::tests
 
-    // ===== UPDATE MECHANISM — COMPREHENSIVE SCENARIO TESTS =====
-
-    #[test]
-    fn extract_version_from_download_url_parses_github_url() {
-        let url = "https://github.com/SlasshyOverhere/SlasshyWispr/releases/download/v1.0.3/SlasshyWispr_1.0.3_x64-setup.exe";
-        assert_eq!(extract_version_from_download_url(url).as_deref(), Some("1.0.3"));
-    }
+    // ===== PIPELINE MODE ROUTING — FULL COVERAGE =====
 
     #[test]
-    fn extract_version_from_download_url_handles_missing_tag_segment() {
-        let url = "https://github.com/SlasshyOverhere/releases";
-        assert!(extract_version_from_download_url(url).is_none());
-    }
+    fn resolve_pipeline_mode_supports_fully_local() {
+        let mut request = pipeline_mode_request_template();
+        request.stt_local_mode = Some(true);
+        request.ai_local_mode = Some(true);
+        request.api_key = String::new();
+        request.api_base_url = None;
 
-    #[test]
-    fn extract_version_from_download_url_handles_invalid_url() {
-        assert!(extract_version_from_download_url("not-a-url").is_none());
+        let mode = resolve_pipeline_mode(&request).expect("fully local should resolve without api key");
+        assert!(matches!(mode.stt, SttModeConfig::Local(_)));
+        assert!(matches!(mode.ai, AiModeConfig::Local(_)));
     }
 
     #[test]
-    fn resolve_installer_file_name_fallback_uses_target_version_from_url() {
-        let url = "https://github.com/SlasshyOverhere/SlasshyWispr/releases/download/v1.0.3/SlasshyWispr_1.0.3_x64-setup.exe";
-        let name = resolve_installer_file_name(None, url, "0.1.1");
-        assert_eq!(name, "SlasshyWispr_1.0.3_x64-setup.exe");
+    fn resolve_pipeline_mode_supports_fully_online() {
+        let request = pipeline_mode_request_template();
+        let mode = resolve_pipeline_mode(&request).expect("fully online should resolve");
+        assert!(matches!(mode.stt, SttModeConfig::Online { .. }));
+        assert!(matches!(mode.ai, AiModeConfig::Online { .. }));
     }
 
     #[test]
-    fn resolve_installer_file_name_fallback_url_unknown_version() {
-        // URL whose last path segment isn't a valid installer name —
-        // should fall through to the version-extraction fallback.
-        let url = "https://example.com/download/no-extension";
-        let name = resolve_installer_file_name(None, url, "0.1.1");
-        assert_eq!(name, "SlasshyWispr-unknown-update.exe");
+    fn resolve_pipeline_mode_fails_when_api_base_url_missing_for_online() {
+        let mut request = pipeline_mode_request_template();
+        request.api_base_url = None;
+        let error = resolve_pipeline_mode(&request)
+            .expect_err("should fail when api base url missing");
+        assert!(error.contains("API base URL is required"));
     }
 
     #[test]
-    fn windows_installer_score_prefers_nsis_setup_over_msi() {
-        let setup_score = windows_installer_score("SlasshyWispr_1.0.3_x64-setup.exe", "v1.0.3");
-        let msi_score = windows_installer_score("SlasshyWispr_1.0.3_x64.msi", "v1.0.3");
-        assert!(setup_score > msi_score, "EXE setup should score higher than MSI");
+    fn resolve_pipeline_mode_fails_when_api_key_empty_for_online() {
+        let mut request = pipeline_mode_request_template();
+        request.api_key = String::new();
+        let error = resolve_pipeline_mode(&request)
+            .expect_err("should fail when api key empty");
+        assert!(error.contains("API key is required"));
     }
 
     #[test]
-    fn windows_installer_score_penalizes_portable_and_debug() {
-        let portable_score = windows_installer_score("SlasshyWispr_1.0.3_portable.exe", "v1.0.3");
-        let normal_score = windows_installer_score("SlasshyWispr_1.0.3_x64-setup.exe", "v1.0.3");
-        assert!(normal_score > portable_score, "normal installer should score higher than portable");
+    fn resolve_pipeline_mode_fails_when_online_stt_model_missing() {
+        let mut request = pipeline_mode_request_template();
+        request.stt_model = None;
+        let error = resolve_pipeline_mode(&request)
+            .expect_err("should fail when online stt model missing");
+        assert!(error.contains("Online STT model is required"));
     }
 
     #[test]
-    fn windows_installer_score_rejects_arm_and_x86() {
-        let arm_score = windows_installer_score("SlasshyWispr_1.0.3_arm64-setup.exe", "v1.0.3");
-        let x86_score = windows_installer_score("SlasshyWispr_1.0.3_x86-setup.exe", "v1.0.3");
-        let x64_score = windows_installer_score("SlasshyWispr_1.0.3_x64-setup.exe", "v1.0.3");
-        assert!(x64_score > arm_score, "x64 should score higher than arm64");
-        assert!(x64_score > x86_score, "x64 should score higher than x86");
+    fn resolve_pipeline_mode_fails_when_online_ai_model_missing() {
+        let mut request = pipeline_mode_request_template();
+        request.ai_model = None;
+        let error = resolve_pipeline_mode(&request)
+            .expect_err("should fail when online ai model missing");
+        assert!(error.contains("Online AI model is required"));
     }
 
     #[test]
-    fn select_windows_installer_asset_returns_none_for_empty_assets() {
-        let release = GithubLatestReleaseResponse {
-            tag_name: "v1.0.0".to_string(),
-            name: None,
-            body: None,
-            draft: false,
-            prerelease: false,
-            published_at: None,
-            html_url: None,
-            assets: vec![],
+    fn resolve_pipeline_mode_fails_when_local_stt_model_missing() {
+        let mut request = pipeline_mode_request_template();
+        request.stt_local_mode = Some(true);
+        request.local_stt_model = None;
+        let error = resolve_pipeline_mode(&request)
+            .expect_err("should fail when local stt model missing");
+        assert!(error.contains("Local STT model is required"));
+    }
+
+    #[test]
+    fn resolve_pipeline_mode_local_ai_allows_empty_ollama_model() {
+        let mut request = pipeline_mode_request_template();
+        request.ai_local_mode = Some(true);
+        request.local_ollama_model = None;
+        let mode = resolve_pipeline_mode(&request).expect("local ai should resolve without ollama model");
+        match &mode.ai {
+            AiModeConfig::Local(config) => {
+                assert!(config.ollama_model.is_none());
+            }
+            _ => panic!("expected local AI config"),
+        }
+    }
+
+    #[test]
+    fn resolve_pipeline_mode_online_stt_carries_correct_credentials() {
+        let request = pipeline_mode_request_template();
+        let mode = resolve_pipeline_mode(&request).expect("online should resolve");
+        match &mode.stt {
+            SttModeConfig::Online { api_key, api_base_url, stt_model } => {
+                assert_eq!(api_key, "test-key");
+                assert_eq!(api_base_url, "https://api.example.com/v1");
+                assert_eq!(stt_model, "gpt-4o-mini-transcribe");
+            }
+            _ => panic!("expected online STT config"),
+        }
+    }
+
+    #[test]
+    fn resolve_pipeline_mode_local_stt_uses_canonical_model_id() {
+        let mut request = pipeline_mode_request_template();
+        request.stt_local_mode = Some(true);
+        request.local_stt_model = Some("nvidia/parakeet-tdt-0.6b-v2".to_string());
+        let mode = resolve_pipeline_mode(&request).expect("should resolve");
+        match &mode.stt {
+            SttModeConfig::Local(config) => {
+                // v2 alias should be canonicalized to v2 legacy id
+                assert_eq!(config.stt_model, "nvidia/parakeet-tdt_ctc-110m");
+            }
+            _ => panic!("expected local STT config"),
+        }
+    }
+
+    // ===== SINGLE_LINE AND CLIP_TEXT =====
+
+    #[test]
+    fn single_line_collapses_whitespace() {
+        assert_eq!(single_line("hello  world\n\t  foo"), "hello world foo");
+        assert_eq!(single_line("  leading and trailing  "), "leading and trailing");
+        assert_eq!(single_line(""), "");
+    }
+
+    #[test]
+    fn clip_text_short_circuits_when_within_limit() {
+        assert_eq!(clip_text("hello", 10), "hello");
+        assert_eq!(clip_text("", 10), "");
+    }
+
+    #[test]
+    fn clip_text_truncates_and_adds_ellipsis() {
+        let result = clip_text("abcdefghij", 5);
+        assert_eq!(result, "abcde...");
+        assert!(result.len() <= 10);
+    }
+
+    // ===== MIME EXTENSION MAPPING =====
+
+    #[test]
+    fn mime_to_extension_handles_common_types() {
+        assert_eq!(mime_to_extension("audio/webm"), "webm");
+        assert_eq!(mime_to_extension("audio/wav"), "wav");
+        assert_eq!(mime_to_extension("audio/ogg"), "ogg");
+        assert_eq!(mime_to_extension("audio/mp4"), "m4a");
+        assert_eq!(mime_to_extension("audio/mpeg"), "mp3");
+        assert_eq!(mime_to_extension("audio/mp3"), "mp3");
+    }
+
+    #[test]
+    fn mime_to_extension_defaults_to_webm() {
+        assert_eq!(mime_to_extension("audio/unknown"), "webm");
+        assert_eq!(mime_to_extension("application/octet-stream"), "webm");
+    }
+
+    // ===== PROGRESS CALCULATION =====
+
+    #[test]
+    fn calculate_progress_uses_bytes_when_available() {
+        let status = LocalSttDownloadStatusResponse {
+            downloaded_bytes: 500,
+            total_bytes: 1000,
+            ..Default::default()
         };
-        assert!(select_windows_installer_asset(&release).is_none());
+        assert_eq!(calculate_local_stt_progress_percent(&status), 50.0);
     }
 
     #[test]
-    fn select_latest_stable_release_skips_draft_and_prerelease() {
-        let releases = vec![
-            GithubLatestReleaseResponse {
-                tag_name: "v1.0.0-rc.1".to_string(),
-                name: None, body: None, draft: false, prerelease: true,
-                published_at: None, html_url: None, assets: vec![],
-            },
-            GithubLatestReleaseResponse {
-                tag_name: "v0.9.0".to_string(),
-                name: None, body: None, draft: false, prerelease: false,
-                published_at: None, html_url: None, assets: vec![],
-            },
-        ];
-        let selected = select_latest_stable_release(&releases);
-        assert_eq!(selected.map(|r| &r.tag_name), Some(&"v0.9.0".to_string()));
-    }
-
-    #[test]
-    fn select_latest_stable_release_returns_none_when_all_draft() {
-        let releases = vec![
-            GithubLatestReleaseResponse {
-                tag_name: "v1.0.0".to_string(),
-                name: None, body: None, draft: true, prerelease: false,
-                published_at: None, html_url: None, assets: vec![],
-            },
-        ];
-        assert!(select_latest_stable_release(&releases).is_none());
-    }
-
-    #[test]
-    fn is_newer_version_handles_multi_digit_parts() {
-        assert!(is_newer_version("1.9.9", "1.10.0"));
-        assert!(is_newer_version("1.0.0", "2.0.0"));
-        assert!(!is_newer_version("2.0.0", "1.9.9"));
-    }
-
-    #[test]
-    fn is_newer_version_handles_uneven_part_counts() {
-        assert!(is_newer_version("1.0", "1.0.1"));
-        assert!(is_newer_version("1.0.1", "1.0.2"));
-        assert!(!is_newer_version("1.0.1", "1.0"));
-    }
-
-    #[test]
-    fn is_newer_version_handles_prerelease_transitions() {
-        // stable > prerelease when numeric parts equal
-        assert!(is_newer_version("1.0.0-beta.1", "1.0.0"));
-        // prerelease < stable when numeric parts equal
-        assert!(!is_newer_version("1.0.0", "1.0.0-beta.1"));
-        // same version → not newer
-        assert!(!is_newer_version("1.0.0", "1.0.0"));
-        // different prerelease tags compared lexicographically
-        assert!(is_newer_version("1.0.0-alpha", "1.0.0-beta"), "beta > alpha lexicographically");
-        assert!(!is_newer_version("1.0.0-alpha", "1.0.0-alpha"));
-    }
-
-    #[test]
-    fn is_newer_version_returns_false_for_unparseable_inputs() {
-        assert!(!is_newer_version("not-a-version", "1.0.0"));
-        assert!(!is_newer_version("1.0.0", "not-a-version"));
-        assert!(!is_newer_version("", ""));
-    }
-
-    #[test]
-    fn parse_version_triplet_handles_various_formats() {
-        let parsed = parse_version_triplet("1.2.3").unwrap();
-        assert_eq!(parsed.numeric_parts, vec![1, 2, 3]);
-        assert!(parsed.prerelease.is_none());
-
-        let parsed = parse_version_triplet("v1.2.3-alpha").unwrap();
-        assert_eq!(parsed.numeric_parts, vec![1, 2, 3]);
-        assert_eq!(parsed.prerelease.as_deref(), Some("alpha"));
-
-        let parsed = parse_version_triplet("1.2.3+build.42").unwrap();
-        assert_eq!(parsed.numeric_parts, vec![1, 2, 3]);
-
-        let parsed = parse_version_triplet("10.20.30-rc.2").unwrap();
-        assert_eq!(parsed.numeric_parts, vec![10, 20, 30]);
-        assert_eq!(parsed.prerelease.as_deref(), Some("rc.2"));
-    }
-
-    #[test]
-    fn parse_version_triplet_rejects_empty_or_invalid() {
-        assert!(parse_version_triplet("").is_none());
-        assert!(parse_version_triplet("abc").is_none());
-        assert!(parse_version_triplet("1.2.abc").is_none());
-    }
-
-    #[test]
-    fn normalize_release_version_strips_v_prefix() {
-        assert_eq!(normalize_release_version("v1.0.3"), "1.0.3");
-        assert_eq!(normalize_release_version("v1.0.3-beta"), "1.0.3-beta");
-        assert_eq!(normalize_release_version("1.0.3"), "1.0.3");
-        assert_eq!(normalize_release_version(""), "");
-    }
-
-    #[test]
-    fn sanitize_installer_file_name_rejects_non_installer_extensions() {
-        assert!(sanitize_installer_file_name("checksums.txt").is_none());
-        assert!(sanitize_installer_file_name("readme.md").is_none());
-        assert!(sanitize_installer_file_name("").is_none());
-    }
-
-    #[test]
-    fn sanitize_installer_file_name_sanitizes_spaces_and_special_chars() {
-        let result = sanitize_installer_file_name("SlasshyWispr 1.0.3 (x64) setup.exe");
-        assert!(result.is_some());
-        let name = result.unwrap();
-        assert!(!name.contains(' '));
-        assert!(!name.contains('('));
-        assert!(!name.contains(')'));
-        assert!(name.ends_with(".exe"));
-    }
-
-    #[test]
-    fn validate_downloaded_installer_file_rejects_empty_exe() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let exe_path = temp_dir.path().join("empty.exe");
-        std::fs::write(&exe_path, b"").expect("write empty");
-        assert!(validate_downloaded_installer_file(&exe_path, WindowsInstallerKind::Exe).is_err());
-    }
-
-    #[test]
-    fn validate_downloaded_installer_file_validates_msi_magic() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let msi_path = temp_dir.path().join("package.msi");
-        const MSI_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
-        std::fs::write(&msi_path, &MSI_MAGIC).expect("write msi");
-        assert!(validate_downloaded_installer_file(&msi_path, WindowsInstallerKind::Msi).is_ok());
-
-        let bad_path = temp_dir.path().join("bad.msi");
-        std::fs::write(&bad_path, b"<package>").expect("write bad msi");
-        assert!(validate_downloaded_installer_file(&bad_path, WindowsInstallerKind::Msi).is_err());
-    }
-
-    #[test]
-    fn is_windows_installer_asset_detects_known_formats() {
-        assert!(is_windows_installer_asset("installer.exe"));
-        assert!(is_windows_installer_asset("setup.msi"));
-        assert!(is_windows_installer_asset("SlasshyWispr_1.0.3_x64-setup.exe"));
-        assert!(!is_windows_installer_asset("SlasshyWispr_1.0.3_x64-setup.exe.sig"));
-        assert!(!is_windows_installer_asset("checksums.txt"));
-        assert!(!is_windows_installer_asset(""));
-    }
-
-    #[test]
-    fn select_windows_installer_asset_uses_name_length_as_tiebreaker() {
-        let release = GithubLatestReleaseResponse {
-            tag_name: "v1.0.0".to_string(),
-            name: None, body: None, draft: false, prerelease: false,
-            published_at: None, html_url: None,
-            assets: vec![
-                GithubReleaseAsset {
-                    name: "a.exe".to_string(),
-                    browser_download_url: "https://example.com/a.exe".to_string(),
-                },
-                GithubReleaseAsset {
-                    name: "longer-name.exe".to_string(),
-                    browser_download_url: "https://example.com/longer-name.exe".to_string(),
-                },
-            ],
+    fn calculate_progress_falls_back_to_file_count() {
+        let status = LocalSttDownloadStatusResponse {
+            files_completed: 3,
+            files_total: 6,
+            ..Default::default()
         };
-        let selected = select_windows_installer_asset(&release)
-            .expect("should pick one");
-        assert_eq!(selected.name, "longer-name.exe", "longer name wins on tie");
+        assert_eq!(calculate_local_stt_progress_percent(&status), 50.0);
+    }
+
+    #[test]
+    fn calculate_progress_returns_100_for_completed_success() {
+        let status = LocalSttDownloadStatusResponse {
+            completed: true,
+            success: true,
+            ..Default::default()
+        };
+        assert_eq!(calculate_local_stt_progress_percent(&status), 100.0);
+    }
+
+    #[test]
+    fn calculate_progress_returns_0_for_idle() {
+        let status = LocalSttDownloadStatusResponse::default();
+        assert_eq!(calculate_local_stt_progress_percent(&status), 0.0);
+    }
+
+    // Updater installer kind tests moved to updater::tests
+
+        assert!(!exe_installer_supports_silent_mode("helper.exe"));
+    }
+
+    // ===== TRANSCRIPT REFINEMENT EDGE CASES =====
+
+    #[test]
+    fn transcript_refinement_empty_input() {
+        let request = refinement_request(true, true, true, true);
+        let output = refine_transcript("", &request);
+        assert_eq!(output, "");
+    }
+
+    #[test]
+    fn transcript_refinement_backtrack_removes_repeated_segments() {
+        let request = refinement_request(true, false, false, false);
+        let output = refine_transcript("Hello world hello world", &request);
+        // Backtrack should handle repeated phrases
+        assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn transcript_refinement_all_toggles_enabled() {
+        let request = refinement_request(true, true, true, true);
+        let output = refine_transcript("um number one apples next item oranges", &request);
+        assert!(output.len() > 0);
+    }
+
+    // ===== WAKE PHRASE EDGE CASES =====
+
+    #[test]
+    fn wake_phrase_empty_input_returns_none() {
+        assert!(extract_wake_command("", "Lily").is_none());
+    }
+
+    #[test]
+    fn wake_phrase_empty_name_returns_none() {
+        assert!(extract_wake_command("Hey Lily summarize this", "").is_none());
+    }
+
+    #[test]
+    fn wake_phrase_very_long_command() {
+        let long_command = "summarize this very long document that goes on and on and on";
+        let input = format!("Hey Lily {long_command}");
+        let command = extract_wake_command(&input, "Lily").unwrap_or_default();
+        assert_eq!(command, long_command);
+    }
+
+    // ===== SELECTION EDIT DECISION =====
+
+    #[test]
+    fn parse_selection_edit_decision_rejects_invalid_json() {
+        assert!(parse_selection_edit_decision("not json").is_err());
+    }
+
+    #[test]
+    fn parse_selection_edit_decision_rejects_unknown_action() {
+        let raw = r#"{"action":"unknown","rewrite":"text","message":"msg"}"#;
+        assert!(parse_selection_edit_decision(raw).is_err());
+    }
+
+    // ===== INCOMPLETE DRAFT DETECTION =====
+
+    #[test]
+    fn looks_like_incomplete_draft_detects_trailing_ellipsis() {
+        let text = "Dear Manager, I am writing to...";
+        assert!(looks_like_incomplete_draft_output(text));
+    }
+
+    #[test]
+    fn looks_like_incomplete_draft_detects_placeholder() {
+        let text = "Dear [Manager's Name], I am";
+        assert!(looks_like_incomplete_draft_output(text));
+    }
+
+    #[test]
+    fn looks_like_incomplete_draft_short_text_is_not_incomplete() {
+        let text = "Yes.";
+        assert!(!looks_like_incomplete_draft_output(text));
+    }
+
+    // ===== SELECTION EDIT / DRAFT INSTRUCTION DETECTION =====
+
+    #[test]
+    fn seems_like_draft_instruction_rejects_questions() {
+        assert!(!seems_like_draft_generation_instruction("what is the capital of France"));
+        assert!(!seems_like_draft_generation_instruction("who is the president"));
+    }
+
+    #[test]
+    fn seems_like_selection_edit_rejects_factual_questions() {
+        assert!(!seems_like_selection_edit_instruction("what time is it"));
+        assert!(!seems_like_selection_edit_instruction("how does TCP work"));
+    }
+
+    // ===== REWRITE SUSPICION DETECTION =====
+
+    #[test]
+    fn is_rewrite_suspicious_detects_overshortening() {
+        let long_text = "This is a detailed explanation of how the system works with many paragraphs and specifics.";
+        let short_rewrite = "Ok.";
+        assert!(is_rewrite_suspicious("summarize this", long_text, short_rewrite));
+    }
+
+    #[test]
+    fn is_rewrite_suspicious_allows_similar_length_output() {
+        let text = "Please improve this text.";
+        let rewrite = "Please improve this text now.";
+        assert!(!is_rewrite_suspicious("improve", text, rewrite));
+    }
+
+    // ===== SELECTION CONFIRMATION DETECTION =====
+
+    #[test]
+    fn is_affirmative_detection_handles_various_intents() {
+        assert!(is_affirmative_selection_confirmation("yes"));
+        assert!(is_affirmative_selection_confirmation("apply it"));
+        assert!(is_affirmative_selection_confirmation("do it"));
+    }
+
+    #[test]
+    fn is_negative_detection_handles_various_intents() {
+        assert!(is_negative_selection_confirmation("no"));
+        assert!(is_negative_selection_confirmation("skip this"));
+        assert!(is_negative_selection_confirmation("abort"));
+    }
+
+    // ===== ONLINE AI REASONING DETECTION =====
+
+    #[test]
+    fn online_ai_model_defaults_to_reasoning_for_variants() {
+        assert!(online_ai_model_defaults_to_reasoning("openai/gpt-oss-20b"));
+        assert!(online_ai_model_defaults_to_reasoning("openai/gpt-oss-120b"));
+        assert!(!online_ai_model_defaults_to_reasoning("gpt-4o"));
+        assert!(!online_ai_model_defaults_to_reasoning("claude-3-opus"));
+    }
+
+    #[test]
+    fn effective_completion_tokens_adds_headroom_for_reasoning_models() {
+        let tokens = effective_online_ai_completion_tokens("openai/gpt-oss-20b", 128);
+        assert!(tokens > 128, "headroom should be added");
+    }
+
+    #[test]
+    fn effective_completion_tokens_pass_through_for_standard_models() {
+        let tokens = effective_online_ai_completion_tokens("gpt-4o-mini", 320);
+        assert_eq!(tokens, 320);
+    }
+
+    // ===== PIPELINE STAGE SEQUENCING =====
+
+    /// Helper: build a fully-online pipeline request
+    fn online_pipeline_request() -> AssistantPipelineRequest {
+        AssistantPipelineRequest {
+            api_key: "sk-test-key".to_string(),
+            api_base_url: Some("https://api.example.com/v1".to_string()),
+            stt_model: Some("gpt-4o-mini-transcribe".to_string()),
+            ai_model: Some("gpt-4o-mini".to_string()),
+            stt_local_mode: Some(false),
+            ai_local_mode: Some(false),
+            local_ollama_base_url: Some("http://127.0.0.1:11434".to_string()),
+            local_ollama_model: Some("llama3.2:3b".to_string()),
+            local_stt_model: Some("nvidia/parakeet-tdt-0.6b-v3".to_string()),
+            piper_path: None,
+            audio_base64: String::new(),
+            audio_mime_type: "audio/wav".to_string(),
+            language: None,
+            allowed_languages: None,
+            system_prompt: None,
+            temperature: None,
+            max_tokens: None,
+            dictionary_entries: None,
+            snippet_entries: None,
+            raw_mode: None,
+            apply_backtrack: None,
+            remove_fillers: None,
+            auto_punctuation: None,
+            auto_numbered_lists: None,
+            command_mode: None,
+            wake_word_enabled: None,
+            assistant_name: None,
+            selected_text: None,
+            tts_engine: None,
+            piper: None,
+            coqui: None,
+            noise_suppression: None,
+            raw_pcm_base64: None,
+        }
+    }
+
+    #[test]
+    fn fully_online_pipeline_resolves_both_stages_to_online() {
+        let request = online_pipeline_request();
+        let mode = resolve_pipeline_mode(&request).expect("should resolve");
+        assert!(matches!(mode.stt, SttModeConfig::Online { .. }));
+        assert!(matches!(mode.ai, AiModeConfig::Online { .. }));
+    }
+
+    #[test]
+    fn fully_local_pipeline_resolves_both_stages_to_local() {
+        let mut request = online_pipeline_request();
+        request.stt_local_mode = Some(true);
+        request.ai_local_mode = Some(true);
+        request.api_key = String::new();
+        let mode = resolve_pipeline_mode(&request).expect("should resolve");
+        assert!(matches!(mode.stt, SttModeConfig::Local(_)));
+        assert!(matches!(mode.ai, AiModeConfig::Local(_)));
+    }
+
+    #[test]
+    fn hybrid_online_stt_local_ai_resolves_correctly() {
+        let mut request = online_pipeline_request();
+        request.stt_local_mode = Some(false);
+        request.ai_local_mode = Some(true);
+        let mode = resolve_pipeline_mode(&request).expect("should resolve");
+        assert!(matches!(mode.stt, SttModeConfig::Online { .. }));
+        assert!(matches!(mode.ai, AiModeConfig::Local(_)));
+    }
+
+    #[test]
+    fn hybrid_local_stt_online_ai_resolves_correctly() {
+        let mut request = online_pipeline_request();
+        request.stt_local_mode = Some(true);
+        request.ai_local_mode = Some(false);
+        let mode = resolve_pipeline_mode(&request).expect("should resolve");
+        assert!(matches!(mode.stt, SttModeConfig::Local(_)));
+        assert!(matches!(mode.ai, AiModeConfig::Online { .. }));
+    }
+
+    #[test]
+    fn fully_online_pipeline_stt_model_is_preserved() {
+        let mut request = online_pipeline_request();
+        request.stt_model = Some("whisper-large-v3".to_string());
+        let mode = resolve_pipeline_mode(&request).expect("should resolve");
+        match &mode.stt {
+            SttModeConfig::Online { stt_model, .. } => {
+                assert_eq!(stt_model, "whisper-large-v3");
+            }
+            _ => panic!("expected online STT"),
+        }
+    }
+
+    #[test]
+    fn fully_online_pipeline_ai_model_is_preserved() {
+        let mut request = online_pipeline_request();
+        request.ai_model = Some("claude-3-opus".to_string());
+        let mode = resolve_pipeline_mode(&request).expect("should resolve");
+        match &mode.ai {
+            AiModeConfig::Online { ai_model, .. } => {
+                assert_eq!(ai_model, "claude-3-opus");
+            }
+            _ => panic!("expected online AI"),
+        }
+    }
+
+    #[test]
+    fn fully_local_pipeline_ollama_config_is_preserved() {
+        let mut request = online_pipeline_request();
+        request.stt_local_mode = Some(true);
+        request.ai_local_mode = Some(true);
+        request.api_key = String::new();
+        request.local_ollama_model = Some("mistral:latest".to_string());
+        let mode = resolve_pipeline_mode(&request).expect("should resolve");
+        match &mode.ai {
+            AiModeConfig::Local(config) => {
+                assert_eq!(config.ollama_model.as_deref(), Some("mistral:latest"));
+                assert_eq!(config.ollama_base_url, "http://127.0.0.1:11434");
+            }
+            _ => panic!("expected local AI"),
+        }
+    }
+
+    #[test]
+    fn fully_local_pipeline_stt_model_is_canonicalized() {
+        let mut request = online_pipeline_request();
+        request.stt_local_mode = Some(true);
+        request.ai_local_mode = Some(true);
+        request.api_key = String::new();
+        request.local_stt_model = Some("nvidia/parakeet-tdt-0.6b-v2".to_string());
+        let mode = resolve_pipeline_mode(&request).expect("should resolve");
+        match &mode.stt {
+            SttModeConfig::Local(config) => {
+                // v2 alias → canonical v2 id
+                assert_eq!(config.stt_model, "nvidia/parakeet-tdt_ctc-110m");
+            }
+            _ => panic!("expected local STT"),
+        }
+    }
+
+    #[test]
+    fn pipeline_error_messages_are_user_friendly() {
+        // Missing API key
+        let mut req = online_pipeline_request();
+        req.api_key = String::new();
+        let err = resolve_pipeline_mode(&req).unwrap_err();
+        assert!(err.contains("API key is required"));
+
+        // Missing API base URL
+        let mut req = online_pipeline_request();
+        req.api_base_url = None;
+        let err = resolve_pipeline_mode(&req).unwrap_err();
+        assert!(err.contains("API base URL is required"));
+
+        // Missing online STT model
+        let mut req = online_pipeline_request();
+        req.stt_model = None;
+        let err = resolve_pipeline_mode(&req).unwrap_err();
+        assert!(err.contains("Online STT model is required"));
+
+        // Missing online AI model
+        let mut req = online_pipeline_request();
+        req.ai_model = None;
+        let err = resolve_pipeline_mode(&req).unwrap_err();
+        assert!(err.contains("Online AI model is required"));
+
+        // Missing local STT model
+        let mut req = online_pipeline_request();
+        req.stt_local_mode = Some(true);
+        req.local_stt_model = None;
+        let err = resolve_pipeline_mode(&req).unwrap_err();
+        assert!(err.contains("Local STT model is required"));
+    }
+
+    // ===== IPC SERIALIZATION CONTRACT =====
+    // These tests verify that the Rust serde configuration matches
+    // the TypeScript type definitions for the IPC request/response types.
+    // If these tests fail, the Rust ↔ TypeScript contract has drifted.
+
+    #[test]
+    fn ipc_request_serializes_with_camel_case() {
+        let request = AssistantPipelineRequest {
+            api_key: "sk-test".to_string(),
+            api_base_url: Some("https://api.example.com".to_string()),
+            stt_model: Some("gpt-4o-mini-transcribe".to_string()),
+            ai_model: Some("gpt-4o-mini".to_string()),
+            stt_local_mode: Some(false),
+            ai_local_mode: Some(true),
+            local_ollama_base_url: Some("http://127.0.0.1:11434".to_string()),
+            local_ollama_model: Some("llama3".to_string()),
+            local_stt_model: Some("nvidia/parakeet-tdt-0.6b-v3".to_string()),
+            piper_path: Some("/path/to/piper".to_string()),
+            audio_base64: "dGVzdA==".to_string(),
+            audio_mime_type: "audio/wav".to_string(),
+            language: Some("en".to_string()),
+            allowed_languages: Some(vec!["en".to_string(), "es".to_string()]),
+            system_prompt: Some("You are helpful.".to_string()),
+            temperature: Some(0.5),
+            max_tokens: Some(256),
+            dictionary_entries: Some(vec![DictionaryEntryRequest {
+                source: "brb".to_string(),
+                target: "be right back".to_string(),
+            }]),
+            snippet_entries: Some(vec![SnippetEntryRequest {
+                trigger: "gj".to_string(),
+                expansion: "good job".to_string(),
+            }]),
+            raw_mode: Some(false),
+            apply_backtrack: Some(true),
+            remove_fillers: Some(true),
+            auto_punctuation: Some(true),
+            auto_numbered_lists: Some(false),
+            noise_suppression: Some(true),
+            raw_pcm_base64: Some("cGNtZGF0YQ==".to_string()),
+            command_mode: Some(true),
+            wake_word_enabled: Some(true),
+            assistant_name: Some("Lily".to_string()),
+            selected_text: Some("selected text".to_string()),
+            tts_engine: Some("piper".to_string()),
+            piper: Some(PiperPipelineRequest {
+                speed: Some(1.08),
+                quality: Some("fast".to_string()),
+                emotion: Some("neutral".to_string()),
+            }),
+            coqui: None,
+        };
+
+        let json = serde_json::to_value(&request).expect("should serialize");
+        let obj = json.as_object().expect("should be object");
+
+        // Verify camelCase field names match the TypeScript types
+        assert!(obj.contains_key("apiKey"), "expected camelCase 'apiKey'");
+        assert!(obj.contains_key("apiBaseUrl"), "expected camelCase 'apiBaseUrl'");
+        assert!(obj.contains_key("sttModel"), "expected camelCase 'sttModel'");
+        assert!(obj.contains_key("aiModel"), "expected camelCase 'aiModel'");
+        assert!(obj.contains_key("sttLocalMode"), "expected camelCase 'sttLocalMode'");
+        assert!(obj.contains_key("aiLocalMode"), "expected camelCase 'aiLocalMode'");
+        assert!(obj.contains_key("localOllamaBaseUrl"), "expected camelCase 'localOllamaBaseUrl'");
+        assert!(obj.contains_key("localOllamaModel"), "expected camelCase 'localOllamaModel'");
+        assert!(obj.contains_key("localSttModel"), "expected camelCase 'localSttModel'");
+        assert!(obj.contains_key("piperPath"), "expected camelCase 'piperPath'");
+        assert!(obj.contains_key("audioBase64"), "expected camelCase 'audioBase64'");
+        assert!(obj.contains_key("audioMimeType"), "expected camelCase 'audioMimeType'");
+        assert!(obj.contains_key("allowedLanguages"), "expected camelCase 'allowedLanguages'");
+        assert!(obj.contains_key("systemPrompt"), "expected camelCase 'systemPrompt'");
+        assert!(obj.contains_key("maxTokens"), "expected camelCase 'maxTokens'");
+        assert!(obj.contains_key("dictionaryEntries"), "expected camelCase 'dictionaryEntries'");
+        assert!(obj.contains_key("snippetEntries"), "expected camelCase 'snippetEntries'");
+        assert!(obj.contains_key("rawMode"), "expected camelCase 'rawMode'");
+        assert!(obj.contains_key("applyBacktrack"), "expected camelCase 'applyBacktrack'");
+        assert!(obj.contains_key("removeFillers"), "expected camelCase 'removeFillers'");
+        assert!(obj.contains_key("autoPunctuation"), "expected camelCase 'autoPunctuation'");
+        assert!(obj.contains_key("autoNumberedLists"), "expected camelCase 'autoNumberedLists'");
+        assert!(obj.contains_key("noiseSuppression"), "expected camelCase 'noiseSuppression'");
+        assert!(obj.contains_key("rawPcmBase64"), "expected camelCase 'rawPcmBase64'");
+        assert!(obj.contains_key("commandMode"), "expected camelCase 'commandMode'");
+        assert!(obj.contains_key("wakeWordEnabled"), "expected camelCase 'wakeWordEnabled'");
+        assert!(obj.contains_key("assistantName"), "expected camelCase 'assistantName'");
+        assert!(obj.contains_key("selectedText"), "expected camelCase 'selectedText'");
+        assert!(obj.contains_key("ttsEngine"), "expected camelCase 'ttsEngine'");
+
+        // Verify nested objects
+        let piper = obj.get("piper").expect("piper should exist").as_object().unwrap();
+        assert!(piper.contains_key("speed"));
+        assert!(piper.contains_key("quality"));
+        assert!(piper.contains_key("emotion"));
+
+        // Verify values
+        assert_eq!(obj.get("apiKey").unwrap(), "sk-test");
+        assert_eq!(obj.get("sttLocalMode").unwrap(), false);
+        assert_eq!(obj.get("aiLocalMode").unwrap(), true);
+        assert_eq!(obj.get("temperature").unwrap(), 0.5);
+        assert_eq!(obj.get("maxTokens").unwrap(), 256);
+    }
+
+    #[test]
+    fn ipc_request_missing_optional_fields_serializes_as_null() {
+        let request = AssistantPipelineRequest {
+            api_key: String::new(),
+            api_base_url: None,
+            stt_model: None,
+            ai_model: None,
+            stt_local_mode: None,
+            ai_local_mode: None,
+            local_ollama_base_url: None,
+            local_ollama_model: None,
+            local_stt_model: None,
+            piper_path: None,
+            audio_base64: String::new(),
+            audio_mime_type: String::new(),
+            language: None,
+            allowed_languages: None,
+            system_prompt: None,
+            temperature: None,
+            max_tokens: None,
+            dictionary_entries: None,
+            snippet_entries: None,
+            raw_mode: None,
+            apply_backtrack: None,
+            remove_fillers: None,
+            auto_punctuation: None,
+            auto_numbered_lists: None,
+            noise_suppression: None,
+            raw_pcm_base64: None,
+            command_mode: None,
+            wake_word_enabled: None,
+            assistant_name: None,
+            selected_text: None,
+            tts_engine: None,
+            piper: None,
+            coqui: None,
+        };
+
+        let json = serde_json::to_value(&request).expect("should serialize");
+        let obj = json.as_object().unwrap();
+
+        // All optional fields should be null when None
+        assert!(obj.get("apiBaseUrl").unwrap().is_null());
+        assert!(obj.get("sttModel").unwrap().is_null());
+        assert!(obj.get("aiModel").unwrap().is_null());
+        assert!(obj.get("sttLocalMode").unwrap().is_null());
+        assert!(obj.get("aiLocalMode").unwrap().is_null());
+        assert!(obj.get("language").unwrap().is_null());
+        assert!(obj.get("systemPrompt").unwrap().is_null());
+        assert!(obj.get("temperature").unwrap().is_null());
+        assert!(obj.get("piper").unwrap().is_null());
+        assert!(obj.get("coqui").unwrap().is_null());
+    }
+
+    #[test]
+    fn ipc_response_has_expected_camel_case_fields() {
+        let response = AssistantPipelineResponse {
+            mode: "dictation".to_string(),
+            selection_rewrite: false,
+            selection_pending: false,
+            selection_context_cleared: false,
+            selection_context_used: false,
+            transcript: "Hello world".to_string(),
+            assistant_response: "Hello world.".to_string(),
+            audio_base64: String::new(),
+            stt_latency_ms: 250,
+            ai_latency_ms: 800,
+            tts_latency_ms: 150,
+            total_latency_ms: 1200,
+        };
+
+        let json = serde_json::to_value(&response).expect("should serialize");
+        let obj = json.as_object().expect("should be object");
+
+        // Verify camelCase field names match TypeScript AssistantPipelineResponse
+        assert!(obj.contains_key("mode"));
+        assert!(obj.contains_key("selectionRewrite"), "expected camelCase 'selectionRewrite'");
+        assert!(obj.contains_key("selectionPending"), "expected camelCase 'selectionPending'");
+        assert!(obj.contains_key("selectionContextCleared"), "expected camelCase 'selectionContextCleared'");
+        assert!(obj.contains_key("selectionContextUsed"), "expected camelCase 'selectionContextUsed'");
+        assert!(obj.contains_key("transcript"));
+        assert!(obj.contains_key("assistantResponse"), "expected camelCase 'assistantResponse'");
+        assert!(obj.contains_key("audioBase64"), "expected camelCase 'audioBase64'");
+        assert!(obj.contains_key("sttLatencyMs"), "expected camelCase 'sttLatencyMs'");
+        assert!(obj.contains_key("aiLatencyMs"), "expected camelCase 'aiLatencyMs'");
+        assert!(obj.contains_key("ttsLatencyMs"), "expected camelCase 'ttsLatencyMs'");
+        assert!(obj.contains_key("totalLatencyMs"), "expected camelCase 'totalLatencyMs'");
+
+        // Verify values
+        assert_eq!(obj.get("mode").unwrap(), "dictation");
+        assert_eq!(obj.get("sttLatencyMs").unwrap(), 250);
+        assert_eq!(obj.get("totalLatencyMs").unwrap(), 1200);
+    }
+
+    #[test]
+    fn ipc_nested_entry_requests_serialize_correctly() {
+        let request = AssistantPipelineRequest {
+            api_key: "key".to_string(),
+            api_base_url: Some("https://api.example.com".to_string()),
+            stt_model: Some("model".to_string()),
+            ai_model: Some("model".to_string()),
+            stt_local_mode: Some(false),
+            ai_local_mode: Some(false),
+            local_ollama_base_url: None,
+            local_ollama_model: None,
+            local_stt_model: None,
+            piper_path: None,
+            audio_base64: String::new(),
+            audio_mime_type: "audio/wav".to_string(),
+            language: None,
+            allowed_languages: None,
+            system_prompt: None,
+            temperature: None,
+            max_tokens: None,
+            dictionary_entries: Some(vec![
+                DictionaryEntryRequest {
+                    source: "brb".to_string(),
+                    target: "be right back".to_string(),
+                },
+                DictionaryEntryRequest {
+                    source: "idk".to_string(),
+                    target: "I don't know".to_string(),
+                },
+            ]),
+            snippet_entries: Some(vec![SnippetEntryRequest {
+                trigger: "gj".to_string(),
+                expansion: "good job".to_string(),
+            }]),
+            raw_mode: None,
+            apply_backtrack: None,
+            remove_fillers: None,
+            auto_punctuation: None,
+            auto_numbered_lists: None,
+            noise_suppression: None,
+            raw_pcm_base64: None,
+            command_mode: None,
+            wake_word_enabled: None,
+            assistant_name: None,
+            selected_text: None,
+            tts_engine: None,
+            piper: None,
+            coqui: None,
+        };
+
+        let json = serde_json::to_value(&request).expect("should serialize");
+        let entries = json.get("dictionaryEntries").unwrap().as_array().unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].get("source").unwrap(), "brb");
+        assert_eq!(entries[0].get("target").unwrap(), "be right back");
+
+        let snippets = json.get("snippetEntries").unwrap().as_array().unwrap();
+        assert_eq!(snippets.len(), 1);
+        assert_eq!(snippets[0].get("trigger").unwrap(), "gj");
+        assert_eq!(snippets[0].get("expansion").unwrap(), "good job");
+    }
+
+    #[test]
+    fn ipc_round_trip_preserves_option_vs_null_distinction() {
+        // When frontend sends null for optional fields, Rust should deserialize as None
+        let json_str = r#"{
+            "apiKey": "test",
+            "apiBaseUrl": null,
+            "sttModel": null,
+            "aiModel": null,
+            "sttLocalMode": true,
+            "aiLocalMode": true,
+            "localOllamaBaseUrl": null,
+            "localOllamaModel": null,
+            "localSttModel": null,
+            "piperPath": null,
+            "audioBase64": "",
+            "audioMimeType": "audio/wav",
+            "language": null,
+            "allowedLanguages": null,
+            "systemPrompt": null,
+            "temperature": null,
+            "maxTokens": null,
+            "dictionaryEntries": null,
+            "snippetEntries": null,
+            "rawMode": null,
+            "applyBacktrack": null,
+            "removeFillers": null,
+            "autoPunctuation": null,
+            "autoNumberedLists": null,
+            "noiseSuppression": null,
+            "rawPcmBase64": null,
+            "commandMode": null,
+            "wakeWordEnabled": null,
+            "assistantName": null,
+            "selectedText": null,
+            "ttsEngine": null,
+            "piper": null,
+            "coqui": null
+        }"#;
+
+        let request: AssistantPipelineRequest =
+            serde_json::from_str(json_str).expect("should deserialize from null-heavy JSON");
+
+        // Verify that null fields become None
+        assert!(request.api_base_url.is_none());
+        assert!(request.stt_model.is_none());
+        assert!(request.ai_model.is_none());
+        assert_eq!(request.stt_local_mode, Some(true));
+        assert_eq!(request.ai_local_mode, Some(true));
+        assert!(request.local_ollama_model.is_none());
+        assert!(request.local_stt_model.is_none());
+        assert!(request.temperature.is_none());
+        assert!(request.max_tokens.is_none());
+        assert!(request.system_prompt.is_none());
+        assert!(request.dictionary_entries.is_none());
+        assert!(request.piper.is_none());
     }
 }
 

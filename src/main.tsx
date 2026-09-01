@@ -37,6 +37,15 @@ import {
   validateSnippetEntry,
 } from "./utils";
 import { matchHistoryToRecordings } from "./store";
+import {
+  processEvent,
+} from "./recording-state-machine";
+import type {
+  MachineEvent,
+  MachineState,
+  MachineConfig,
+  TransitionResult,
+} from "./recording-state-machine";
 
 import {
   ACHIEVEMENTS_STATE_KEY,
@@ -508,7 +517,6 @@ let recordingTickerId: number | null = null;
 let lastSavedRecordingId: string | null = null;
 let skipPipelineAfterRecorderStop = false;
 let skipPipelineAfterRecorderStopNotice = "";
-let skipPipelineAfterRecorderStopStatus = "";
 let audioContext: AudioContext | null = null;
 let analyserNode: AnalyserNode | null = null;
 let amplitudeSourceNode: MediaStreamAudioSourceNode | null = null;
@@ -6868,7 +6876,7 @@ function showMissingApiKeyNotice(source: string): void {
   const message =
     "Recording blocked: API key is missing for online mode. Add API key in Settings > Models > Online provider.";
   setNotice(message, true);
-  setStage("error", "Missing API key for online runtime.");
+  transitionRecordingState({ type: "recording-failed", reason: "Missing API key for online runtime." });
   logClientEvent(`[record.start.blocked] missing-api-key notice source=${source}`);
 
   if (typeof Notification === "undefined") {
@@ -6978,9 +6986,8 @@ function interruptTtsPlaybackForCaptureIntent(): boolean {
   }
 
   if (stage === "speaking") {
-    pipelineRunning = false;
+    transitionRecordingState({ type: "interrupt-playback" });
     syncActionAvailability();
-    setStage("idle", "Playback interrupted.");
   }
 
   return true;
@@ -6997,9 +7004,7 @@ async function startRecording(): Promise<void> {
     logClientEvent("[record.start] blocked because browser media recording APIs are unavailable");
     lastCaptureIntentStartedAt = 0;
     lastCaptureIntentLabel = "";
-    clearPushToTalkHolds();
-    setNotice("This environment does not support microphone recording.", true);
-    setStage("error", "Media APIs unavailable.");
+    transitionRecordingState({ type: "recording-failed", reason: "Media APIs unavailable." });
     return;
   }
 
@@ -7075,11 +7080,7 @@ async function startRecording(): Promise<void> {
 
     mediaRecorder.addEventListener("error", () => {
       logClientEvent("[record.start] media recorder emitted error event");
-      clearPushToTalkHolds();
-      setNotice("Recording failed due to media recorder error.", true);
-      setStage("error", "Recording failed.");
-      stopAmplitudeMonitoring();
-      releaseMicrophone();
+      transitionRecordingState({ type: "recording-failed", reason: "Recording failed due to media recorder error." });
     });
 
     mediaRecorder.addEventListener("stop", () => {
@@ -7094,9 +7095,7 @@ async function startRecording(): Promise<void> {
         performance.now() - recorderInitStartedAt,
       )} readyMs=${recordingReadyLatencyMs}`,
     );
-    recordingStartedAt = Date.now();
-    beginRecordingTicker();
-    setStage("recording", "Listening...");
+    transitionRecordingState({ type: "recording-ready" });
     if (lastCaptureIntentStartedAt > 0) {
       logClientEvent(
         `[record.intent.ready] source=${lastCaptureIntentLabel || "unknown"} totalMs=${Math.round(
@@ -7116,11 +7115,7 @@ async function startRecording(): Promise<void> {
     logClientEvent(`[record.start] failed to open microphone: ${asErrorMessage(error)}`);
     lastCaptureIntentStartedAt = 0;
     lastCaptureIntentLabel = "";
-    clearPushToTalkHolds();
-    stopAmplitudeMonitoring();
-    releaseMicrophone();
-    setNotice(`Microphone access failed: ${asErrorMessage(error)}`, true);
-    setStage("error", "Microphone unavailable.");
+    transitionRecordingState({ type: "recording-failed", reason: `Microphone access failed: ${asErrorMessage(error)}` });
     syncActionAvailability();
   }
 }
@@ -7160,7 +7155,6 @@ async function openMicrophoneStream(preferredDeviceId: string): Promise<MediaStr
 function stopRecording(options: StopRecordingOptions = {}): void {
   const cancelPipeline = Boolean(options.cancelPipeline);
   const cancelNotice = options.cancelNotice?.trim();
-  const cancelStatus = options.cancelStatus?.trim();
   logClientEvent(
     `[record.stop] requested stage=${stage} recorderState=${mediaRecorder?.state || "none"}`,
   );
@@ -7169,7 +7163,6 @@ function stopRecording(options: StopRecordingOptions = {}): void {
   if (!mediaRecorder) {
     skipPipelineAfterRecorderStop = false;
     skipPipelineAfterRecorderStopNotice = "";
-    skipPipelineAfterRecorderStopStatus = "";
     logClientEvent("[record.stop] no active mediaRecorder");
     return;
   }
@@ -7177,7 +7170,6 @@ function stopRecording(options: StopRecordingOptions = {}): void {
   const recorderWasActive = mediaRecorder.state !== "inactive";
   skipPipelineAfterRecorderStop = cancelPipeline && recorderWasActive;
   skipPipelineAfterRecorderStopNotice = cancelPipeline && recorderWasActive ? cancelNotice || "" : "";
-  skipPipelineAfterRecorderStopStatus = cancelPipeline && recorderWasActive ? cancelStatus || "" : "";
 
   if (recorderWasActive) {
     logClientEvent("[record.stop] invoking mediaRecorder.stop()");
@@ -7187,11 +7179,9 @@ function stopRecording(options: StopRecordingOptions = {}): void {
   stopRecordingTicker();
   releaseMicrophone();
   if (cancelPipeline) {
-    setStage("idle", skipPipelineAfterRecorderStopStatus || "Canceled before transcription.");
-    setNotice(skipPipelineAfterRecorderStopNotice || "Short hotkey tap detected. STT request canceled.");
+    transitionRecordingState({ type: "stop-recording", cancelPipeline: true });
   } else {
-    setStage("processing", "Preparing audio...");
-    setNotice("Recording stopped. Running pipeline...");
+    transitionRecordingState({ type: "stop-recording" });
   }
   syncActionAvailability();
 }
@@ -7199,19 +7189,14 @@ function stopRecording(options: StopRecordingOptions = {}): void {
 async function finalizeRecording(): Promise<void> {
   const skipPipeline = skipPipelineAfterRecorderStop;
   const skipNotice = skipPipelineAfterRecorderStopNotice;
-  const skipStatus = skipPipelineAfterRecorderStopStatus;
   skipPipelineAfterRecorderStop = false;
   skipPipelineAfterRecorderStopNotice = "";
-  skipPipelineAfterRecorderStopStatus = "";
 
   if (skipPipeline) {
-    recordedChunks = [];
     logClientEvent("[record.finalize] pipeline canceled before transcription");
+    transitionRecordingState({ type: "recording-stopped", cancelPipeline: true });
     if (skipNotice) {
       setNotice(skipNotice);
-    }
-    if (stage !== "idle") {
-      setStage("idle", skipStatus || "Canceled before transcription.");
     }
     syncActionAvailability();
     return;
@@ -7223,8 +7208,7 @@ async function finalizeRecording(): Promise<void> {
 
   if (blob.size === 0) {
     logClientEvent("[record.finalize] blocked because captured blob is empty");
-    setNotice("No usable audio captured. Please try again.", true);
-    setStage("error", "No audio captured.");
+    transitionRecordingState({ type: "audio-empty" });
     syncActionAvailability();
     return;
   }
@@ -7267,9 +7251,8 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
   const activeSettings = readSettingsFromForm();
   const pipelineInvokeStartedAt = performance.now();
 
-  pipelineRunning = true;
+  transitionRecordingState({ type: "pipeline-started" });
   syncActionAvailability();
-  setStage("processing", "Transcribing...");
 
   try {
     let pipelineAudioBlob = audioBlob;
@@ -7367,7 +7350,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
         );
         openSettings("missing-local-stt-files");
         setActiveSettingsPane("models", "missing-local-stt-files");
-        setStage("idle", "Local setup required.");
+        transitionRecordingState({ type: "pipeline-blocked", reason: "Local setup required." });
         return;
       }
       if (!selectedLocalSttModel) {
@@ -7377,7 +7360,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
           true,
         );
         setActiveSettingsPane("models");
-        setStage("idle", "Local setup required.");
+        transitionRecordingState({ type: "pipeline-blocked", reason: "Local setup required." });
         return;
       }
 
@@ -7395,7 +7378,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       if (!isSelectedLocalSttModelLoaded()) {
         logClientEvent("pipeline.blocked reason=local-stt-not-loaded");
         setNotice("Local STT is not loaded. Click Load STT in the left sidebar.", true);
-        setStage("idle", "Local setup required.");
+        transitionRecordingState({ type: "pipeline-blocked", reason: "Local setup required." });
         return;
       }
     }
@@ -7408,7 +7391,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
           true,
         );
         setActiveSettingsPane("models");
-        setStage("idle", "Local setup required.");
+        transitionRecordingState({ type: "pipeline-blocked", reason: "Local setup required." });
         return;
       }
     }
@@ -7558,10 +7541,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
     }
   } catch (error) {
     setNotice(`Pipeline failed: ${asErrorMessage(error)}`, true);
-    commandModeArmed = false;
-    commandSelectionSnapshot = null;
-    publishDockState();
-    setStage("error", "Pipeline failed.");
+    transitionRecordingState({ type: "pipeline-failed", reason: `Pipeline failed: ${asErrorMessage(error)}` });
   } finally {
     pipelineRunning = false;
     await refreshAssistantInfoSafely();
@@ -7643,7 +7623,7 @@ function appendConversationEntry(
 }
 
 async function playGeneratedAudio(audioBase64: string, _engine: TtsEngine): Promise<boolean> {
-  setStage("speaking", "Playing Piper audio...");
+  transitionRecordingState({ type: "tts-playback-started" });
 
   let playback!: ActiveTtsPlayback;
   let settled = false;
@@ -8131,6 +8111,97 @@ function setStage(next: Stage, detail: string): void {
   ) {
     playDictationSoundEffect("error");
   }
+}
+
+// ===== Recording State Machine Integration =====
+// The recordingController wraps the extracted state machine
+// (recording-state-machine.ts) and makes it the authoritative
+// source of recording state. It delegates the actual side effects
+// to the existing setStage() and other helpers in main.tsx.
+
+const recordingMachineState: MachineState = {
+  stage: "idle",
+  pipelineRunning: false,
+  isRecording: false,
+  pttHoldCount: 0,
+  commandModeArmed: false,
+};
+
+function getRecordingMachineConfig(): MachineConfig {
+  return {
+    captureMode: settings.captureMode,
+    muteMusicWhileDictating: settings.muteMusicWhileDictating,
+  };
+}
+
+function transitionRecordingState(event: MachineEvent): TransitionResult {
+  const previousStage = recordingMachineState.stage;
+  const result = processEvent(recordingMachineState, event, getRecordingMachineConfig());
+
+  // Sync the state machine's state with the result
+  recordingMachineState.stage = result.stage;
+
+  // Execute the primary side effect: update stage via the existing setStage()
+  // which handles DOM updates, sound effects, media control, and mic pre-warming.
+  if (result.stage !== previousStage) {
+    setStage(result.stage, result.detail);
+  }
+
+  // Execute additional actions that setStage() does not handle
+  for (const action of result.actions) {
+    switch (action.type) {
+      case "set-pipeline-running":
+        pipelineRunning = action.running;
+        break;
+      case "clear-ptt-holds":
+        clearPushToTalkHolds();
+        break;
+      case "reset-command-mode":
+        commandModeArmed = false;
+        commandSelectionSnapshot = null;
+        publishDockState();
+        break;
+      case "set-notice":
+        setNotice(action.message, action.isError);
+        break;
+      case "release-recorder":
+        releaseMicrophone();
+        break;
+      case "clear-chunks":
+        recordedChunks = [];
+        break;
+      case "stop-recording-ticker":
+        stopRecordingTicker();
+        break;
+      case "begin-recording-ticker":
+        beginRecordingTicker();
+        break;
+      case "set-recording-started-at":
+        recordingStartedAt = action.timestamp;
+        break;
+      case "stop-amplitude-monitoring":
+        stopAmplitudeMonitoring();
+        break;
+      case "start-amplitude-monitoring":
+        // amplitude monitoring is started with the stream, not via action
+        break;
+      case "pre-warm-microphone":
+        void preWarmMicrophoneStream(settings.microphoneDeviceId);
+        break;
+      case "resume-external-media":
+        if (externalMediaMutedForDictation) {
+          resumeExternalMediaAfterDictation();
+        }
+        break;
+      case "publish-dock-state":
+        publishDockState();
+        break;
+      // set-stage, play-sound, and run-pipeline are handled by setStage()
+      // or by the calling function respectively
+    }
+  }
+
+  return result;
 }
 
 function stageLabel(next: Stage): string {
