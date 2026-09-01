@@ -5956,7 +5956,7 @@ async fn run_assistant_pipeline(
     // Sync orchestrator state transitions to AppState
     let mut selection_rewrite = orch_result.decision.selection_rewrite;
     let mut selection_pending = orch_result.decision.selection_pending;
-    let mut selection_context_cleared = false;
+    let mut selection_context_cleared = orch_result.decision.selection_context_cleared;
     let mut skip_tts = orch_result.decision.skip_tts;
     let selection_context_used = orch_result.decision.selection_context_used;
 
@@ -5966,7 +5966,6 @@ async fn run_assistant_pipeline(
     } else if let Some(pending) = orch_state.peek_pending_rewrite() {
         state.set_pending_selection_rewrite(pending)?;
     }
-    selection_context_cleared = orch_result.decision.selection_context_cleared;
 
     let mut ai_latency_ms = 0_u64;
     let mut assistant_response;

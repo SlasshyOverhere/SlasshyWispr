@@ -6,7 +6,7 @@
 //! `pipeline::routing::AiModeConfig` but NOT on Tauri or AppState.
 
 use reqwest::Client;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::pipeline::routing::AiModeConfig;
 use crate::pipeline::selection::{parse_selection_edit_decision, SelectionEditDecision};
