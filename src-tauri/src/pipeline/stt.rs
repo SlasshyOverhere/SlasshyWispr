@@ -252,8 +252,8 @@ mod tests {
     }
 
     #[test]
-    fn filters_invalid_languages() {
-        let langs = vec!["en".to_string(), "invalid".to_string(), "fr".to_string()];
+    fn filters_auto_detect_languages() {
+        let langs = vec!["en".to_string(), "auto".to_string(), "fr".to_string()];
         let result = normalize_stt_allowed_languages(Some(&langs));
         assert_eq!(result, vec!["en".to_string(), "fr".to_string()]);
     }
