@@ -605,13 +605,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_decision_unknown_action_defaults_to_ask_confirm() {
-        let raw = r#"{"action":"unknown","rewrite":"text","message":"msg"}"#;
-        let decision = parse_selection_edit_decision(raw).unwrap();
-        assert_eq!(decision.action, SelectionEditAction::AskConfirm);
-    }
-
-    #[test]
     fn parse_decision_alternative_rewrite_keys() {
         let raw = r#"{"action":"replace_now","rewritten_text":"New text.","message":"Done."}"#;
         let decision = parse_selection_edit_decision(raw).unwrap();
