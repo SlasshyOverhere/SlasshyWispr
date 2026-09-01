@@ -13116,11 +13116,6 @@ Explanation:
         assert_eq!(calculate_local_stt_progress_percent(&status), 0.0);
     }
 
-    // Updater installer kind tests moved to updater::tests
-
-        assert!(!exe_installer_supports_silent_mode("helper.exe"));
-    }
-
     // ===== TRANSCRIPT REFINEMENT EDGE CASES =====
 
     #[test]
