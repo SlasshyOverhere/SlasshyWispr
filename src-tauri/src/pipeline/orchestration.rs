@@ -10,14 +10,14 @@
 use std::sync::Mutex;
 
 use crate::pipeline::response::{
-    looks_like_direct_question, looks_like_incomplete_draft_output, looks_like_question_echo,
+    looks_like_direct_question, looks_like_question_echo,
     normalize_assistant_response_text,
 };
 use crate::pipeline::selection::{
     build_selected_context_answer_prompt, is_affirmative_selection_confirmation,
-    is_negative_selection_confirmation, is_rewrite_suspicious, seems_like_draft_generation_instruction,
-    seems_like_selection_context_query, seems_like_selection_edit_instruction,
-    SelectionEditAction, SelectionEditDecision,
+    is_negative_selection_confirmation, is_rewrite_suspicious, looks_like_incomplete_draft_output,
+    seems_like_draft_generation_instruction, seems_like_selection_context_query,
+    seems_like_selection_edit_instruction, SelectionEditAction, SelectionEditDecision,
 };
 
 // ===== Types =====
@@ -88,7 +88,7 @@ pub struct PipelineConfig {
     /// System prompt for AI calls.
     pub system_prompt: String,
     /// Temperature for AI calls.
-    pub temperature: f64,
+    pub temperature: f32,
     /// Max tokens for AI calls.
     pub max_tokens: u32,
     /// Assistant name for wake-word responses.
@@ -141,7 +141,7 @@ pub enum AiAction {
     GenerateResponse {
         prompt: String,
         system_prompt: String,
-        temperature: f64,
+        temperature: f32,
         max_tokens: u32,
     },
     /// Selection-edit decision generation.
@@ -149,7 +149,7 @@ pub enum AiAction {
     GenerateSelectionEditDecision {
         instruction: String,
         selected_text: String,
-        temperature: f64,
+        temperature: f32,
     },
 }
 
@@ -439,13 +439,13 @@ pub enum PostAiAction {
     /// Echo detected — retry with direct answer.
     DirectAnswerFallback {
         command: String,
-        temperature: f64,
+        temperature: f32,
         max_tokens: u32,
     },
     /// Incomplete draft — retry with compose fallback.
     ComposeDraftFallback {
         command: String,
-        temperature: f64,
+        temperature: f32,
         max_tokens: u32,
     },
 }
