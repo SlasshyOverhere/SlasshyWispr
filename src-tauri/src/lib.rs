@@ -4462,15 +4462,7 @@ async fn deactivate_local_stt_model(
 async fn get_local_stt_runtime_state(
     state: State<'_, AppState>,
 ) -> Result<LocalSttRuntimeStateResponse, String> {
-    let (daemon_count, loaded_daemon_count) = {
-        let registry = local_stt_daemons();
-        let guard = registry
-            .lock()
-            .map_err(|_| "Failed to lock local STT daemon registry.".to_string())?;
-        let daemon_count = guard.len();
-        let loaded_daemon_count = guard.values().filter(|daemon| daemon.model_loaded).count();
-        (daemon_count, loaded_daemon_count)
-    };
+    let (daemon_count, loaded_daemon_count) = local_stt_daemon_stats();
 
     let native_loaded = native_parakeet_runtime_loaded();
     let loaded = state.local_stt_runtime_loaded_snapshot()?;

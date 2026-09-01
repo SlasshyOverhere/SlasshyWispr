@@ -34,11 +34,11 @@ struct CoquiBridgeDaemon {
 }
 
 pub(crate) struct LocalSttBridgeDaemon {
-    pub(crate) child: Child,
+    child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
-    pub(crate) last_used: Instant,
-    pub(crate) model_loaded: bool,
+    last_used: Instant,
+    model_loaded: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -867,6 +867,18 @@ fn stop_idle_local_stt_native_parakeet_runtime() {
             unload_timeout_secs
         );
     }
+}
+
+/// Returns (total_daemon_count, loaded_daemon_count) for the local STT daemon pool.
+pub(crate) fn local_stt_daemon_stats() -> (usize, usize) {
+    let registry = local_stt_daemons();
+    let guard = match registry.lock() {
+        Ok(guard) => guard,
+        Err(_) => return (0, 0),
+    };
+    let daemon_count = guard.len();
+    let loaded_daemon_count = guard.values().filter(|d| d.model_loaded).count();
+    (daemon_count, loaded_daemon_count)
 }
 
 pub fn ensure_local_stt_daemon_idle_sweeper() {
