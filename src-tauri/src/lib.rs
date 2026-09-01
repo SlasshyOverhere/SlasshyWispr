@@ -70,6 +70,7 @@ use audio::processing::*;
 use pipeline::ai::{clip_text, generate_assistant_response, generate_compose_draft_fallback,
     generate_direct_answer_fallback, generate_selection_edit_decision, single_line};
 use pipeline::input::*;
+use pipeline::refinement::{self, RefinementConfig, RefinementDictionaryEntry, RefinementSnippetEntry};
 use pipeline::selection::*;
 use pipeline::stt::*;
 #[allow(unused_imports)]
@@ -5786,7 +5787,40 @@ async fn run_assistant_pipeline(
         };
         return Err(message);
     }
-    let transcript = refine_transcript(&transcript_raw, &request);
+    let refinement_config = RefinementConfig {
+        raw_mode: request.raw_mode.unwrap_or(false),
+        snippet_entries: request
+            .snippet_entries
+            .as_ref()
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|e| RefinementSnippetEntry {
+                        trigger: e.trigger.clone(),
+                        expansion: e.expansion.clone(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        dictionary_entries: request
+            .dictionary_entries
+            .as_ref()
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|e| RefinementDictionaryEntry {
+                        source: e.source.clone(),
+                        target: e.target.clone(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        apply_backtrack: request.apply_backtrack.unwrap_or(false),
+        remove_fillers: request.remove_fillers.unwrap_or(false),
+        auto_numbered_lists: request.auto_numbered_lists.unwrap_or(false),
+        auto_punctuation: request.auto_punctuation.unwrap_or(false),
+    };
+    let transcript = refinement::refine_transcript(&transcript_raw, &refinement_config);
     let stt_latency_ms = elapsed_ms(stt_start);
     info!(
         "[pipeline] stt done latency_ms={} transcript_chars={}",
@@ -6617,193 +6651,6 @@ async fn transcribe_audio_openai_compatible(
 }
 
 
-fn refine_transcript(input: &str, request: &AssistantPipelineRequest) -> String {
-    let mut transcript = input.trim().to_string();
-
-    if request.raw_mode.unwrap_or(false) {
-        return normalize_spacing(&transcript);
-    }
-
-    if let Some(snippet_entries) = request.snippet_entries.as_ref() {
-        transcript = apply_snippet_expansions(&transcript, snippet_entries);
-    }
-
-    if let Some(dictionary_entries) = request.dictionary_entries.as_ref() {
-        transcript = apply_dictionary_terms(&transcript, dictionary_entries);
-    }
-
-    if request.apply_backtrack.unwrap_or(false) {
-        transcript = apply_backtrack_correction(&transcript);
-    }
-
-    if request.remove_fillers.unwrap_or(false) {
-        transcript = remove_filler_words(&transcript);
-    }
-
-    if request.auto_numbered_lists.unwrap_or(false) {
-        transcript = apply_numbered_list_formatting(&transcript);
-    }
-
-    if request.auto_punctuation.unwrap_or(false) {
-        transcript = apply_auto_punctuation(&transcript);
-    }
-
-    normalize_spacing(&transcript)
-}
-
-fn apply_snippet_expansions(input: &str, snippets: &[SnippetEntryRequest]) -> String {
-    let mut current = input.to_string();
-    for snippet in snippets {
-        let trigger = snippet.trigger.trim();
-        let expansion = snippet.expansion.trim();
-        if trigger.is_empty() || expansion.is_empty() {
-            continue;
-        }
-        current = replace_case_insensitive_ascii(&current, trigger, expansion);
-    }
-    current
-}
-
-fn apply_dictionary_terms(input: &str, entries: &[DictionaryEntryRequest]) -> String {
-    let mut current = input.to_string();
-    for entry in entries {
-        let source = entry.source.trim();
-        let target = entry.target.trim();
-        if source.is_empty() || target.is_empty() {
-            continue;
-        }
-        current = replace_case_insensitive_ascii(&current, source, target);
-    }
-    current
-}
-
-fn apply_backtrack_correction(input: &str) -> String {
-    let lower = input.to_ascii_lowercase();
-    let markers = ["scratch that", "delete that", "undo that", "backtrack"];
-    let last_marker = markers
-        .iter()
-        .filter_map(|marker| {
-            lower.rfind(marker).and_then(|index| {
-                let has_boundary = index == 0
-                    || !lower.as_bytes()[index - 1].is_ascii_alphanumeric();
-                if !has_boundary {
-                    return None;
-                }
-                Some((index, *marker))
-            })
-        })
-        .max_by_key(|(index, _)| *index);
-
-    if let Some((index, marker)) = last_marker {
-        let after = input[index + marker.len()..].trim();
-        if after.is_empty() {
-            let before = input[..index].trim();
-            if !before.is_empty() {
-                return before.to_string();
-            }
-        }
-    }
-    input.to_string()
-}
-
-fn remove_filler_words(input: &str) -> String {
-    let phrase_fillers = ["you know", "i mean", "sort of", "kind of"];
-    let mut current = input.to_string();
-    for phrase in phrase_fillers {
-        current = replace_case_insensitive_ascii(&current, phrase, " ");
-    }
-
-    let single_fillers = ["um", "uh", "erm", "hmm", "basically"];
-
-    let mut out = String::with_capacity(current.len());
-    let mut first = true;
-    for token in current.split_whitespace() {
-        let trimmed = token
-            .trim_matches(|ch: char| !ch.is_alphanumeric())
-            .to_ascii_lowercase();
-        if single_fillers.contains(&trimmed.as_str()) {
-            continue;
-        }
-        if !first {
-            out.push(' ');
-        }
-        out.push_str(token);
-        first = false;
-    }
-
-    out
-}
-
-fn apply_numbered_list_formatting(input: &str) -> String {
-    let lower = input.to_ascii_lowercase();
-    if !lower.contains("numbered list") {
-        return input.to_string();
-    }
-
-    let without_label = replace_case_insensitive_ascii(input, "numbered list", " ");
-    let separated = replace_case_insensitive_ascii(&without_label, "next item", "\n");
-    let items: Vec<String> = separated
-        .split('\n')
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-        .map(str::to_string)
-        .collect();
-
-    if items.len() < 2 {
-        return without_label.trim().to_string();
-    }
-
-    items
-        .iter()
-        .enumerate()
-        .map(|(index, item)| format!("{}. {}", index + 1, item))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn apply_auto_punctuation(input: &str) -> String {
-    let replacements = [
-        ("new paragraph", "\n\n"),
-        ("new line", "\n"),
-        ("question mark", "?"),
-        ("exclamation mark", "!"),
-        ("semicolon", ";"),
-        ("colon", ":"),
-        ("comma", ","),
-        ("period", "."),
-    ];
-
-    let mut current = input.to_string();
-    for (spoken, symbol) in replacements {
-        current = replace_case_insensitive_ascii(&current, spoken, symbol);
-    }
-
-    for (spaced, symbol) in [
-        (" ,", ","),
-        (" .", "."),
-        (" ?", "?"),
-        (" !", "!"),
-        (" ;", ";"),
-        (" :", ":"),
-    ] {
-        if current.contains(spaced) {
-            current = current.replace(spaced, symbol);
-        }
-    }
-
-    let normalized = normalize_spacing(&current);
-    if normalized.is_empty() {
-        return normalized;
-    }
-
-    if normalized.ends_with('.') || normalized.ends_with('!') || normalized.ends_with('?') {
-        return normalized;
-    }
-
-    format!("{normalized}.")
-}
-
-
 fn validate_piper_binary_path(path: &str) -> Result<(), String> {
     let path_str = path.trim();
     if path_str.is_empty() {
@@ -7116,28 +6963,6 @@ fn resolve_coqui_python_path(
 
     validate_python_binary_path("python")?;
     Ok("python".to_string())
-}
-
-fn replace_case_insensitive_ascii(input: &str, needle: &str, replacement: &str) -> String {
-    if needle.is_empty() {
-        return input.to_string();
-    }
-
-    let input_lower = input.to_ascii_lowercase();
-    let needle_lower = needle.to_ascii_lowercase();
-    let mut cursor = 0usize;
-    let mut out = String::with_capacity(input.len());
-
-    while let Some(relative_index) = input_lower[cursor..].find(&needle_lower) {
-        let start = cursor + relative_index;
-        let end = start + needle_lower.len();
-        out.push_str(&input[cursor..start]);
-        out.push_str(replacement);
-        cursor = end;
-    }
-
-    out.push_str(&input[cursor..]);
-    out
 }
 
 fn detect_nvidia_gpu() -> bool {
@@ -10991,49 +10816,6 @@ mod tests {
     // validates_safe_update_urls moved to updater::tests
     use super::*;
 
-    fn refinement_request(
-        apply_backtrack: bool,
-        remove_fillers: bool,
-        auto_punctuation: bool,
-        auto_numbered_lists: bool,
-    ) -> AssistantPipelineRequest {
-        AssistantPipelineRequest {
-            api_key: String::new(),
-            api_base_url: None,
-            stt_model: None,
-            ai_model: None,
-            stt_local_mode: None,
-            ai_local_mode: None,
-            local_ollama_base_url: None,
-            local_ollama_model: None,
-            local_stt_model: None,
-            piper_path: None,
-            audio_base64: String::new(),
-            audio_mime_type: String::new(),
-            language: None,
-            allowed_languages: None,
-            system_prompt: None,
-            temperature: None,
-            max_tokens: None,
-            dictionary_entries: None,
-            snippet_entries: None,
-            raw_mode: None,
-            apply_backtrack: Some(apply_backtrack),
-            remove_fillers: Some(remove_fillers),
-            auto_punctuation: Some(auto_punctuation),
-            auto_numbered_lists: Some(auto_numbered_lists),
-            command_mode: None,
-            wake_word_enabled: None,
-            assistant_name: None,
-            selected_text: None,
-            tts_engine: None,
-            piper: None,
-            coqui: None,
-            noise_suppression: None,
-            raw_pcm_base64: None,
-        }
-    }
-
     fn pipeline_mode_request_template() -> AssistantPipelineRequest {
         AssistantPipelineRequest {
             api_key: "test-key".to_string(),
@@ -11118,41 +10900,6 @@ Explanation:
         assert!(normalized.contains("eight hundred."));
         assert!(normalized.contains("six point six seven,"));
         assert!(normalized.ends_with("thirty."));
-    }
-
-    #[test]
-    fn transcript_refinement_respects_disabled_toggles() {
-        let request = refinement_request(false, false, false, false);
-        let output = refine_transcript("um write this exactly", &request);
-        assert_eq!(output, "um write this exactly");
-    }
-
-    #[test]
-    fn transcript_refinement_keeps_meaningful_like() {
-        let request = refinement_request(false, true, false, false);
-        let output = refine_transcript("um I would like this approach", &request);
-        assert_eq!(output, "I would like this approach");
-    }
-
-    #[test]
-    fn transcript_refinement_applies_numbered_lists_when_enabled() {
-        let request = refinement_request(false, false, false, true);
-        let output = refine_transcript("numbered list apples next item oranges", &request);
-        assert_eq!(output, "1. apples\n2. oranges");
-    }
-
-    #[test]
-    fn transcript_refinement_auto_punctuation_toggle() {
-        let disabled = refinement_request(false, false, false, false);
-        let enabled = refinement_request(false, false, true, false);
-        assert_eq!(
-            refine_transcript("please send update", &disabled),
-            "please send update"
-        );
-        assert_eq!(
-            refine_transcript("please send update", &enabled),
-            "please send update."
-        );
     }
 
     #[test]
@@ -11614,28 +11361,6 @@ Explanation:
     }
 
     // ===== TRANSCRIPT REFINEMENT EDGE CASES =====
-
-    #[test]
-    fn transcript_refinement_empty_input() {
-        let request = refinement_request(true, true, true, true);
-        let output = refine_transcript("", &request);
-        assert_eq!(output, "");
-    }
-
-    #[test]
-    fn transcript_refinement_backtrack_removes_repeated_segments() {
-        let request = refinement_request(true, false, false, false);
-        let output = refine_transcript("Hello world hello world", &request);
-        // Backtrack should handle repeated phrases
-        assert!(!output.is_empty());
-    }
-
-    #[test]
-    fn transcript_refinement_all_toggles_enabled() {
-        let request = refinement_request(true, true, true, true);
-        let output = refine_transcript("um number one apples next item oranges", &request);
-        assert!(output.len() > 0);
-    }
 
     // ===== WAKE PHRASE EDGE CASES =====
 
