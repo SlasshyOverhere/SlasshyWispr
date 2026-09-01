@@ -15,8 +15,6 @@ use std::fs;
 #[cfg(target_os = "windows")]
 use std::io;
 use std::io::{BufRead, BufReader, Read, Write};
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{
