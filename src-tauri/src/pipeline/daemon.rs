@@ -33,12 +33,12 @@ struct CoquiBridgeDaemon {
     stdout: BufReader<ChildStdout>,
 }
 
-struct LocalSttBridgeDaemon {
-    child: Child,
+pub(crate) struct LocalSttBridgeDaemon {
+    pub(crate) child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
-    last_used: Instant,
-    model_loaded: bool,
+    pub(crate) last_used: Instant,
+    pub(crate) model_loaded: bool,
 }
 
 // ---------------------------------------------------------------------------
