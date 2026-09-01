@@ -5,7 +5,7 @@
 
 use crate::audio::processing::{decode_wav_audio_to_mono_f32, encode_mono_f32_to_wav, resample_linear};
 use crate::audio::noise_suppression;
-use log::info;
+use log::{info, warn};
 
 /// Validate and decode base64 audio input, returning raw bytes.
 ///
@@ -20,6 +20,10 @@ pub fn validate_audio_input(audio_base64: &str) -> Result<Vec<u8>, String> {
     }
 
     if audio_bytes.len() < 3000 {
+        warn!(
+            "[pipeline] audio too short ({} bytes), likely accidental tap",
+            audio_bytes.len()
+        );
         return Err(
             "Recording too short. Hold the hotkey longer while speaking and try again.".to_string(),
         );

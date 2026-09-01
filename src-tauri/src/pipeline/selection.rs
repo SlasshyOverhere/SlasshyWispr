@@ -12,6 +12,8 @@
 
 use serde_json::Value;
 
+use super::response::strip_wrapped_markdown_block;
+
 // ===== Types =====
 
 /// The action the LLM recommends for a selection edit.
@@ -69,18 +71,6 @@ pub fn contains_phrase(haystack: &str, phrase: &str) -> bool {
 }
 
 // ===== Decision parsing =====
-
-/// Strip a wrapped markdown code block from AI output.
-pub fn strip_wrapped_markdown_block(input: &str) -> String {
-    let trimmed = input.trim();
-    if trimmed.starts_with("```") && trimmed.ends_with("```") && trimmed.len() >= 6 {
-        let mut inner = &trimmed[3..trimmed.len() - 3];
-        inner = inner.trim_start_matches(|ch: char| ch.is_ascii_alphabetic());
-        inner = inner.strip_prefix('\n').unwrap_or(inner);
-        return inner.trim().to_string();
-    }
-    trimmed.to_string()
-}
 
 /// Parse a raw LLM response into a `SelectionEditDecision`.
 pub fn parse_selection_edit_decision(raw: &str) -> Result<SelectionEditDecision, String> {
@@ -836,15 +826,6 @@ mod tests {
         };
         apply_suspicious_downgrade(&mut decision, "make this better", "long text here");
         assert_eq!(decision.action, SelectionEditAction::AskConfirm);
-    }
-
-    // ===== strip_wrapped_markdown_block =====
-
-    #[test]
-    fn strip_markdown_block() {
-        assert_eq!(strip_wrapped_markdown_block("```markdown\nHello\n```"), "Hello");
-        assert_eq!(strip_wrapped_markdown_block("```rust\nfn main() {}\n```"), "fn main() {}");
-        assert_eq!(strip_wrapped_markdown_block("plain text"), "plain text");
     }
 
     // ===== build_selected_context_answer_prompt =====

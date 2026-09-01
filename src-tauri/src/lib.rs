@@ -5670,87 +5670,13 @@ async fn run_assistant_pipeline(
         }
     }
 
-    let audio_bytes = validate_base64_input(&request.audio_base64, 10 * 1024 * 1024)
-        .map_err(|error| format!("Invalid audio input: {error}"))?;
+    let audio_bytes = validate_audio_input(&request.audio_base64)?;
+    let audio_bytes = apply_noise_suppression(
+        &audio_bytes,
+        request.noise_suppression.unwrap_or(false),
+        request.raw_pcm_base64.as_deref(),
+    )?;
 
-    if audio_bytes.is_empty() {
-        return Err("Recorded audio is empty".to_string());
-    }
-
-    if audio_bytes.len() < 3000 {
-        warn!(
-            "[pipeline] audio too short ({} bytes), likely accidental tap",
-            audio_bytes.len()
-        );
-        return Err(
-            "Recording too short. Hold the hotkey longer while speaking and try again."
-                .to_string(),
-        );
-    }
-
-    // Optional noise suppression: denoise audio before STT
-    let audio_bytes = if request.noise_suppression.unwrap_or(false) {
-        let denoise_start = Instant::now();
-
-        // Use raw PCM if frontend sent it (faster — no WAV decode needed)
-        let (samples, sample_rate) = if let Some(ref raw_pcm) = request.raw_pcm_base64 {
-            let raw_bytes = BASE64_STANDARD
-                .decode(raw_pcm.as_bytes())
-                .map_err(|error| format!("Failed to decode raw PCM base64: {error}"))?;
-            if raw_bytes.len() < 4 {
-                return Err("Raw PCM data too short".to_string());
-            }
-            // Parse: [sample_rate: u32 LE][samples: f32 LE...]
-            let sr = u32::from_le_bytes([
-                raw_bytes[0], raw_bytes[1], raw_bytes[2], raw_bytes[3],
-            ]);
-            let f32_data = &raw_bytes[4..];
-            let num_samples = f32_data.len() / 4;
-            let mut samples = Vec::with_capacity(num_samples);
-            for i in 0..num_samples {
-                let offset = i * 4;
-                let val = f32::from_le_bytes([
-                    f32_data[offset],
-                    f32_data[offset + 1],
-                    f32_data[offset + 2],
-                    f32_data[offset + 3],
-                ]);
-                samples.push(val);
-            }
-            info!("[pipeline.noise_suppression] raw PCM: samples={} sample_rate={}", samples.len(), sr);
-            (samples, sr)
-        } else {
-            // Fallback: decode WAV
-            let (samples, sr) = decode_wav_audio_to_mono_f32(&audio_bytes)
-                .map_err(|error| format!("Failed to decode audio for noise suppression: {error}"))?;
-            info!("[pipeline.noise_suppression] WAV decode: samples={} sample_rate={}", samples.len(), sr);
-            (samples, sr)
-        };
-
-        // Resample to 48kHz if needed (nnnoiseless expects 48kHz)
-        let samples_48k = if sample_rate != 48000 {
-            resample_linear(&samples, sample_rate, 48000)
-        } else {
-            samples
-        };
-
-        // Denoise
-        let denoised = noise_suppression::denoise_audio(&samples_48k, 48000);
-
-        // Re-encode to WAV bytes for STT
-        let denoised_bytes = encode_mono_f32_to_wav(&denoised, 48000)
-            .map_err(|error| format!("Failed to encode denoised audio: {error}"))?;
-        let denoise_ms = denoise_start.elapsed().as_millis();
-        info!(
-            "[pipeline.noise_suppression] done input_bytes={} output_bytes={} denoise_ms={}",
-            audio_bytes.len(),
-            denoised_bytes.len(),
-            denoise_ms
-        );
-        denoised_bytes
-    } else {
-        audio_bytes
-    };
 
     let stt_mode_label = match &pipeline_mode.stt {
         SttModeConfig::Online { .. } => "online",
@@ -7113,88 +7039,8 @@ Rules:
 // Selection-editing helpers moved to pipeline::selection.
 // They are available via `use pipeline::selection::*;` at the top of this file.
 
-fn extract_braced_latex_segment(input: &str) -> Option<(String, usize)> {
-    let mut depth = 0usize;
-    let mut content = String::new();
-
-    for (index, ch) in input.char_indices() {
-        if index == 0 {
-            if ch != '{' {
-                return None;
-            }
-            depth = 1;
-            continue;
-        }
-
-        match ch {
-            '{' => {
-                depth += 1;
-                content.push(ch);
-            }
-            '}' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    return Some((content, index + ch.len_utf8()));
-                }
-                content.push(ch);
-            }
-            _ => content.push(ch),
-        }
-    }
-
-    None
-}
-
-fn replace_latex_fractions(input: &str) -> String {
-    let mut output = String::new();
-    let mut cursor = 0usize;
-
-    while let Some(relative_index) = input[cursor..].find("\\frac") {
-        let start = cursor + relative_index;
-        output.push_str(&input[cursor..start]);
-        let mut tail = &input[start + "\\frac".len()..];
-        let trimmed_tail = tail.trim_start();
-        let whitespace_offset = tail.len().saturating_sub(trimmed_tail.len());
-        tail = trimmed_tail;
-
-        let Some((numerator, numerator_end)) = extract_braced_latex_segment(tail) else {
-            output.push_str("\\frac");
-            cursor = start + "\\frac".len();
-            continue;
-        };
-        let denominator_tail = &tail[numerator_end..];
-        let denominator_trimmed = denominator_tail.trim_start();
-        let denominator_whitespace = denominator_tail
-            .len()
-            .saturating_sub(denominator_trimmed.len());
-        let Some((denominator, denominator_end)) =
-            extract_braced_latex_segment(denominator_trimmed)
-        else {
-            output.push_str("\\frac");
-            cursor = start + "\\frac".len();
-            continue;
-        };
-
-        output.push('(');
-        output.push_str(normalize_assistant_response_text(&numerator).trim());
-        output.push_str(") / (");
-        output.push_str(normalize_assistant_response_text(&denominator).trim());
-        output.push(')');
-
-        cursor = start
-            + "\\frac".len()
-            + whitespace_offset
-            + numerator_end
-            + denominator_whitespace
-            + denominator_end;
-    }
-
-    output.push_str(&input[cursor..]);
-    output
-}
-
 // Response processing helpers moved to pipeline::response.
-// They are available via `use pipeline::response::*;` at the top of this file.}
+// They are available via `use pipeline::response::*;` at the top of this file.
 
 // build_selected_context_answer_prompt moved to pipeline::selection.
 
