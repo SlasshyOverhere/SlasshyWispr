@@ -572,7 +572,7 @@ struct AssistantPipelineRequest {
     coqui: Option<CoquiPipelineRequest>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PiperPipelineRequest {
     speed: Option<f32>,
@@ -580,7 +580,7 @@ struct PiperPipelineRequest {
     emotion: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CoquiPipelineRequest {
     python_path: Option<String>,
@@ -594,14 +594,14 @@ struct CoquiPipelineRequest {
     split_sentences: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DictionaryEntryRequest {
     source: String,
     target: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SnippetEntryRequest {
     trigger: String,
