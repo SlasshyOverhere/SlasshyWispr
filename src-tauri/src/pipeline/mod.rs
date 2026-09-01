@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod input;
 pub mod orchestration;
 pub mod response;
