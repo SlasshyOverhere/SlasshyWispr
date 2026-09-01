@@ -406,7 +406,7 @@ fn selection_edit_without_text_prompts_user() {
 #[test]
 fn recent_context_set_on_ask_confirm() {
     let state = PipelineState::new();
-    let result = apply_selection_edit_result(
+    let _result = apply_selection_edit_result(
         crate::pipeline::selection::SelectionEditDecision {
             action: SelectionEditAction::AskConfirm,
             rewrite_text: "Improved version".to_string(),
@@ -427,7 +427,7 @@ fn recent_context_set_on_ask_confirm() {
 #[test]
 fn recent_context_set_on_selection_edit_replace() {
     let state = PipelineState::new();
-    let result = apply_selection_edit_result(
+    let _result = apply_selection_edit_result(
         crate::pipeline::selection::SelectionEditDecision {
             action: SelectionEditAction::ReplaceNow,
             rewrite_text: "new version".to_string(),

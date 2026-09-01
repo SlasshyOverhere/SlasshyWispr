@@ -5905,7 +5905,6 @@ async fn run_assistant_pipeline(
         || command_mode
         || pending_rewrite_present
         || selection_intent_active;
-    let selection_context_used = selected_context_available || pending_rewrite_present;
     let selected_chars = selected_text
         .as_ref()
         .map(|value| value.chars().count())

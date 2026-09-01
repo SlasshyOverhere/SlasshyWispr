@@ -133,6 +133,7 @@ pub struct OrchestratorDecision {
 }
 
 /// The AI action the orchestrator requests the caller to execute.
+#[derive(Debug, PartialEq)]
 pub enum AiAction {
     /// No AI call needed (dictation, wake-only, or state-only paths).
     None,
