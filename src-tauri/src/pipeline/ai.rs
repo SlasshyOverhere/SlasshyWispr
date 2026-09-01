@@ -9,9 +9,7 @@ use reqwest::Client;
 use serde_json::Value;
 
 use crate::pipeline::routing::AiModeConfig;
-use crate::pipeline::selection::{
-    build_selected_context_answer_prompt, parse_selection_edit_decision, SelectionEditDecision,
-};
+use crate::pipeline::selection::{parse_selection_edit_decision, SelectionEditDecision};
 
 // ===== Logging helpers (moved from lib.rs) =====
 
@@ -512,9 +510,6 @@ Rules:
 
     parse_selection_edit_decision(&raw)
 }
-
-/// Build a prompt for answering questions about selected text context.
-pub use crate::pipeline::selection::build_selected_context_answer_prompt;
 
 // ===== Tests =====
 
