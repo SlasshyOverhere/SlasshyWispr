@@ -7251,7 +7251,7 @@ fn run_python_command(python_path: &str, args: &[&str], tts_home: &Path) -> Resu
     Ok(merge_process_output(&output.stdout, &output.stderr))
 }
 
-fn stop_all_coqui_bridge_daemons() {
+pub fn stop_all_coqui_bridge_daemons() {
     let registry = coqui_daemons();
     let mut guard = match registry.lock() {
         Ok(guard) => guard,
@@ -7264,7 +7264,7 @@ fn stop_all_coqui_bridge_daemons() {
     }
 }
 
-fn stop_all_local_stt_bridge_daemons_with_count() -> usize {
+pub fn stop_all_local_stt_bridge_daemons_with_count() -> usize {
     let registry = local_stt_daemons();
     let mut guard = match registry.lock() {
         Ok(guard) => guard,
@@ -7279,11 +7279,11 @@ fn stop_all_local_stt_bridge_daemons_with_count() -> usize {
     count
 }
 
-fn stop_all_local_stt_bridge_daemons() {
+pub fn stop_all_local_stt_bridge_daemons() {
     let _ = stop_all_local_stt_bridge_daemons_with_count();
 }
 
-fn trim_all_local_stt_bridge_daemon_model_caches() -> Result<(usize, usize), String> {
+pub fn trim_all_local_stt_bridge_daemon_model_caches() -> Result<(usize, usize), String> {
     let registry = local_stt_daemons();
     let mut guard = registry
         .lock()
@@ -7433,7 +7433,7 @@ fn stop_idle_local_stt_native_parakeet_runtime() {
     }
 }
 
-fn ensure_local_stt_daemon_idle_sweeper() {
+pub fn ensure_local_stt_daemon_idle_sweeper() {
     if LOCAL_STT_DAEMON_SWEEPER_STARTED.set(()).is_err() {
         return;
     }
@@ -7603,7 +7603,7 @@ fn send_local_stt_daemon_request(
     }
 }
 
-fn run_local_stt_bridge_via_daemon(
+pub fn run_local_stt_bridge_via_daemon(
     python_path: &str,
     script_path: &Path,
     cache_dir: &Path,
@@ -10634,7 +10634,7 @@ fn env_u64(name: &str, default: u64, min: u64, max: u64) -> u64 {
         .unwrap_or(default)
 }
 
-fn local_stt_model_unload_idle_timeout_secs() -> u64 {
+pub fn local_stt_model_unload_idle_timeout_secs() -> u64 {
     env_u64(
         LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_ENV,
         LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS,
@@ -10661,7 +10661,7 @@ fn local_stt_daemon_sweep_interval_secs() -> u64 {
     )
 }
 
-fn local_stt_parakeet_unload_after_transcribe() -> bool {
+pub fn local_stt_parakeet_unload_after_transcribe() -> bool {
     env_flag(LOCAL_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE_ENV, false)
 }
 

@@ -583,7 +583,7 @@ pub fn run_coqui_bridge(app: &AppHandle, python_path: &str, payload: Value) -> R
 
     let use_daemon_transport = matches!(action.as_str(), "synthesize" | "clone_voice");
     if use_daemon_transport {
-        return crate::run_coqui_bridge_via_daemon(
+        return crate::pipeline::daemon::run_coqui_bridge_via_daemon(
             python_path,
             &script_path,
             &cache_dir,
@@ -628,7 +628,7 @@ pub fn run_coqui_bridge(app: &AppHandle, python_path: &str, payload: Value) -> R
         );
     }
     let result =
-        crate::parse_coqui_bridge_response(&action, output.status.success(), &stdout_text, &stderr_text)?;
+        crate::pipeline::daemon::parse_coqui_bridge_response(&action, output.status.success(), &stdout_text, &stderr_text)?;
     info!("[coqui.bridge] success action={}", action);
     Ok(result)
 }
