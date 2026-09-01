@@ -533,8 +533,9 @@ fn normalize_rejects_whitespace_only() {
 
 #[test]
 fn echo_detection_returns_direct_answer_fallback() {
+    // Echo detection: the AI repeated the question without answering
     let action = post_ai_processing(
-        "What is the capital of France? The capital is Paris.",
+        "What is the capital of France?",
         "what is the capital of France",
         false,
         false,

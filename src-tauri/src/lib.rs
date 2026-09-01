@@ -13147,11 +13147,12 @@ Explanation:
     }
 
     #[test]
-    fn wake_phrase_empty_name_returns_whole_transcript() {
-        // With empty assistant name, the wake phrase detection still works
-        // and returns the command part
-        let result = extract_wake_command("Hey summarize this", "");
-        assert!(result.is_some());
+    fn wake_phrase_empty_name_defaults_to_lily() {
+        // With empty assistant name, defaults to "lily".
+        // "Hey summarize this" doesn't contain "lily", so no wake phrase found.
+        assert!(extract_wake_command("Hey summarize this", "").is_none());
+        // But "Hey Lily summarize this" does match.
+        assert!(extract_wake_command("Hey Lily summarize this", "").is_some());
     }
 
     #[test]
