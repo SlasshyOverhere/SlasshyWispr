@@ -376,10 +376,10 @@ struct RecentSelectionContext {
 }
 
 // SelectionEditAction and SelectionEditDecision types moved to pipeline::selection.
-struct NativeParakeetRuntime {
-    model_key: String,
-    engine: ParakeetEngine,
-    last_used: Instant,
+pub(crate) struct NativeParakeetRuntime {
+    pub(crate) model_key: String,
+    pub(crate) engine: ParakeetEngine,
+    pub(crate) last_used: Instant,
 }
 
 static LOCAL_STT_RUNTIME_PYTHON_CACHE: OnceLock<Mutex<Option<String>>> = OnceLock::new();

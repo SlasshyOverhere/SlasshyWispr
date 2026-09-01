@@ -21,6 +21,7 @@ use crate::constants::*;
 use crate::pipeline::ai::{clip_text, single_line};
 use crate::pipeline::routing::{env_flag, non_empty_env_var};
 use crate::pipeline::tts::{apply_no_window, validate_python_binary_path};
+use transcribe_rs::TranscriptionEngine;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,7 +53,7 @@ fn coqui_daemons() -> &'static Mutex<HashMap<String, CoquiBridgeDaemon>> {
     COQUI_DAEMONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn local_stt_daemons() -> &'static Mutex<HashMap<String, LocalSttBridgeDaemon>> {
+pub(crate) fn local_stt_daemons() -> &'static Mutex<HashMap<String, LocalSttBridgeDaemon>> {
     LOCAL_STT_DAEMONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
