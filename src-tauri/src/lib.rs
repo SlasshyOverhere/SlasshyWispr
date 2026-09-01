@@ -534,7 +534,7 @@ fn local_stt_daemon_key(python_path: &str, script_path: &Path) -> String {
     format!("{normalized_python}|{}", script_path.to_string_lossy())
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AssistantPipelineRequest {
     api_key: String,
@@ -6094,7 +6094,7 @@ async fn run_assistant_pipeline(
             temperature,
         } => {
             let ai_start = Instant::now();
-            let mut decision = generate_selection_edit_decision(
+            let decision = generate_selection_edit_decision(
                 &state.http,
                 &pipeline_mode.ai,
                 &instruction,
