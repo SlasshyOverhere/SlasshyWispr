@@ -9,13 +9,16 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::Mutex;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+#[cfg(target_os = "windows")]
+#[allow(unused_imports)]
+use std::os::windows::process::CommandExt;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use log::{info, warn};
 use reqwest::Client;
 use serde_json::Value;
 use tauri::AppHandle;
+use tauri::Manager;
 
 use crate::constants::*;
 use crate::pipeline::ai::{clip_text, single_line};

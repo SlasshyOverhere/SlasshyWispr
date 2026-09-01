@@ -7120,6 +7120,28 @@ fn resolve_coqui_python_path(
     Ok("python".to_string())
 }
 
+fn replace_case_insensitive_ascii(input: &str, needle: &str, replacement: &str) -> String {
+    if needle.is_empty() {
+        return input.to_string();
+    }
+
+    let input_lower = input.to_ascii_lowercase();
+    let needle_lower = needle.to_ascii_lowercase();
+    let mut cursor = 0usize;
+    let mut out = String::with_capacity(input.len());
+
+    while let Some(relative_index) = input_lower[cursor..].find(&needle_lower) {
+        let start = cursor + relative_index;
+        let end = start + needle_lower.len();
+        out.push_str(&input[cursor..start]);
+        out.push_str(replacement);
+        cursor = end;
+    }
+
+    out.push_str(&input[cursor..]);
+    out
+}
+
 fn detect_nvidia_gpu() -> bool {
     let output = {
         let mut command = Command::new("nvidia-smi");
@@ -10780,6 +10802,48 @@ fn elapsed_ms(start: Instant) -> u64 {
     } else {
         elapsed as u64
     }
+}
+
+fn env_u64(name: &str, default: u64, min: u64, max: u64) -> u64 {
+    non_empty_env_var(name)
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .map(|value| value.clamp(min, max))
+        .unwrap_or(default)
+}
+
+fn local_stt_model_unload_idle_timeout_secs() -> u64 {
+    env_u64(
+        LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_ENV,
+        LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS,
+        5,
+        3600,
+    )
+}
+
+fn local_stt_daemon_idle_timeout_secs() -> u64 {
+    env_u64(
+        LOCAL_STT_DAEMON_IDLE_TIMEOUT_ENV,
+        LOCAL_STT_DAEMON_IDLE_TIMEOUT_SECS,
+        30,
+        12 * 3600,
+    )
+}
+
+fn local_stt_daemon_sweep_interval_secs() -> u64 {
+    env_u64(
+        LOCAL_STT_DAEMON_SWEEP_INTERVAL_ENV,
+        LOCAL_STT_DAEMON_SWEEP_INTERVAL_SECS,
+        3,
+        300,
+    )
+}
+
+fn local_stt_parakeet_unload_after_transcribe() -> bool {
+    env_flag(LOCAL_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE_ENV, false)
+}
+
+fn update_github_token() -> Option<String> {
+    non_empty_env_var(UPDATE_GITHUB_TOKEN_ENV)
 }
 
 pub fn run_coqui_bridge_via_daemon(
