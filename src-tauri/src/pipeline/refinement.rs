@@ -347,7 +347,8 @@ mod tests {
     #[test]
     fn case_insensitive_replacement_multiple_occurrences() {
         let result = replace_case_insensitive_ascii("aAaBbAa", "aa", "X");
-        assert_eq!(result, "XBbX");
+        // Matches at positions 0-1 and 5-6 (non-overlapping); 'a' at position 2 is not part of a match
+        assert_eq!(result, "XaBbX");
     }
 
     // ===== refine_transcript — raw mode =====
