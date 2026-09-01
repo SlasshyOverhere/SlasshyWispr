@@ -14,7 +14,7 @@ use crate::pipeline::response::{
     normalize_assistant_response_text,
 };
 use crate::pipeline::selection::{
-    build_selected_context_answer_prompt, is_affirmative_selection_confirmation,
+    is_affirmative_selection_confirmation,
     is_negative_selection_confirmation, is_rewrite_suspicious, looks_like_incomplete_draft_output,
     seems_like_draft_generation_instruction, seems_like_selection_context_query,
     seems_like_selection_edit_instruction, SelectionEditAction, SelectionEditDecision,

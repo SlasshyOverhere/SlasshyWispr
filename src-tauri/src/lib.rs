@@ -67,13 +67,13 @@ pub mod constants;
 pub mod pipeline;
 pub mod security;
 pub mod updater;
-use audio::noise_suppression;
 use audio::vad;
 use audio::processing::*;
 use pipeline::input::*;
-use pipeline::response::*;
 use pipeline::selection::*;
 use pipeline::stt::*;
+#[allow(unused_imports)]
+use pipeline::response::normalize_assistant_response_text;
 use constants::*;
 use security::validate_base64_input;
 use pipeline::routing::*;
@@ -5946,7 +5946,7 @@ async fn run_assistant_pipeline(
                 system_prompt: system_prompt.to_string(),
                 temperature,
                 max_tokens,
-                assistant_name: assistant_name.clone(),
+                assistant_name: assistant_name.to_string(),
             },
             state: &orch_state,
         },

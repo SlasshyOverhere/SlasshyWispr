@@ -9,9 +9,6 @@
 //! The actual STT implementations (HTTP calls, Parakeet, Python bridge)
 //! remain in `lib.rs` as they require runtime state.
 
-use crate::pipeline::routing::{LocalSttConfig, SttModeConfig};
-use log::warn;
-
 /// Normalize a language hint for STT.
 pub fn normalize_stt_language_hint(raw: Option<&str>) -> Option<String> {
     let normalized = raw.map(str::trim).filter(|value| !value.is_empty())?;
