@@ -38,10 +38,10 @@ use log::info;
 use reqwest::{Client, Url};
 use serde_json::Value;
 
-use crate::constants::*;
 use crate::pipeline::fs::file_exists_with_content;
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::stt_download::archive::local_parakeet_archive_source;
+use crate::pipeline::stt_download::transport::download_prepacked_parakeet_model;
 use crate::pipeline::stt_download::resolve::{
     normalize_huggingface_relative_path, select_huggingface_stt_download_entries,
     should_download_huggingface_stt_file,

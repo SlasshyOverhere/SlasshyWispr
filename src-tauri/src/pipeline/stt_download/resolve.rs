@@ -6,7 +6,6 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::constants::*;
 use crate::pipeline::routing::normalize_local_stt_provider;
 
 /// Build a filesystem-safe directory name from a repo/model identifier.

@@ -1,6 +1,5 @@
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
-use flate2::read::GzDecoder;
 use keyring::Entry;
 use log::{error, info, warn};
 use reqwest::{
@@ -21,7 +20,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(target_os = "windows")]
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tar::Archive;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
