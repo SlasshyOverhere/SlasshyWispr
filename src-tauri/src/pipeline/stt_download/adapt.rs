@@ -4,13 +4,19 @@
 //! that boundary against the application's `AppState` slot. The download
 //! subsystem itself never references `AppState`.
 
-use super::progress::{DownloadSink, LocalSttDownloadStatusResponse, SharedStatus};
+use super::progress::{DownloadSink, LocalSttDownloadStatusResponse};
 use crate::AppState;
 
 /// Sink implementation that persists snapshots into `AppState`'s download
 /// status slot (re-deriving progress percent and timestamp, as before).
-struct AppStateSink<'a> {
+pub(crate) struct AppStateSink<'a> {
     state: &'a AppState,
+}
+
+impl<'a> AppStateSink<'a> {
+    pub(crate) fn new(state: &'a AppState) -> Self {
+        Self { state }
+    }
 }
 
 impl DownloadSink for AppStateSink<'_> {
@@ -23,15 +29,4 @@ impl DownloadSink for AppStateSink<'_> {
             *slot = status.clone();
         })
     }
-}
-
-/// Create a `SharedStatus` seeded from the `AppState` slot and the sink that
-/// persists its publications. The caller must keep the sink and the returned
-/// `SharedStatus` alive together for the duration of the download.
-pub(crate) fn seeded_status<'a>(
-    state: &'a AppState,
-) -> Result<(SharedStatus<'a>, AppStateSink<'a>), String> {
-    let sink = AppStateSink { state };
-    let status = SharedStatus::seeded_from(&sink)?;
-    Ok((status, sink))
 }

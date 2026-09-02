@@ -14,6 +14,7 @@ use std::collections::BTreeSet;
 use std::fs;
 #[cfg(target_os = "windows")]
 use std::io;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -3756,7 +3757,22 @@ async fn download_local_stt_model(
     let target_dir_for_task = target_dir.clone();
     tauri::async_runtime::spawn(async move {
         let state_for_task = app_for_task.state::<AppState>();
-        let (shared_status, _sink) = crate::pipeline::stt_download::seeded_status(&state_for_task)?;
+        let status_sink = crate::pipeline::stt_download::AppStateSink::new(&state_for_task);
+        let shared_status = match crate::pipeline::stt_download::SharedStatus::seeded_from(&status_sink)
+        {
+            Ok(shared_status) => shared_status,
+            Err(error) => {
+                let _ = state_for_task.update_local_stt_download_status(|status| {
+                    status.active = false;
+                    status.completed = true;
+                    status.success = false;
+                    status.stage = "Download failed.".to_string();
+                    status.message = format!("Local STT download failed to start: {error}");
+                    status.current_file.clear();
+                });
+                return;
+            }
+        };
         let download_result = crate::pipeline::stt_download::download_huggingface_stt_model(
             &state_for_task.http,
             &repo_id_for_task,

@@ -15,10 +15,13 @@ pub mod progress;
 pub mod resolve;
 pub mod transport;
 
-pub(crate) use adapt::seeded_status;
+pub(crate) use adapt::AppStateSink;
 
 pub(crate) use archive::find_local_parakeet_model_root;
-pub(crate) use progress::{now_unix_ms, LocalSttDownloadStatusResponse, SharedStatus};
+pub(crate) use progress::{
+    calculate_local_stt_progress_percent, now_unix_ms, LocalSttDownloadStatusResponse,
+    SharedStatus,
+};
 pub(crate) use resolve::{
     legacy_huggingface_repo_id_for_model, resolve_huggingface_repo_id,
     sanitize_model_cache_dir_name,
@@ -39,7 +42,6 @@ use crate::constants::*;
 use crate::pipeline::fs::file_exists_with_content;
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::stt_download::archive::local_parakeet_archive_source;
-use crate::pipeline::stt_download::progress::SharedStatus;
 use crate::pipeline::stt_download::resolve::{
     normalize_huggingface_relative_path, select_huggingface_stt_download_entries,
     should_download_huggingface_stt_file,
