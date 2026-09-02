@@ -3011,6 +3011,13 @@ fn is_blocked_game_process_name(process_name: &str) -> bool {
 
     let base = normalized.trim_end_matches(".exe");
 
+    // Known IDE/editor process names that start with a game-prefix substring
+    // must be exempted before prefix matching to avoid false positives.
+    const IDE_EXEMPT: [&str; 4] = ["code", "code - insiders", "cursor", "windsurf"];
+    if IDE_EXEMPT.contains(&base) {
+        return false;
+    }
+
     const BLOCKED_EXACT: [&str; 35] = [
         "ac_client",
         "apex",
