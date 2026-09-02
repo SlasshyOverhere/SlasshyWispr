@@ -10,5 +10,6 @@ pub mod response;
 pub mod routing;
 pub mod selection;
 pub mod stt;
+pub mod stt_download;
 pub mod tts;
 pub mod wake;

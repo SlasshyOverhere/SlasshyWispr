@@ -13,7 +13,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use flate2::read::GzDecoder;
 use reqwest::Client;
+use tar::Archive;
 
 use crate::pipeline::log::{clip_text, single_line};
 
@@ -99,6 +101,50 @@ pub(crate) async fn download_file(client: &Client, url: &str, destination: &Path
 
     fs::rename(&temp_path, destination)
         .map_err(|error| format!("Failed finalizing downloaded file: {error}"))?;
+
+    Ok(())
+}
+
+/// Extract a tar.gz archive into `destination`, rejecting unsafe entries.
+pub(crate) fn extract_tar_gz_archive(archive_path: &Path, destination: &Path) -> Result<(), String> {
+    let archive_file = fs::File::open(archive_path).map_err(|error| {
+        format!(
+            "Failed to open local STT archive '{}': {error}",
+            archive_path.display()
+        )
+    })?;
+    let decoder = GzDecoder::new(archive_file);
+    let mut archive = Archive::new(decoder);
+    let entries = archive.entries().map_err(|error| {
+        format!(
+            "Invalid tar.gz archive '{}': {error}",
+            archive_path.display()
+        )
+    })?;
+
+    for (index, entry_result) in entries.enumerate() {
+        let mut entry = entry_result.map_err(|error| {
+            format!(
+                "Failed reading tar entry {} from '{}': {error}",
+                index,
+                archive_path.display()
+            )
+        })?;
+        let unpacked = entry.unpack_in(destination).map_err(|error| {
+            format!(
+                "Failed extracting tar entry {} into '{}': {error}",
+                index,
+                destination.display()
+            )
+        })?;
+        if !unpacked {
+            return Err(format!(
+                "Unsafe tar entry {} blocked while extracting '{}'.",
+                index,
+                archive_path.display()
+            ));
+        }
+    }
 
     Ok(())
 }

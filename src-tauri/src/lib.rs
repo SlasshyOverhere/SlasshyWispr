@@ -4,8 +4,8 @@ use flate2::read::GzDecoder;
 use keyring::Entry;
 use log::{error, info, warn};
 use reqwest::{
-    header::{ACCEPT_RANGES, RANGE, USER_AGENT},
-    multipart, Client, Url,
+    header::{RANGE, USER_AGENT},
+    multipart, Client,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -14,13 +14,9 @@ use std::collections::BTreeSet;
 use std::fs;
 #[cfg(target_os = "windows")]
 use std::io;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, Mutex, OnceLock,
-};
+use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(target_os = "windows")]
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -68,6 +64,7 @@ use pipeline::process::*;
 use pipeline::refinement::{self, RefinementConfig, RefinementDictionaryEntry, RefinementSnippetEntry};
 use pipeline::selection::*;
 use pipeline::stt::*;
+use pipeline::stt_download::*;
 #[allow(unused_imports)]
 use pipeline::response::normalize_assistant_response_text;
 use constants::*;
@@ -80,43 +77,9 @@ use updater::*;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LocalSttDownloadStatusResponse {
-    active: bool,
-    completed: bool,
-    success: bool,
-    model: String,
-    repo_id: String,
-    stage: String,
-    message: String,
-    current_file: String,
-    downloaded_bytes: u64,
-    total_bytes: u64,
-    files_completed: usize,
-    files_total: usize,
-    progress_percent: f64,
-    updated_at_ms: u64,
-}
 
-impl Default for LocalSttDownloadStatusResponse {
-    fn default() -> Self {
-        Self {
-            active: false,
-            completed: false,
-            success: false,
-            model: String::new(),
-            repo_id: String::new(),
-            stage: "Idle".to_string(),
-            message: "No local STT download in progress.".to_string(),
-            current_file: String::new(),
-            downloaded_bytes: 0,
-            total_bytes: 0,
-            files_completed: 0,
-            files_total: 0,
-            progress_percent: 0.0,
-            updated_at_ms: now_unix_ms(),
-        }
-    }
-}
+
+
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -507,8 +470,6 @@ struct AssistantPipelineRequest {
     coqui: Option<CoquiPipelineRequest>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DictionaryEntryRequest {
@@ -3801,17 +3762,19 @@ async fn download_local_stt_model(
     let target_dir_for_task = target_dir.clone();
     tauri::async_runtime::spawn(async move {
         let state_for_task = app_for_task.state::<AppState>();
-        let download_result = download_huggingface_stt_model(
+        let (shared_status, _sink) = crate::pipeline::stt_download::seeded_status(&state_for_task)?;
+        let download_result = crate::pipeline::stt_download::download_huggingface_stt_model(
             &state_for_task.http,
             &repo_id_for_task,
             &target_dir_for_task,
             None,
-            &state_for_task,
+            &shared_status,
         )
         .await;
 
         match download_result {
-            Ok(download_details) => {
+            Ok(download_summary) => {
+                let download_details = download_summary.details;
                 let runtime_setup_required = matches!(
                     provider_for_task.as_str(),
                     "whisper" | "moonshine" | "sensevoice"
@@ -3896,9 +3859,9 @@ async fn download_local_stt_model(
                                             status.model = model_for_task.clone();
                                             status.repo_id = repo_id_for_task.clone();
                                             status.stage = "Download complete.".to_string();
-                                            status.message = format!(
-                                                "{download_details} Local STT runtime ready ({python_path}). {warmup_details}"
-                                            );
+                            status.message = format!(
+                                "{download_details} Local STT runtime ready ({python_path}). {warmup_details}"
+                            );
                                             status.current_file.clear();
                                             if status.total_bytes > 0 {
                                                 status.downloaded_bytes = status.total_bytes;
@@ -6886,48 +6849,7 @@ fn value_string_array(value: Option<&Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn extract_tar_gz_archive(archive_path: &Path, destination: &Path) -> Result<(), String> {
-    let archive_file = fs::File::open(archive_path).map_err(|error| {
-        format!(
-            "Failed to open local STT archive '{}': {error}",
-            archive_path.display()
-        )
-    })?;
-    let decoder = GzDecoder::new(archive_file);
-    let mut archive = Archive::new(decoder);
-    let entries = archive.entries().map_err(|error| {
-        format!(
-            "Invalid tar.gz archive '{}': {error}",
-            archive_path.display()
-        )
-    })?;
 
-    for (index, entry_result) in entries.enumerate() {
-        let mut entry = entry_result.map_err(|error| {
-            format!(
-                "Failed reading tar entry {} from '{}': {error}",
-                index,
-                archive_path.display()
-            )
-        })?;
-        let unpacked = entry.unpack_in(destination).map_err(|error| {
-            format!(
-                "Failed extracting tar entry {} into '{}': {error}",
-                index,
-                destination.display()
-            )
-        })?;
-        if !unpacked {
-            return Err(format!(
-                "Unsafe tar entry {} blocked while extracting '{}'.",
-                index,
-                archive_path.display()
-            ));
-        }
-    }
-
-    Ok(())
-}
 
 
 
@@ -7450,6 +7372,28 @@ fn stt_models_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(models_dir)
 }
 
+fn resolve_local_stt_repo_and_dir(
+    app: &AppHandle,
+    provider: &str,
+    model: &str,
+) -> Result<(String, PathBuf), String> {
+    let models_dir = stt_models_dir(app)?;
+    let repo_id = resolve_huggingface_repo_id(provider, model);
+    let target_dir = models_dir.join(sanitize_model_cache_dir_name(&repo_id));
+    if target_dir.exists() {
+        return Ok((repo_id, target_dir));
+    }
+
+    if let Some(legacy_repo_id) = legacy_huggingface_repo_id_for_model(provider, model) {
+        let legacy_dir = models_dir.join(sanitize_model_cache_dir_name(&legacy_repo_id));
+        if legacy_dir.exists() {
+            return Ok((legacy_repo_id, legacy_dir));
+        }
+    }
+
+    Ok((repo_id, target_dir))
+}
+
 fn stt_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let runtime_dir = stt_root_dir(app)?.join("runtime");
     fs::create_dir_all(&runtime_dir)
@@ -7490,104 +7434,9 @@ fn ensure_local_stt_bridge_script(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(script_path)
 }
 
-fn is_parakeet_model_directory(path: &Path) -> bool {
-    let encoder_fp32 = path.join("encoder-model.onnx");
-    let encoder_int8 = path.join("encoder-model.int8.onnx");
-    let decoder_fp32 = path.join("decoder_joint-model.onnx");
-    let decoder_int8 = path.join("decoder_joint-model.int8.onnx");
-    let nemo128 = path.join("nemo128.onnx");
-    let vocab = path.join("vocab.txt");
-    let config = path.join("config.json");
 
-    (file_exists_with_content(&encoder_fp32) || file_exists_with_content(&encoder_int8))
-        && (file_exists_with_content(&decoder_fp32) || file_exists_with_content(&decoder_int8))
-        && file_exists_with_content(&nemo128)
-        && file_exists_with_content(&vocab)
-        && file_exists_with_content(&config)
-}
 
-fn find_local_parakeet_model_root(root: &Path) -> Result<PathBuf, String> {
-    if !root.exists() {
-        return Err(format!(
-            "Local STT model directory does not exist: {}",
-            root.display()
-        ));
-    }
 
-    let mut stack = vec![root.to_path_buf()];
-    let mut best: Option<(PathBuf, u64)> = None;
-    let mut saw_legacy_nemo_file = false;
-    while let Some(current) = stack.pop() {
-        if is_parakeet_model_directory(&current) {
-            let score = [
-                "encoder-model.int8.onnx",
-                "encoder-model.onnx",
-                "decoder_joint-model.int8.onnx",
-                "decoder_joint-model.onnx",
-                "nemo128.onnx",
-                "vocab.txt",
-                "config.json",
-            ]
-            .iter()
-            .map(|name| {
-                fs::metadata(current.join(name))
-                    .map(|meta| meta.len())
-                    .unwrap_or(0)
-            })
-            .fold(0_u64, |acc, value| acc.saturating_add(value));
-
-            match &best {
-                Some((_, best_size)) if *best_size >= score => {}
-                _ => best = Some((current.clone(), score)),
-            }
-        }
-
-        let entries = fs::read_dir(&current).map_err(|error| {
-            format!(
-                "Failed to inspect local STT directory '{}': {error}",
-                current.display()
-            )
-        })?;
-
-        for entry in entries {
-            let entry = entry.map_err(|error| {
-                format!(
-                    "Failed to inspect local STT directory entry in '{}': {error}",
-                    current.display()
-                )
-            })?;
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            let is_nemo = path
-                .extension()
-                .and_then(|value| value.to_str())
-                .map(|value| value.eq_ignore_ascii_case("nemo"))
-                .unwrap_or(false);
-            if is_nemo {
-                saw_legacy_nemo_file = true;
-            }
-        }
-    }
-
-    if let Some((path, _)) = best {
-        return Ok(path);
-    }
-
-    if saw_legacy_nemo_file {
-        return Err(format!(
-            "Found legacy Parakeet *.nemo artifact in '{}', but native int8 runtime expects ONNX model directories. Re-download the selected Parakeet model from Settings > Models.",
-            root.display()
-        ));
-    }
-
-    Err(format!(
-        "No compatible local Parakeet model directory found in '{}'.",
-        root.display()
-    ))
-}
 
 fn run_local_stt_python_command(
     python_path: &str,
@@ -8103,1119 +7952,44 @@ fn open_path_in_file_explorer(path: &Path) -> Result<(), String> {
     }
 }
 
-fn sanitize_model_cache_dir_name(input: &str) -> String {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return "model".to_string();
-    }
 
-    let mut output = String::new();
-    for character in trimmed.chars() {
-        if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
-            output.push(character);
-        } else if matches!(character, '/' | '\\') {
-            output.push_str("__");
-        } else {
-            output.push('_');
-        }
-    }
 
-    let normalized = output.trim_matches('_').to_string();
-    if normalized.is_empty() {
-        "model".to_string()
-    } else {
-        normalized
-    }
-}
 
-fn faster_whisper_repo_alias_for_model(model: &str) -> Option<&'static str> {
-    let normalized_model = model.trim().to_ascii_lowercase();
-    match normalized_model.as_str() {
-        "openai/whisper-large-v3" => Some("Systran/faster-whisper-large-v3"),
-        "openai/whisper-large-v3-turbo" => Some("mobiuslabsgmbh/faster-whisper-large-v3-turbo"),
-        "openai/whisper-medium" => Some("Systran/faster-whisper-medium"),
-        "openai/whisper-small" => Some("Systran/faster-whisper-small"),
-        _ => None,
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
-struct LocalParakeetArchiveSource {
-    archive_url: &'static str,
-    expected_root_dir: &'static str,
-}
-
-fn local_parakeet_archive_source(repo_id: &str) -> Option<LocalParakeetArchiveSource> {
-    match repo_id {
-        "nvidia/parakeet-tdt_ctc-110m" => Some(LocalParakeetArchiveSource {
-            archive_url: PARAKEET_V2_INT8_ARCHIVE_URL,
-            expected_root_dir: PARAKEET_V2_INT8_ROOT_DIR,
-        }),
-        "nvidia/parakeet-tdt-0.6b-v3" => Some(LocalParakeetArchiveSource {
-            archive_url: PARAKEET_V3_INT8_ARCHIVE_URL,
-            expected_root_dir: PARAKEET_V3_INT8_ROOT_DIR,
-        }),
-        _ => None,
-    }
-}
-
-fn legacy_huggingface_repo_id_for_model(provider: &str, model: &str) -> Option<String> {
-    let normalized_provider = normalize_local_stt_provider(Some(provider));
-    if normalized_provider != "whisper" {
-        return None;
-    }
-    let normalized_model = model.trim();
-    if normalized_model
-        .to_ascii_lowercase()
-        .starts_with("openai/whisper-")
-    {
-        Some(normalized_model.to_string())
-    } else {
-        None
-    }
-}
-
-fn resolve_local_stt_repo_and_dir(
-    app: &AppHandle,
-    provider: &str,
-    model: &str,
-) -> Result<(String, PathBuf), String> {
-    let models_dir = stt_models_dir(app)?;
-    let repo_id = resolve_huggingface_repo_id(provider, model);
-    let target_dir = models_dir.join(sanitize_model_cache_dir_name(&repo_id));
-    if target_dir.exists() {
-        return Ok((repo_id, target_dir));
-    }
-
-    if let Some(legacy_repo_id) = legacy_huggingface_repo_id_for_model(provider, model) {
-        let legacy_dir = models_dir.join(sanitize_model_cache_dir_name(&legacy_repo_id));
-        if legacy_dir.exists() {
-            return Ok((legacy_repo_id, legacy_dir));
-        }
-    }
-
-    Ok((repo_id, target_dir))
-}
-
-fn resolve_huggingface_repo_id(provider: &str, model: &str) -> String {
-    let normalized_model = model.trim();
-    if normalized_model.eq_ignore_ascii_case("nvidia/parakeet-tdt-0.6b-v2") {
-        // Legacy alias: old "Parakeet v2" selection now resolves to the lightweight v2-class model.
-        return "nvidia/parakeet-tdt_ctc-110m".to_string();
-    }
-    if let Some(mapped_repo) = faster_whisper_repo_alias_for_model(normalized_model) {
-        return mapped_repo.to_string();
-    }
-    if normalized_model.contains('/') {
-        return normalized_model.to_string();
-    }
-
-    let normalized_provider = normalize_local_stt_provider(Some(provider));
-    let normalized_model_lower = normalized_model.to_ascii_lowercase();
-    if normalized_provider == "parakeet" {
-        return format!("nvidia/{normalized_model}");
-    }
-
-    let whisper_model = match normalized_model_lower.as_str() {
-        "tiny" | "base" | "small" | "medium" | "large-v1" | "large-v2" | "large-v3"
-        | "large-v3-turbo" => format!("whisper-{normalized_model_lower}"),
-        _ => normalized_model.to_string(),
-    };
-    if whisper_model.starts_with("whisper-") {
-        format!("openai/{whisper_model}")
-    } else {
-        format!("openai/{normalized_model}")
-    }
-}
-
-fn normalize_huggingface_relative_path(raw: &str) -> Result<PathBuf, String> {
-    let normalized = raw.trim().replace('\\', "/");
-    if normalized.is_empty() {
-        return Err("Model file path is empty.".to_string());
-    }
-
-    let candidate = Path::new(&normalized);
-    if candidate.is_absolute() {
-        return Err(format!("Absolute model file path is not allowed: {raw}"));
-    }
-
-    let mut safe_path = PathBuf::new();
-    for component in candidate.components() {
-        match component {
-            std::path::Component::Normal(segment) => safe_path.push(segment),
-            std::path::Component::CurDir => {}
-            _ => return Err(format!("Unsafe model file path segment in '{raw}'")),
-        }
-    }
-
-    if safe_path.as_os_str().is_empty() {
-        return Err(format!("Model file path is invalid: {raw}"));
-    }
-
-    Ok(safe_path)
-}
-
-fn should_download_huggingface_stt_file(path: &str) -> bool {
-    let normalized = path.trim().to_ascii_lowercase();
-    if normalized.is_empty() || normalized == ".gitattributes" {
-        return false;
-    }
-
-    let blocked_prefixes = [
-        "plots/",
-        "assets/",
-        "images/",
-        "docs/",
-        "samples/",
-        "sample/",
-        "examples/",
-        "example/",
-    ];
-    if blocked_prefixes
-        .iter()
-        .any(|prefix| normalized.starts_with(prefix))
-    {
-        return false;
-    }
-
-    let blocked_suffixes = [
-        ".md", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf", ".mp4", ".mov", ".wav",
-        ".flac", ".mp3",
-    ];
-    !blocked_suffixes
-        .iter()
-        .any(|suffix| normalized.ends_with(suffix))
-}
-
-fn file_name_equals(path: &Path, expected_name: &str) -> bool {
-    path.file_name()
-        .and_then(|segment| segment.to_str())
-        .map(|name| name.eq_ignore_ascii_case(expected_name))
-        .unwrap_or(false)
-}
-
-fn preferred_huggingface_primary_file_names(repo_id: &str) -> &'static [&'static str] {
-    match repo_id {
-        "nvidia/parakeet-tdt-0.6b-v3" => &["parakeet-tdt-0.6b-v3.nemo"],
-        "nvidia/parakeet-tdt_ctc-110m" => &["parakeet-tdt_ctc-110m.nemo"],
-        "Systran/faster-whisper-large-v3" => &["model.bin"],
-        "mobiuslabsgmbh/faster-whisper-large-v3-turbo" => &["model.bin"],
-        "Systran/faster-whisper-medium" => &["model.bin"],
-        "Systran/faster-whisper-small" => &["model.bin"],
-        "openai/whisper-large-v3" => &["model.safetensors"],
-        "openai/whisper-medium" => &["model.safetensors"],
-        "openai/whisper-small" => &["model.safetensors"],
-        "openai/whisper-large-v3-turbo" => &["model.safetensors"],
-        "UsefulSensors/moonshine-base" => &["model.safetensors"],
-        "FunAudioLLM/SenseVoiceSmall" => &["model.pt", "chn_jpn_yue_eng_ko_spectok.bpe.model"],
-        _ => &[],
-    }
-}
-
-fn select_huggingface_stt_download_entries(
-    repo_id: &str,
-    entries: &[(PathBuf, Option<u64>)],
-) -> Vec<(PathBuf, Option<u64>)> {
-    if entries.is_empty() {
-        return Vec::new();
-    }
-
-    let mut selected_indices: Vec<usize> = Vec::new();
-    for preferred_file_name in preferred_huggingface_primary_file_names(repo_id) {
-        if let Some((index, _)) = entries
-            .iter()
-            .enumerate()
-            .find(|(_, (path, _))| file_name_equals(path, preferred_file_name))
-        {
-            if !selected_indices.iter().any(|existing| *existing == index) {
-                selected_indices.push(index);
-            }
-        }
-    }
-
-    if selected_indices.is_empty() && repo_id.starts_with("nvidia/parakeet-") {
-        if let Some((index, _)) = entries
-            .iter()
-            .enumerate()
-            .filter(|(_, (path, _))| {
-                path.extension()
-                    .and_then(|value| value.to_str())
-                    .map(|value| value.eq_ignore_ascii_case("nemo"))
-                    .unwrap_or(false)
-            })
-            .max_by_key(|(_, (_, size))| size.unwrap_or(0))
-        {
-            if !selected_indices.iter().any(|existing| *existing == index) {
-                selected_indices.push(index);
-            }
-        }
-    } else if selected_indices.is_empty()
-        && repo_id.eq_ignore_ascii_case("FunAudioLLM/SenseVoiceSmall")
-    {
-        for (index, (path, _)) in entries.iter().enumerate() {
-            if file_name_equals(path, "model.pt")
-                || file_name_equals(path, "chn_jpn_yue_eng_ko_spectok.bpe.model")
-            {
-                if !selected_indices.iter().any(|existing| *existing == index) {
-                    selected_indices.push(index);
-                }
-            }
-        }
-    } else if selected_indices.is_empty() {
-        let primary_file_names = [
-            "model.safetensors",
-            "pytorch_model.bin",
-            "model.pt",
-            "model.bin",
-            "model.onnx",
-            "model.tflite",
-        ];
-        for primary_name in primary_file_names {
-            if let Some((index, _)) = entries
-                .iter()
-                .enumerate()
-                .find(|(_, (path, _))| file_name_equals(path, primary_name))
-            {
-                if !selected_indices.iter().any(|existing| *existing == index) {
-                    selected_indices.push(index);
-                }
-                break;
-            }
-        }
-
-        if selected_indices.is_empty() {
-            if let Some((index, _)) = entries
-                .iter()
-                .enumerate()
-                .filter(|(_, (path, _))| {
-                    let extension = path
-                        .extension()
-                        .and_then(|value| value.to_str())
-                        .map(|value| value.to_ascii_lowercase())
-                        .unwrap_or_default();
-                    matches!(
-                        extension.as_str(),
-                        "safetensors" | "bin" | "pt" | "onnx" | "tflite" | "nemo"
-                    )
-                })
-                .max_by_key(|(_, (_, size))| size.unwrap_or(0))
-            {
-                if !selected_indices.iter().any(|existing| *existing == index) {
-                    selected_indices.push(index);
-                }
-            }
-        }
-    }
-
-    let support_file_names = [
-        "config.json",
-        "generation_config.json",
-        "model.bin",
-        "tokenizer.json",
-        "tokenizer_config.json",
-        "preprocessor_config.json",
-        "special_tokens_map.json",
-        "vocabulary.json",
-        "vocabulary.txt",
-        "vocab.json",
-        "merges.txt",
-        "normalizer.json",
-        "added_tokens.json",
-        "chn_jpn_yue_eng_ko_spectok.bpe.model",
-    ];
-    for (index, (path, _)) in entries.iter().enumerate() {
-        if support_file_names
-            .iter()
-            .any(|file_name| file_name_equals(path, file_name))
-        {
-            if !selected_indices.iter().any(|existing| *existing == index) {
-                selected_indices.push(index);
-            }
-        }
-    }
-
-    if selected_indices.is_empty() {
-        return entries.to_vec();
-    }
-
-    selected_indices
-        .into_iter()
-        .filter_map(|index| entries.get(index).cloned())
-        .collect()
-}
-
-fn local_stt_archive_parallel_chunk_count(total_bytes: u64) -> usize {
-    if total_bytes == 0 {
-        return 1;
-    }
-
-    let configured = std::env::var(LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_ENV)
-        .ok()
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .unwrap_or(LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_DEFAULT)
-        .clamp(1, LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_MAX);
-
-    if total_bytes < LOCAL_STT_ARCHIVE_MIN_BYTES_PER_CHUNK.saturating_mul(2) {
-        return 1;
-    }
-
-    let max_chunks_by_size = ((total_bytes + LOCAL_STT_ARCHIVE_MIN_BYTES_PER_CHUNK - 1)
-        / LOCAL_STT_ARCHIVE_MIN_BYTES_PER_CHUNK)
-        .max(1) as usize;
-    configured.min(max_chunks_by_size).max(1)
-}
-
-async fn download_archive_range_chunk(
-    client: Client,
-    url: String,
-    start: u64,
-    end: u64,
-    part_path: PathBuf,
-    progress: Arc<AtomicU64>,
-) -> Result<u64, String> {
-    let range_header = format!("bytes={start}-{end}");
-    let mut response = client
-        .get(&url)
-        .header(RANGE, range_header)
-        .timeout(Duration::from_secs(60 * 60))
-        .send()
-        .await
-        .map_err(|error| format!("Parallel range request failed: {error}"))?;
-    if response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
-        return Err(format!(
-            "Server refused range request for '{}' (status {}).",
-            clip_text(&url, 220),
-            response.status()
-        ));
-    }
-
-    let mut file = fs::File::create(&part_path).map_err(|error| {
-        format!(
-            "Failed to create archive part '{}': {error}",
-            part_path.display()
-        )
-    })?;
-
-    let mut downloaded = 0u64;
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|error| format!("Failed reading range stream: {error}"))?
-    {
-        file.write_all(&chunk).map_err(|error| {
-            format!(
-                "Failed writing archive part '{}': {error}",
-                part_path.display()
-            )
-        })?;
-        let chunk_size = u64::try_from(chunk.len()).unwrap_or(0);
-        downloaded = downloaded.saturating_add(chunk_size);
-        progress.fetch_add(chunk_size, Ordering::Relaxed);
-    }
-
-    if downloaded == 0 {
-        return Err(format!(
-            "Downloaded archive part '{}' was empty.",
-            part_path.display()
-        ));
-    }
-
-    Ok(downloaded)
-}
-
-fn concatenate_archive_parts(parts: &[PathBuf], destination: &Path) -> Result<(), String> {
-    let mut output = fs::File::create(destination).map_err(|error| {
-        format!(
-            "Failed to create archive destination '{}': {error}",
-            destination.display()
-        )
-    })?;
-
-    for part in parts {
-        let mut input = fs::File::open(part).map_err(|error| {
-            format!("Failed to open archive part '{}': {error}", part.display())
-        })?;
-        std::io::copy(&mut input, &mut output).map_err(|error| {
-            format!(
-                "Failed merging archive part '{}' into '{}': {error}",
-                part.display(),
-                destination.display()
-            )
-        })?;
-    }
-
-    Ok(())
-}
-
-async fn download_archive_parallel_ranges(
-    client: &Client,
-    url: &str,
-    temp_archive_path: &Path,
-    total_bytes: u64,
-    chunk_count: usize,
-    state: &AppState,
-) -> Result<u64, String> {
-    if total_bytes == 0 || chunk_count <= 1 {
-        return Err(
-            "Parallel range download requires known content length and >1 chunks.".to_string(),
-        );
-    }
-
-    let chunk_size = ((total_bytes + chunk_count as u64 - 1) / chunk_count as u64).max(1);
-    let mut part_paths: Vec<PathBuf> = Vec::new();
-    let mut tasks = Vec::new();
-    let progress = Arc::new(AtomicU64::new(0));
-
-    for index in 0..chunk_count {
-        let start = (index as u64).saturating_mul(chunk_size);
-        if start >= total_bytes {
-            break;
-        }
-        let end = start
-            .saturating_add(chunk_size)
-            .saturating_sub(1)
-            .min(total_bytes.saturating_sub(1));
-        let part_path = PathBuf::from(format!(
-            "{}.part{}",
-            temp_archive_path.to_string_lossy(),
-            index
-        ));
-        if part_path.exists() {
-            let _ = fs::remove_file(&part_path);
-        }
-
-        let task = tauri::async_runtime::spawn(download_archive_range_chunk(
-            client.clone(),
-            url.to_string(),
-            start,
-            end,
-            part_path.clone(),
-            progress.clone(),
-        ));
-        part_paths.push(part_path);
-        tasks.push(task);
-    }
-
-    let mut first_error: Option<String> = None;
-    for task in tasks {
-        match task.await {
-            Ok(Ok(_)) => {
-                let downloaded_bytes = progress.load(Ordering::Relaxed);
-                let _ = state.update_local_stt_download_status(|status| {
-                    status.downloaded_bytes = downloaded_bytes;
-                });
-            }
-            Ok(Err(error)) => {
-                if first_error.is_none() {
-                    first_error = Some(error);
-                }
-            }
-            Err(error) => {
-                if first_error.is_none() {
-                    first_error = Some(format!("Parallel archive worker failed: {error}"));
-                }
-            }
-        }
-    }
-
-    if let Some(error) = first_error {
-        for path in &part_paths {
-            let _ = fs::remove_file(path);
-        }
-        return Err(error);
-    }
-
-    concatenate_archive_parts(&part_paths, temp_archive_path)?;
-    for path in &part_paths {
-        let _ = fs::remove_file(path);
-    }
-    Ok(progress.load(Ordering::Relaxed))
-}
-
-async fn download_archive_single_stream(
-    client: &Client,
-    url: &str,
-    temp_archive_path: &Path,
-    state: &AppState,
-    total_bytes_hint: u64,
-) -> Result<u64, String> {
-    let mut response = client
-        .get(url)
-        .timeout(Duration::from_secs(60 * 60))
-        .send()
-        .await
-        .map_err(|error| {
-            format!(
-                "Failed to download archive '{}': {error}",
-                clip_text(url, 220)
-            )
-        })?;
-    let status = response.status();
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        return Err(format!(
-            "Archive download failed ({status}): {}",
-            clip_text(&single_line(&body), 320)
-        ));
-    }
-
-    let total_bytes = response.content_length().unwrap_or(total_bytes_hint);
-    if total_bytes > 0 {
-        state.update_local_stt_download_status(|status| {
-            status.total_bytes = total_bytes;
-        })?;
-    }
-
-    let mut output_file = fs::File::create(temp_archive_path).map_err(|error| {
-        format!(
-            "Failed to create temporary archive '{}': {error}",
-            temp_archive_path.display()
-        )
-    })?;
-    let mut downloaded_bytes = 0u64;
-    let mut last_status_update = Instant::now();
-
-    while let Some(chunk) = response.chunk().await.map_err(|error| {
-        format!(
-            "Failed reading archive stream '{}': {error}",
-            clip_text(url, 220)
-        )
-    })? {
-        output_file.write_all(&chunk).map_err(|error| {
-            format!(
-                "Failed writing archive chunk '{}': {error}",
-                temp_archive_path.display()
-            )
-        })?;
-        downloaded_bytes = downloaded_bytes.saturating_add(u64::try_from(chunk.len()).unwrap_or(0));
-
-        if last_status_update.elapsed() >= Duration::from_millis(120) {
-            state.update_local_stt_download_status(|status| {
-                status.downloaded_bytes = downloaded_bytes;
-            })?;
-            last_status_update = Instant::now();
-        }
-    }
-    drop(output_file);
-    Ok(downloaded_bytes)
-}
-
-async fn download_prepacked_parakeet_model(
-    client: &Client,
-    repo_id: &str,
-    target_dir: &Path,
-    state: &AppState,
-) -> Result<String, String> {
-    let source = local_parakeet_archive_source(repo_id).ok_or_else(|| {
-        format!("No prepacked Parakeet archive source configured for '{repo_id}'.")
-    })?;
-
-    if let Ok(existing_root) = find_local_parakeet_model_root(target_dir) {
-        return Ok(format!(
-            "Model '{repo_id}' is already cached at '{}'.",
-            existing_root.display()
-        ));
-    }
-
-    fs::create_dir_all(target_dir)
-        .map_err(|error| format!("Failed to create STT model target directory: {error}"))?;
-
-    let archive_path = target_dir.join(format!("{}.tar.gz", source.expected_root_dir));
-    let temp_archive_path = target_dir.join(format!("{}.tar.gz.partial", source.expected_root_dir));
-    if temp_archive_path.exists() {
-        let _ = fs::remove_file(&temp_archive_path);
-    }
-
-    state.update_local_stt_download_status(|status| {
-        status.stage = "Downloading model archive...".to_string();
-        status.message = format!("Downloading '{}'.", repo_id);
-        status.files_total = 1;
-        status.files_completed = 0;
-        status.downloaded_bytes = 0;
-        status.total_bytes = 0;
-        status.current_file = archive_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("model.tar.gz")
-            .to_string();
-    })?;
-
-    let head_probe = client
-        .head(source.archive_url)
-        .timeout(Duration::from_secs(35))
-        .send()
-        .await
-        .ok();
-    let total_bytes = head_probe
-        .as_ref()
-        .and_then(|response| response.content_length())
-        .unwrap_or(0);
-    let range_supported = head_probe
-        .as_ref()
-        .and_then(|response| response.headers().get(ACCEPT_RANGES))
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value.to_ascii_lowercase().contains("bytes"))
-        .unwrap_or(false);
-    let parallel_chunks = if range_supported {
-        local_stt_archive_parallel_chunk_count(total_bytes)
-    } else {
-        1
-    };
-
-    state.update_local_stt_download_status(|status| {
-        status.total_bytes = total_bytes;
-        if parallel_chunks > 1 {
-            status.message = format!(
-                "Downloading '{}' using {} parallel streams.",
-                repo_id, parallel_chunks
-            );
-        }
-    })?;
-
-    let downloaded_bytes = if parallel_chunks > 1 && total_bytes > 0 {
-        match download_archive_parallel_ranges(
-            client,
-            source.archive_url,
-            &temp_archive_path,
-            total_bytes,
-            parallel_chunks,
-            state,
-        )
-        .await
-        {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                warn!(
-                    "[local.stt.download] parallel archive download failed repo={} reason={} fallback=single-stream",
-                    clip_text(repo_id, 160),
-                    clip_text(&single_line(&error), 260)
-                );
-                state.update_local_stt_download_status(|status| {
-                    status.message = format!(
-                        "Parallel download fallback triggered. Retrying '{}' with single stream.",
-                        repo_id
-                    );
-                    status.downloaded_bytes = 0;
-                })?;
-                download_archive_single_stream(
-                    client,
-                    source.archive_url,
-                    &temp_archive_path,
-                    state,
-                    total_bytes,
-                )
-                .await?
-            }
-        }
-    } else {
-        download_archive_single_stream(
-            client,
-            source.archive_url,
-            &temp_archive_path,
-            state,
-            total_bytes,
-        )
-        .await?
-    };
-
-    if downloaded_bytes == 0 {
-        let _ = fs::remove_file(&temp_archive_path);
-        return Err(format!("Downloaded archive for '{repo_id}' was empty."));
-    }
-
-    if archive_path.exists() {
-        fs::remove_file(&archive_path).map_err(|error| {
-            format!(
-                "Failed to replace local archive '{}': {error}",
-                archive_path.display()
-            )
-        })?;
-    }
-    fs::rename(&temp_archive_path, &archive_path).map_err(|error| {
-        format!(
-            "Failed to finalize archive '{}': {error}",
-            archive_path.display()
-        )
-    })?;
-
-    let expected_root = target_dir.join(source.expected_root_dir);
-    if expected_root.exists() {
-        fs::remove_dir_all(&expected_root).map_err(|error| {
-            format!(
-                "Failed to clear previous extracted model directory '{}': {error}",
-                expected_root.display()
-            )
-        })?;
-    }
-
-    state.update_local_stt_download_status(|status| {
-        status.stage = "Extracting model archive...".to_string();
-        status.message = format!("Extracting '{}'.", repo_id);
-        status.downloaded_bytes = downloaded_bytes;
-        if status.total_bytes == 0 {
-            status.total_bytes = downloaded_bytes;
-        }
-        status.current_file = archive_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("model.tar.gz")
-            .to_string();
-    })?;
-
-    extract_tar_gz_archive(&archive_path, target_dir)?;
-    let _ = fs::remove_file(&archive_path);
-
-    let model_root = find_local_parakeet_model_root(target_dir)?;
-    let size_mb = downloaded_bytes as f64 / (1024.0 * 1024.0);
-    Ok(format!(
-        "Downloaded and extracted Parakeet archive ({size_mb:.1} MiB) for '{repo_id}' into '{}'. Model root: '{}'.",
-        target_dir.display(),
-        model_root.display()
-    ))
-}
-
-async fn download_huggingface_stt_model(
-    client: &Client,
-    repo_id: &str,
-    target_dir: &Path,
-    huggingface_token: Option<&str>,
-    state: &AppState,
-) -> Result<String, String> {
-    if local_parakeet_archive_source(repo_id).is_some() {
-        return download_prepacked_parakeet_model(client, repo_id, target_dir, state).await;
-    }
-
-    let token = huggingface_token
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let metadata_url = format!("https://huggingface.co/api/models/{repo_id}");
-    let metadata_response = apply_optional_bearer_auth(client.get(&metadata_url), token)
-        .send()
-        .await
-        .map_err(|error| format!("Failed to query HuggingFace model '{repo_id}': {error}"))?;
-    let metadata_status = metadata_response.status();
-    let metadata_body = metadata_response
-        .text()
-        .await
-        .map_err(|error| format!("Failed to parse HuggingFace metadata body: {error}"))?;
-    if !metadata_status.is_success() {
-        return Err(format!(
-            "HuggingFace model metadata request failed ({metadata_status}): {}",
-            clip_text(&single_line(&metadata_body), 360)
-        ));
-    }
-
-    let metadata: Value = serde_json::from_str(&metadata_body)
-        .map_err(|error| format!("Invalid HuggingFace metadata JSON: {error}"))?;
-    let siblings = metadata
-        .get("siblings")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "HuggingFace metadata does not include a file listing.".to_string())?;
-
-    let candidate_entries = siblings
-        .iter()
-        .filter_map(|entry| {
-            let relative_raw = entry
-                .get("rfilename")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())?;
-            if !should_download_huggingface_stt_file(relative_raw) {
-                return None;
-            }
-            let relative_path = normalize_huggingface_relative_path(relative_raw).ok()?;
-            let size_hint = entry.get("size").and_then(Value::as_u64);
-            Some((relative_path, size_hint))
-        })
-        .collect::<Vec<_>>();
-    if candidate_entries.is_empty() {
-        return Err(format!(
-            "No downloadable model artifacts found for HuggingFace model '{repo_id}'."
-        ));
-    }
-    let file_entries = select_huggingface_stt_download_entries(repo_id, &candidate_entries);
-    if file_entries.is_empty() {
-        return Err(format!(
-            "Unable to select required downloadable artifacts for '{repo_id}'."
-        ));
-    }
-    let selected_estimated_bytes = file_entries
-        .iter()
-        .map(|(_, size)| size.unwrap_or(0))
-        .fold(0_u64, |acc, value| acc.saturating_add(value));
-    info!(
-        "[local.stt.download] repo={} selected_files={} selected_estimated_mib={:.1}",
-        clip_text(repo_id, 160),
-        file_entries.len(),
-        selected_estimated_bytes as f64 / (1024.0 * 1024.0)
-    );
-
-    fs::create_dir_all(target_dir)
-        .map_err(|error| format!("Failed to create STT model target directory: {error}"))?;
-
-    let mut to_download: Vec<(PathBuf, PathBuf, Option<u64>)> = Vec::new();
-    let mut skipped_files = 0usize;
-    let mut total_bytes = 0u64;
-    for (relative_path, size_hint) in file_entries {
-        let output_path = target_dir.join(&relative_path);
-        if file_exists_with_content(&output_path) {
-            skipped_files += 1;
-            continue;
-        }
-        if let Some(size) = size_hint {
-            total_bytes = total_bytes.saturating_add(size);
-        }
-        to_download.push((relative_path, output_path, size_hint));
-    }
-
-    state.update_local_stt_download_status(|status| {
-        status.stage = "Downloading model files...".to_string();
-        status.message = format!(
-            "Downloading '{}' ({} files pending).",
-            repo_id,
-            to_download.len()
-        );
-        status.files_total = to_download.len();
-        status.files_completed = 0;
-        status.downloaded_bytes = 0;
-        status.total_bytes = total_bytes;
-        status.current_file.clear();
-    })?;
-
-    if to_download.is_empty() {
-        return Ok(format!(
-            "Model '{repo_id}' is already cached at '{}'.",
-            target_dir.display()
-        ));
-    }
-
-    let download_progress = Arc::new(AtomicU64::new(0));
-    let completed_files = Arc::new(AtomicU64::new(0));
-    let parallel_limit = usize::min(4, usize::max(1, to_download.len()));
-    let mut next_index = 0usize;
-    let mut active_tasks = Vec::new();
-
-    let spawn_file_download = |
-        relative_path: PathBuf,
-        output_path: PathBuf,
-        size_hint: Option<u64>,
-    | {
-        let client = client.clone();
-        let token = token.map(str::to_string);
-        let repo_id = repo_id.to_string();
-        let progress = Arc::clone(&download_progress);
-        let completed = Arc::clone(&completed_files);
-        tauri::async_runtime::spawn(async move {
-            if let Some(parent) = output_path.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
-                    format!(
-                        "Failed to create model directory '{}': {error}",
-                        parent.display()
-                    )
-                })?;
-            }
-
-            let mut download_url = Url::parse(&format!(
-                "https://huggingface.co/{repo_id}/resolve/main/"
-            ))
-            .map_err(|error| format!("Invalid HuggingFace download URL for '{repo_id}': {error}"))?;
-            {
-                let mut segments = download_url
-                    .path_segments_mut()
-                    .map_err(|_| "Failed to build HuggingFace download path.".to_string())?;
-                segments.pop_if_empty();
-                for component in relative_path.components() {
-                    if let std::path::Component::Normal(segment) = component {
-                        let value = segment.to_string_lossy();
-                        segments.push(value.as_ref());
-                    }
-                }
-            }
-            download_url
-                .query_pairs_mut()
-                .append_pair("download", "true");
-
-            let token_ref = token.as_deref();
-            let mut response = apply_optional_bearer_auth(client.get(download_url.clone()), token_ref)
-                .timeout(Duration::from_secs(60 * 60))
-                .send()
-                .await
-                .map_err(|error| {
-                    format!(
-                        "Failed to download HuggingFace file '{}': {error}",
-                        relative_path.display()
-                    )
-                })?;
-            let status = response.status();
-            if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
-                return Err(format!(
-                    "HuggingFace file download failed '{}' ({status}): {}",
-                    relative_path.display(),
-                    clip_text(&single_line(&body), 320)
-                ));
-            }
-
-            let discovered_content_length = if size_hint.is_none() {
-                response.content_length()
-            } else {
-                None
-            };
-
-            let temp_path = output_path.with_extension("partial");
-            if temp_path.exists() {
-                let _ = fs::remove_file(&temp_path);
-            }
-
-            let mut output_file = fs::File::create(&temp_path).map_err(|error| {
-                format!(
-                    "Failed to create temporary model file '{}': {error}",
-                    temp_path.display()
-                )
-            })?;
-            let mut bytes_for_file = 0u64;
-
-            while let Some(chunk) = response.chunk().await.map_err(|error| {
-                format!(
-                    "Failed reading HuggingFace download stream '{}': {error}",
-                    relative_path.display()
-                )
-            })? {
-                output_file.write_all(&chunk).map_err(|error| {
-                    format!(
-                        "Failed writing HuggingFace file chunk '{}': {error}",
-                        temp_path.display()
-                    )
-                })?;
-                let chunk_size = u64::try_from(chunk.len()).unwrap_or(u64::MAX);
-                bytes_for_file = bytes_for_file.saturating_add(chunk_size);
-                progress.fetch_add(chunk_size, Ordering::Relaxed);
-            }
-            drop(output_file);
-
-            if bytes_for_file == 0 {
-                let _ = fs::remove_file(&temp_path);
-                return Err(format!(
-                    "Downloaded file '{}' was empty.",
-                    relative_path.display()
-                ));
-            }
-
-            if output_path.exists() {
-                fs::remove_file(&output_path).map_err(|error| {
-                    format!(
-                        "Failed to replace existing model file '{}': {error}",
-                        output_path.display()
-                    )
-                })?;
-            }
-            fs::rename(&temp_path, &output_path).map_err(|error| {
-                format!(
-                    "Failed to finalize model file '{}': {error}",
-                    output_path.display()
-                )
-            })?;
-
-            completed.fetch_add(1, Ordering::Relaxed);
-            Ok::<(String, u64, Option<u64>), String>((
-                relative_path.display().to_string(),
-                bytes_for_file,
-                discovered_content_length,
-            ))
-        })
-    };
-
-    while next_index < to_download.len() && active_tasks.len() < parallel_limit {
-        let (relative_path, output_path, size_hint) = to_download[next_index].clone();
-        active_tasks.push(spawn_file_download(relative_path, output_path, size_hint));
-        next_index += 1;
-    }
-
-    let mut downloaded_files = 0usize;
-    let mut downloaded_bytes = 0u64;
-    let mut last_status_update = Instant::now();
-
-    while !active_tasks.is_empty() {
-        let task = active_tasks.remove(0);
-        let result = task
-            .await
-            .map_err(|error| format!("Parallel file download worker failed: {error}"))?;
-        match result {
-            Ok((current_file, bytes_for_file, discovered_content_length)) => {
-                downloaded_files += 1;
-                downloaded_bytes = download_progress.load(Ordering::Relaxed);
-                if let Some(content_length) = discovered_content_length {
-                    total_bytes = total_bytes.saturating_add(content_length);
-                }
-                state.update_local_stt_download_status(|status| {
-                    status.current_file = current_file;
-                    status.stage = if parallel_limit > 1 {
-                        "Downloading model files in parallel...".to_string()
-                    } else {
-                        "Downloading file...".to_string()
-                    };
-                    status.total_bytes = total_bytes;
-                    status.downloaded_bytes = downloaded_bytes;
-                    status.files_completed = downloaded_files;
-                    status.message = format!(
-                        "Downloaded {}/{} files.",
-                        status.files_completed, status.files_total
-                    );
-                })?;
-                let _ = bytes_for_file;
-            }
-            Err(error) => {
-                return Err(error);
-            }
-        }
-
-        while next_index < to_download.len() && active_tasks.len() < parallel_limit {
-          let (relative_path, output_path, size_hint) = to_download[next_index].clone();
-          active_tasks.push(spawn_file_download(relative_path, output_path, size_hint));
-          next_index += 1;
-        }
-
-        if last_status_update.elapsed() >= Duration::from_millis(120) {
-            let progress_bytes = download_progress.load(Ordering::Relaxed);
-            let completed_count = completed_files.load(Ordering::Relaxed) as usize;
-            state.update_local_stt_download_status(|status| {
-                status.stage = if parallel_limit > 1 {
-                    format!("Downloading model files with {parallel_limit} parallel workers...")
-                } else {
-                    "Downloading model files...".to_string()
-                };
-                status.downloaded_bytes = progress_bytes;
-                status.files_completed = completed_count;
-            })?;
-            last_status_update = Instant::now();
-        }
-    }
-
-    if downloaded_files == 0 && skipped_files == 0 {
-        return Err(format!(
-            "No files were downloaded for HuggingFace model '{repo_id}'."
-        ));
-    }
-
-    if downloaded_files == 0 {
-        return Ok(format!(
-            "Model '{repo_id}' is already cached at '{}'.",
-            target_dir.display()
-        ));
-    }
-
-    let size_mb = downloaded_bytes as f64 / (1024.0 * 1024.0);
-    let skipped_suffix = if skipped_files > 0 {
-        format!(" Skipped {skipped_files} already-present files.")
-    } else {
-        String::new()
-    };
-    Ok(format!(
-        "Downloaded {downloaded_files} files ({size_mb:.1} MiB) from '{repo_id}' into '{}'.{}",
-        target_dir.display(),
-        skipped_suffix
-    ))
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 fn mime_to_extension(mime: &str) -> &'static str {
     let normalized = mime.to_ascii_lowercase();
@@ -9239,37 +8013,9 @@ fn mime_to_extension(mime: &str) -> &'static str {
     "webm"
 }
 
-fn now_unix_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| {
-            let millis = duration.as_millis();
-            if millis > u128::from(u64::MAX) {
-                u64::MAX
-            } else {
-                millis as u64
-            }
-        })
-        .unwrap_or(0)
-}
 
-fn calculate_local_stt_progress_percent(status: &LocalSttDownloadStatusResponse) -> f64 {
-    if status.total_bytes > 0 {
-        return ((status.downloaded_bytes as f64 / status.total_bytes as f64) * 100.0)
-            .clamp(0.0, 100.0);
-    }
 
-    if status.files_total > 0 {
-        return ((status.files_completed as f64 / status.files_total as f64) * 100.0)
-            .clamp(0.0, 100.0);
-    }
 
-    if status.completed && status.success {
-        100.0
-    } else {
-        0.0
-    }
-}
 
 
 
@@ -9718,40 +8464,12 @@ Explanation:
     // ===== PROGRESS CALCULATION =====
 
     #[test]
-    fn calculate_progress_uses_bytes_when_available() {
-        let status = LocalSttDownloadStatusResponse {
-            downloaded_bytes: 500,
-            total_bytes: 1000,
-            ..Default::default()
-        };
-        assert_eq!(calculate_local_stt_progress_percent(&status), 50.0);
-    }
 
     #[test]
-    fn calculate_progress_falls_back_to_file_count() {
-        let status = LocalSttDownloadStatusResponse {
-            files_completed: 3,
-            files_total: 6,
-            ..Default::default()
-        };
-        assert_eq!(calculate_local_stt_progress_percent(&status), 50.0);
-    }
 
     #[test]
-    fn calculate_progress_returns_100_for_completed_success() {
-        let status = LocalSttDownloadStatusResponse {
-            completed: true,
-            success: true,
-            ..Default::default()
-        };
-        assert_eq!(calculate_local_stt_progress_percent(&status), 100.0);
-    }
 
     #[test]
-    fn calculate_progress_returns_0_for_idle() {
-        let status = LocalSttDownloadStatusResponse::default();
-        assert_eq!(calculate_local_stt_progress_percent(&status), 0.0);
-    }
 
     // ===== SELECTION EDIT DECISION =====
 
