@@ -7104,11 +7104,17 @@ fn local_stt_models_for_tier(
     tier: &str,
     _nvidia_gpu_detected: bool,
 ) -> (&'static str, Vec<&'static str>, Vec<&'static str>) {
+    // Performance: strong CPU/GPU + ample RAM can handle the larger 0.6B model.
+    // Balanced/Basic: recommend the lightweight 110m model; caution about the
+    // heavier 0.6B model which may be slow on constrained hardware.
+    // NOTE: Native Parakeet runs on CPU int8 regardless of GPU, so
+    // _nvidia_gpu_detected is unused today but reserved for future GPU-accelerated
+    // inference paths.
     match tier {
         "performance" => (
-            "nvidia/parakeet-tdt_ctc-110m",
-            vec!["nvidia/parakeet-tdt_ctc-110m"],
-            vec!["nvidia/parakeet-tdt-0.6b-v3"],
+            "nvidia/parakeet-tdt-0.6b-v3",
+            vec!["nvidia/parakeet-tdt-0.6b-v3", "nvidia/parakeet-tdt_ctc-110m"],
+            vec![],
         ),
         "balanced" => (
             "nvidia/parakeet-tdt_ctc-110m",
@@ -9000,6 +9006,164 @@ Explanation:
         assert!(request.system_prompt.is_none());
         assert!(request.dictionary_entries.is_none());
         assert!(request.piper.is_none());
+    }
+
+    // ===== HARDWARE TIER RECOMMENDATION POLICY =====
+
+    #[test]
+    fn performance_tier_suggests_heavier_model() {
+        let (suggested, suggested_candidates, caution) =
+            local_stt_models_for_tier("performance", false);
+        assert_eq!(suggested, "nvidia/parakeet-tdt-0.6b-v3");
+        assert!(suggested_candidates.contains(&"nvidia/parakeet-tdt-0.6b-v3"));
+        assert!(suggested_candidates.contains(&"nvidia/parakeet-tdt_ctc-110m"));
+        assert!(caution.is_empty());
+    }
+
+    #[test]
+    fn balanced_tier_suggests_lightweight_model() {
+        let (suggested, suggested_candidates, caution) =
+            local_stt_models_for_tier("balanced", false);
+        assert_eq!(suggested, "nvidia/parakeet-tdt_ctc-110m");
+        assert_eq!(suggested_candidates, vec!["nvidia/parakeet-tdt_ctc-110m"]);
+        assert!(caution.contains(&"nvidia/parakeet-tdt-0.6b-v3"));
+    }
+
+    #[test]
+    fn basic_tier_suggests_lightweight_model() {
+        let (suggested, suggested_candidates, caution) =
+            local_stt_models_for_tier("basic", false);
+        assert_eq!(suggested, "nvidia/parakeet-tdt_ctc-110m");
+        assert_eq!(suggested_candidates, vec!["nvidia/parakeet-tdt_ctc-110m"]);
+        assert!(caution.contains(&"nvidia/parakeet-tdt-0.6b-v3"));
+    }
+
+    #[test]
+    fn unknown_tier_defaults_to_lightweight() {
+        let (suggested, _, _) = local_stt_models_for_tier("unknown", false);
+        assert_eq!(suggested, "nvidia/parakeet-tdt_ctc-110m");
+    }
+
+    // ===== HARDWARE TIER CLASSIFICATION =====
+
+    fn make_probe(logical_cores: usize, ram_bytes: u64, nvidia: bool, vram_mb: u64) -> LocalSttHardwareProbe {
+        LocalSttHardwareProbe {
+            cpu_name: "Test CPU".to_string(),
+            logical_cores,
+            total_ram_bytes: ram_bytes,
+            nvidia_gpu_detected: nvidia,
+            gpu_name: if nvidia { "NVIDIA GPU".to_string() } else { String::new() },
+            gpu_vram_mb: vram_mb,
+        }
+    }
+
+    #[test]
+    fn tier_performance_with_strong_gpu_and_ram() {
+        // 8+ cores, 16+ GB RAM, 8+ GB VRAM → performance
+        let probe = make_probe(12, 32 * 1024 * 1024 * 1024, true, 12 * 1024);
+        assert_eq!(local_stt_performance_tier(&probe, 32.0, 12.0), "performance");
+    }
+
+    #[test]
+    fn tier_basic_with_low_ram() {
+        let probe = make_probe(4, 4 * 1024 * 1024 * 1024, false, 0);
+        assert_eq!(local_stt_performance_tier(&probe, 4.0, 0.0), "basic");
+    }
+
+    #[test]
+    fn tier_balanced_with_mid_gpu() {
+        // 4+ GB VRAM + 12+ GB RAM → balanced
+        let probe = make_probe(6, 16 * 1024 * 1024 * 1024, true, 6 * 1024);
+        assert_eq!(local_stt_performance_tier(&probe, 16.0, 6.0), "balanced");
+    }
+
+    #[test]
+    fn tier_balanced_with_ample_ram_and_strong_cpu() {
+        // 16+ GB RAM + 8+ cores → balanced (no GPU)
+        let probe = make_probe(8, 16 * 1024 * 1024 * 1024, false, 0);
+        assert_eq!(local_stt_performance_tier(&probe, 16.0, 0.0), "balanced");
+    }
+
+    // ===== FOREGROUND INPUT BLOCKING POLICY =====
+
+    #[test]
+    fn blocks_known_game_processes() {
+        assert_eq!(foreground_input_block_reason("cs2", "", false), Some("game-process"));
+        assert_eq!(foreground_input_block_reason("valorant", "", false), Some("game-process"));
+        assert_eq!(foreground_input_block_reason("fortniteclient-win64-shipping", "", false), Some("game-process"));
+        assert_eq!(foreground_input_block_reason("gta5", "", false), Some("game-process"));
+    }
+
+    #[test]
+    fn blocks_game_prefixes() {
+        assert_eq!(foreground_input_block_reason("cyberpunk2077", "", false), Some("game-process"));
+        assert_eq!(foreground_input_block_reason("cod_ghosts", "", false), Some("game-process"));
+        assert_eq!(foreground_input_block_reason("eldenring", "", false), Some("game-process"));
+    }
+
+    #[test]
+    fn blocks_terminal_processes() {
+        assert_eq!(foreground_input_block_reason("cmd", "", false), Some("terminal-process"));
+        assert_eq!(foreground_input_block_reason("powershell", "", false), Some("terminal-process"));
+        assert_eq!(foreground_input_block_reason("windowsterminal", "", false), Some("terminal-process"));
+        assert_eq!(foreground_input_block_reason("mintty", "", false), Some("terminal-process"));
+    }
+
+    #[test]
+    fn blocks_ide_terminal_tabs() {
+        assert_eq!(
+            foreground_input_block_reason("code", "My Project — terminal", false),
+            Some("ide-terminal")
+        );
+        assert_eq!(
+            foreground_input_block_reason("cursor", "main.rs — PowerShell", false),
+            Some("ide-terminal")
+        );
+    }
+
+    #[test]
+    fn does_not_block_normal_processes() {
+        assert_eq!(foreground_input_block_reason("chrome", "", false), None);
+        assert_eq!(foreground_input_block_reason("slack", "", false), None);
+        assert_eq!(foreground_input_block_reason("explorer", "", false), None);
+        assert_eq!(foreground_input_block_reason("app", "", false), None);
+    }
+
+    #[test]
+    fn does_not_block_ide_with_non_terminal_tab() {
+        assert_eq!(
+            foreground_input_block_reason("code", "main.rs — Visual Studio Code", false),
+            None
+        );
+    }
+
+    #[test]
+    fn blocks_fullscreen_game_heuristic() {
+        assert_eq!(
+            foreground_input_block_reason("unknown_game", "My Game", true),
+            Some("fullscreen-game-heuristic")
+        );
+    }
+
+    #[test]
+    fn does_not_block_fullscreen_allowed_processes() {
+        assert_eq!(
+            foreground_input_block_reason("chrome", "YouTube", true),
+            None
+        );
+    }
+
+    #[test]
+    fn does_not_block_fullscreen_video_content() {
+        assert_eq!(
+            foreground_input_block_reason("vlc", "youtube.com/video", true),
+            None
+        );
+    }
+
+    #[test]
+    fn empty_process_name_not_blocked() {
+        assert_eq!(foreground_input_block_reason("", "", false), None);
     }
 }
 
