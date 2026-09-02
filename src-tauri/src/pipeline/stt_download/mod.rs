@@ -25,25 +25,25 @@ pub(crate) use resolve::{
 };
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use log::info;
-use reqwest::Client;
+use reqwest::{Client, Url};
 use serde_json::Value;
-use url::Url;
 
 use crate::constants::*;
 use crate::pipeline::fs::file_exists_with_content;
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::stt_download::archive::local_parakeet_archive_source;
+use crate::pipeline::stt_download::progress::SharedStatus;
 use crate::pipeline::stt_download::resolve::{
     normalize_huggingface_relative_path, select_huggingface_stt_download_entries,
     should_download_huggingface_stt_file,
 };
-use crate::pipeline::stt_download::progress::SharedStatus;
 
 /// Download a HuggingFace snapshot (or prepacked archive) into `target_dir`.
 ///

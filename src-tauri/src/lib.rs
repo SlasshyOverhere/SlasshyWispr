@@ -75,12 +75,6 @@ use pipeline::daemon::*;
 use pipeline::wake::*;
 use updater::*;
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-
-
-
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowRect {
@@ -7952,45 +7946,6 @@ fn open_path_in_file_explorer(path: &Path) -> Result<(), String> {
     }
 }
 
-
-
-
-
-#[derive(Debug, Clone, Copy)]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 fn mime_to_extension(mime: &str) -> &'static str {
     let normalized = mime.to_ascii_lowercase();
 
@@ -8460,16 +8415,6 @@ Explanation:
         assert_eq!(mime_to_extension("audio/unknown"), "webm");
         assert_eq!(mime_to_extension("application/octet-stream"), "webm");
     }
-
-    // ===== PROGRESS CALCULATION =====
-
-    #[test]
-
-    #[test]
-
-    #[test]
-
-    #[test]
 
     // ===== SELECTION EDIT DECISION =====
 
