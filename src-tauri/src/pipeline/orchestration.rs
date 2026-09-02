@@ -19,6 +19,7 @@ use crate::pipeline::selection::{
     seems_like_draft_generation_instruction, seems_like_selection_context_query,
     seems_like_selection_edit_instruction, SelectionEditAction, SelectionEditDecision,
 };
+use crate::pipeline::wake::extract_wake_command;
 
 // ===== Types =====
 
@@ -187,7 +188,7 @@ pub fn orchestrate_post_stt(input: OrchestratorInput) -> OrchestratorResult {
 
     // --- Wake word handling ---
     let wake_command = if input.wake_word_enabled {
-        crate::extract_wake_command(transcript, &input.config.assistant_name)
+        extract_wake_command(transcript, &input.config.assistant_name)
     } else {
         Some(transcript.to_string())
     };

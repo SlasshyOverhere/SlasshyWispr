@@ -17,10 +17,11 @@ use std::time::{Duration, Instant};
 use log::{error, info, warn};
 use serde_json::{json, Value};
 
+use crate::audio::parakeet::local_stt_native_parakeet_runtime;
 use crate::constants::*;
-use crate::pipeline::ai::{clip_text, single_line};
+use crate::pipeline::log::{clip_text, single_line};
+use crate::pipeline::process::{apply_no_window, validate_python_binary_path};
 use crate::pipeline::routing::{env_flag, non_empty_env_var};
-use crate::pipeline::tts::{apply_no_window, validate_python_binary_path};
 use transcribe_rs::TranscriptionEngine;
 
 // ---------------------------------------------------------------------------
@@ -115,10 +116,6 @@ fn local_stt_daemon_sweep_interval_secs() -> u64 {
         3,
         300,
     )
-}
-
-pub(crate) fn local_stt_parakeet_unload_after_transcribe() -> bool {
-    env_flag(LOCAL_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE_ENV, false)
 }
 
 // ---------------------------------------------------------------------------
@@ -845,7 +842,7 @@ fn stop_idle_local_stt_bridge_daemons() {
 fn stop_idle_local_stt_native_parakeet_runtime() {
     let unload_timeout_secs = local_stt_model_unload_idle_timeout_secs();
     let unload_timeout = Duration::from_secs(unload_timeout_secs);
-    let runtime = crate::local_stt_native_parakeet_runtime();
+    let runtime = local_stt_native_parakeet_runtime();
     let mut guard = match runtime.try_lock() {
         Ok(guard) => guard,
         Err(_) => return,

@@ -9,44 +9,55 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-#[cfg(target_os = "windows")]
-#[allow(unused_imports)]
-use std::os::windows::process::CommandExt;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+#[cfg(target_os = "windows")]
+use zip::ZipArchive;
 
 use log::{info, warn};
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 use tauri::Manager;
 
 use crate::constants::*;
-use crate::pipeline::ai::{clip_text, single_line};
+use crate::pipeline::fs::{download_file, file_exists_with_content, find_file_by_name};
+use crate::pipeline::log::{clip_text, single_line};
+use crate::pipeline::process::{
+    apply_no_window, elapsed_ms, merge_process_output, validate_python_binary_path,
+};
 
 // ===== Global state =====
 
+static PIPER_TUNING_SUPPORT: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
 
-// ===== Platform helpers =====
-
-#[cfg(target_os = "windows")]
-pub fn apply_no_window(command: &mut Command) {
-    command.creation_flags(CREATE_NO_WINDOW);
+pub(crate) fn piper_tuning_support() -> &'static Mutex<Option<bool>> {
+    PIPER_TUNING_SUPPORT.get_or_init(|| Mutex::new(None))
 }
 
-#[cfg(not(target_os = "windows"))]
-pub fn apply_no_window(_command: &mut Command) {}
+// ===== TTS engine request configuration =====
 
-pub fn merge_process_output(stdout: &[u8], stderr: &[u8]) -> String {
-    let stdout_text = String::from_utf8_lossy(stdout);
-    let stderr_text = String::from_utf8_lossy(stderr);
-    let merged = if stderr_text.trim().is_empty() {
-        stdout_text.as_ref()
-    } else if stdout_text.trim().is_empty() {
-        stderr_text.as_ref()
-    } else {
-        return format!("{} {}", stdout_text.trim(), stderr_text.trim());
-    };
-    merged.trim().to_string()
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PiperPipelineRequest {
+    pub(crate) speed: Option<f32>,
+    pub(crate) quality: Option<String>,
+    pub(crate) emotion: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CoquiPipelineRequest {
+    pub(crate) python_path: Option<String>,
+    pub(crate) model_name: Option<String>,
+    pub(crate) language: Option<String>,
+    pub(crate) speaker_id: Option<String>,
+    pub(crate) speed: Option<f32>,
+    pub(crate) quality: Option<String>,
+    pub(crate) emotion: Option<String>,
+    pub(crate) use_gpu: Option<bool>,
+    pub(crate) split_sentences: Option<bool>,
 }
 
 // ===== Piper text normalization =====
@@ -405,46 +416,6 @@ pub fn validate_piper_binary_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn validate_python_binary_path(path: &str) -> Result<(), String> {
-    let path_str = path.trim();
-    if path_str.is_empty() {
-        return Err("Python binary path is empty.".to_string());
-    }
-
-    if path_str.contains(|c: char| matches!(c, '\0' | '\n' | '\r')) {
-        return Err("Python binary path contains invalid characters.".to_string());
-    }
-
-    let path_buf = Path::new(path_str);
-    let file_name = path_buf
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| "Invalid python binary path.".to_string())?;
-    let file_name_lower = file_name.to_ascii_lowercase();
-
-    let normalized = file_name_lower
-        .strip_suffix(".exe")
-        .unwrap_or(file_name_lower.as_str());
-    let is_python3_with_version = normalized
-        .strip_prefix("python3.")
-        .map(|suffix| {
-            !suffix.is_empty()
-                && suffix
-                    .chars()
-                    .all(|character| character.is_ascii_digit() || character == '.')
-        })
-        .unwrap_or(false);
-
-    if !matches!(normalized, "python" | "python3" | "pythonw" | "py") && !is_python3_with_version {
-        return Err(format!(
-            "Invalid python binary name '{}'. Expected a python executable name.",
-            file_name
-        ));
-    }
-
-    Ok(())
-}
-
 // ===== Path resolution =====
 
 pub fn piper_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -547,7 +518,7 @@ pub fn resolve_coqui_python_path(
     }
 
     let venv_python = coqui_venv_python_path(app)?;
-    if crate::file_exists_with_content(&venv_python) {
+    if file_exists_with_content(&venv_python) {
         let resolved = venv_python.to_string_lossy().into_owned();
         validate_python_binary_path(&resolved)?;
         return Ok(resolved);
@@ -639,7 +610,7 @@ pub async fn synthesize_with_piper(
     piper_path: String,
     model_path: PathBuf,
     text: String,
-    piper: Option<&crate::PiperPipelineRequest>,
+    piper: Option<&PiperPipelineRequest>,
 ) -> Result<Vec<u8>, String> {
     validate_piper_binary_path(&piper_path)?;
     let synth_start = Instant::now();
@@ -780,7 +751,7 @@ pub async fn synthesize_with_piper(
         };
 
         let cached_tuning_support = {
-            let guard = crate::piper_tuning_support()
+            let guard = piper_tuning_support()
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             *guard
@@ -795,7 +766,7 @@ pub async fn synthesize_with_piper(
         let output = if should_try_tuning {
             let first_output = run_once(true)?;
             if first_output.status.success() {
-                let mut guard = crate::piper_tuning_support()
+                let mut guard = piper_tuning_support()
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 if *guard != Some(true) {
@@ -813,7 +784,7 @@ pub async fn synthesize_with_piper(
                     warn!(
                         "[piper.synthesize] piper runtime does not support tuning args; retrying with defaults"
                     );
-                    let mut guard = crate::piper_tuning_support()
+                    let mut guard = piper_tuning_support()
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
                     *guard = Some(false);
@@ -848,7 +819,7 @@ pub async fn synthesize_with_piper(
             info!(
                 "[piper.synthesize] success bytes={} latency_ms={}",
                 wav_bytes.len(),
-                crate::elapsed_ms(synth_start)
+                elapsed_ms(synth_start)
             );
         }
         result
@@ -857,10 +828,10 @@ pub async fn synthesize_with_piper(
 
 pub async fn synthesize_with_coqui(
     app: &AppHandle,
-    coqui: &crate::CoquiPipelineRequest,
+    coqui: &CoquiPipelineRequest,
     text: String,
 ) -> Result<Vec<u8>, String> {
-    if crate::zero_python_mode_enabled() {
+    if crate::pipeline::routing::zero_python_mode_enabled() {
         return Err(ZERO_PYTHON_COQUI_NOTICE.to_string());
     }
     let synth_start = Instant::now();
@@ -974,7 +945,7 @@ pub async fn synthesize_with_coqui(
     info!(
         "[coqui.synthesize] success bytes={} latency_ms={}",
         wav_bytes.len(),
-        crate::elapsed_ms(synth_start)
+        elapsed_ms(synth_start)
     );
 
     Ok(wav_bytes)
@@ -988,15 +959,55 @@ pub async fn ensure_voice_files(
 ) -> Result<(PathBuf, PathBuf), String> {
     let (model_path, config_path) = voice_paths(app)?;
 
-    if !crate::file_exists_with_content(&model_path) {
-        crate::download_file(client, VOICE_MODEL_URL, &model_path).await?;
+    if !file_exists_with_content(&model_path) {
+        download_file(client, VOICE_MODEL_URL, &model_path).await?;
     }
 
-    if !crate::file_exists_with_content(&config_path) {
-        crate::download_file(client, VOICE_CONFIG_URL, &config_path).await?;
+    if !file_exists_with_content(&config_path) {
+        download_file(client, VOICE_CONFIG_URL, &config_path).await?;
     }
 
     Ok((model_path, config_path))
+}
+
+#[cfg(target_os = "windows")]
+fn extract_zip_archive(archive_path: &Path, destination: &Path) -> Result<(), String> {
+    let archive_file = fs::File::open(archive_path)
+        .map_err(|error| format!("Failed to open Piper archive: {error}"))?;
+
+    let mut archive = ZipArchive::new(archive_file)
+        .map_err(|error| format!("Invalid Piper ZIP archive: {error}"))?;
+
+    for index in 0..archive.len() {
+        let mut file = archive
+            .by_index(index)
+            .map_err(|error| format!("Failed reading ZIP entry {index}: {error}"))?;
+
+        let Some(safe_name) = file.enclosed_name().map(|path| path.to_owned()) else {
+            continue;
+        };
+
+        let output_path = destination.join(safe_name);
+
+        if file.is_dir() {
+            fs::create_dir_all(&output_path)
+                .map_err(|error| format!("Failed creating extracted directory: {error}"))?;
+            continue;
+        }
+
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("Failed preparing extracted path: {error}"))?;
+        }
+
+        let mut output_file = fs::File::create(&output_path)
+            .map_err(|error| format!("Failed creating extracted file: {error}"))?;
+
+        std::io::copy(&mut file, &mut output_file)
+            .map_err(|error| format!("Failed writing extracted file: {error}"))?;
+    }
+
+    Ok(())
 }
 
 pub async fn ensure_piper_binary(app: &AppHandle, client: &Client) -> Result<PathBuf, String> {
@@ -1004,16 +1015,16 @@ pub async fn ensure_piper_binary(app: &AppHandle, client: &Client) -> Result<Pat
     {
         let runtime_dir = piper_runtime_dir(app)?;
 
-        if let Some(existing_path) = crate::find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)? {
+        if let Some(existing_path) = find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)? {
             return Ok(existing_path);
         }
 
         let archive_path = runtime_dir.join(PIPER_ARCHIVE_FILE);
-        crate::download_file(client, PIPER_ARCHIVE_URL, &archive_path).await?;
-        crate::extract_zip_archive(&archive_path, &runtime_dir)?;
+        download_file(client, PIPER_ARCHIVE_URL, &archive_path).await?;
+        extract_zip_archive(&archive_path, &runtime_dir)?;
         let _ = fs::remove_file(&archive_path);
 
-        return crate::find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)?
+        return find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)?
             .ok_or_else(|| "Piper archive was extracted but piper.exe was not found".to_string());
     }
 

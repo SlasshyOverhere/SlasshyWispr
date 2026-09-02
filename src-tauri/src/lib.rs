@@ -30,12 +30,6 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, State,
 };
-use transcribe_rs::{
-    engines::parakeet::{
-        ParakeetEngine, ParakeetInferenceParams, ParakeetModelParams, TimestampGranularity,
-    },
-    TranscriptionEngine,
-};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, RECT};
 #[cfg(target_os = "windows")]
@@ -57,8 +51,6 @@ use windows_sys::Win32::System::Threading::{
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
-#[cfg(target_os = "windows")]
-use zip::ZipArchive;
 
 pub mod audio;
 pub mod constants;
@@ -67,9 +59,12 @@ pub mod security;
 pub mod updater;
 use audio::vad;
 use audio::processing::*;
-use pipeline::ai::{clip_text, generate_assistant_response, generate_compose_draft_fallback,
-    generate_direct_answer_fallback, generate_selection_edit_decision, single_line};
+use pipeline::ai::{generate_assistant_response, generate_compose_draft_fallback,
+    generate_direct_answer_fallback, generate_selection_edit_decision};
+use pipeline::fs::*;
 use pipeline::input::*;
+use pipeline::log::*;
+use pipeline::process::*;
 use pipeline::refinement::{self, RefinementConfig, RefinementDictionaryEntry, RefinementSnippetEntry};
 use pipeline::selection::*;
 use pipeline::stt::*;
@@ -80,6 +75,7 @@ use security::validate_base64_input;
 use pipeline::routing::*;
 use pipeline::tts::*;
 use pipeline::daemon::*;
+use pipeline::wake::*;
 use updater::*;
 
 #[derive(Debug, Clone, Serialize)]
@@ -375,18 +371,9 @@ struct RecentSelectionContext {
     created_at: Instant,
 }
 
-// SelectionEditAction and SelectionEditDecision types moved to pipeline::selection.
-pub(crate) struct NativeParakeetRuntime {
-    pub(crate) model_key: String,
-    pub(crate) engine: ParakeetEngine,
-    pub(crate) last_used: Instant,
-}
-
+// Selection-edit types moved to pipeline::selection; native Parakeet runtime
+// moved to audio::parakeet; Piper tuning cache moved to pipeline::tts.
 static LOCAL_STT_RUNTIME_PYTHON_CACHE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
-static LOCAL_STT_NATIVE_PARAKEET_OP_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-static LOCAL_STT_NATIVE_PARAKEET_RUNTIME: OnceLock<Mutex<Option<NativeParakeetRuntime>>> =
-    OnceLock::new();
-static PIPER_TUNING_SUPPORT: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
 static TRAY_UPDATE_ITEM: OnceLock<MenuItem<tauri::Wry>> = OnceLock::new();
 static SAVED_SYSTEM_AUDIO_VOLUME: Mutex<Option<u32>> = Mutex::new(None);
 
@@ -478,20 +465,8 @@ fn get_process_name_from_pid(pid: u32) -> String {
     }
 }
 
-fn piper_tuning_support() -> &'static Mutex<Option<bool>> {
-    PIPER_TUNING_SUPPORT.get_or_init(|| Mutex::new(None))
-}
-
 fn local_stt_runtime_python_cache() -> &'static Mutex<Option<String>> {
     LOCAL_STT_RUNTIME_PYTHON_CACHE.get_or_init(|| Mutex::new(None))
-}
-
-pub(crate) fn local_stt_native_parakeet_runtime() -> &'static Mutex<Option<NativeParakeetRuntime>> {
-    LOCAL_STT_NATIVE_PARAKEET_RUNTIME.get_or_init(|| Mutex::new(None))
-}
-
-fn local_stt_native_parakeet_op_lock() -> &'static Mutex<()> {
-    LOCAL_STT_NATIVE_PARAKEET_OP_LOCK.get_or_init(|| Mutex::new(()))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -534,26 +509,6 @@ struct AssistantPipelineRequest {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct PiperPipelineRequest {
-    speed: Option<f32>,
-    quality: Option<String>,
-    emotion: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CoquiPipelineRequest {
-    python_path: Option<String>,
-    model_name: Option<String>,
-    language: Option<String>,
-    speaker_id: Option<String>,
-    speed: Option<f32>,
-    quality: Option<String>,
-    emotion: Option<String>,
-    use_gpu: Option<bool>,
-    split_sentences: Option<bool>,
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DictionaryEntryRequest {
@@ -4169,7 +4124,7 @@ async fn delete_local_stt_model(
     let provider = infer_local_stt_provider_from_model(&model);
     let repo_id = resolve_huggingface_repo_id(&provider, &model);
     if provider.eq_ignore_ascii_case("parakeet") {
-        let _ = unload_native_parakeet_runtime("delete-model");
+        let _ = audio::parakeet::unload_native_parakeet_runtime("delete-model");
         stop_all_local_stt_bridge_daemons();
         let _ = state.set_local_stt_runtime_loaded(false);
     }
@@ -4412,7 +4367,8 @@ async fn deactivate_local_stt_model(
     let worker_result = tauri::async_runtime::spawn_blocking(move || {
         let (trimmed_count, stopped_during_trim) = trim_all_local_stt_bridge_daemon_model_caches()?;
         let fully_stopped = stop_all_local_stt_bridge_daemons_with_count();
-        let native_unloaded = unload_native_parakeet_runtime("manual-deactivate").unwrap_or(false);
+        let native_unloaded =
+            audio::parakeet::unload_native_parakeet_runtime("manual-deactivate").unwrap_or(false);
         Ok::<(usize, usize, usize, bool), String>((
             trimmed_count,
             stopped_during_trim,
@@ -4464,7 +4420,7 @@ async fn get_local_stt_runtime_state(
 ) -> Result<LocalSttRuntimeStateResponse, String> {
     let (daemon_count, loaded_daemon_count) = local_stt_daemon_stats();
 
-    let native_loaded = native_parakeet_runtime_loaded();
+    let native_loaded = audio::parakeet::native_parakeet_runtime_loaded();
     let loaded = state.local_stt_runtime_loaded_snapshot()?;
     let details = if loaded {
         format!(
@@ -5189,318 +5145,6 @@ async fn get_tts_runtime_setup_status(
     setup_state: State<'_, TtsSetupState>,
 ) -> Result<TtsSetupStatusResponse, String> {
     Ok(setup_state.snapshot())
-}
-
-fn wake_name_tokens(raw_name: &str) -> Vec<String> {
-    raw_name
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .map(str::trim)
-        .filter(|token| !token.is_empty())
-        .map(|token| token.to_ascii_lowercase())
-        .collect()
-}
-
-fn skip_non_alphanumeric(input: &str, mut index: usize) -> usize {
-    while index < input.len() {
-        let mut iterator = input[index..].chars();
-        let Some(character) = iterator.next() else {
-            break;
-        };
-        if character.is_ascii_alphanumeric() {
-            break;
-        }
-        index += character.len_utf8();
-    }
-    index
-}
-
-fn consume_next_ascii_token(input: &str, index: usize) -> Option<(String, usize)> {
-    let mut cursor = skip_non_alphanumeric(input, index);
-    if cursor >= input.len() {
-        return None;
-    }
-
-    let mut token = String::new();
-    while cursor < input.len() {
-        let mut iterator = input[cursor..].chars();
-        let current = iterator.next()?;
-        if !current.is_ascii_alphanumeric() {
-            break;
-        }
-        token.push(current.to_ascii_lowercase());
-        cursor += current.len_utf8();
-    }
-
-    if token.is_empty() {
-        return None;
-    }
-
-    Some((token, cursor))
-}
-
-fn within_one_edit_ascii(a: &str, b: &str) -> bool {
-    if a.eq_ignore_ascii_case(b) {
-        return true;
-    }
-
-    let a = a.to_ascii_lowercase();
-    let b = b.to_ascii_lowercase();
-    let a_bytes = a.as_bytes();
-    let b_bytes = b.as_bytes();
-    let a_len = a_bytes.len();
-    let b_len = b_bytes.len();
-
-    if a_len.abs_diff(b_len) > 1 {
-        return false;
-    }
-
-    if a_len == b_len {
-        let mut mismatches = 0usize;
-        for index in 0..a_len {
-            if a_bytes[index] != b_bytes[index] {
-                mismatches += 1;
-                if mismatches > 1 {
-                    return false;
-                }
-            }
-        }
-        return mismatches <= 1;
-    }
-
-    let (shorter, longer) = if a_len < b_len {
-        (a_bytes, b_bytes)
-    } else {
-        (b_bytes, a_bytes)
-    };
-
-    let mut short_index = 0usize;
-    let mut long_index = 0usize;
-    let mut skipped = false;
-    while short_index < shorter.len() && long_index < longer.len() {
-        if shorter[short_index] == longer[long_index] {
-            short_index += 1;
-            long_index += 1;
-            continue;
-        }
-        if skipped {
-            return false;
-        }
-        skipped = true;
-        long_index += 1;
-    }
-
-    true
-}
-
-fn within_n_edits_ascii(a: &str, b: &str, max_edits: usize) -> bool {
-    if a.eq_ignore_ascii_case(b) {
-        return true;
-    }
-
-    let a = a.to_ascii_lowercase();
-    let b = b.to_ascii_lowercase();
-    let a_bytes = a.as_bytes();
-    let b_bytes = b.as_bytes();
-    let a_len = a_bytes.len();
-    let b_len = b_bytes.len();
-    if a_len.abs_diff(b_len) > max_edits {
-        return false;
-    }
-
-    let mut previous: Vec<usize> = (0..=b_len).collect();
-    let mut current: Vec<usize> = vec![0; b_len + 1];
-
-    for (row_index, a_byte) in a_bytes.iter().enumerate() {
-        current[0] = row_index + 1;
-        let mut row_min = current[0];
-        for (col_index, b_byte) in b_bytes.iter().enumerate() {
-            let substitution_cost = if a_byte == b_byte { 0 } else { 1 };
-            let deletion = previous[col_index + 1] + 1;
-            let insertion = current[col_index] + 1;
-            let substitution = previous[col_index] + substitution_cost;
-            let next = deletion.min(insertion).min(substitution);
-            current[col_index + 1] = next;
-            row_min = row_min.min(next);
-        }
-        if row_min > max_edits {
-            return false;
-        }
-        std::mem::swap(&mut previous, &mut current);
-    }
-
-    previous[b_len] <= max_edits
-}
-
-fn ascii_consonant_signature(raw: &str) -> String {
-    let mut output = String::new();
-    let mut last: Option<char> = None;
-    for character in raw.chars() {
-        if !character.is_ascii_alphabetic() {
-            continue;
-        }
-        let lowered = character.to_ascii_lowercase();
-        if matches!(lowered, 'a' | 'e' | 'i' | 'o' | 'u') {
-            continue;
-        }
-        if Some(lowered) == last {
-            continue;
-        }
-        output.push(lowered);
-        last = Some(lowered);
-    }
-    output
-}
-
-fn assistant_name_token_matches(expected: &str, actual: &str) -> bool {
-    if expected.eq_ignore_ascii_case(actual) {
-        return true;
-    }
-
-    if expected.len() < 3 || actual.len() < 3 {
-        return false;
-    }
-
-    if within_one_edit_ascii(expected, actual) {
-        return true;
-    }
-
-    let expected_normalized = expected.to_ascii_lowercase();
-    let actual_normalized = actual.to_ascii_lowercase();
-    if expected_normalized.len() <= 5
-        && within_n_edits_ascii(&expected_normalized, &actual_normalized, 2)
-    {
-        return true;
-    }
-
-    if let Some(tail) = actual_normalized.strip_prefix('h') {
-        if !tail.is_empty() && within_n_edits_ascii(&expected_normalized, tail, 2) {
-            return true;
-        }
-
-        let expected_signature = ascii_consonant_signature(&expected_normalized);
-        let tail_signature = ascii_consonant_signature(tail);
-        if !expected_signature.is_empty() && !tail_signature.is_empty() {
-            let starts_alike = expected_signature
-                .chars()
-                .next()
-                .zip(tail_signature.chars().next())
-                .map(|(left, right)| left == right)
-                .unwrap_or(false);
-            if starts_alike && within_n_edits_ascii(&expected_signature, &tail_signature, 1) {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
-fn consume_assistant_name_token(input: &str, index: usize, expected: &str) -> Option<usize> {
-    let (actual, next_cursor) = consume_next_ascii_token(input, index)?;
-    if assistant_name_token_matches(expected, &actual) {
-        Some(next_cursor)
-    } else {
-        None
-    }
-}
-
-fn wake_prefix_token_matches(expected: &str, actual: &str) -> bool {
-    if expected.eq_ignore_ascii_case(actual) {
-        return true;
-    }
-
-    let expected_normalized = expected.to_ascii_lowercase();
-    let actual_normalized = actual.to_ascii_lowercase();
-    if (expected_normalized == "ok" && actual_normalized == "okay")
-        || (expected_normalized == "okay" && actual_normalized == "ok")
-    {
-        return true;
-    }
-
-    if expected_normalized.len() >= 3
-        && within_one_edit_ascii(&expected_normalized, &actual_normalized)
-    {
-        return true;
-    }
-
-    false
-}
-
-fn is_optional_wake_leading_filler(token: &str) -> bool {
-    matches!(
-        token,
-        "um" | "uh" | "umm" | "hmm" | "hm" | "ah" | "so" | "well" | "please"
-    )
-}
-
-fn extract_wake_command(transcript: &str, assistant_name: &str) -> Option<String> {
-    let mut name_tokens = wake_name_tokens(assistant_name);
-    if name_tokens.is_empty() {
-        name_tokens.push("lily".to_string());
-    }
-    let wake_prefixes: [&[&str]; 5] = [&["hey"], &["hi"], &["hello"], &["ok"], &["okay"]];
-
-    let trimmed = transcript.trim_start();
-    let start_cursor = transcript.len().saturating_sub(trimmed.len());
-    let mut candidate_cursors = vec![start_cursor];
-    let mut filler_cursor = start_cursor;
-    for _ in 0..3 {
-        let Some((token, next_cursor)) = consume_next_ascii_token(transcript, filler_cursor) else {
-            break;
-        };
-        if !is_optional_wake_leading_filler(&token) {
-            break;
-        }
-        candidate_cursors.push(next_cursor);
-        filler_cursor = next_cursor;
-    }
-
-    for prefix in wake_prefixes {
-        for prefix_start in &candidate_cursors {
-            let mut cursor = *prefix_start;
-            let mut matched = true;
-
-            for token in prefix {
-                let Some((actual, next_cursor)) = consume_next_ascii_token(transcript, cursor)
-                else {
-                    matched = false;
-                    break;
-                };
-                if !wake_prefix_token_matches(token, &actual) {
-                    matched = false;
-                    break;
-                }
-                cursor = next_cursor;
-            }
-
-            if !matched {
-                continue;
-            }
-
-            for token in &name_tokens {
-                let Some(next_cursor) = consume_assistant_name_token(transcript, cursor, token)
-                else {
-                    matched = false;
-                    break;
-                };
-                cursor = next_cursor;
-            }
-
-            if !matched {
-                continue;
-            }
-
-            let remainder = transcript[cursor..]
-                .trim_start_matches(|character: char| {
-                    character.is_whitespace() || matches!(character, ',' | ':' | ';' | '-' | '.')
-                })
-                .trim()
-                .to_string();
-            return Some(remainder);
-        }
-    }
-
-    None
 }
 
 /// Thin adapter that converts an IPC request into a pure routing input
@@ -6404,7 +6048,7 @@ async fn transcribe_audio_local_parakeet(
     let audio_mime_type_for_worker = audio_mime_type.to_string();
     let native_result = tauri::async_runtime::spawn_blocking(move || {
         let (transcript, model_cached, unloaded_after_transcribe) =
-            transcribe_local_stt_parakeet_native(
+            audio::parakeet::transcribe_local_stt_parakeet_native(
                 &model_root_for_worker,
                 &audio_bytes_for_worker,
                 &audio_mime_type_for_worker,
@@ -6600,35 +6244,6 @@ async fn transcribe_audio_openai_compatible(
     Ok(transcript)
 }
 
-
-fn validate_piper_binary_path(path: &str) -> Result<(), String> {
-    let path_str = path.trim();
-    if path_str.is_empty() {
-        return Err("Piper binary path is empty.".to_string());
-    }
-
-    if path_str.contains(|c: char| matches!(c, '\0' | '\n' | '\r')) {
-        return Err("Piper binary path contains invalid characters.".to_string());
-    }
-
-    let path_buf = Path::new(path_str);
-    let file_name = path_buf
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| "Invalid piper binary path.".to_string())?;
-    let file_name_lower = file_name.to_ascii_lowercase();
-
-    let allowed_names = ["piper", "piper.exe"];
-
-    if !allowed_names.contains(&file_name_lower.as_str()) {
-        return Err(format!(
-            "Invalid piper binary name '{}'. Expected one of: {:?}",
-            file_name, allowed_names
-        ));
-    }
-
-    Ok(())
-}
 
 fn resolve_piper_path(app: &AppHandle, requested_path: Option<&str>) -> Result<String, String> {
     if let Some(path) = requested_path
@@ -6890,29 +6505,6 @@ mod launch_at_login_preference_tests {
 fn discover_installed_piper_path(app: &AppHandle) -> Result<Option<PathBuf>, String> {
     let runtime_dir = piper_runtime_dir(app)?;
     find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)
-}
-
-fn resolve_coqui_python_path(
-    app: &AppHandle,
-    requested_path: Option<&str>,
-) -> Result<String, String> {
-    if let Some(path) = requested_path
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        validate_python_binary_path(path)?;
-        return Ok(path.to_string());
-    }
-
-    let venv_python = coqui_venv_python_path(app)?;
-    if file_exists_with_content(&venv_python) {
-        let resolved = venv_python.to_string_lossy().into_owned();
-        validate_python_binary_path(&resolved)?;
-        return Ok(resolved);
-    }
-
-    validate_python_binary_path("python")?;
-    Ok("python".to_string())
 }
 
 fn detect_nvidia_gpu() -> bool {
@@ -7294,86 +6886,6 @@ fn value_string_array(value: Option<&Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn find_file_by_name(root: &Path, target_name: &str) -> Result<Option<PathBuf>, String> {
-    if !root.exists() {
-        return Ok(None);
-    }
-
-    let mut stack = vec![root.to_path_buf()];
-
-    while let Some(current_dir) = stack.pop() {
-        let entries = fs::read_dir(&current_dir).map_err(|error| {
-            format!(
-                "Failed to read directory '{}': {error}",
-                current_dir.display()
-            )
-        })?;
-
-        for entry in entries {
-            let entry =
-                entry.map_err(|error| format!("Failed to read directory entry: {error}"))?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-
-            let matches = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .map(|name| name.eq_ignore_ascii_case(target_name))
-                .unwrap_or(false);
-
-            if matches {
-                return Ok(Some(path));
-            }
-        }
-    }
-
-    Ok(None)
-}
-
-#[cfg(target_os = "windows")]
-fn extract_zip_archive(archive_path: &Path, destination: &Path) -> Result<(), String> {
-    let archive_file = fs::File::open(archive_path)
-        .map_err(|error| format!("Failed to open Piper archive: {error}"))?;
-
-    let mut archive = ZipArchive::new(archive_file)
-        .map_err(|error| format!("Invalid Piper ZIP archive: {error}"))?;
-
-    for index in 0..archive.len() {
-        let mut file = archive
-            .by_index(index)
-            .map_err(|error| format!("Failed reading ZIP entry {index}: {error}"))?;
-
-        let Some(safe_name) = file.enclosed_name().map(|path| path.to_owned()) else {
-            continue;
-        };
-
-        let output_path = destination.join(safe_name);
-
-        if file.is_dir() {
-            fs::create_dir_all(&output_path)
-                .map_err(|error| format!("Failed creating extracted directory: {error}"))?;
-            continue;
-        }
-
-        if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("Failed preparing extracted path: {error}"))?;
-        }
-
-        let mut output_file = fs::File::create(&output_path)
-            .map_err(|error| format!("Failed creating extracted file: {error}"))?;
-
-        io::copy(&mut file, &mut output_file)
-            .map_err(|error| format!("Failed writing extracted file: {error}"))?;
-    }
-
-    Ok(())
-}
-
 fn extract_tar_gz_archive(archive_path: &Path, destination: &Path) -> Result<(), String> {
     let archive_file = fs::File::open(archive_path).map_err(|error| {
         format!(
@@ -7417,51 +6929,6 @@ fn extract_tar_gz_archive(archive_path: &Path, destination: &Path) -> Result<(),
     Ok(())
 }
 
-fn file_exists_with_content(path: &Path) -> bool {
-    fs::metadata(path)
-        .map(|meta| meta.is_file() && meta.len() > 0)
-        .unwrap_or(false)
-}
-
-async fn download_file(client: &Client, url: &str, destination: &Path) -> Result<(), String> {
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Failed to prepare destination folder: {error}"))?;
-    }
-
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|error| format!("Failed to download {url}: {error}"))?;
-
-    let status = response.status();
-    if !status.is_success() {
-        let body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "unable to read body".to_string());
-
-        return Err(format!(
-            "Download failed ({status}) for {url}: {}",
-            clip_text(&single_line(&body), 400)
-        ));
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| format!("Failed reading downloaded bytes from {url}: {error}"))?;
-
-    let temp_path = destination.with_extension("downloading");
-    fs::write(&temp_path, &bytes)
-        .map_err(|error| format!("Failed writing temporary file: {error}"))?;
-
-    fs::rename(&temp_path, destination)
-        .map_err(|error| format!("Failed finalizing downloaded file: {error}"))?;
-
-    Ok(())
-}
 
 
 
@@ -8517,160 +7984,6 @@ fn setup_local_stt_runtime_blocking(
     Ok(venv_python)
 }
 
-fn normalize_native_parakeet_model_key(model_root: &Path) -> String {
-    #[cfg(target_os = "windows")]
-    {
-        model_root.to_string_lossy().to_ascii_lowercase()
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        model_root.to_string_lossy().to_string()
-    }
-}
-
-// Audio processing functions have been moved to audio::processing.
-// They are available via `use audio::processing::*;` at the top of this file.
-
-fn get_or_load_native_parakeet_runtime(model_root: &Path) -> Result<bool, String> {
-    let _op_guard = local_stt_native_parakeet_op_lock()
-        .lock()
-        .map_err(|_| "Native Parakeet operation lock poisoned.".to_string())?;
-    let model_key = normalize_native_parakeet_model_key(model_root);
-    let runtime = local_stt_native_parakeet_runtime();
-    let mut guard = runtime
-        .lock()
-        .map_err(|_| "Native Parakeet runtime lock poisoned.".to_string())?;
-
-    if let Some(current) = guard.as_mut() {
-        if current.model_key == model_key {
-            current.last_used = Instant::now();
-            return Ok(true);
-        }
-        let _ = current.engine.unload_model();
-        *guard = None;
-    }
-    drop(guard);
-
-    let mut engine = ParakeetEngine::new();
-    engine
-        .load_model_with_params(model_root, ParakeetModelParams::int8())
-        .map_err(|error| {
-            format!(
-                "Failed to load native Parakeet model '{}' with int8 params: {}",
-                model_root.display(),
-                error
-            )
-        })?;
-
-    let mut guard = runtime
-        .lock()
-        .map_err(|_| "Native Parakeet runtime lock poisoned.".to_string())?;
-    if let Some(current) = guard.as_mut() {
-        if current.model_key == model_key {
-            current.last_used = Instant::now();
-            return Ok(true);
-        }
-        let _ = current.engine.unload_model();
-        *guard = None;
-    }
-    *guard = Some(NativeParakeetRuntime {
-        model_key,
-        engine,
-        last_used: Instant::now(),
-    });
-    Ok(false)
-}
-
-fn unload_native_parakeet_runtime(reason: &str) -> Result<bool, String> {
-    let _op_guard = local_stt_native_parakeet_op_lock()
-        .lock()
-        .map_err(|_| "Native Parakeet operation lock poisoned.".to_string())?;
-    let runtime = local_stt_native_parakeet_runtime();
-    let mut guard = runtime
-        .lock()
-        .map_err(|_| "Native Parakeet runtime lock poisoned.".to_string())?;
-
-    if let Some(mut active) = guard.take() {
-        let _ = active.engine.unload_model();
-        info!(
-            "[local.stt.parakeet.native] runtime unloaded reason={} model_key={}",
-            clip_text(reason, 80),
-            clip_text(&active.model_key, 220)
-        );
-        return Ok(true);
-    }
-    Ok(false)
-}
-
-fn native_parakeet_runtime_loaded() -> bool {
-    let runtime = local_stt_native_parakeet_runtime();
-    let guard = match runtime.try_lock() {
-        Ok(guard) => guard,
-        Err(std::sync::TryLockError::WouldBlock) => return true,
-        Err(std::sync::TryLockError::Poisoned(_)) => return false,
-    };
-    guard.is_some()
-}
-
-fn transcribe_local_stt_parakeet_native(
-    model_root: &Path,
-    audio_bytes: &[u8],
-    audio_mime_type: &str,
-    vad_model_path: Option<String>,
-) -> Result<(String, bool, bool), String> {
-    let model_cached = get_or_load_native_parakeet_runtime(model_root)?;
-    let mut audio_samples = decode_local_stt_audio_to_mono_f32(audio_bytes, audio_mime_type)?;
-
-    if let Some(ref model_path) = vad_model_path {
-        if !model_path.is_empty() {
-            match vad::trim_speech(&audio_samples, std::path::Path::new(model_path)) {
-                Ok(Some(trimmed)) => {
-                    audio_samples = trimmed;
-                }
-                Ok(None) => {
-                    return Err(
-                        "No speech detected. Please speak into the microphone and try again."
-                            .to_string(),
-                    );
-                }
-                Err(error) => {
-                    warn!("[vad] trim_speech failed, continuing without VAD: {}", error);
-                }
-            }
-        }
-    }
-
-    let unload_after_transcribe = local_stt_parakeet_unload_after_transcribe();
-
-    let runtime = local_stt_native_parakeet_runtime();
-    let mut guard = runtime
-        .lock()
-        .map_err(|_| "Native Parakeet runtime lock poisoned.".to_string())?;
-    let active = guard
-        .as_mut()
-        .ok_or_else(|| "Native Parakeet runtime is not loaded.".to_string())?;
-    active.last_used = Instant::now();
-
-    let params = ParakeetInferenceParams {
-        timestamp_granularity: TimestampGranularity::Segment,
-        ..Default::default()
-    };
-    let result = active
-        .engine
-        .transcribe_samples(audio_samples, Some(params))
-        .map_err(|error| format!("Native Parakeet transcription failed: {error}"))?;
-    let transcript = result.text.trim().to_string();
-    if transcript.is_empty() {
-        return Err("Native Parakeet STT returned an empty transcript.".to_string());
-    }
-
-    if unload_after_transcribe {
-        let _ = active.engine.unload_model();
-        *guard = None;
-    }
-    Ok((transcript, model_cached, unload_after_transcribe))
-}
-
 fn warmup_local_stt_parakeet_model_blocking(
     app: &AppHandle,
     _python_path: &str,
@@ -8685,7 +7998,7 @@ fn warmup_local_stt_parakeet_model_blocking(
     let repo_id = resolve_huggingface_repo_id(&provider, &canonical_model);
     let model_dir = stt_models_dir(app)?.join(sanitize_model_cache_dir_name(&repo_id));
     let model_root = find_local_parakeet_model_root(&model_dir)?;
-    let model_cached = get_or_load_native_parakeet_runtime(&model_root)?;
+    let model_cached = audio::parakeet::get_or_load_native_parakeet_runtime(&model_root)?;
     let device = "cpu";
     let precision = "int8";
     info!(
@@ -9958,14 +9271,6 @@ fn calculate_local_stt_progress_percent(status: &LocalSttDownloadStatusResponse)
     }
 }
 
-fn elapsed_ms(start: Instant) -> u64 {
-    let elapsed = start.elapsed().as_millis();
-    if elapsed > u128::from(u64::MAX) {
-        u64::MAX
-    } else {
-        elapsed as u64
-    }
-}
 
 
 
@@ -10100,94 +9405,6 @@ Explanation:
             transcript,
             Some("en")
         ));
-    }
-
-    #[test]
-    fn detects_wake_phrase_and_extracts_command() {
-        let command = extract_wake_command("Hey Lily, send this to AI", "Lily").unwrap_or_default();
-        assert_eq!(command, "send this to AI");
-    }
-
-    #[test]
-    fn supports_multiple_wake_prefix_variants() {
-        let hi = extract_wake_command("Hi Lily summarize this", "Lily").unwrap_or_default();
-        let okay = extract_wake_command("Okay Lily, summarize this", "Lily").unwrap_or_default();
-        let bare_name = extract_wake_command("Lily summarize this", "Lily");
-
-        assert_eq!(hi, "summarize this");
-        assert_eq!(okay, "summarize this");
-        assert!(bare_name.is_none());
-    }
-
-    #[test]
-    fn uses_custom_assistant_name_from_settings() {
-        let command = extract_wake_command("Hey Nova open settings", "Nova").unwrap_or_default();
-        assert_eq!(command, "open settings");
-    }
-
-    #[test]
-    fn tolerates_small_assistant_name_misspelling() {
-        let command = extract_wake_command("Hey Lilly, summarize this", "Lily").unwrap_or_default();
-        assert_eq!(command, "summarize this");
-    }
-
-    #[test]
-    fn tolerates_single_edit_short_name_variant() {
-        let command =
-            extract_wake_command("Hi Lili improve this sentence", "Lily").unwrap_or_default();
-        assert_eq!(command, "improve this sentence");
-    }
-
-    #[test]
-    fn tolerates_fused_hey_lily_variant_token() {
-        let command = extract_wake_command("Hey Haleily what do you think about India", "Lily")
-            .unwrap_or_default();
-        assert_eq!(command, "what do you think about India");
-    }
-
-    #[test]
-    fn tolerates_phonetic_haleli_variant() {
-        let command = extract_wake_command("Hey Haleli, open settings", "Lily").unwrap_or_default();
-        assert_eq!(command, "open settings");
-    }
-
-    #[test]
-    fn rejects_missing_wake_prefix_even_if_name_like_token_exists() {
-        let command = extract_wake_command("Lily open settings", "Lily");
-        assert!(command.is_none());
-    }
-
-    #[test]
-    fn rejects_non_wake_prefix_as_dictation() {
-        let command = extract_wake_command("Please tell Lily to summarize", "Lily");
-        assert!(command.is_none());
-    }
-
-    #[test]
-    fn does_not_match_distant_name_word() {
-        let command = extract_wake_command("Hey really summarize this", "Lily");
-        assert!(command.is_none());
-    }
-
-    #[test]
-    fn accepts_ok_prefix_and_multiple_name_tokens() {
-        let command = extract_wake_command("Ok   Slasshy Wispr improve this", "Slasshy Wispr")
-            .unwrap_or_default();
-        assert_eq!(command, "improve this");
-    }
-
-    #[test]
-    fn tolerates_leading_filler_before_wake_phrase() {
-        let command =
-            extract_wake_command("Um hey Lily create an email for me", "Lily").unwrap_or_default();
-        assert_eq!(command, "create an email for me");
-    }
-
-    #[test]
-    fn tolerates_small_wake_prefix_misspelling() {
-        let command =
-            extract_wake_command("He Lily draft a follow up email", "Lily").unwrap_or_default();
-        assert_eq!(command, "draft a follow up email");
     }
 
     #[test]
@@ -10534,32 +9751,6 @@ Explanation:
     fn calculate_progress_returns_0_for_idle() {
         let status = LocalSttDownloadStatusResponse::default();
         assert_eq!(calculate_local_stt_progress_percent(&status), 0.0);
-    }
-
-    // ===== TRANSCRIPT REFINEMENT EDGE CASES =====
-
-    // ===== WAKE PHRASE EDGE CASES =====
-
-    #[test]
-    fn wake_phrase_empty_input_returns_none() {
-        assert!(extract_wake_command("", "Lily").is_none());
-    }
-
-    #[test]
-    fn wake_phrase_empty_name_defaults_to_lily() {
-        // With empty assistant name, defaults to "lily".
-        // "Hey summarize this" doesn't contain "lily", so no wake phrase found.
-        assert!(extract_wake_command("Hey summarize this", "").is_none());
-        // But "Hey Lily summarize this" does match.
-        assert!(extract_wake_command("Hey Lily summarize this", "").is_some());
-    }
-
-    #[test]
-    fn wake_phrase_very_long_command() {
-        let long_command = "summarize this very long document that goes on and on and on";
-        let input = format!("Hey Lily {long_command}");
-        let command = extract_wake_command(&input, "Lily").unwrap_or_default();
-        assert_eq!(command, long_command);
     }
 
     // ===== SELECTION EDIT DECISION =====

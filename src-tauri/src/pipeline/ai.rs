@@ -8,34 +8,9 @@
 use reqwest::Client;
 use serde_json::{json, Value};
 
+use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::routing::AiModeConfig;
 use crate::pipeline::selection::{parse_selection_edit_decision, SelectionEditDecision};
-
-// ===== Logging helpers (moved from lib.rs) =====
-
-/// Collapse whitespace into a single space for log lines.
-pub(crate) fn single_line(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let mut first = true;
-    for token in input.split_whitespace() {
-        if !first {
-            out.push(' ');
-        }
-        out.push_str(token);
-        first = false;
-    }
-    out
-}
-
-/// Truncate a string to `max_chars` and append `...` if over limit.
-pub(crate) fn clip_text(input: &str, max_chars: usize) -> String {
-    if input.chars().count() <= max_chars {
-        return input.to_string();
-    }
-
-    let clipped: String = input.chars().take(max_chars).collect();
-    format!("{clipped}...")
-}
 
 // ===== Model capability detection =====
 

@@ -1,10 +1,14 @@
-pub mod daemon;
 pub mod ai;
+pub mod daemon;
+pub mod fs;
 pub mod input;
+pub mod log;
 pub mod orchestration;
+pub mod process;
 pub mod refinement;
 pub mod response;
 pub mod routing;
 pub mod selection;
 pub mod stt;
 pub mod tts;
+pub mod wake;
