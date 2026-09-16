@@ -102,6 +102,7 @@ import {
   resolveSttLanguageConfig,
 } from "./state/settings-store";
 import { parseJson } from "./state/storage";
+import { countWords, formatSpeakingTime } from "./analytics/analytics-service";
 import {
   looksLikeEmbeddingOnlyOllamaModel,
   pickDefaultLocalOllamaModelFromCatalog as pickDefaultLocalOllamaModelFromList,
@@ -4259,21 +4260,6 @@ function renderNotesList(): void {
   notesList.append(fragment);
 }
 
-function formatSpeakingTime(totalSeconds: number): string {
-  if (totalSeconds < 60) {
-    return `${totalSeconds}s`;
-  }
-
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-
-  if (hours <= 0) {
-    return `${minutes}m`;
-  }
-
-  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-}
-
 function updateUsageMetrics(): void {
   const totalWords = usageStats.words + usageStats.prevWords;
   const totalSeconds = usageStats.speakingSeconds + usageStats.prevSpeakingSeconds;
@@ -4396,13 +4382,6 @@ function styleProfileInstruction(style: StyleProfile): string {
     return "Style: developer-focused with precise technical terminology.";
   }
   return "Style: adapt tone based on the request context.";
-}
-
-function countWords(value: string): number {
-  return value
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean).length;
 }
 
 async function copyToClipboard(
