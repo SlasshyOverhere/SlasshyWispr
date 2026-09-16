@@ -7,7 +7,49 @@ import "@fontsource/inter/800.css";
 import "@fontsource/inter/900.css";
 import "./style.css";
 import "./settings.css";
-import { invoke } from "@tauri-apps/api/core";
+import {
+  captureSelectedText as ipcCaptureSelectedText,
+  checkForAppUpdate as ipcCheckForAppUpdate,
+  clearDictationRecordings as ipcClearDictationRecordings,
+  configureLaunchAtLogin as ipcConfigureLaunchAtLogin,
+  deactivateLocalSttModel as ipcDeactivateLocalSttModel,
+  deleteLocalSttModel as ipcDeleteLocalSttModel,
+  downloadAndInstallAppUpdate as ipcDownloadAndInstallAppUpdate,
+  downloadLocalSttModel as ipcDownloadLocalSttModel,
+  ensureVoiceModel as ipcEnsureVoiceModel,
+  fetchLocalSttModels as ipcFetchLocalSttModels,
+  fetchOllamaModels as ipcFetchOllamaModels,
+  fetchProviderModels as ipcFetchProviderModels,
+  getAssistantInfo as ipcGetAssistantInfo,
+  getDictationRecording as ipcGetDictationRecording,
+  getForegroundInputBlockStatus as ipcGetForegroundInputBlockStatus,
+  getLocalSttDownloadStatus as ipcGetLocalSttDownloadStatus,
+  getLocalSttHardwareAdvice as ipcGetLocalSttHardwareAdvice,
+  getLocalSttModelStatus as ipcGetLocalSttModelStatus,
+  getLocalSttRuntimeState as ipcGetLocalSttRuntimeState,
+  getOllamaStatus as ipcGetOllamaStatus,
+  getTtsRuntimeSetupStatus as ipcGetTtsRuntimeSetupStatus,
+  installOllama as ipcInstallOllama,
+  launchAtLoginStatus as ipcLaunchAtLoginStatus,
+  loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
+  listDictationRecordingIds as ipcListDictationRecordingIds,
+  listDictationRecordingsStats as ipcListDictationRecordingsStats,
+  logClientEvent as ipcLogClientEvent,
+  muteSystemAudio as ipcMuteSystemAudio,
+  openLocalSttModelPath as ipcOpenLocalSttModelPath,
+  pasteClipboardText as ipcPasteClipboardText,
+  pasteTextViaClipboard as ipcPasteTextViaClipboard,
+  pullOllamaModel as ipcPullOllamaModel,
+  runAssistantPipeline as ipcRunAssistantPipeline,
+  saveDictationRecording as ipcSaveDictationRecording,
+  savePersistedLocalSettings as ipcSavePersistedLocalSettings,
+  setClipboardText as ipcSetClipboardText,
+  setupAssistantRuntime as ipcSetupAssistantRuntime,
+  setupCoquiRuntime as ipcSetupCoquiRuntime,
+  startTtsRuntimeSetup as ipcStartTtsRuntimeSetup,
+  validatePiper as ipcValidatePiper,
+  warmupLocalSttModel as ipcWarmupLocalSttModel,
+} from "./ipc/client";
 import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
@@ -121,20 +163,6 @@ import type {
 
   LocalSttHardwareAdvisorChoice,
   AssistantInfoResponse,
-  RuntimeSetupResponse,
-  VoiceInstallResponse,
-  PiperValidationResponse,
-  ProviderModelsResponse,
-  OllamaPullResponse,
-  OllamaStatusResponse,
-  LocalSttDownloadResponse,
-  LocalSttDeleteResponse,
-  LocalSttOpenPathResponse,
-  LocalSttModelStatusResponse,
-  LocalSttWarmupResponse,
-  LocalSttDeactivateResponse,
-  LocalSttRuntimeStateResponse,
-  LocalSttHardwareAdviceResponse,
   LocalSttDownloadStatusResponse,
   TtsSetupStatusResponse,
   AssistantPipelineResponse,
@@ -1627,7 +1655,7 @@ async function bootstrap(): Promise<void> {
   setStage("idle", "Loading assistant metadata...");
 
   try {
-    const info = await invoke<AssistantInfoResponse>("get_assistant_info");
+    const info = await ipcGetAssistantInfo();
     renderAssistantInfo(info);
 
     if (info.piperInstalled && info.voiceInstalled) {
@@ -2055,7 +2083,7 @@ function performPersistSettings(next: PersistedSettings): void {
       nativePayload.rememberApiKey,
     )} apiKeyPresent=${boolFlag(nativePayload.apiKey.trim().length > 0)}`,
   );
-  void invoke("save_persisted_local_settings", { payload: serializedNative }).catch((error) => {
+  void ipcSavePersistedLocalSettings(serializedNative).catch((error) => {
     setNotice(
       `Unable to securely save settings: ${asErrorMessage(error)}. Check keyring access and try again.`,
       true,
@@ -2073,7 +2101,7 @@ async function hydrateSettingsFromNativeStorage(): Promise<void> {
 
   logClientEvent("[settings.hydrate] start");
   try {
-    const raw = await invoke<string>("load_persisted_local_settings");
+    const raw = await ipcLoadPersistedLocalSettings();
     const trimmed = raw.trim();
     logClientEvent(`[settings.hydrate] rawBytes=${raw.length} trimmedBytes=${trimmed.length}`);
     if (!trimmed) {
@@ -2113,7 +2141,7 @@ async function backfillHistoryRecordingIds(): Promise<void> {
     return;
   }
   try {
-    const recordingIds = await invoke<string[]>("list_dictation_recording_ids");
+    const recordingIds = await ipcListDictationRecordingIds();
     if (!recordingIds || recordingIds.length === 0) {
       return;
     }
@@ -2614,33 +2642,6 @@ function pickDefaultLocalOllamaModelFromCatalog(): string {
   return firstNonEmbeddingModel || localOllamaModelCatalog[0] || "";
 }
 
-const LOCAL_STT_RUNTIME_STATE_TIMEOUT_MS = 4000;
-const LOCAL_STT_COMMAND_TIMEOUT_MS = 12000;
-const LOCAL_STT_WARMUP_TIMEOUT_MS = 90000;
-
-function invokeWithTimeout<T>(
-  command: string,
-  args: Record<string, unknown> | undefined,
-  timeoutMs: number,
-  timeoutMessage: string,
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      reject(new Error(timeoutMessage));
-    }, timeoutMs);
-
-    void invoke<T>(command, args)
-      .then((result) => {
-        window.clearTimeout(timer);
-        resolve(result);
-      })
-      .catch((error) => {
-        window.clearTimeout(timer);
-        reject(error);
-      });
-  });
-}
-
 function inferLocalSttProviderFromModel(model: string): string {
   const normalized = model.trim().toLowerCase();
   if (normalized.startsWith("nvidia/") || normalized.includes("parakeet")) {
@@ -2705,10 +2706,8 @@ async function getLocalSttModelStatus(
   }
 
   try {
-    const response = await invokeWithTimeout<LocalSttModelStatusResponse>(
-      "get_local_stt_model_status",
-      { request: { model: normalizedModel } },
-      LOCAL_STT_COMMAND_TIMEOUT_MS,
+    const response = await ipcGetLocalSttModelStatus(
+      { model: normalizedModel },
       `Timed out while checking local STT files for \"${normalizedModel}\".`,
     );
     localSttSelectedModelDownloaded = response.exists;
@@ -2883,10 +2882,8 @@ async function syncLocalSttRuntimeForMode(
     localSttModelCatalogSelect.value.trim() ||
     lastWarmedLocalSttModel.trim();
   try {
-    const response = await invokeWithTimeout<LocalSttDeactivateResponse>(
-      "deactivate_local_stt_model",
-      { request: { model: modelToUnload || null } },
-      LOCAL_STT_COMMAND_TIMEOUT_MS,
+    const response = await ipcDeactivateLocalSttModel(
+      { model: modelToUnload || null },
       "Local STT unload timed out. You can keep using Online mode and retry unloading later.",
     );
     setLocalSttNotice(response.details, response.deactivated ? "normal" : "error");
@@ -3424,7 +3421,7 @@ async function handleCheckForUpdates(options?: {
   }
 
   try {
-    const result = await invoke<AppUpdateCheckResponse>("check_for_app_update");
+    const result = await ipcCheckForAppUpdate();
     cachedUpdateResult = result;
     localStorage.setItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY, String(Date.now()));
     refreshUpdateLastCheckedText();
@@ -3471,7 +3468,7 @@ async function handleInstallUpdate(): Promise<void> {
   setUpdaterStatus("processing", "Downloading update installer...");
 
   try {
-    await invoke("download_and_install_app_update", { request });
+    await ipcDownloadAndInstallAppUpdate(request);
     setUpdaterStatus("processing", "Installer started. The app will close now.");
   } catch (error) {
     updateInstallInFlight = false;
@@ -3572,7 +3569,7 @@ function requestLaunchAtLoginSync(enabled: boolean): void {
   }
 
   const syncNonce = ++launchAtLoginSyncNonce;
-  void invoke("configure_launch_at_login", { enabled }).catch((error) => {
+  void ipcConfigureLaunchAtLogin(enabled).catch((error) => {
     if (syncNonce !== launchAtLoginSyncNonce) {
       return;
     }
@@ -3585,11 +3582,7 @@ async function reconcileLaunchAtLoginWithOs(): Promise<void> {
     return;
   }
   try {
-    const status = await invoke<{
-      enabled: boolean;
-      path_matches: boolean;
-      stored_value: string | null;
-    }>("launch_at_login_status");
+    const status = await ipcLaunchAtLoginStatus();
     const wanted = settings.launchAtLogin;
     if (wanted && (!status.enabled || !status.path_matches)) {
       logClientEvent(
@@ -4303,7 +4296,7 @@ async function refreshRecordingsStorageHint(): Promise<void> {
     return;
   }
   try {
-    const stats = await invoke<RecordingsStats>("list_dictation_recordings_stats");
+    const stats = await ipcListDictationRecordingsStats();
     recordingsStorageHint.textContent = formatRecordingsStorage(stats);
   } catch (error) {
     recordingsStorageHint.textContent = "Unable to read storage";
@@ -4318,7 +4311,7 @@ async function handleClearRecordingsClick(): Promise<void> {
   }
   clearRecordingsBtn.disabled = true;
   try {
-    await invoke<number>("clear_dictation_recordings");
+    await ipcClearDictationRecordings();
     await refreshRecordingsStorageHint();
     window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
     setNotice("Recordings cleared.");
@@ -5025,7 +5018,7 @@ async function copyToClipboard(
 ): Promise<boolean> {
   try {
     if (isTauriEnvironment()) {
-      await invoke("set_clipboard_text", { text: value });
+      await ipcSetClipboardText(value);
     } else {
       await navigator.clipboard.writeText(value);
     }
@@ -5048,9 +5041,9 @@ async function triggerAutoPaste(text?: string): Promise<boolean> {
 
   try {
     if (typeof text === "string" && text.trim().length > 0) {
-      await invoke("paste_text_via_clipboard", { text });
+      await ipcPasteTextViaClipboard(text);
     } else {
-      await invoke("paste_clipboard_text");
+      await ipcPasteClipboardText();
     }
     return true;
   } catch (error) {
@@ -5114,7 +5107,7 @@ async function captureSelectedTextForRewrite(options: { silent?: boolean } = {})
   }
 
   try {
-    const selected = await invoke<string>("capture_selected_text");
+    const selected = await ipcCaptureSelectedText();
     return String(selected ?? "");
   } catch (error) {
     if (!options.silent) {
@@ -5212,7 +5205,7 @@ async function refreshMicrophones(requestPermission: boolean): Promise<void> {
 }
 
 async function refreshAssistantInfo(): Promise<void> {
-  const info = await invoke<AssistantInfoResponse>("get_assistant_info");
+  const info = await ipcGetAssistantInfo();
   renderAssistantInfo(info);
   renderProviderModelCatalog(providerModelCatalog, settings.aiModelName || settings.sttModelName);
   renderLocalOllamaModelCatalog(localOllamaModelCatalog, settings.localOllamaModel);
@@ -5233,7 +5226,7 @@ async function handleAutoSetupRuntime(): Promise<void> {
   setStage("processing", "Downloading Piper runtime and voice model...");
 
   try {
-    const result = await invoke<RuntimeSetupResponse>("setup_assistant_runtime");
+    const result = await ipcSetupAssistantRuntime();
     piperPathInput.value = result.piperPath;
     handleSettingsChange();
 
@@ -5262,11 +5255,7 @@ async function handleValidatePiper(): Promise<void> {
   setStage("processing", "Validating Piper executable...");
 
   try {
-    const result = await invoke<PiperValidationResponse>("validate_piper", {
-      request: {
-        piperPath: piperPath || null,
-      },
-    });
+    const result = await ipcValidatePiper({ piperPath: piperPath || null });
 
     if (result.ok) {
       setNotice(`Piper is reachable: ${result.details || "help output received."}`);
@@ -5292,7 +5281,7 @@ async function handleDownloadVoice(): Promise<void> {
   setStage("processing", "Downloading voice model...");
 
   try {
-    const result = await invoke<VoiceInstallResponse>("ensure_voice_model");
+    const result = await ipcEnsureVoiceModel();
     voiceStatusValue.textContent = "Installed";
     voicePathValue.textContent = result.modelPath;
     setNotice(`Voice model ready: ${result.modelPath}`);
@@ -5353,7 +5342,7 @@ async function pollTtsSetupStatusOnce(): Promise<void> {
   ttsSetupPollInFlight = true;
 
   try {
-    const status = await invoke<TtsSetupStatusResponse>("get_tts_runtime_setup_status");
+    const status = await ipcGetTtsRuntimeSetupStatus();
     applyTtsSetupStatus(status);
     if (!status.running) {
       stopTtsSetupPolling();
@@ -5391,11 +5380,7 @@ async function handleSetupAllTts(): Promise<void> {
   syncActionAvailability();
 
   try {
-    const request = {
-      pythonPath: null,
-      useGpu: false,
-    };
-    const status = await invoke<TtsSetupStatusResponse>("start_tts_runtime_setup", { request });
+    const status = await ipcStartTtsRuntimeSetup({ pythonPath: null, useGpu: false });
     applyTtsSetupStatus(status);
     startTtsSetupPolling();
     await pollTtsSetupStatusOnce();
@@ -5545,11 +5530,10 @@ async function fetchProviderModels(): Promise<void> {
 
   setStage("processing", "Loading provider model catalog...");
   try {
-    const request = {
+    const response = await ipcFetchProviderModels({
       apiKey: activeSettings.apiKey,
       apiBaseUrl: activeSettings.apiBaseUrl || null,
-    };
-    const response = await invoke<ProviderModelsResponse>("fetch_provider_models", { request });
+    });
     renderProviderModelCatalog(response.models, activeSettings.aiModelName || activeSettings.sttModelName);
     setNotice(`Loaded ${response.models.length} provider models.`);
     setStage("idle", "Provider model list loaded.");
@@ -5593,10 +5577,9 @@ async function refreshOllamaStatus(options: { quiet?: boolean } = {}): Promise<v
   }
 
   try {
-    const request = {
+    const status = await ipcGetOllamaStatus({
       baseUrl: activeSettings.localOllamaBaseUrl || null,
-    };
-    const status = await invoke<OllamaStatusResponse>("get_ollama_status", { request });
+    });
     renderOllamaStatus(status);
     if (!quiet) {
       setNotice(status.details || "Ollama status updated.");
@@ -5625,7 +5608,7 @@ async function installOllama(): Promise<void> {
   setStage("processing", "Installing Ollama...");
 
   try {
-    const status = await invoke<OllamaStatusResponse>("install_ollama");
+    const status = await ipcInstallOllama();
     renderOllamaStatus(status);
     if (status.running) {
       setNotice("Ollama installation completed and service is reachable.");
@@ -5662,10 +5645,9 @@ async function fetchOllamaModels(
     setStage("processing", "Loading Ollama model catalog...");
   }
   try {
-    const request = {
+    const response = await ipcFetchOllamaModels({
       baseUrl: activeSettings.localOllamaBaseUrl || null,
-    };
-    const response = await invoke<ProviderModelsResponse>("fetch_ollama_models", { request });
+    });
     renderLocalOllamaModelCatalog(response.models, activeSettings.localOllamaModel);
     if (
       autoSelect &&
@@ -5755,11 +5737,10 @@ async function pullOllamaModel(): Promise<void> {
   syncActionAvailability();
 
   try {
-    const request = {
+    const response = await ipcPullOllamaModel({
       baseUrl: activeSettings.localOllamaBaseUrl || null,
       model,
-    };
-    const response = await invoke<OllamaPullResponse>("pull_ollama_model", { request });
+    });
     localOllamaModelInput.value = response.model;
     handleSettingsChange();
     setNotice(`Ollama pull complete: ${response.status || response.model}.`);
@@ -5787,7 +5768,7 @@ async function fetchLocalSttModels(
     setStage("processing", "Loading local STT model catalog...");
   }
   try {
-    const response = await invoke<ProviderModelsResponse>("fetch_local_stt_models");
+    const response = await ipcFetchLocalSttModels();
     renderLocalSttModelCatalog(response.models, activeSettings.localSttModel);
     const refreshedSettings = readSettingsFromForm();
     if (autoSelect && !refreshedSettings.localSttModel.trim() && response.models.length > 0) {
@@ -5997,9 +5978,7 @@ async function suggestLocalSttModelForHardwareIfNeeded(selectedModel: string): P
 
   let advice: LocalSttHardwareAdviceResponse;
   try {
-    advice = await invoke<LocalSttHardwareAdviceResponse>("get_local_stt_hardware_advice", {
-      request: { selectedModel },
-    });
+    advice = await ipcGetLocalSttHardwareAdvice({ selectedModel });
   } catch (error) {
     markLocalSttHardwareAdvisorShown();
     setNotice(
@@ -6111,12 +6090,7 @@ async function refreshLocalSttRuntimeState(options: { quiet?: boolean } = {}): P
   localSttRuntimeStateInFlight = true;
   syncActionAvailability();
   try {
-    const response = await invokeWithTimeout<LocalSttRuntimeStateResponse>(
-      "get_local_stt_runtime_state",
-      undefined,
-      LOCAL_STT_RUNTIME_STATE_TIMEOUT_MS,
-      "Timed out while checking local STT status.",
-    );
+    const response = await ipcGetLocalSttRuntimeState("Timed out while checking local STT status.");
     localSttRuntimeLoaded = response.loaded;
     if (!response.loaded) {
       lastWarmedLocalSttModel = "";
@@ -6267,10 +6241,9 @@ async function warmupActiveLocalSttModel(
   syncActionAvailability();
   const quiet = options.quiet === true;
   try {
-    const response = await invokeWithTimeout<LocalSttWarmupResponse>(
-      "warmup_local_stt_model",
-      { request: { model } },
-      LOCAL_STT_WARMUP_TIMEOUT_MS,
+    const response = await ipcWarmupLocalSttModel(
+      { model },
+      undefined,
       `Local STT model \"${model}\" took too long to load. Switch back to Online mode or retry after checking the model files.`,
     );
     if (response.warmed) {
@@ -6312,11 +6285,8 @@ async function deactivateLocalSttModel(): Promise<void> {
   localSttDeactivateInFlight = true;
   syncActionAvailability();
   try {
-    const request = { model: model || null };
-    const response = await invokeWithTimeout<LocalSttDeactivateResponse>(
-      "deactivate_local_stt_model",
-      { request },
-      LOCAL_STT_COMMAND_TIMEOUT_MS,
+    const response = await ipcDeactivateLocalSttModel(
+      { model: model || null },
       "Local STT unload timed out. You can keep using Online mode and retry unloading later.",
     );
     if (response.deactivated) {
@@ -6421,7 +6391,7 @@ async function pollLocalSttDownloadStatusOnce(options: { quiet?: boolean } = {})
   const wasActive = localSttDownloadActive;
 
   try {
-    const status = await invoke<LocalSttDownloadStatusResponse>("get_local_stt_download_status");
+    const status = await ipcGetLocalSttDownloadStatus();
     applyLocalSttDownloadStatus(status);
     if (status.active) {
       startLocalSttDownloadStatusPolling();
@@ -6489,10 +6459,7 @@ async function downloadLocalSttModel(): Promise<void> {
   syncActionAvailability();
 
   try {
-    const request = {
-      model,
-    };
-    const response = await invoke<LocalSttDownloadResponse>("download_local_stt_model", { request });
+    const response = await ipcDownloadLocalSttModel({ model });
     localSttModelInput.value = response.model;
     handleSettingsChange();
     localSttSelectedModelDownloaded = false;
@@ -6544,8 +6511,7 @@ async function deleteLocalSttModel(): Promise<void> {
   syncActionAvailability();
 
   try {
-    const request = { model };
-    const response = await invoke<LocalSttDeleteResponse>("delete_local_stt_model", { request });
+    const response = await ipcDeleteLocalSttModel({ model });
     setLocalSttNotice(response.details, response.removed ? "success" : "error");
     if (response.removed) {
       lastWarmedLocalSttModel = "";
@@ -6587,8 +6553,7 @@ async function openLocalSttModelPath(): Promise<void> {
   }
 
   try {
-    const request = { model };
-    const response = await invoke<LocalSttOpenPathResponse>("open_local_stt_model_path", { request });
+    const response = await ipcOpenLocalSttModelPath({ model });
 
     if (response.opened) {
       setLocalSttNotice(`Opened: ${response.localPath}`, "success");
@@ -7098,7 +7063,7 @@ async function saveDictationAudio(
   const recordingId = `rec_${recordingStartedAt || Date.now()}_${createId().replace(/-/g, "").slice(0, 8)}`;
   const audioBase64 = await blobToBase64(audioBlob);
   const base64Body = audioBase64.startsWith("data:") ? audioBase64.split(",", 2)[1] : audioBase64;
-  await invoke<number>("save_dictation_recording", {
+  await ipcSaveDictationRecording({
     recordingId,
     mimeType: audioMimeType,
     audioBase64: base64Body,
@@ -7261,8 +7226,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
 
     const sttLanguageConfig = resolveSttLanguageConfig(activeSettings);
 
-    const response = await invoke<AssistantPipelineResponse>("run_assistant_pipeline", {
-      request: {
+    const response = await ipcRunAssistantPipeline({
         apiKey: activeSettings.apiKey,
         apiBaseUrl: activeSettings.apiBaseUrl || null,
         sttModel: activeSettings.sttModelName || null,
@@ -7308,8 +7272,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
           emotion: activeSettings.piperEmotion,
         },
         coqui: null,
-      },
-    });
+    } as Record<string, unknown>);
     logClientEvent(
       `[pipeline.invoke] totalMs=${Math.round(
         performance.now() - pipelineInvokeStartedAt,
@@ -7669,7 +7632,7 @@ async function invokeSystemAudioMute(mute: boolean): Promise<void> {
     return;
   }
 
-  await invoke("mute_system_audio", { mute });
+  await ipcMuteSystemAudio(mute);
   externalMediaControlErrorShown = false;
 }
 
@@ -7711,7 +7674,7 @@ async function fetchForegroundInputBlockStatus(force = false): Promise<Foregroun
 
   foregroundBlockCheckInFlight = (async () => {
     try {
-      const status = await invoke<ForegroundInputBlockStatus>("get_foreground_input_block_status");
+      const status = await ipcGetForegroundInputBlockStatus();
       const next: ForegroundInputBlockStatus = {
         blocked: Boolean(status?.blocked),
         processName: String(status?.processName ?? "").trim().toLowerCase(),
@@ -8086,7 +8049,7 @@ function logClientEvent(message: string): void {
     return;
   }
 
-  void invoke("log_client_event", { message: line }).catch(() => {
+  void ipcLogClientEvent(line).catch(() => {
     // Ignore logging failures in UI flow.
   });
 }
@@ -9507,10 +9470,9 @@ async function checkPythonDependencies(model: string): Promise<boolean> {
     return true;
   }
   try {
-    const response = await invokeWithTimeout<LocalSttWarmupResponse>(
-      "warmup_local_stt_model",
-      { request: { model } },
-      LOCAL_STT_COMMAND_TIMEOUT_MS,
+    const response = await ipcWarmupLocalSttModel(
+      { model },
+      12000,
       `Timed out while checking local STT runtime dependencies for \"${model}\".`,
     );
     if (response.warmed) {
@@ -9538,9 +9500,7 @@ async function checkPythonDependencies(model: string): Promise<boolean> {
 async function checkAvailableMemory(model: string): Promise<{ sufficient: boolean; availableMB?: number }> {
   try {
     // Get hardware advice which includes memory info
-    const advice = await invoke<LocalSttHardwareAdviceResponse>("get_local_stt_hardware_advice", {
-      request: { selectedModel: model }
-    });
+    const advice = await ipcGetLocalSttHardwareAdvice({ selectedModel: model });
 
     // Parakeet v3 needs ~600MB, v2 needs ~500MB
     // const requiredMB = model.includes("parakeet-tdt-0.6b") ? 600 : 500;
@@ -9838,12 +9798,7 @@ function getOfflineDiagnosticData(issue: string, details?: any): {
             handler: async () => {
               setNotice('Running dependency installation script...');
               try {
-                await invoke('setup_coqui_runtime', {
-                  request: {
-                    pythonPath: null,
-                    useGpu: false
-                  }
-                });
+                await ipcSetupCoquiRuntime({ pythonPath: null, useGpu: false });
                 setNotice('Dependencies installed successfully! Try loading STT again.');
               } catch (error) {
                 setNotice(`Installation failed: ${asErrorMessage(error)}`, true);

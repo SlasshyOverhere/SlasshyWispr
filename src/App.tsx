@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { invoke } from '@tauri-apps/api/core';
+import { toggleMainWindowVisibility, getDictationRecording } from './ipc/client';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { uiStore, removeHistoryEntry } from './store';
 import type { UIState } from './store';
@@ -439,7 +439,7 @@ export function App() {
         '[data-tauri-drag-region="true"], .app-drag-region'
       );
       if (!inDragRegion) return;
-      void invoke('toggle_main_window_visibility').catch((err) => {
+      void toggleMainWindowVisibility().catch((err) => {
         console.error('toggle_main_window_visibility failed', err);
       });
     };
@@ -1234,9 +1234,7 @@ function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; rowIndex
       if (audioSrc) {
         dataUrl = audioSrc;
       } else {
-        dataUrl = await invoke<string>("get_dictation_recording", {
-          recordingId: entry.recordingId,
-        });
+        dataUrl = await getDictationRecording(entry.recordingId);
         setAudioSrc(dataUrl);
       }
       const el = audioRef.current;
