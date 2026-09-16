@@ -6,7 +6,7 @@ import type { HotkeySpec } from "../types";
  * format + global-shortcut token builders + typing-element guard.
  */
 
-function normalizeHotkeyModifierToken(token: string): "ctrl" | "shift" | "alt" | "meta" | "" {
+export function normalizeHotkeyModifierToken(token: string): "ctrl" | "shift" | "alt" | "meta" | "" {
   const normalized = token.trim().toLowerCase();
   if (
     normalized === "commandorcontrol" ||
@@ -80,22 +80,22 @@ const GLOBAL_SHORTCUT_KEY_MAP: Record<string, string> = {
 
 const FUNCTION_KEY_PATTERN = /^f([1-9]|1[0-9]|2[0-4])$/;
 
-function isFunctionKeyToken(value: string): boolean {
+export function isFunctionKeyToken(value: string): boolean {
   return FUNCTION_KEY_PATTERN.test(value);
 }
 
 const NUMPAD_DIGIT_PATTERN = /^numpad[0-9]$/;
 
-function isNumpadDigitToken(value: string): boolean {
+export function isNumpadDigitToken(value: string): boolean {
   return NUMPAD_DIGIT_PATTERN.test(value);
 }
 
-function isAsciiLowerAlphaNumeric(value: string): boolean {
+export function isAsciiLowerAlphaNumeric(value: string): boolean {
   const code = value.charCodeAt(0);
   return (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
 }
 
-function toGlobalShortcutKeyToken(key: string): string {
+export function toGlobalShortcutKeyToken(key: string): string {
   if (isFunctionKeyToken(key)) {
     return key.toUpperCase();
   }
@@ -109,7 +109,7 @@ function toGlobalShortcutKeyToken(key: string): string {
   return typeof mappedKey === "string" ? mappedKey : key;
 }
 
-function toGlobalShortcutString(hotkey: HotkeySpec): string {
+export function toGlobalShortcutString(hotkey: HotkeySpec): string {
   const parts: string[] = [];
   if (hotkey.ctrl) parts.push("CommandOrControl");
   if (hotkey.shift) parts.push("Shift");
@@ -119,7 +119,7 @@ function toGlobalShortcutString(hotkey: HotkeySpec): string {
   return parts.join("+");
 }
 
-function normalizeShortcutToken(value: string): string {
+export function normalizeShortcutToken(value: string): string {
   const rawTokens = value
     .split("+")
     .map((part) => part.trim())
@@ -163,7 +163,7 @@ function normalizeShortcutToken(value: string): string {
   return ordered.join("+");
 }
 
-function formatHotkeyForDisplay(hotkey: string): string {
+export function formatHotkeyForDisplay(hotkey: string): string {
   return hotkey
     .split("+")
     .map((part) => part.trim())
@@ -171,7 +171,7 @@ function formatHotkeyForDisplay(hotkey: string): string {
     .join(" + ");
 }
 
-function parseHotkey(raw: string): HotkeySpec | null {
+export function parseHotkey(raw: string): HotkeySpec | null {
   const source = raw.trim();
   if (!source) return null;
 
@@ -320,7 +320,7 @@ const NORMALIZED_HOTKEY_MAP: Record<string, string> = {
   numpadenter: "numpadenter",
 };
 
-function normalizeHotkeyKeyToken(token: string): string {
+export function normalizeHotkeyKeyToken(token: string): string {
   const normalized = token.trim().toLowerCase();
   if (!normalized) return "";
   if (normalized.length === 1) {
@@ -343,7 +343,7 @@ function normalizeHotkeyKeyToken(token: string): string {
 const DISPLAY_HOTKEY_LOWERCASE_PATTERN = /[a-z]/;
 const DISPLAY_HOTKEY_DIGIT_PATTERN = /[0-9]/;
 
-function displayHotkeyKey(key: string): string {
+export function displayHotkeyKey(key: string): string {
   if (key.length === 1) {
     return DISPLAY_HOTKEY_LOWERCASE_PATTERN.test(key) ? key.toUpperCase() : key;
   }
@@ -376,7 +376,7 @@ function displayHotkeyKey(key: string): string {
   return key.slice(0, 1).toUpperCase() + key.slice(1);
 }
 
-function matchesHotkey(event: KeyboardEvent, hotkey: HotkeySpec): boolean {
+export function matchesHotkey(event: KeyboardEvent, hotkey: HotkeySpec): boolean {
   return (
     event.ctrlKey === hotkey.ctrl &&
     event.shiftKey === hotkey.shift &&
@@ -386,7 +386,7 @@ function matchesHotkey(event: KeyboardEvent, hotkey: HotkeySpec): boolean {
   );
 }
 
-function normalizeEventKey(value: string): string {
+export function normalizeEventKey(value: string): string {
   const normalized = normalizeHotkeyKeyToken(value);
   if (normalized) {
     return normalized;
@@ -400,7 +400,7 @@ function normalizeEventKey(value: string): string {
   return lower;
 }
 
-function isTypingElement(target: EventTarget | null): boolean {
+export function isTypingElement(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
   }

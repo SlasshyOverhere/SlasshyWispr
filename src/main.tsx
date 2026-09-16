@@ -21,7 +21,6 @@ import {
   fetchOllamaModels as ipcFetchOllamaModels,
   fetchProviderModels as ipcFetchProviderModels,
   getAssistantInfo as ipcGetAssistantInfo,
-  getDictationRecording as ipcGetDictationRecording,
   getForegroundInputBlockStatus as ipcGetForegroundInputBlockStatus,
   getLocalSttDownloadStatus as ipcGetLocalSttDownloadStatus,
   getLocalSttHardwareAdvice as ipcGetLocalSttHardwareAdvice,
@@ -85,14 +84,10 @@ import { loadDictionary as loadDictionaryFromState, loadSnippets as loadSnippets
 import { loadAnalyticsSessions as loadCanonicalAnalyticsSessions } from "./state/usage";
 import {
   loadSettings,
-  defaultSettings,
   coerceNumber,
   coerceInteger,
-  coerceBoolean,
   asStyleProfile,
   asThemeMode,
-  asTtsEngine,
-  asRuntimeMode,
   asDictationLanguageMode,
   normalizeDictationLanguageCode,
   normalizeDictationLanguageAllowList,
@@ -113,17 +108,10 @@ import {
   pickDefaultLocalSttModelFromCatalog as pickDefaultLocalSttModelFromList,
 } from "./stt/provider-inference";
 import {
-  normalizeHotkeyModifierToken,
-  isFunctionKeyToken,
-  isNumpadDigitToken,
-  isAsciiLowerAlphaNumeric,
-  toGlobalShortcutKeyToken,
   toGlobalShortcutString,
   normalizeShortcutToken,
   formatHotkeyForDisplay,
   parseHotkey,
-  normalizeHotkeyKeyToken,
-  displayHotkeyKey,
   matchesHotkey,
   normalizeEventKey,
   isTypingElement,
@@ -168,15 +156,20 @@ import {
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
-  APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY,
   GITHUB_RELEASES_PAGE_URL,
   LOCAL_STT_MODEL_SIZE_LABELS,
   ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS,
   MAX_HISTORY_ITEMS,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
   BLOCKED_INPUT_NOTICE_COOLDOWN_MS,
-  DEFAULT_PUSH_TO_TALK_END_SOUND,
   DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
+  DEFAULT_LOCAL_OLLAMA_BASE_URL,
+  DEFAULT_HOTKEY,
+  DEFAULT_COMMAND_HOTKEY,
+  DEFAULT_PIPER_SPEED,
+  DEFAULT_TEMPERATURE,
+  DEFAULT_MAX_TOKENS,
+  DEFAULT_ASSISTANT_NAME,
 } from "./constants";
 
 import type {
@@ -188,14 +181,16 @@ import type {
   TtsEngine,
   RuntimeMode,
   DictationLanguageMode,
-  PiperQuality,
-  PiperEmotion,
   TtsProfilePane,
   HoldSource,
 
   LocalSttHardwareAdvisorChoice,
   AssistantInfoResponse,
+  OllamaStatusResponse,
   LocalSttDownloadStatusResponse,
+  LocalSttModelStatusResponse,
+  LocalSttHardwareAdviceResponse,
+  LocalSttWarmupResponse,
   TtsSetupStatusResponse,
   AssistantPipelineResponse,
   AppUpdateCheckResponse,
@@ -203,9 +198,6 @@ import type {
   InstallAppUpdateRequest,
   PersistedSettings,
   HotkeySpec,
-  DictionaryTerm,
-  SnippetEntry,
-  QuickNoteEntry,
   UsageStats,
   AnalyticsSessionDetail,
   AchievementState,
@@ -718,9 +710,7 @@ const MAIN_WINDOW_VISIBILITY_EVENT = "slasshy://main-window-visibility";
 const UPDATE_INSTALL_PROGRESS_EVENT = "slasshy://update-install-progress";
 import {
   APP_UPDATE_CHECK_INTERVAL_MS,
-  DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED,
   readAppUpdateAutoCheckEnabled,
-  readUpdateSnoozedUntilMs,
   isUpdateSnoozed,
   snoozeUpdateFor24Hours,
   readLastAppUpdateCheckedAtMs,
@@ -2152,6 +2142,40 @@ function applySettingsValidation(next: PersistedSettings): void {
   applyInputValidationState(assistantNameInput, validateAssistantName(next.assistantName));
 }
 
+function applyDictationLanguageSettingsToForm(next: PersistedSettings): void {
+  const primaryLanguage = normalizeDictationLanguageCode(next.dictationLanguage);
+  let mode = asDictationLanguageMode(next.dictationLanguageMode);
+  let allowList = normalizeDictationLanguageAllowList(next.dictationLanguageAllowList);
+  if (mode === "multiple" && allowList.length === 0 && primaryLanguage) {
+    allowList = [primaryLanguage];
+  }
+  if (allowList.length > 1) {
+    mode = "multiple";
+  }
+
+  dictationLanguageSelect.value = primaryLanguage;
+  dictationLanguageModeSingleInput.checked = mode === "single";
+  dictationLanguageModeMultipleInput.checked = mode === "multiple";
+  dictationLanguageMultiWrap.hidden = mode !== "multiple";
+
+  for (const option of dictationLanguageOptionInputs) {
+    option.checked = mode === "multiple" && allowList.includes(option.value);
+  }
+
+  if (mode === "multiple") {
+    if (allowList.length === 0) {
+      dictationLanguageSummary.textContent = "Whisper language mode: Multiple (choose at least one language).";
+    } else {
+      const labels = allowList.map((code) => formatDictationLanguageLabel(code)).join(", ");
+      dictationLanguageSummary.textContent = `Whisper language mode: Multiple (${labels}).`;
+    }
+  } else if (primaryLanguage) {
+    dictationLanguageSummary.textContent = `Whisper language mode: Single (${formatDictationLanguageLabel(primaryLanguage)}).`;
+  } else {
+    dictationLanguageSummary.textContent = "Whisper language mode: Auto-detect.";
+  }
+}
+
 function applySettingsToForm(next: PersistedSettings): void {
   apiKeyInput.value = next.apiKey;
   apiBaseUrlInput.value = next.apiBaseUrl;
@@ -2874,6 +2898,16 @@ function openInSystemBrowser(url: string): void {
   void openExternalUrl(url).catch((error: unknown) => {
     setNotice(`Failed to open link: ${asErrorMessage(error)}`, true);
   });
+}
+
+function refreshUpdateLastCheckedText(): void {
+  const lastCheckedAt = readLastAppUpdateCheckedAtMs();
+  if (lastCheckedAt <= 0) {
+    updateLastCheckedText.textContent = "Last checked: Never.";
+    return;
+  }
+
+  updateLastCheckedText.textContent = `Last checked: ${new Date(lastCheckedAt).toLocaleString()}.`;
 }
 
 function syncUpdaterButtons(): void {

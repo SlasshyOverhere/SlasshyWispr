@@ -9,6 +9,10 @@ import {
   DEFAULT_PIPER_EMOTION,
   DEFAULT_PIPER_QUALITY,
   DEFAULT_PIPER_SPEED,
+  DEFAULT_PUSH_TO_TALK_SOUND,
+  DEFAULT_PUSH_TO_TALK_END_SOUND,
+  DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
+  DEFAULT_SAVE_RECORDINGS,
   DEFAULT_RUNTIME_MODE,
   DEFAULT_API_BASE_URL,
   DEFAULT_AI_MODEL_NAME,
@@ -201,10 +205,10 @@ export function defaultSettings(): PersistedSettings {
     piperSpeed: DEFAULT_PIPER_SPEED,
     piperQuality: DEFAULT_PIPER_QUALITY,
     piperEmotion: DEFAULT_PIPER_EMOTION,
-    pushToTalkSound: "beep-start",
-    pushToTalkEndSound: "beep-end",
-    pushToTalkSoundVolume: 0.5,
-    saveRecordings: false,
+    pushToTalkSound: DEFAULT_PUSH_TO_TALK_SOUND,
+    pushToTalkEndSound: DEFAULT_PUSH_TO_TALK_END_SOUND,
+    pushToTalkSoundVolume: DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
+    saveRecordings: DEFAULT_SAVE_RECORDINGS,
   };
 }
 
@@ -239,4 +243,111 @@ export function resolveSttLanguageConfig(next: PersistedSettings): {
 /** Read raw persisted settings payload without defaults/coercion. */
 export function readRawPersistedSettings(): Partial<PersistedSettings> & { localMode?: boolean } {
   return parseJson<Partial<PersistedSettings> & { localMode?: boolean }>(SETTINGS_STORAGE_KEY, {});
+}
+
+export function loadSettings(): PersistedSettings {
+  const defaults = defaultSettings();
+
+  const rawCurrent = localStorage.getItem(SETTINGS_STORAGE_KEY);
+  const raw = rawCurrent;
+  const fromLegacyOnly = false;
+  if (!raw) {
+    return defaults;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<PersistedSettings> & { localMode?: boolean };
+    const rememberApiKey = parsed.rememberApiKey === true;
+    const dictationLanguage = normalizeDictationLanguageCode(
+      String(parsed.dictationLanguage ?? defaults.dictationLanguage),
+    );
+    const parsedLanguageAllowList = normalizeDictationLanguageAllowList(
+      parsed.dictationLanguageAllowList,
+    );
+    let dictationLanguageMode = asDictationLanguageMode(parsed.dictationLanguageMode);
+    if (parsedLanguageAllowList.length > 1) {
+      dictationLanguageMode = "multiple";
+    }
+    const dictationLanguageAllowList =
+      dictationLanguageMode === "multiple"
+        ? parsedLanguageAllowList.length > 0
+          ? parsedLanguageAllowList
+          : dictationLanguage
+            ? [dictationLanguage]
+            : []
+        : [];
+
+    const legacyRuntimeMode = asRuntimeMode(
+      parsed.runtimeMode ?? (parsed.localMode === true ? "local" : defaults.runtimeMode),
+    );
+    const sttRuntimeMode = asRuntimeMode(parsed.sttRuntimeMode ?? legacyRuntimeMode);
+    const aiRuntimeMode = asRuntimeMode(parsed.aiRuntimeMode ?? legacyRuntimeMode);
+    const runtimeMode =
+      sttRuntimeMode === "local" && aiRuntimeMode === "local" ? "local" : "online";
+
+    return {
+      apiKey: rememberApiKey ? String(parsed.apiKey ?? "") : "",
+      apiBaseUrl: String(parsed.apiBaseUrl ?? defaults.apiBaseUrl),
+      sttModelName: String(parsed.sttModelName ?? defaults.sttModelName),
+      aiModelName: String(parsed.aiModelName ?? defaults.aiModelName),
+      runtimeMode,
+      sttRuntimeMode,
+      aiRuntimeMode,
+      localOllamaBaseUrl: String(parsed.localOllamaBaseUrl ?? defaults.localOllamaBaseUrl),
+      localOllamaModel: String(parsed.localOllamaModel ?? defaults.localOllamaModel),
+      localSttModel: String(parsed.localSttModel ?? defaults.localSttModel),
+      rememberApiKey,
+      captureMode: parsed.captureMode === "single-tap" ? "single-tap" : "push-to-talk",
+      piperPath: String(parsed.piperPath ?? defaults.piperPath),
+      microphoneDeviceId: String(parsed.microphoneDeviceId ?? defaults.microphoneDeviceId),
+      pushToTalkHotkey: String(parsed.pushToTalkHotkey ?? defaults.pushToTalkHotkey),
+      commandHotkey: String(parsed.commandHotkey ?? defaults.commandHotkey),
+      dictationLanguage,
+      dictationLanguageMode,
+      dictationLanguageAllowList,
+      styleProfile: asStyleProfile(parsed.styleProfile),
+      systemPrompt:
+        parsed.systemPrompt !== undefined ? String(parsed.systemPrompt) : defaults.systemPrompt,
+      temperature: coerceNumber(parsed.temperature, defaults.temperature, 0, 1.2),
+      maxTokens: coerceInteger(parsed.maxTokens, defaults.maxTokens, 64, 4096),
+      launchAtLogin: coerceBoolean(parsed.launchAtLogin, defaults.launchAtLogin),
+      showFlowBar: fromLegacyOnly
+        ? false
+        : coerceBoolean(parsed.showFlowBar, defaults.showFlowBar),
+      showDockAlways: coerceBoolean(parsed.showDockAlways, defaults.showDockAlways),
+      commandMode: coerceBoolean(parsed.commandMode, defaults.commandMode),
+      wakeWordEnabled: coerceBoolean(parsed.wakeWordEnabled, defaults.wakeWordEnabled),
+      assistantName:
+        parsed.assistantName !== undefined ? String(parsed.assistantName) : defaults.assistantName,
+      autoPasteDictation: coerceBoolean(parsed.autoPasteDictation, defaults.autoPasteDictation),
+      contextAwareness: coerceBoolean(parsed.contextAwareness, defaults.contextAwareness),
+      copyToClipboard: coerceBoolean(parsed.copyToClipboard, defaults.copyToClipboard),
+      incognitoMode: coerceBoolean(parsed.incognitoMode, defaults.incognitoMode),
+      themeMode: asThemeMode(parsed.themeMode),
+      dictationSoundEffects: coerceBoolean(
+        parsed.dictationSoundEffects,
+        defaults.dictationSoundEffects,
+      ),
+      muteMusicWhileDictating: coerceBoolean(
+        parsed.muteMusicWhileDictating,
+        defaults.muteMusicWhileDictating,
+      ),
+      rawMode: coerceBoolean(parsed.rawMode, defaults.rawMode),
+      backtrackCorrection: coerceBoolean(parsed.backtrackCorrection, defaults.backtrackCorrection),
+      removeFillers: coerceBoolean(parsed.removeFillers, defaults.removeFillers),
+      autoPunctuation: coerceBoolean(parsed.autoPunctuation, defaults.autoPunctuation),
+      numberedLists: coerceBoolean(parsed.numberedLists, defaults.numberedLists),
+      noiseSuppression: coerceBoolean(parsed.noiseSuppression, defaults.noiseSuppression),
+      ttsEngine: asTtsEngine(parsed.ttsEngine),
+      piperSpeed: coerceNumber(parsed.piperSpeed, defaults.piperSpeed, 0.5, 2),
+      piperQuality: asPiperQuality(parsed.piperQuality),
+      piperEmotion: asPiperEmotion(parsed.piperEmotion),
+      pushToTalkSound: String(parsed.pushToTalkSound ?? defaults.pushToTalkSound),
+      pushToTalkEndSound: String(parsed.pushToTalkEndSound ?? defaults.pushToTalkEndSound),
+      pushToTalkSoundVolume: coerceNumber(parsed.pushToTalkSoundVolume, defaults.pushToTalkSoundVolume, 0, 1),
+      saveRecordings: coerceBoolean(parsed.saveRecordings, defaults.saveRecordings),
+    };
+  } catch {
+    return defaults;
+  }
 }
