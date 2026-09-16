@@ -4861,14 +4861,14 @@ Explanation:
 
     #[test]
     fn resolve_installer_file_name_keeps_supported_extension() {
-        let from_asset = resolve_installer_file_name(
+        let from_asset = crate::updater::resolve_installer_file_name(
             Some("SlasshyWispr_0.1.2_x64.msi"),
             "https://example.com/download",
             "0.1.1",
         );
         assert_eq!(from_asset, "SlasshyWispr_0.1.2_x64.msi");
 
-        let from_url = resolve_installer_file_name(
+        let from_url = crate::updater::resolve_installer_file_name(
             None,
             "https://example.com/SlasshyWispr_0.1.2_x64-setup.exe",
             "0.1.1",
