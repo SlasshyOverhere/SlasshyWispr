@@ -8,6 +8,7 @@ pub mod providers;
 pub mod recordings;
 pub mod settings;
 pub mod tts;
+pub mod updater;
 
 pub(crate) use recordings::{
     clear_dictation_recordings, get_dictation_recording, list_dictation_recording_ids,
@@ -24,9 +25,12 @@ pub(crate) use local_stt::{
     warmup_local_stt_model,
 };
 pub(crate) use settings::{load_persisted_local_settings, save_persisted_local_settings};
+pub(crate) use updater::{
+    check_for_app_update, download_and_install_app_update, log_client_event,
+    set_tray_update_available, show_update_settings,
+};
 pub(crate) use tts::{
     clone_coqui_voice, ensure_voice_model, get_coqui_status, get_tts_runtime_setup_status,
     list_coqui_models, list_coqui_voices, preview_coqui_voice, setup_assistant_runtime,
     setup_coqui_runtime, start_tts_runtime_setup, validate_coqui, validate_piper, TtsSetupState,
-    TtsSetupStatusResponse,
 };
