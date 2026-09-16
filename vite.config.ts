@@ -11,6 +11,13 @@ export default defineConfig(async () => ({
   server: {
     port: 1421,
     strictPort: true,
+    // Cargo rewrites .exe/.dll files in src-tauri/target during `tauri dev`, which
+    // crashes Vite's Windows file watcher with EBUSY (errno -4082).
+    // A function is used instead of a glob because picomatch `**` does not match
+    // dot-directories (e.g. .freebuff/worktrees/...), silently breaking globs here.
+    watch: {
+      ignored: (watchedPath: string) => watchedPath.includes("src-tauri/target"),
+    },
   },
   resolve: {
     alias: {
