@@ -37,6 +37,11 @@ import {
   validateSnippetEntry,
 } from "./utils";
 import { matchHistoryToRecordings } from "./store";
+import { ACHIEVEMENT_DEFS } from "./state/achievements";
+import { loadHistory } from "./state/history";
+import { loadDictionary as loadDictionaryFromState, loadSnippets as loadSnippetsFromState, loadNotes as loadNotesFromState } from "./state/collections";
+import { loadAnalyticsSessions as loadCanonicalAnalyticsSessions } from "./state/usage";
+import { parseJson } from "./state/storage";
 import {
   processEvent,
 } from "./recording-state-machine";
@@ -143,7 +148,6 @@ import type {
   QuickNoteEntry,
   UsageStats,
   AnalyticsSessionDetail,
-  AchievementDef,
   AchievementState,
   DockLayout,
   ForegroundInputBlockStatus,
@@ -549,13 +553,13 @@ const commandHotkeyCaptureModifiers = {
   meta: false,
 };
 
-let dictionaryTerms = loadDictionaryTerms();
-let snippets = loadSnippets();
-let quickNotes = loadQuickNotes();
+let dictionaryTerms = loadDictionaryFromState();
+let snippets = loadSnippetsFromState();
+let quickNotes = loadNotesFromState();
 let usageStats = loadUsageStats();
-let analyticsSessionDetails: AnalyticsSessionDetail[] = loadAnalyticsSessionDetails();
+let analyticsSessionDetails: AnalyticsSessionDetail[] = loadCanonicalAnalyticsSessions();
 let achievementStates: AchievementState[] = loadAchievementStates();
-let homeHistoryEntries = loadHomeHistory();
+let homeHistoryEntries = loadHistory();
 let commandModeArmed = false;
 let commandSelectionSnapshot: string | null = null;
 const recentTurns: Array<{ speaker: string; content: string }> = [];
@@ -4344,54 +4348,12 @@ function updateMicrophoneSummary(): void {
   microphoneSummary.textContent = selected?.textContent?.trim() || "Auto-detect";
 }
 
-function loadDictionaryTerms(): DictionaryTerm[] {
-  const raw = localStorage.getItem(DICTIONARY_STORAGE_KEY);
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as DictionaryTerm[];
-    return normalizeDictionaryEntries(parsed);
-  } catch {
-    return [];
-  }
-}
-
 function persistDictionaryTerms(): void {
   localStorage.setItem(DICTIONARY_STORAGE_KEY, JSON.stringify(dictionaryTerms));
 }
 
-function loadSnippets(): SnippetEntry[] {
-  const raw = localStorage.getItem(SNIPPETS_STORAGE_KEY);
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as SnippetEntry[];
-    return normalizeSnippetEntries(parsed);
-  } catch {
-    return [];
-  }
-}
-
 function persistSnippets(): void {
   localStorage.setItem(SNIPPETS_STORAGE_KEY, JSON.stringify(snippets));
-}
-
-function loadQuickNotes(): QuickNoteEntry[] {
-  const raw = localStorage.getItem(NOTES_STORAGE_KEY);
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as QuickNoteEntry[];
-    return parsed.filter((item) => item && item.text);
-  } catch {
-    return [];
-  }
 }
 
 function persistQuickNotes(): void {
@@ -4446,90 +4408,17 @@ function persistUsageStats(): void {
   localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(usageStats));
 }
 
-function loadAnalyticsSessionDetails(): AnalyticsSessionDetail[] {
-  const raw = localStorage.getItem(ANALYTICS_SESSIONS_KEY);
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    } catch {}
-  }
-  return backfillAnalyticsSessions();
-}
-
-function backfillAnalyticsSessions(): AnalyticsSessionDetail[] {
-  const statsRaw = localStorage.getItem(USAGE_STORAGE_KEY);
-  if (!statsRaw) return [];
-  let stats: Partial<UsageStats>;
-  try { stats = JSON.parse(statsRaw); } catch { return []; }
-  const totalSessions = (stats.sessions ?? 0) + (stats.prevSessions ?? 0);
-  const totalWords = (stats.words ?? 0) + (stats.prevWords ?? 0);
-  const totalSeconds = (stats.speakingSeconds ?? 0) + (stats.prevSpeakingSeconds ?? 0);
-  const avgWpm = stats.avgWpm ?? 0;
-  if (totalSessions === 0 || totalWords === 0) return [];
-
-  const historyRaw = localStorage.getItem(HOME_HISTORY_STORAGE_KEY);
-  if (!historyRaw) return [];
-  let historyEntries: HomeHistoryEntry[];
-  try {
-    historyEntries = JSON.parse(historyRaw);
-    if (!Array.isArray(historyEntries) || historyEntries.length === 0) return [];
-  } catch { return []; }
-
-  const entries = [...historyEntries].reverse();
-  const count = Math.min(entries.length, totalSessions);
-  const sessions: AnalyticsSessionDetail[] = [];
-  for (let i = 0; i < count; i++) {
-    const wordEstimate = i < count - 1
-      ? Math.round(totalWords / count)
-      : totalWords - Math.round(totalWords / count) * (count - 1);
-    const timeEstimate = i < count - 1
-      ? Math.round(totalSeconds / count)
-      : totalSeconds - Math.round(totalSeconds / count) * (count - 1);
-    const wpm = timeEstimate > 0 ? Math.round((wordEstimate / timeEstimate) * 60) : Math.round(avgWpm);
-    sessions.push({
-      date: entries[i].timestamp,
-      words: wordEstimate,
-      speakingSeconds: timeEstimate,
-      wpm: wpm || Math.round(avgWpm),
-    });
-  }
-  if (sessions.length > 0) {
-    localStorage.setItem(ANALYTICS_SESSIONS_KEY, JSON.stringify(sessions));
-  }
-  return sessions;
-}
-
 function persistAnalyticsSessionDetails(): void {
   localStorage.setItem(ANALYTICS_SESSIONS_KEY, JSON.stringify(analyticsSessionDetails));
 }
 
 function loadAchievementStates(): AchievementState[] {
-  const raw = localStorage.getItem(ACHIEVEMENTS_STATE_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return parseJson<AchievementState[]>(ACHIEVEMENTS_STATE_KEY, []);
 }
 
 function persistAchievementStates(): void {
   localStorage.setItem(ACHIEVEMENTS_STATE_KEY, JSON.stringify(achievementStates));
 }
-
-const ACHIEVEMENT_DEFS: AchievementDef[] = [
-  { id: 'words-1k', label: 'First Milestone', description: '1,000 total words dictated', threshold: 1000, metric: 'words' },
-  { id: 'words-10k', label: 'Word Explorer', description: '10,000 total words dictated', threshold: 10000, metric: 'words' },
-  { id: 'words-50k', label: 'Wordsmith', description: '50,000 total words dictated', threshold: 50000, metric: 'words' },
-  { id: 'words-100k', label: 'Lexicon Master', description: '100,000 total words dictated', threshold: 100000, metric: 'words' },
-  { id: 'sessions-100', label: 'Century Mark', description: '100 dictation sessions', threshold: 100, metric: 'sessions' },
-  { id: 'sessions-1k', label: 'Dedicated Dictator', description: '1,000 dictation sessions', threshold: 1000, metric: 'sessions' },
-  { id: 'time-1h', label: 'First Hour', description: '1 hour of speaking time', threshold: 3600, metric: 'speakingSeconds' },
-  { id: 'time-10h', label: 'Vocal Veteran', description: '10 hours of speaking time', threshold: 36000, metric: 'speakingSeconds' },
-  { id: 'time-50h', label: 'Orator', description: '50 hours of speaking time', threshold: 180000, metric: 'speakingSeconds' },
-];
 
 function checkAndUnlockAchievements(stats: UsageStats): void {
   let newUnlock = false;
@@ -4545,32 +4434,6 @@ function checkAndUnlockAchievements(stats: UsageStats): void {
   }
   if (newUnlock) {
     persistAchievementStates();
-  }
-}
-
-function loadHomeHistory(): HomeHistoryEntry[] {
-  const raw = localStorage.getItem(HOME_HISTORY_STORAGE_KEY);
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as HomeHistoryEntry[];
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.filter((item) => {
-      if (!item || typeof item.speaker !== "string" || typeof item.content !== "string") {
-        return false;
-      }
-      if (item.tone !== "assistant" && item.tone !== "user") {
-        return false;
-      }
-      return Number.isFinite(item.timestamp);
-    });
-  } catch {
-    return [];
   }
 }
 

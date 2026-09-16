@@ -2431,44 +2431,8 @@ async fn get_dictation_recording(
     })?;
     let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("webm");
     let mime = mime_for_extension(extension);
-    let encoded = base64_encode(&bytes);
+    let encoded = BASE64_STANDARD.encode(&bytes);
     Ok(format!("data:{};base64,{}", mime, encoded))
-}
-
-fn base64_encode(input: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(((input.len() + 2) / 3) * 4);
-    let mut i = 0;
-    while i + 3 <= input.len() {
-        let b0 = input[i];
-        let b1 = input[i + 1];
-        let b2 = input[i + 2];
-        let triple = ((b0 as u32) << 16) | ((b1 as u32) << 8) | (b2 as u32);
-        out.push(ALPHABET[((triple >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((triple >> 12) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((triple >> 6) & 0x3F) as usize] as char);
-        out.push(ALPHABET[(triple & 0x3F) as usize] as char);
-        i += 3;
-    }
-    let remaining = input.len() - i;
-    if remaining == 1 {
-        let b0 = input[i];
-        let triple = (b0 as u32) << 16;
-        out.push(ALPHABET[((triple >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((triple >> 12) & 0x3F) as usize] as char);
-        out.push('=');
-        out.push('=');
-    } else if remaining == 2 {
-        let b0 = input[i];
-        let b1 = input[i + 1];
-        let triple = ((b0 as u32) << 16) | ((b1 as u32) << 8);
-        out.push(ALPHABET[((triple >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((triple >> 12) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((triple >> 6) & 0x3F) as usize] as char);
-        out.push('=');
-    }
-    out
 }
 
 enum StartupLocalSttWarmupTarget {
