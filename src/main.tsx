@@ -103,6 +103,10 @@ import {
 } from "./state/settings-store";
 import { parseJson } from "./state/storage";
 import {
+  inferLocalSttProviderFromModel,
+  pickDefaultLocalSttModelFromCatalog as pickDefaultLocalSttModelFromList,
+} from "./stt/provider-inference";
+import {
   normalizeHotkeyModifierToken,
   isFunctionKeyToken,
   isNumpadDigitToken,
@@ -2441,19 +2445,6 @@ function syncRuntimeModePaneVisibility(_sttMode: RuntimeMode, _aiMode: RuntimeMo
   }
 }
 
-function pickDefaultLocalSttModelFromCatalog(): string {
-  if (localSttModelCatalog.length === 0) {
-    return "";
-  }
-  const preferredOrder = ["nvidia/parakeet-tdt_ctc-110m", "nvidia/parakeet-tdt-0.6b-v3"];
-  for (const candidate of preferredOrder) {
-    if (localSttModelCatalog.includes(candidate)) {
-      return candidate;
-    }
-  }
-  return localSttModelCatalog[0] ?? "";
-}
-
 const EMBEDDING_MARKERS = [
   "embed",
   "embedding",
@@ -2508,20 +2499,6 @@ function pickDefaultLocalOllamaModelFromCatalog(): string {
     }
   }
   return firstNonEmbeddingModel || localOllamaModelCatalog[0] || "";
-}
-
-function inferLocalSttProviderFromModel(model: string): string {
-  const normalized = model.trim().toLowerCase();
-  if (normalized.startsWith("nvidia/") || normalized.includes("parakeet")) {
-    return "parakeet";
-  }
-  if (normalized.includes("sensevoice")) {
-    return "sensevoice";
-  }
-  if (normalized.includes("moonshine")) {
-    return "moonshine";
-  }
-  return normalized ? "whisper" : "";
 }
 
 function getLocalSttActionBlockReason(): string | null {
@@ -2618,7 +2595,7 @@ async function ensureSelectedLocalSttModel(options: { quiet?: boolean } = {}): P
     }
   }
 
-  const fallbackModel = pickDefaultLocalSttModelFromCatalog();
+  const fallbackModel = pickDefaultLocalSttModelFromList(localSttModelCatalog);
   if (fallbackModel) {
     localSttModelInput.value = fallbackModel;
     if (localSttModelCatalog.includes(fallbackModel)) {
@@ -2680,7 +2657,7 @@ async function syncLocalSttRuntimeForMode(
   if (mode === "local") {
     let model = readSettingsFromForm().localSttModel.trim() || localSttModelCatalogSelect.value.trim();
     if (!model) {
-      const fallbackModel = pickDefaultLocalSttModelFromCatalog();
+      const fallbackModel = pickDefaultLocalSttModelFromList(localSttModelCatalog);
       if (fallbackModel) {
         localSttModelInput.value = fallbackModel;
         if (localSttModelCatalog.includes(fallbackModel)) {
@@ -5239,7 +5216,7 @@ async function fetchLocalSttModels(
     renderLocalSttModelCatalog(response.models, activeSettings.localSttModel);
     const refreshedSettings = readSettingsFromForm();
     if (autoSelect && !refreshedSettings.localSttModel.trim() && response.models.length > 0) {
-      const fallback = pickDefaultLocalSttModelFromCatalog();
+      const fallback = pickDefaultLocalSttModelFromList(localSttModelCatalog);
       if (fallback) {
         localSttModelInput.value = fallback;
         if (localSttModelCatalog.includes(fallback)) {
@@ -6513,7 +6490,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
     if (activeSettings.sttRuntimeMode === "local") {
       let selectedLocalSttModel = activeSettings.localSttModel.trim();
       if (!selectedLocalSttModel) {
-        const fallbackLocalSttModel = pickDefaultLocalSttModelFromCatalog();
+        const fallbackLocalSttModel = pickDefaultLocalSttModelFromList(localSttModelCatalog);
         if (fallbackLocalSttModel) {
           localSttModelInput.value = fallbackLocalSttModel;
           if (localSttModelCatalog.includes(fallbackLocalSttModel)) {
