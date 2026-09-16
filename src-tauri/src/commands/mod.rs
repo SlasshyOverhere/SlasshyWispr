@@ -3,6 +3,7 @@
 //! Each module starts as a verbatim move from lib.rs; thinning into
 //! services happens in Phase 7. Re-exports keep generate_handler! paths short.
 
+pub mod local_stt;
 pub mod providers;
 pub mod recordings;
 pub mod settings;
@@ -14,5 +15,11 @@ pub(crate) use recordings::{
 pub(crate) use providers::{
     fetch_ollama_models, fetch_provider_models, get_assistant_info, get_ollama_status,
     install_ollama, pull_ollama_model,
+};
+pub(crate) use local_stt::{
+    deactivate_local_stt_model, delete_local_stt_model, download_local_stt_model,
+    fetch_local_stt_models, get_local_stt_download_status, get_local_stt_hardware_advice,
+    get_local_stt_model_status, get_local_stt_runtime_state, open_local_stt_model_path,
+    warmup_local_stt_model,
 };
 pub(crate) use settings::{load_persisted_local_settings, save_persisted_local_settings};
