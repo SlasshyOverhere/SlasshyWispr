@@ -690,15 +690,19 @@ const selectionPopupChannel = new BroadcastChannel("slasshywispr-selection-popup
 const ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION = true;
 const MAIN_WINDOW_VISIBILITY_EVENT = "slasshy://main-window-visibility";
 const UPDATE_INSTALL_PROGRESS_EVENT = "slasshy://update-install-progress";
-const APP_UPDATE_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
-const DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED = true;
-
-
-const UPDATE_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
+import {
+  APP_UPDATE_CHECK_INTERVAL_MS,
+  DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED,
+  readAppUpdateAutoCheckEnabled,
+  readUpdateSnoozedUntilMs,
+  isUpdateSnoozed,
+  snoozeUpdateFor24Hours,
+  readLastAppUpdateCheckedAtMs,
+  shouldRunStartupUpdateCheck,
+  msUntilNextAutomaticUpdateCheck,
+  isSafeGithubReleasePageUrl,
+  formatPublishedDate,
+} from "./updater/updater-client";
 
 const NOTE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -3018,97 +3022,6 @@ function setUpdaterStatus(stage: "idle" | "processing" | "speaking" | "error", m
     updateStatusPill.textContent = "Error";
   }
   updateStatusText.textContent = message;
-}
-
-function readAppUpdateAutoCheckEnabled(): boolean {
-  const raw = localStorage.getItem(APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY);
-  if (raw === null) {
-    return DEFAULT_APP_UPDATE_AUTO_CHECK_ENABLED;
-  }
-  return raw !== "0";
-}
-
-function readUpdateSnoozedUntilMs(): number {
-  const raw = localStorage.getItem(APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY);
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-  return parsed;
-}
-
-function isUpdateSnoozed(): boolean {
-  return Date.now() < readUpdateSnoozedUntilMs();
-}
-
-function snoozeUpdateFor24Hours(): void {
-  localStorage.setItem(APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY, String(Date.now() + 24 * 60 * 60 * 1000));
-}
-
-function readLastAppUpdateCheckedAtMs(): number {
-  const raw = localStorage.getItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY);
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 0;
-  }
-  return parsed;
-}
-
-function refreshUpdateLastCheckedText(): void {
-  const lastCheckedAt = readLastAppUpdateCheckedAtMs();
-  if (lastCheckedAt <= 0) {
-    updateLastCheckedText.textContent = "Last checked: Never.";
-    return;
-  }
-
-  updateLastCheckedText.textContent = `Last checked: ${new Date(lastCheckedAt).toLocaleString()}.`;
-}
-
-function shouldRunStartupUpdateCheck(): boolean {
-  const lastCheckedAt = readLastAppUpdateCheckedAtMs();
-  if (lastCheckedAt <= 0) {
-    return true;
-  }
-  return Date.now() - lastCheckedAt >= APP_UPDATE_CHECK_INTERVAL_MS;
-}
-
-function msUntilNextAutomaticUpdateCheck(): number {
-  const lastCheckedAt = readLastAppUpdateCheckedAtMs();
-  if (lastCheckedAt <= 0) {
-    return 0;
-  }
-
-  const elapsedMs = Date.now() - lastCheckedAt;
-  if (elapsedMs >= APP_UPDATE_CHECK_INTERVAL_MS) {
-    return 0;
-  }
-
-  return APP_UPDATE_CHECK_INTERVAL_MS - elapsedMs;
-}
-
-function isSafeGithubReleasePageUrl(url: string): boolean {
-  const trimmed = url.trim();
-  if (!trimmed) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === "https:" && parsed.hostname === "github.com" && parsed.pathname.includes("/releases/");
-  } catch {
-    return false;
-  }
-}
-
-function formatPublishedDate(raw: string): string {
-  const cleaned = raw.trim();
-  if (!cleaned) {
-    return "-";
-  }
-
-  const parsed = new Date(cleaned);
-  if (Number.isNaN(parsed.getTime())) {
-    return cleaned;
-  }
-  return UPDATE_DATE_FORMATTER.format(parsed);
 }
 
 function setUpdateInstallProgress(
