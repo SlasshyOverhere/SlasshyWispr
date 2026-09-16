@@ -32,9 +32,10 @@ use crate::updater::{
     WindowsInstallerKind,
 };
 use crate::commands::input::schedule_app_relaunch_after_installer;
+use super::windows::{emit_update_install_progress, show_main_window};
 use crate::{
-    configure_launch_at_login, emit_update_install_progress, read_launch_at_login_preference,
-    show_main_window, update_github_token, TRAY_UPDATE_ITEM, TRAY_ID,
+    configure_launch_at_login, read_launch_at_login_preference, update_github_token,
+    TRAY_UPDATE_ITEM, TRAY_ID,
 };
 
 #[derive(Debug, Serialize)]

@@ -6,6 +6,7 @@
 pub mod input;
 pub mod local_stt;
 pub mod providers;
+pub mod windows;
 pub mod recordings;
 pub mod settings;
 pub mod tts;
@@ -40,3 +41,4 @@ pub(crate) use tts::{
     list_coqui_models, list_coqui_voices, preview_coqui_voice, setup_assistant_runtime,
     setup_coqui_runtime, start_tts_runtime_setup, validate_coqui, validate_piper, TtsSetupState,
 };
+pub(crate) use windows::toggle_main_window_visibility;
