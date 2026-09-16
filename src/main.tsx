@@ -102,13 +102,7 @@ import {
   resolveSttLanguageConfig,
 } from "./state/settings-store";
 import { parseJson } from "./state/storage";
-import {
-  looksLikeDraftingRequest,
-  looksLikeDraftResponse,
-  inferAnswerPopupTitle,
-  shouldOpenAnswerPopup,
-  buildSelectionPopupPayload,
-} from "./windows/selection-intent";
+import { buildSelectionPopupPayload } from "./windows/selection-intent";
 import {
   inferLocalSttProviderFromModel,
   pickDefaultLocalSttModelFromCatalog as pickDefaultLocalSttModelFromList,
