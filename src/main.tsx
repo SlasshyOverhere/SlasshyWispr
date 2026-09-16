@@ -103,6 +103,13 @@ import {
 } from "./state/settings-store";
 import { parseJson } from "./state/storage";
 import {
+  looksLikeDraftingRequest,
+  looksLikeDraftResponse,
+  inferAnswerPopupTitle,
+  shouldOpenAnswerPopup,
+  buildSelectionPopupPayload,
+} from "./windows/selection-intent";
+import {
   inferLocalSttProviderFromModel,
   pickDefaultLocalSttModelFromCatalog as pickDefaultLocalSttModelFromList,
 } from "./stt/provider-inference";
@@ -6621,7 +6628,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
 
     renderPipelineResponse(resolvedResponse);
     let playbackCompleted = true;
-    const selectionPopupPayload = buildSelectionPopupPayload(resolvedResponse);
+    const selectionPopupPayload = buildSelectionPopupPayload(resolvedResponse, nextSelectionPopupToken());
     if (!selectionPopupPayload) {
       latestSelectionPopupPayload = null;
       if (selectionAssistantWindow) {
@@ -7496,154 +7503,6 @@ async function applySelectionPopupSize(win: WebviewWindow, payload: SelectionPop
 function nextSelectionPopupToken(): number {
   selectionPopupTokenCounter += 1;
   return selectionPopupTokenCounter;
-}
-
-const NON_ALNUM_INTENT_CHAR_PATTERN = /[^\p{L}\p{N}\s]/gu;
-const MULTI_SPACE_PATTERN = /\s+/g;
-
-function normalizeIntentText(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(NON_ALNUM_INTENT_CHAR_PATTERN, " ")
-    .replace(MULTI_SPACE_PATTERN, " ")
-    .trim();
-}
-
-function includesAnyIntentPhrase(text: string, phrases: readonly string[]): boolean {
-  return containsAnyFragment(text, phrases);
-}
-
-const COMPOSE_VERBS = [
-  "write",
-  "draft",
-  "compose",
-  "create",
-  "generate",
-  "make",
-  "prepare",
-];
-
-const COMPOSE_TARGETS = [
-  "email",
-  "mail",
-  "message",
-  "reply",
-  "letter",
-  "review",
-  "proposal",
-  "summary",
-  "description",
-  "caption",
-  "post",
-  "bio",
-  "application",
-];
-
-const DRAFT_EDIT_VERB_PATTERN = /\b(make|rewrite|edit|improve|polish|refine|fix)\b/;
-const DRAFT_EDIT_TARGET_PATTERN = /\b(this|it|text|review|email|message|paragraph|sentence)\b/;
-
-function looksLikeDraftingRequest(transcript: string): boolean {
-  const normalized = normalizeIntentText(transcript);
-  if (!normalized) {
-    return false;
-  }
-
-  const hasComposeVerb = includesAnyIntentPhrase(normalized, COMPOSE_VERBS);
-  const hasComposeTarget = includesAnyIntentPhrase(normalized, COMPOSE_TARGETS);
-  if (hasComposeVerb && hasComposeTarget) {
-    return true;
-  }
-
-  if (DRAFT_EDIT_VERB_PATTERN.test(normalized) && DRAFT_EDIT_TARGET_PATTERN.test(normalized)) {
-    return true;
-  }
-
-  return false;
-}
-
-const DRAFT_RESPONSE_START_PATTERN = /^(subject:|dear\s|hello\s|hi\s|to:)/i;
-
-function looksLikeDraftResponse(assistantResponse: string): boolean {
-  const trimmed = assistantResponse.trim();
-  if (trimmed.length < 24) {
-    return false;
-  }
-
-  if (DRAFT_RESPONSE_START_PATTERN.test(trimmed)) {
-    return true;
-  }
-
-  const lines = trimmed.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  if (lines.length >= 3) {
-    return true;
-  }
-
-  return trimmed.length >= 120;
-}
-
-function inferAnswerPopupTitle(transcript: string): string {
-  const normalized = normalizeIntentText(transcript);
-  if (normalized.includes("email") || normalized.includes("mail")) {
-    return "Email Draft Ready";
-  }
-  if (normalized.includes("review")) {
-    return "Review Draft Ready";
-  }
-  return "Draft Ready";
-}
-
-function shouldOpenAnswerPopup(response: AssistantPipelineResponse): boolean {
-  if (response.mode !== "assistant") {
-    return false;
-  }
-  if (response.selectionRewrite || response.selectionPending || response.selectionContextUsed) {
-    return false;
-  }
-  if (!response.assistantResponse.trim()) {
-    return false;
-  }
-
-  return looksLikeDraftingRequest(response.transcript) && looksLikeDraftResponse(response.assistantResponse);
-}
-
-function buildSelectionPopupPayload(response: AssistantPipelineResponse): SelectionPopupPayload | null {
-  if (!response.selectionRewrite && !response.selectionPending && !shouldOpenAnswerPopup(response)) {
-    return null;
-  }
-
-  const token = nextSelectionPopupToken();
-
-  if (response.selectionPending) {
-    return {
-      token,
-      mode: "pending",
-      title: "Rewrite Draft Ready",
-      text: response.assistantResponse,
-      audioBase64: "",
-    };
-  }
-
-  if (response.selectionRewrite) {
-    return {
-      token,
-      mode: "rewrite",
-      title: "Rewrite Result",
-      text: response.assistantResponse,
-      audioBase64: "",
-    };
-  }
-
-  if (shouldOpenAnswerPopup(response)) {
-    return {
-      token,
-      mode: "answer",
-      title: inferAnswerPopupTitle(response.transcript),
-      text: response.assistantResponse,
-      audioBase64: "",
-    };
-  }
-
-  return null;
 }
 
 async function ensureSelectionAssistantWindow(): Promise<WebviewWindow> {
