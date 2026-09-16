@@ -102,6 +102,10 @@ import {
   resolveSttLanguageConfig,
 } from "./state/settings-store";
 import { parseJson } from "./state/storage";
+import {
+  looksLikeEmbeddingOnlyOllamaModel,
+  pickDefaultLocalOllamaModelFromCatalog as pickDefaultLocalOllamaModelFromList,
+} from "./stt/ollama-pick";
 import { buildSelectionPopupPayload } from "./windows/selection-intent";
 import {
   inferLocalSttProviderFromModel,
@@ -2444,62 +2448,6 @@ function syncRuntimeModePaneVisibility(_sttMode: RuntimeMode, _aiMode: RuntimeMo
   if (activePaneId === "online" || activePaneId === "offline" || activePaneId === "hybrid") {
     setActiveSettingsPane("models");
   }
-}
-
-const EMBEDDING_MARKERS = [
-  "embed",
-  "embedding",
-  "nomic-embed",
-  "bge-",
-  "e5-",
-  "minilm",
-];
-
-function containsAnyFragment(text: string, fragments: readonly string[]): boolean {
-  for (const fragment of fragments) {
-    if (text.includes(fragment)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function isEmbeddingOnlyNormalizedModel(normalizedModel: string): boolean {
-  return normalizedModel.length > 0 && containsAnyFragment(normalizedModel, EMBEDDING_MARKERS);
-}
-
-function looksLikeEmbeddingOnlyOllamaModel(model: string): boolean {
-  return isEmbeddingOnlyNormalizedModel(model.trim().toLowerCase());
-}
-
-const PREFERRED_CHAT_FAMILIES = [
-  "llama",
-  "qwen",
-  "mistral",
-  "gemma",
-  "phi",
-  "deepseek",
-  "command-r",
-];
-
-function pickDefaultLocalOllamaModelFromCatalog(): string {
-  if (localOllamaModelCatalog.length === 0) {
-    return "";
-  }
-  let firstNonEmbeddingModel = "";
-  for (const model of localOllamaModelCatalog) {
-    const normalized = model.trim().toLowerCase();
-    if (isEmbeddingOnlyNormalizedModel(normalized)) {
-      continue;
-    }
-    if (!firstNonEmbeddingModel) {
-      firstNonEmbeddingModel = model;
-    }
-    if (containsAnyFragment(normalized, PREFERRED_CHAT_FAMILIES)) {
-      return model;
-    }
-  }
-  return firstNonEmbeddingModel || localOllamaModelCatalog[0] || "";
 }
 
 function getLocalSttActionBlockReason(): string | null {
@@ -5099,7 +5047,7 @@ async function fetchOllamaModels(
       !activeSettings.localOllamaModel.trim() &&
       response.models.length > 0
     ) {
-      const fallback = pickDefaultLocalOllamaModelFromCatalog();
+      const fallback = pickDefaultLocalOllamaModelFromList(localOllamaModelCatalog);
       if (fallback) {
         localOllamaModelInput.value = fallback;
         if (localOllamaModelCatalog.includes(fallback)) {
@@ -5138,7 +5086,7 @@ async function ensureLocalOllamaModelSelected(options: { quiet?: boolean } = {})
   const refreshed = readSettingsFromForm();
   selected = refreshed.localOllamaModel.trim() || localOllamaModelCatalogSelect.value.trim();
   if (selected && looksLikeEmbeddingOnlyOllamaModel(selected)) {
-    const fallback = pickDefaultLocalOllamaModelFromCatalog();
+    const fallback = pickDefaultLocalOllamaModelFromList(localOllamaModelCatalog);
     if (fallback && fallback !== selected) {
       localOllamaModelInput.value = fallback;
       if (localOllamaModelCatalog.includes(fallback)) {
