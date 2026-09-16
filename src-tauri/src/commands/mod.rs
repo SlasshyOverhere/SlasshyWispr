@@ -3,6 +3,7 @@
 //! Each module starts as a verbatim move from lib.rs; thinning into
 //! services happens in Phase 7. Re-exports keep generate_handler! paths short.
 
+pub mod input;
 pub mod local_stt;
 pub mod providers;
 pub mod recordings;
@@ -17,6 +18,11 @@ pub(crate) use recordings::{
 pub(crate) use providers::{
     fetch_ollama_models, fetch_provider_models, get_assistant_info, get_ollama_status,
     install_ollama, pull_ollama_model,
+};
+pub(crate) use input::{
+    capture_selected_text, configure_launch_at_login, control_media_playback,
+    get_foreground_input_block_status, launch_at_login_status, mute_system_audio,
+    paste_clipboard_text, paste_text_via_clipboard, set_clipboard_text,
 };
 pub(crate) use local_stt::{
     deactivate_local_stt_model, delete_local_stt_model, download_local_stt_model,

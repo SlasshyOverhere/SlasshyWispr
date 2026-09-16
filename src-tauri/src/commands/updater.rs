@@ -31,10 +31,10 @@ use crate::updater::{
     validate_downloaded_installer_file, windows_installer_kind_from_name, GithubLatestReleaseResponse,
     WindowsInstallerKind,
 };
+use crate::commands::input::schedule_app_relaunch_after_installer;
 use crate::{
     configure_launch_at_login, emit_update_install_progress, read_launch_at_login_preference,
-    schedule_app_relaunch_after_installer, show_main_window, update_github_token,
-    TRAY_UPDATE_ITEM, TRAY_ID,
+    show_main_window, update_github_token, TRAY_UPDATE_ITEM, TRAY_ID,
 };
 
 #[derive(Debug, Serialize)]
