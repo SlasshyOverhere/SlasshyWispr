@@ -5,6 +5,7 @@
 
 pub mod input;
 pub mod local_stt;
+pub mod pipeline;
 pub mod providers;
 pub mod windows;
 pub mod recordings;
@@ -40,5 +41,9 @@ pub(crate) use tts::{
     clone_coqui_voice, ensure_voice_model, get_coqui_status, get_tts_runtime_setup_status,
     list_coqui_models, list_coqui_voices, preview_coqui_voice, setup_assistant_runtime,
     setup_coqui_runtime, start_tts_runtime_setup, validate_coqui, validate_piper, TtsSetupState,
+};
+pub(crate) use pipeline::{
+    run_assistant_pipeline, AssistantPipelineRequest, AssistantPipelineResponse,
+    DictionaryEntryRequest, SnippetEntryRequest,
 };
 pub(crate) use windows::toggle_main_window_visibility;
