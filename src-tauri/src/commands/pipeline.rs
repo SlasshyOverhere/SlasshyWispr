@@ -42,9 +42,8 @@ use crate::pipeline::stt::{
     normalize_stt_allowed_languages, normalize_stt_language_hint,
 };
 use crate::pipeline::tts::{ensure_piper_binary, ensure_voice_files, voice_paths};
-use crate::{
-    resolve_piper_path, resolve_pipeline_mode, transcribe_audio, transcribe_audio_local,
-};
+use crate::services::{transcribe_audio, transcribe_audio_local};
+use crate::{resolve_piper_path, resolve_pipeline_mode};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -30,11 +30,11 @@ use crate::pipeline::daemon::{
     stop_all_local_stt_bridge_daemons_with_count, trim_all_local_stt_bridge_daemon_model_caches,
 };
 use crate::state::AppState;
-use crate::{
-    build_local_stt_hardware_advice, open_path_in_file_explorer, resolve_local_stt_repo_and_dir,
-    setup_local_stt_runtime_blocking, stt_models_dir, warmup_local_stt_hf_model_blocking,
-    warmup_local_stt_parakeet_model_blocking, ProviderModelsResponse,
+use crate::services::transcribe::{
+    open_path_in_file_explorer, resolve_local_stt_repo_and_dir, setup_local_stt_runtime_blocking,
+    stt_models_dir, warmup_local_stt_hf_model_blocking, warmup_local_stt_parakeet_model_blocking,
 };
+use crate::{build_local_stt_hardware_advice, ProviderModelsResponse};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -263,7 +263,7 @@ pub(crate) async fn download_local_stt_model(
 
                     let app_for_runtime = app_for_task.clone();
                     let runtime_setup_result = tauri::async_runtime::spawn_blocking(move || {
-                        setup_local_stt_runtime_blocking(&app_for_runtime, "python")
+                        crate::services::transcribe::setup_local_stt_runtime_blocking(&app_for_runtime, "python")
                     })
                     .await
                     .map_err(|error| format!("Local STT runtime worker failed: {error}"))
@@ -301,13 +301,13 @@ pub(crate) async fn download_local_stt_model(
                                 let python_for_warmup = python_path.clone();
                                 tauri::async_runtime::spawn_blocking(move || {
                                     if provider_for_warmup == "parakeet" {
-                                        warmup_local_stt_parakeet_model_blocking(
+                                        crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(
                                             &app_for_warmup,
                                             &python_for_warmup,
                                             &model_for_warmup,
                                         )
                                     } else {
-                                        warmup_local_stt_hf_model_blocking(
+                                        crate::services::transcribe::warmup_local_stt_hf_model_blocking(
                                             &app_for_warmup,
                                             &python_for_warmup,
                                             &model_for_warmup,
@@ -408,7 +408,7 @@ pub(crate) async fn download_local_stt_model(
                         let app_for_warmup = app_for_task.clone();
                         let model_for_warmup = model_for_task.clone();
                         let warmup_result = tauri::async_runtime::spawn_blocking(move || {
-                            warmup_local_stt_parakeet_model_blocking(
+                            crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(
                                 &app_for_warmup,
                                 "",
                                 &model_for_warmup,
@@ -659,7 +659,7 @@ pub(crate) async fn open_local_stt_model_path(
         });
     }
 
-    open_path_in_file_explorer(&target_dir)?;
+    crate::services::transcribe::open_path_in_file_explorer(&target_dir)?;
     Ok(LocalSttOpenPathResponse {
         model,
         repo_id,
@@ -738,14 +738,14 @@ pub(crate) async fn warmup_local_stt_model(
     let warmup_result =
         tauri::async_runtime::spawn_blocking(move || match provider_for_worker.as_str() {
             "parakeet" => {
-                warmup_local_stt_parakeet_model_blocking(&app_for_worker, "", &model_for_worker)
+                crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(&app_for_worker, "", &model_for_worker)
             }
             "whisper" | "moonshine" | "sensevoice" => {
                 if zero_python_mode_enabled() {
                     return Err(ZERO_PYTHON_STT_NOTICE.to_string());
                 }
-                let python_path = setup_local_stt_runtime_blocking(&app_for_worker, "python")?;
-                warmup_local_stt_hf_model_blocking(&app_for_worker, &python_path, &model_for_worker)
+                let python_path = crate::services::transcribe::setup_local_stt_runtime_blocking(&app_for_worker, "python")?;
+                crate::services::transcribe::warmup_local_stt_hf_model_blocking(&app_for_worker, &python_path, &model_for_worker)
             }
             _ => Ok("Warmup skipped (unsupported provider).".to_string()),
         })

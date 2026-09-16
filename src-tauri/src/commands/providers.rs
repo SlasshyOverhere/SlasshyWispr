@@ -19,9 +19,10 @@ use crate::pipeline::routing::{
     normalize_api_base_url, normalize_api_key_secret, normalize_local_ollama_base_url,
     normalize_model_name, zero_python_mode_enabled,
 };
+use crate::services::transcribe::apply_optional_bearer_auth;
 use crate::{
-    apply_optional_bearer_auth, discover_installed_piper_path, is_ollama_service_running,
-    ollama_installer_path, query_ollama_version, run_ollama_installer_windows,
+    discover_installed_piper_path, is_ollama_service_running, ollama_installer_path,
+    query_ollama_version, run_ollama_installer_windows,
 };
 use crate::state::AppState;
 use crate::{
