@@ -1013,7 +1013,7 @@ initLocalSttClient(
     openSettings: (reason) => openSettings(reason),
     setActiveSettingsPane: (pane, reason) => setActiveSettingsPane(pane, reason),
     refreshAssistantInfo: () => refreshAssistantInfoSafely(),
-    renderFetchedCatalog: (models, selected) => renderLocalSttModelCatalog(models, selected),
+    renderFetchedCatalog: (models, selected) => renderLocalSttModelCatalogService(models, selected),
     checkModelFileExists: (model) => checkModelFileExistsService(model),
     checkPythonDependencies: (model) => checkPythonDependenciesService(model),
     checkAvailableMemory: (model) => checkAvailableMemoryService(model),
@@ -1050,30 +1050,15 @@ initMicrophones(
     notify: (message, isError) => setNotice(message, isError),
   },
 );
-function updateMicrophoneSummary(): void {
-  updateMicrophoneSummaryService();
-}
-async function refreshMicrophones(requestPermission: boolean): Promise<void> {
-  await refreshMicrophonesService(requestPermission);
-}
 const soundDeps = {
   currentSettings: getSettingsSnapshot,
   previewVolume: () => Number(settingsFormRefs.pushToTalkSoundVolumeRange.value),
 };
-function playDictationSoundEffect(kind: "start" | "stop" | "error", previewSoundId?: string): void {
-  playDictationSoundEffectService(soundDeps, kind, previewSoundId);
-}
 const mediaControlDeps = {
   isMutingEnabled: () => settings.muteMusicWhileDictating,
   isTauri: isTauriEnvironment,
   notify: (message: string, isError?: boolean) => setNotice(message, isError),
 };
-function pauseExternalMediaForDictation(): void {
-  pauseExternalMediaForDictationService(mediaControlDeps);
-}
-function resumeExternalMediaAfterDictation(): void {
-  resumeExternalMediaAfterDictationService(mediaControlDeps);
-}
 initRecordings(
   {
     clearButton: settingsFormRefs.clearRecordingsBtn,
@@ -1118,10 +1103,6 @@ initUpdaterView(
     openExternal: (url) => openInSystemBrowser(url),
   },
 );
-function initializeUpdaterPanel(): void {
-  initializeUpdaterPanelService();
-  syncUpdaterButtons();
-}
 initUpdaterFlow(
   {
     checkUpdatesBtn,
@@ -1147,24 +1128,6 @@ initUpdaterFlow(
     },
   },
 );
-function syncUpdaterButtons(): void {
-  syncUpdaterButtonsService();
-}
-async function handleCheckForUpdates(options?: {
-  silent?: boolean;
-  source?: "manual" | "startup" | "interval";
-}): Promise<void> {
-  await handleCheckForUpdatesService(options);
-}
-async function handleInstallUpdate(): Promise<void> {
-  await handleInstallUpdateService();
-}
-async function registerUpdateInstallProgressListener(): Promise<void> {
-  await registerUpdateInstallProgressListenerService();
-}
-function startAutomaticUpdateChecks(): void {
-  startAutomaticUpdateChecksService();
-}
 initOllamaClient(
   {
     statusNotice: ollamaStatusNotice,
@@ -1205,8 +1168,8 @@ initOllamaClient(
     setCatalogSelection: (value) => {
       localOllamaModelCatalogSelect.value = value;
     },
-    renderProviderCatalog: (models, selected) => renderProviderModelCatalog(models, selected),
-    renderOllamaCatalog: (models, selected) => renderLocalOllamaModelCatalog(models, selected),
+    renderProviderCatalog: (models, selected) => renderProviderModelCatalogService(models, selected),
+    renderOllamaCatalog: (models, selected) => renderLocalOllamaModelCatalogService(models, selected),
     renderStatus: (status) => renderOllamaStatusService(status),
     setNotice: (message, isError) => setNotice(message, isError),
     setStage: (next, detail) => setStage(next, detail),
@@ -1217,14 +1180,6 @@ initOllamaClient(
 let ollamaStatusBusy = false;
 let ollamaInstallBusy = false;
 let ollamaPullBusy = false;
-async function refreshOllamaStatus(options: { quiet?: boolean } = {}): Promise<void> {
-  await refreshOllamaStatusService(options);
-}
-async function fetchOllamaModels(
-  options: { quiet?: boolean; autoSelect?: boolean } = {},
-): Promise<void> {
-  await fetchOllamaModelsService(options);
-}
 initTtsClient(
   {
     setupLogs: ttsSetupLogs,
@@ -1306,18 +1261,9 @@ initModelCatalogs(
     },
   },
 );
-function renderProviderModelCatalog(models: string[], selectedModel = ""): void {
-  renderProviderModelCatalogService(models, selectedModel);
-}
-function renderLocalOllamaModelCatalog(models: string[], selectedModel = ""): void {
-  renderLocalOllamaModelCatalogService(models, selectedModel);
-}
-function renderLocalSttModelCatalog(models: string[], selectedModel = ""): void {
-  renderLocalSttModelCatalogService(models, selectedModel);
-}
-renderProviderModelCatalog([], settings.aiModelName || settings.sttModelName);
-renderLocalOllamaModelCatalog([], settings.localOllamaModel);
-renderLocalSttModelCatalog([], settings.localSttModel);
+renderProviderModelCatalogService([], settings.aiModelName || settings.sttModelName);
+renderLocalOllamaModelCatalogService([], settings.localOllamaModel);
+renderLocalSttModelCatalogService([], settings.localSttModel);
 setActiveTtsProfile("piper");
 updateTtsSetupGate();
 persistDictionaryTerms();
@@ -1353,11 +1299,11 @@ initAnalyticsRender(
   },
   { getStats: () => usageStats },
 );
-updateUsageMetrics();
+updateUsageMetricsService();
 refreshRecordButton();
 syncActionAvailability();
-initializeUpdaterPanel();
-void registerUpdateInstallProgressListener();
+initializeUpdaterPanelService();
+void registerUpdateInstallProgressListenerService();
 setupCustomWindowControls();
 void initializeTrayBackgroundLifecycle();
 hotkeyInput.readOnly = true;
@@ -1395,7 +1341,7 @@ openSettingsBtn.addEventListener("click", () => {
 });
 
 checkUpdatesBtn.addEventListener("click", () => {
-  void handleCheckForUpdates();
+  void handleCheckForUpdatesService();
 });
 
 markPaneConverted("update-security");
@@ -1406,7 +1352,7 @@ window.addEventListener(APP_UPDATE_AUTO_CHECK_CHANGED_EVENT, (event) => {
     APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
     enabled ? "1" : "0",
   );
-  startAutomaticUpdateChecks();
+  startAutomaticUpdateChecksService();
   setNotice(
     enabled
       ? "Automatic update checks enabled."
@@ -1415,7 +1361,7 @@ window.addEventListener(APP_UPDATE_AUTO_CHECK_CHANGED_EVENT, (event) => {
 });
 
 installUpdateBtn.addEventListener("click", () => {
-  void handleInstallUpdate();
+  void handleInstallUpdateService();
 });
 
 skipUpdateVersionBtn.addEventListener("click", () => {
@@ -1423,14 +1369,14 @@ skipUpdateVersionBtn.addEventListener("click", () => {
   if (latestVersion) {
     localStorage.setItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY, latestVersion);
     setNotice(`Version ${latestVersion} will be skipped. You won't be notified about this version again.`);
-    syncUpdaterButtons();
+    syncUpdaterButtonsService();
   }
 });
 
 snoozeUpdateBtn.addEventListener("click", () => {
   snoozeUpdateFor24Hours();
   setNotice("Update notifications snoozed for 24 hours.");
-  syncUpdaterButtons();
+  syncUpdaterButtonsService();
 });
 
 window.addEventListener("beforeunload", () => {
@@ -1720,10 +1666,10 @@ wireSettingsFormInputsService({
 });
 
 previewPttSoundBtn.addEventListener("click", () => {
-  playDictationSoundEffect("start", pushToTalkSoundSelect.value);
+  playDictationSoundEffectService(soundDeps, "start", pushToTalkSoundSelect.value);
 });
 previewPttEndSoundBtn.addEventListener("click", () => {
-  playDictationSoundEffect("stop", pushToTalkEndSoundSelect.value);
+  playDictationSoundEffectService(soundDeps, "stop", pushToTalkEndSoundSelect.value);
 });
 
 providerModelCatalogSelect.addEventListener("change", () => {
@@ -1842,7 +1788,7 @@ bindPushToTalkPointerHold(notesQuickMicBtn, "notes-button");
 bindPushToTalkKeyboardHold(notesQuickMicBtn, "notes-button");
 
 refreshMicsBtn.addEventListener("click", () => {
-  void refreshMicrophones(true);
+  void refreshMicrophonesService(true);
 });
 
 
@@ -2008,7 +1954,7 @@ clearStatsBtn.addEventListener("click", async () => {
   persistAnalyticsSessionDetails();
   achievementStates = [];
   persistAchievementStates();
-  updateUsageMetrics();
+  updateUsageMetricsService();
   window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
   setNotice("Statistics have been reset.");
 });
@@ -2023,7 +1969,7 @@ function clearAllHistory(): void {
 }
 
 navigator.mediaDevices?.addEventListener?.("devicechange", () => {
-  void refreshMicrophones(false);
+  void refreshMicrophonesService(false);
 });
 
 document.addEventListener("visibilitychange", () => {
@@ -2034,9 +1980,6 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-function updateUsageMetrics(): void {
-  updateUsageMetricsService();
-}
 initUsageTracker({
   getStats: () => usageStats,
   setStats: (stats) => {
@@ -2054,7 +1997,7 @@ initUsageTracker({
   persistStats: () => persistUsageStats(),
   persistSessions: () => persistAnalyticsSessionDetails(),
   persistAchievements: () => persistAchievementStates(),
-  renderMetrics: () => updateUsageMetrics(),
+  renderMetrics: () => updateUsageMetricsService(),
   notifyStoreUpdated: () => {
     window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
   },
@@ -2089,12 +2032,12 @@ async function bootstrap(): Promise<void> {
     setStage("error", "Metadata load failed.");
   }
 
-  await refreshMicrophones(false);
+  await refreshMicrophonesService(false);
   if (stage === "idle") {
     void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
   }
-  await refreshOllamaStatus({ quiet: true });
-  await fetchOllamaModels({ quiet: true, autoSelect: true });
+  await refreshOllamaStatusService({ quiet: true });
+  await fetchOllamaModelsService({ quiet: true, autoSelect: true });
   await fetchLocalSttModelsService({ quiet: true, autoSelect: true });
   await refreshSelectedLocalSttModelAvailabilityService({ quiet: true });
   await pollLocalSttDownloadStatusOnceService({ quiet: true });
@@ -2109,7 +2052,7 @@ async function bootstrap(): Promise<void> {
     // Ignore bootstrap poll failures and continue normal app startup.
   }
   syncActionAvailability();
-  startAutomaticUpdateChecks();
+  startAutomaticUpdateChecksService();
   if (analyticsSessionDetails.length > 0 && achievementStates.length === 0) {
     const totalWords = usageStats.words + usageStats.prevWords;
     const totalSessions = usageStats.sessions + usageStats.prevSessions;
@@ -2403,9 +2346,9 @@ const settingsHandleEffects: SettingsHandleEffects = {
   },
   syncExternalMediaMute: (muted) => {
     if (muted) {
-      pauseExternalMediaForDictation();
+      pauseExternalMediaForDictationService(mediaControlDeps);
     } else {
-      resumeExternalMediaAfterDictation();
+      resumeExternalMediaAfterDictationService(mediaControlDeps);
     }
   },
   persist: (next) => persistSettings(next),
@@ -2420,7 +2363,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
     renderSidebarLocalSttToggleService();
     refreshRecordButton();
     syncActionAvailability();
-    updateMicrophoneSummary();
+    updateMicrophoneSummaryService();
     renderNotesList();
     const nextShortcutSignature = buildShortcutSyncSignature(next);
     if (previousShortcutSignature !== nextShortcutSignature) {
@@ -3203,9 +3146,9 @@ async function confirmDestructiveAction(message: string): Promise<boolean> {
 async function refreshAssistantInfo(): Promise<void> {
   const info = await ipcGetAssistantInfo();
   renderAssistantInfo(info);
-  renderProviderModelCatalog(providerModelCatalog, settings.aiModelName || settings.sttModelName);
-  renderLocalOllamaModelCatalog(localOllamaModelCatalog, settings.localOllamaModel);
-  renderLocalSttModelCatalog(localSttModelCatalog, settings.localSttModel);
+  renderProviderModelCatalogService(providerModelCatalog, settings.aiModelName || settings.sttModelName);
+  renderLocalOllamaModelCatalogService(localOllamaModelCatalog, settings.localOllamaModel);
+  renderLocalSttModelCatalogService(localSttModelCatalog, settings.localSttModel);
 
   if (!settingsFormRefs.piperPathInput.value.trim() && info.piperPath) {
     settingsFormRefs.piperPathInput.value = info.piperPath;
@@ -3469,17 +3412,17 @@ function setStage(next: Stage, detail: string): void {
   }
 
   if (previousStage !== "recording" && next === "recording") {
-    playDictationSoundEffect("start");
+    playDictationSoundEffectService(soundDeps, "start");
     if (settings.muteMusicWhileDictating) {
-      pauseExternalMediaForDictation();
+      pauseExternalMediaForDictationService(mediaControlDeps);
     }
     return;
   }
 
   if (previousStage === "recording" && next !== "recording") {
-    playDictationSoundEffect("stop");
+    playDictationSoundEffectService(soundDeps, "stop");
     if (isExternalMediaMutedForDictation()) {
-      resumeExternalMediaAfterDictation();
+      resumeExternalMediaAfterDictationService(mediaControlDeps);
     }
     return;
   }
@@ -3489,7 +3432,7 @@ function setStage(next: Stage, detail: string): void {
     next === "error" &&
     (pipelineRunning || previousStage === "recording" || previousStage === "speaking")
   ) {
-    playDictationSoundEffect("error");
+    playDictationSoundEffectService(soundDeps, "error");
   }
 }
 
@@ -3568,7 +3511,7 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
         break;
       case "resume-external-media":
         if (isExternalMediaMutedForDictation()) {
-          resumeExternalMediaAfterDictation();
+          resumeExternalMediaAfterDictationService(mediaControlDeps);
         }
         break;
       case "publish-dock-state":
