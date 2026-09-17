@@ -817,7 +817,7 @@ initRecordingController(
     isTauri: isTauriEnvironment,
     now: () => Date.now(),
     performanceNow: () => performance.now(),
-    runPipeline: (blob, mimeType) => runPipeline(blob, mimeType),
+    runPipeline: (blob, mimeType) => runPipelineService(blob, mimeType),
     createId: () => createId(),
     saveDictationRecording: (args) => ipcSaveDictationRecording(args),
   },
@@ -4390,10 +4390,6 @@ function interruptTtsPlaybackForCaptureIntent(): boolean {
 
 function stopRecording(options: StopRecordingOptions = {}): void {
   stopRecordingService(options);
-}
-
-async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void> {
-  await runPipelineService(audioBlob, audioMimeType);
 }
 
 function renderAssistantInfo(info: AssistantInfoResponse): void {
