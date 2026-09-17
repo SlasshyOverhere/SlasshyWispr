@@ -67,7 +67,6 @@ import { open as openExternalUrl } from "@tauri-apps/plugin-shell";
 import {
   boolFlag,
   buildAgentOperatingCorePrompt,
-  captureModeLabel,
   expandSnippetsInText,
   normalizeDictionaryEntries,
   normalizeSnippetEntries,
@@ -84,27 +83,26 @@ import {
   loadSettings,
   coerceNumber,
   coerceInteger,
-  asStyleProfile,
   asThemeMode,
-  normalizeDictationLanguageCode,
-  normalizeDictationLanguageAllowList,
-  asPiperQuality,
-  asPiperEmotion,
   resolveSttLanguageConfig,
 } from "./state/settings-store";
 import {
+  applySettingsToForm as applySettingsToFormService,
   applyDictationLanguageSettingsToForm as applyDictationLanguageSettingsToFormService,
   applySettingsValidation as applySettingsValidationService,
   applyTheme as applyThemeService,
   buildShortcutSyncSignature,
   flushPendingSettings,
+  normalizeHotkeyLabelsInPlace,
   persistSettings,
+  readSettingsFromForm as readSettingsFromFormService,
+  refreshGeneralDisplayFromSettings,
   setPersistErrorReporter,
   summarizeSettingsForDiagnostics,
   syncHybridRuntimeFieldVisibility as syncHybridRuntimeFieldVisibilityService,
   syncRuntimeModePaneVisibility as syncRuntimeModePaneVisibilityService,
-  syncThemeCardSelection as syncThemeCardSelectionService,
   updateRuntimeModeNotice as updateRuntimeModeNoticeService,
+  type SettingsCoreDeps,
 } from "./settings/settings-service";
 import { querySettingsFormRefs } from "./settings/settings-form-refs";
 import { parseJson } from "./state/storage";
@@ -173,13 +171,9 @@ import {
   MAX_HISTORY_ITEMS,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
   BLOCKED_INPUT_NOTICE_COOLDOWN_MS,
-  DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
   DEFAULT_HOTKEY,
   DEFAULT_COMMAND_HOTKEY,
-  DEFAULT_PIPER_SPEED,
-  DEFAULT_TEMPERATURE,
-  DEFAULT_MAX_TOKENS,
   DEFAULT_ASSISTANT_NAME,
 } from "./constants";
 
@@ -190,7 +184,6 @@ import type {
   SettingsPane,
   TtsEngine,
   RuntimeMode,
-  DictationLanguageMode,
   TtsProfilePane,
   HoldSource,
 
@@ -350,8 +343,6 @@ const sidebarLabeledButtons = Array.from(
 
 const statusPill = requiredElement<HTMLDivElement>("#statusPill");
 const statusDetail = requiredElement<HTMLParagraphElement>("#statusDetail");
-const hotkeyHint = requiredElement<HTMLElement>("#hotkeyHint");
-const captureModeHint = requiredElement<HTMLElement>("#captureModeHint");
 const noticeText = requiredElement<HTMLParagraphElement>("#noticeText");
 const metricWords = requiredElement<HTMLElement>("#metricWords");
 const metricSpeakingTime = requiredElement<HTMLElement>("#metricSpeakingTime");
@@ -444,8 +435,6 @@ const piperEmotionSelect = requiredElement<HTMLSelectElement>("#piperEmotionSele
 const piperSpeedInput = requiredElement<HTMLInputElement>("#piperSpeedInput");
 const systemPromptInput = requiredElement<HTMLTextAreaElement>("#systemPromptInput");
 const temperatureInput = requiredElement<HTMLInputElement>("#temperatureInput");
-const temperatureValue = requiredElement<HTMLElement>("#temperatureValue");
-const piperSpeedValue = requiredElement<HTMLElement>("#piperSpeedValue");
 const maxTokensInput = requiredElement<HTMLInputElement>("#maxTokensInput");
 
 const launchAtLoginToggle = requiredElement<HTMLInputElement>("#launchAtLoginToggle");
@@ -454,7 +443,6 @@ const showDockAlwaysToggle = requiredElement<HTMLInputElement>("#showDockAlwaysT
 const commandModeToggle = requiredElement<HTMLInputElement>("#commandModeToggle");
 const wakeWordEnabledToggle = requiredElement<HTMLInputElement>("#wakeWordEnabledToggle");
 const assistantNameInput = requiredElement<HTMLInputElement>("#assistantNameInput");
-const wakePhrasePreview = requiredElement<HTMLParagraphElement>("#wakePhrasePreview");
 const sttRuntimeModeOnlineInput = requiredElement<HTMLInputElement>("#sttRuntimeModeOnline");
 const sttRuntimeModeOfflineInput = requiredElement<HTMLInputElement>("#sttRuntimeModeOffline");
 const aiRuntimeModeOnlineInput = requiredElement<HTMLInputElement>("#aiRuntimeModeOnline");
@@ -473,10 +461,6 @@ const saveRecordingsToggle = requiredElement<HTMLInputElement>("#saveRecordingsT
 const clearRecordingsBtn = requiredElement<HTMLButtonElement>("#clearRecordingsBtn");
 const recordingsStorageHint = requiredElement<HTMLSpanElement>("#recordingsStorageHint");
 const recordingsStorageHintWeb = requiredElement<HTMLParagraphElement>("#recordingsStorageHintWeb");
-const themeModeSelect = requiredElement<HTMLSelectElement>("#themeModeSelect");
-const themeCardInputs = Array.from(
-  document.querySelectorAll<HTMLInputElement>("input[data-theme-card]"),
-);
 const settingsFormRefs = querySettingsFormRefs();
 const dictationSoundEffectsToggle = requiredElement<HTMLInputElement>("#dictationSoundEffectsToggle");
 const muteMusicWhileDictatingToggle = requiredElement<HTMLInputElement>(
@@ -733,6 +717,22 @@ let settings = loadSettings();
 settings.pushToTalkHotkey = settings.pushToTalkHotkey.trim() || DEFAULT_HOTKEY;
 settings.commandHotkey = settings.commandHotkey.trim() || DEFAULT_COMMAND_HOTKEY;
 setPersistErrorReporter((message) => setNotice(message, true));
+const settingsCoreDeps: SettingsCoreDeps = {
+  isCapturingHotkey: () => hotkeyCaptureActive,
+  isCapturingCommandHotkey: () => commandHotkeyCaptureActive,
+  currentSettings: () => settings,
+  refreshRecordingsStorageHint: () => {
+    void refreshRecordingsStorageHint();
+  },
+  isTauri: isTauriEnvironment,
+  showStaleRuntimePane: () => setActiveSettingsPane("models"),
+};
+function readSettingsFromForm(): PersistedSettings {
+  return readSettingsFromFormService(settingsFormRefs, settingsCoreDeps);
+}
+function applySettingsToForm(next: PersistedSettings): void {
+  applySettingsToFormService(settingsFormRefs, settingsCoreDeps, next);
+}
 let cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
 applySettingsToForm(settings);
 renderSidebarLocalSttToggle();
@@ -1261,16 +1261,16 @@ copyToClipboardToggle.addEventListener("change", handleSettingsChange);
 autoPasteDictationToggle.addEventListener("change", handleSettingsChange);
 incognitoModeToggle.addEventListener("change", handleSettingsChange);
 saveRecordingsToggle.addEventListener("change", handleSettingsChange);
-themeModeSelect.addEventListener("change", handleSettingsChange);
+settingsFormRefs.themeModeSelect.addEventListener("change", handleSettingsChange);
 
-for (const cardInput of themeCardInputs) {
+for (const cardInput of settingsFormRefs.themeCardInputs) {
   cardInput.addEventListener("change", () => {
     if (!cardInput.checked) {
       return;
     }
     const next = asThemeMode(cardInput.value);
-    if (themeModeSelect.value !== next) {
-      themeModeSelect.value = next;
+    if (settingsFormRefs.themeModeSelect.value !== next) {
+      settingsFormRefs.themeModeSelect.value = next;
     }
     void handleSettingsChange();
   });
@@ -1962,178 +1962,6 @@ async function backfillHistoryRecordingIds(): Promise<void> {
   }
 }
 
-function readSettingsFromForm(): PersistedSettings {
-  const dictationLanguageMode: DictationLanguageMode = dictationLanguageModeMultipleInput.checked
-    ? "multiple"
-    : "single";
-  const primaryDictationLanguage = normalizeDictationLanguageCode(dictationLanguageSelect.value);
-  let dictationLanguageAllowList =
-    dictationLanguageMode === "multiple"
-      ? normalizeDictationLanguageAllowList(
-          dictationLanguageOptionInputs
-            .filter((option) => option.checked)
-            .map((option) => option.value),
-        )
-      : [];
-
-  if (
-    dictationLanguageMode === "multiple" &&
-    primaryDictationLanguage &&
-    !dictationLanguageAllowList.includes(primaryDictationLanguage)
-  ) {
-    dictationLanguageAllowList = [primaryDictationLanguage, ...dictationLanguageAllowList];
-  }
-
-  const dictationLanguage =
-    dictationLanguageMode === "multiple"
-      ? primaryDictationLanguage || dictationLanguageAllowList[0] || ""
-      : primaryDictationLanguage;
-  const resolvedTtsEngine: TtsEngine = "piper";
-
-  return {
-    apiKey: apiKeyInput.value.trim(),
-    apiBaseUrl: apiBaseUrlInput.value.trim(),
-    sttModelName: sttModelInput.value.trim(),
-    aiModelName: aiModelInput.value.trim(),
-    runtimeMode:
-      sttRuntimeModeOfflineInput.checked && aiRuntimeModeOfflineInput.checked ? "local" : "online",
-    sttRuntimeMode: sttRuntimeModeOfflineInput.checked ? "local" : "online",
-    aiRuntimeMode: aiRuntimeModeOfflineInput.checked ? "local" : "online",
-    localOllamaBaseUrl: localOllamaBaseUrlInput.value.trim() || DEFAULT_LOCAL_OLLAMA_BASE_URL,
-    localOllamaModel: localOllamaModelInput.value.trim(),
-    localSttModel: localSttModelInput.value.trim(),
-    rememberApiKey: rememberApiKeyInput.checked,
-    captureMode: captureModeSingleInput.checked ? "single-tap" : "push-to-talk",
-    piperPath: piperPathInput.value.trim(),
-    ttsEngine: resolvedTtsEngine,
-    piperSpeed: coerceNumber(Number(piperSpeedInput.value), DEFAULT_PIPER_SPEED, 0.5, 2),
-    piperQuality: asPiperQuality(piperQualitySelect.value),
-    piperEmotion: asPiperEmotion(piperEmotionSelect.value),
-    microphoneDeviceId: microphoneSelect.value,
-    pushToTalkHotkey: hotkeyCaptureActive
-      ? settings.pushToTalkHotkey
-      : hotkeyInput.value.trim() || DEFAULT_HOTKEY,
-    commandHotkey: commandHotkeyCaptureActive
-      ? settings.commandHotkey
-      : commandHotkeyInput.value.trim() || DEFAULT_COMMAND_HOTKEY,
-    dictationLanguage,
-    dictationLanguageMode,
-    dictationLanguageAllowList,
-    styleProfile: asStyleProfile(styleProfileSelect.value),
-    systemPrompt: systemPromptInput.value,
-    temperature: coerceNumber(Number(temperatureInput.value), DEFAULT_TEMPERATURE, 0, 1.2),
-    maxTokens: coerceInteger(Number(maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 4096),
-    launchAtLogin: launchAtLoginToggle.checked,
-    showFlowBar: showFlowBarToggle.checked,
-    showDockAlways: showDockAlwaysToggle.checked,
-    commandMode: commandModeToggle.checked,
-    wakeWordEnabled: wakeWordEnabledToggle.checked,
-    assistantName: assistantNameInput.value,
-    autoPasteDictation: autoPasteDictationToggle.checked,
-    contextAwareness: contextAwarenessToggle.checked,
-    copyToClipboard: copyToClipboardToggle.checked,
-    incognitoMode: incognitoModeToggle.checked,
-    themeMode: asThemeMode(themeModeSelect.value),
-    dictationSoundEffects: dictationSoundEffectsToggle.checked,
-    muteMusicWhileDictating: muteMusicWhileDictatingToggle.checked,
-    rawMode: rawModeToggle.checked,
-    backtrackCorrection: backtrackToggle.checked,
-    removeFillers: removeFillersToggle.checked,
-    autoPunctuation: autoPunctuationToggle.checked,
-    numberedLists: numberedListsToggle.checked,
-    noiseSuppression: noiseSuppressionToggle.checked,
-    pushToTalkSound: pushToTalkSoundSelect.value,
-    pushToTalkEndSound: pushToTalkEndSoundSelect.value,
-    pushToTalkSoundVolume: coerceNumber(Number(pushToTalkSoundVolumeRange.value) / 100, DEFAULT_PUSH_TO_TALK_SOUND_VOLUME, 0, 1),
-    saveRecordings: saveRecordingsToggle.checked,
-  };
-}
-
-
-
-
-
-
-
-function applySettingsToForm(next: PersistedSettings): void {
-  apiKeyInput.value = next.apiKey;
-  apiBaseUrlInput.value = next.apiBaseUrl;
-  sttModelInput.value = next.sttModelName;
-  aiModelInput.value = next.aiModelName;
-  sttRuntimeModeOnlineInput.checked = next.sttRuntimeMode !== "local";
-  sttRuntimeModeOfflineInput.checked = next.sttRuntimeMode === "local";
-  aiRuntimeModeOnlineInput.checked = next.aiRuntimeMode !== "local";
-  aiRuntimeModeOfflineInput.checked = next.aiRuntimeMode === "local";
-  localOllamaBaseUrlInput.value = next.localOllamaBaseUrl || DEFAULT_LOCAL_OLLAMA_BASE_URL;
-  localOllamaModelInput.value = next.localOllamaModel;
-  localSttModelInput.value = next.localSttModel;
-  rememberApiKeyInput.checked = next.rememberApiKey;
-  // Only set microphone selection when the dropdown already has options populated
-  // (refreshMicrophones runs later during bootstrap and handles the initial selection).
-  if (next.microphoneDeviceId && microphoneSelect.options.length > 0) {
-    microphoneSelect.value = next.microphoneDeviceId;
-  }
-  piperPathInput.value = next.piperPath;
-  ttsEngineSelect.value = next.ttsEngine;
-  piperSpeedInput.value = next.piperSpeed.toFixed(2);
-  piperSpeedValue.textContent = `${next.piperSpeed.toFixed(2)}x`;
-  piperQualitySelect.value = next.piperQuality;
-  piperEmotionSelect.value = next.piperEmotion;
-  hotkeyInput.value = next.pushToTalkHotkey;
-  commandHotkeyInput.value = next.commandHotkey;
-  applyDictationLanguageSettingsToFormService(settingsFormRefs, next);
-  styleProfileSelect.value = next.styleProfile;
-  systemPromptInput.value = next.systemPrompt;
-  temperatureInput.value = next.temperature.toFixed(2);
-  maxTokensInput.value = String(next.maxTokens);
-  captureModeSingleInput.checked = next.captureMode === "single-tap";
-  captureModePushToTalkInput.checked = next.captureMode === "push-to-talk";
-  launchAtLoginToggle.checked = next.launchAtLogin;
-  showFlowBarToggle.checked = next.showFlowBar;
-  showDockAlwaysToggle.checked = next.showDockAlways;
-  commandModeToggle.checked = next.commandMode;
-  wakeWordEnabledToggle.checked = next.wakeWordEnabled;
-  assistantNameInput.value = next.assistantName;
-  autoPasteDictationToggle.checked = next.autoPasteDictation;
-  updateWakePhrasePreview(next.assistantName);
-  contextAwarenessToggle.checked = next.contextAwareness;
-  copyToClipboardToggle.checked = next.copyToClipboard;
-  incognitoModeToggle.checked = next.incognitoMode;
-  themeModeSelect.value = next.themeMode;
-  dictationSoundEffectsToggle.checked = next.dictationSoundEffects;
-  muteMusicWhileDictatingToggle.checked = next.muteMusicWhileDictating;
-  rawModeToggle.checked = next.rawMode;
-  backtrackToggle.checked = next.backtrackCorrection;
-  removeFillersToggle.checked = next.removeFillers;
-  autoPunctuationToggle.checked = next.autoPunctuation;
-  numberedListsToggle.checked = next.numberedLists;
-  noiseSuppressionToggle.checked = next.noiseSuppression;
-  pushToTalkSoundSelect.value = next.pushToTalkSound;
-  pushToTalkEndSoundSelect.value = next.pushToTalkEndSound;
-  pushToTalkSoundVolumeRange.value = String(Math.round(next.pushToTalkSoundVolume * 100));
-  pttVolumeHint.textContent = `${Math.round(next.pushToTalkSoundVolume * 100)}%`;
-  saveRecordingsToggle.checked = next.saveRecordings;
-  if (isTauriEnvironment()) {
-    recordingsStorageHintWeb.hidden = true;
-    void refreshRecordingsStorageHint();
-  } else {
-    recordingsStorageHint.textContent = "Desktop only";
-    recordingsStorageHintWeb.hidden = false;
-  }
-  temperatureValue.textContent = next.temperature.toFixed(2);
-
-  const displayHotkey = formatHotkeyForDisplay(next.pushToTalkHotkey);
-  hotkeyHint.textContent = displayHotkey;
-  captureModeHint.textContent = captureModeLabel(next.captureMode);
-  applyThemeService(next.themeMode);
-  syncThemeCardSelectionService(settingsFormRefs, next.themeMode);
-  updateRuntimeModeNoticeService(settingsFormRefs, next.sttRuntimeMode, next.aiRuntimeMode);
-  syncRuntimeModePaneVisibilityService(settingsFormRefs, () => setActiveSettingsPane("models"));
-  syncHybridRuntimeFieldVisibilityService(settingsFormRefs, next.sttRuntimeMode, next.aiRuntimeMode);
-}
-
-
-
 async function handleSettingsChange(): Promise<void> {
   const previousSettings = { ...settings };
   const previousMicrophoneDeviceId = settings.microphoneDeviceId;
@@ -2149,18 +1977,7 @@ async function handleSettingsChange(): Promise<void> {
 
   const next = readSettingsFromForm();
 
-  const parsed = parseHotkey(next.pushToTalkHotkey);
-  const commandParsed = parseHotkey(next.commandHotkey);
-
-  if (parsed) {
-    next.pushToTalkHotkey = parsed.label;
-    hotkeyInput.value = parsed.label;
-  }
-
-  if (commandParsed) {
-    next.commandHotkey = commandParsed.label;
-    commandHotkeyInput.value = commandParsed.label;
-  }
+  normalizeHotkeyLabelsInPlace(settingsFormRefs, next);
 
   applySettingsValidationService(settingsFormRefs, next);
   settings = next;
@@ -2191,11 +2008,7 @@ async function handleSettingsChange(): Promise<void> {
     );
   }
   applyDictationLanguageSettingsToFormService(settingsFormRefs, settings);
-  temperatureValue.textContent = settings.temperature.toFixed(2);
-  piperSpeedValue.textContent = `${settings.piperSpeed.toFixed(2)}x`;
-  updateWakePhrasePreview(settings.assistantName);
-  hotkeyHint.textContent = cachedHotkeyDisplay;
-  captureModeHint.textContent = captureModeLabel(settings.captureMode);
+  refreshGeneralDisplayFromSettings(settingsFormRefs, settings);
   applyThemeService(settings.themeMode);
   updateRuntimeModeNoticeService(settingsFormRefs, settings.sttRuntimeMode, settings.aiRuntimeMode);
   syncRuntimeModePaneVisibilityService(settingsFormRefs, () => setActiveSettingsPane("models"));
@@ -3481,11 +3294,6 @@ function formatModifierPreview(modifiers: {
     return "Press shortcut...";
   }
   return `${parts.join(" + ")} + ...`;
-}
-
-function updateWakePhrasePreview(name: string): void {
-  const wakeName = name.trim() || DEFAULT_ASSISTANT_NAME;
-  wakePhrasePreview.textContent = `Wake phrase examples: "Hey ${wakeName}", "Hi ${wakeName}", "Okay ${wakeName}"`;
 }
 
 function formatRecordingsStorage(stats: RecordingsStats): string {
@@ -7636,8 +7444,8 @@ function syncActionAvailability(): void {
   contextAwarenessToggle.disabled = busy;
   copyToClipboardToggle.disabled = busy;
   incognitoModeToggle.disabled = busy;
-  themeModeSelect.disabled = busy;
-  for (const cardInput of themeCardInputs) {
+  settingsFormRefs.themeModeSelect.disabled = busy;
+  for (const cardInput of settingsFormRefs.themeCardInputs) {
     cardInput.disabled = busy;
   }
   backtrackToggle.disabled = busy;

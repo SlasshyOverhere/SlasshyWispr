@@ -32,6 +32,61 @@ export interface SettingsFormRefs {
   onlineProviderModeNotice: HTMLParagraphElement;
   offlineRuntimeModeNotice: HTMLParagraphElement;
   settingsPanels: HTMLElement[];
+  apiKeyInput: HTMLInputElement;
+  sttModelInput: HTMLInputElement;
+  aiModelInput: HTMLInputElement;
+  localOllamaBaseUrlInput: HTMLInputElement;
+  localOllamaModelInput: HTMLInputElement;
+  localSttModelInput: HTMLInputElement;
+  rememberApiKeyInput: HTMLInputElement;
+  captureModeSingleInput: HTMLInputElement;
+  captureModePushToTalkInput: HTMLInputElement;
+  microphoneSelect: HTMLSelectElement;
+  hotkeyInput: HTMLInputElement;
+  commandHotkeyInput: HTMLInputElement;
+  styleProfileSelect: HTMLSelectElement;
+  ttsEngineSelect: HTMLSelectElement;
+  piperPathInput: HTMLInputElement;
+  piperQualitySelect: HTMLSelectElement;
+  piperEmotionSelect: HTMLSelectElement;
+  piperSpeedInput: HTMLInputElement;
+  piperSpeedValue: HTMLElement;
+  systemPromptInput: HTMLTextAreaElement;
+  temperatureInput: HTMLInputElement;
+  temperatureValue: HTMLElement;
+  maxTokensInput: HTMLInputElement;
+  launchAtLoginToggle: HTMLInputElement;
+  showFlowBarToggle: HTMLInputElement;
+  showDockAlwaysToggle: HTMLInputElement;
+  commandModeToggle: HTMLInputElement;
+  wakeWordEnabledToggle: HTMLInputElement;
+  wakePhrasePreview: HTMLParagraphElement;
+  sttRuntimeModeOnlineInput: HTMLInputElement;
+  sttRuntimeModeOfflineInput: HTMLInputElement;
+  aiRuntimeModeOnlineInput: HTMLInputElement;
+  aiRuntimeModeOfflineInput: HTMLInputElement;
+  contextAwarenessToggle: HTMLInputElement;
+  copyToClipboardToggle: HTMLInputElement;
+  autoPasteDictationToggle: HTMLInputElement;
+  incognitoModeToggle: HTMLInputElement;
+  saveRecordingsToggle: HTMLInputElement;
+  recordingsStorageHint: HTMLElement;
+  recordingsStorageHintWeb: HTMLParagraphElement;
+  themeModeSelect: HTMLSelectElement;
+  dictationSoundEffectsToggle: HTMLInputElement;
+  muteMusicWhileDictatingToggle: HTMLInputElement;
+  pushToTalkSoundSelect: HTMLSelectElement;
+  pushToTalkEndSoundSelect: HTMLSelectElement;
+  pushToTalkSoundVolumeRange: HTMLInputElement;
+  pttVolumeHint: HTMLElement;
+  rawModeToggle: HTMLInputElement;
+  backtrackToggle: HTMLInputElement;
+  removeFillersToggle: HTMLInputElement;
+  autoPunctuationToggle: HTMLInputElement;
+  numberedListsToggle: HTMLInputElement;
+  noiseSuppressionToggle: HTMLInputElement;
+  hotkeyHint: HTMLElement;
+  captureModeHint: HTMLElement;
 }
 
 export function querySettingsFormRefs(): SettingsFormRefs {
@@ -62,6 +117,63 @@ export function querySettingsFormRefs(): SettingsFormRefs {
     onlineProviderModeNotice: requiredElement<HTMLParagraphElement>("#onlineProviderModeNotice"),
     offlineRuntimeModeNotice: requiredElement<HTMLParagraphElement>("#offlineRuntimeModeNotice"),
     settingsPanels: Array.from(document.querySelectorAll<HTMLElement>("[data-settings-pane]")),
+    apiKeyInput: requiredElement<HTMLInputElement>("#apiKeyInput"),
+    sttModelInput: requiredElement<HTMLInputElement>("#sttModelInput"),
+    aiModelInput: requiredElement<HTMLInputElement>("#aiModelInput"),
+    localOllamaBaseUrlInput: requiredElement<HTMLInputElement>("#localOllamaBaseUrlInput"),
+    localOllamaModelInput: requiredElement<HTMLInputElement>("#localOllamaModelInput"),
+    localSttModelInput: requiredElement<HTMLInputElement>("#localSttModelInput"),
+    rememberApiKeyInput: requiredElement<HTMLInputElement>("#rememberApiKeyInput"),
+    captureModeSingleInput: requiredElement<HTMLInputElement>("#captureModeSingle"),
+    captureModePushToTalkInput: requiredElement<HTMLInputElement>("#captureModePushToTalk"),
+    microphoneSelect: requiredElement<HTMLSelectElement>("#microphoneSelect"),
+    hotkeyInput: requiredElement<HTMLInputElement>("#hotkeyInput"),
+    commandHotkeyInput: requiredElement<HTMLInputElement>("#commandHotkeyInput"),
+    styleProfileSelect: requiredElement<HTMLSelectElement>("#styleProfileSelect"),
+    ttsEngineSelect: requiredElement<HTMLSelectElement>("#ttsEngineSelect"),
+    piperPathInput: requiredElement<HTMLInputElement>("#piperPathInput"),
+    piperQualitySelect: requiredElement<HTMLSelectElement>("#piperQualitySelect"),
+    piperEmotionSelect: requiredElement<HTMLSelectElement>("#piperEmotionSelect"),
+    piperSpeedInput: requiredElement<HTMLInputElement>("#piperSpeedInput"),
+    piperSpeedValue: requiredElement<HTMLElement>("#piperSpeedValue"),
+    systemPromptInput: requiredElement<HTMLTextAreaElement>("#systemPromptInput"),
+    temperatureInput: requiredElement<HTMLInputElement>("#temperatureInput"),
+    temperatureValue: requiredElement<HTMLElement>("#temperatureValue"),
+    maxTokensInput: requiredElement<HTMLInputElement>("#maxTokensInput"),
+    launchAtLoginToggle: requiredElement<HTMLInputElement>("#launchAtLoginToggle"),
+    showFlowBarToggle: requiredElement<HTMLInputElement>("#showFlowBarToggle"),
+    showDockAlwaysToggle: requiredElement<HTMLInputElement>("#showDockAlwaysToggle"),
+    commandModeToggle: requiredElement<HTMLInputElement>("#commandModeToggle"),
+    wakeWordEnabledToggle: requiredElement<HTMLInputElement>("#wakeWordEnabledToggle"),
+    wakePhrasePreview: requiredElement<HTMLParagraphElement>("#wakePhrasePreview"),
+    sttRuntimeModeOnlineInput: requiredElement<HTMLInputElement>("#sttRuntimeModeOnline"),
+    sttRuntimeModeOfflineInput: requiredElement<HTMLInputElement>("#sttRuntimeModeOffline"),
+    aiRuntimeModeOnlineInput: requiredElement<HTMLInputElement>("#aiRuntimeModeOnline"),
+    aiRuntimeModeOfflineInput: requiredElement<HTMLInputElement>("#aiRuntimeModeOffline"),
+    contextAwarenessToggle: requiredElement<HTMLInputElement>("#contextAwarenessToggle"),
+    copyToClipboardToggle: requiredElement<HTMLInputElement>("#copyToClipboardToggle"),
+    autoPasteDictationToggle: requiredElement<HTMLInputElement>("#autoPasteDictationToggle"),
+    incognitoModeToggle: requiredElement<HTMLInputElement>("#incognitoModeToggle"),
+    saveRecordingsToggle: requiredElement<HTMLInputElement>("#saveRecordingsToggle"),
+    recordingsStorageHint: requiredElement<HTMLElement>("#recordingsStorageHint"),
+    recordingsStorageHintWeb: requiredElement<HTMLParagraphElement>("#recordingsStorageHintWeb"),
+    themeModeSelect: requiredElement<HTMLSelectElement>("#themeModeSelect"),
+    dictationSoundEffectsToggle: requiredElement<HTMLInputElement>("#dictationSoundEffectsToggle"),
+    muteMusicWhileDictatingToggle: requiredElement<HTMLInputElement>(
+      "#muteMusicWhileDictatingToggle",
+    ),
+    pushToTalkSoundSelect: requiredElement<HTMLSelectElement>("#pushToTalkSoundSelect"),
+    pushToTalkEndSoundSelect: requiredElement<HTMLSelectElement>("#pushToTalkEndSoundSelect"),
+    pushToTalkSoundVolumeRange: requiredElement<HTMLInputElement>("#pushToTalkSoundVolumeRange"),
+    pttVolumeHint: requiredElement<HTMLElement>("#pttVolumeHint"),
+    rawModeToggle: requiredElement<HTMLInputElement>("#rawModeToggle"),
+    backtrackToggle: requiredElement<HTMLInputElement>("#backtrackToggle"),
+    removeFillersToggle: requiredElement<HTMLInputElement>("#removeFillersToggle"),
+    autoPunctuationToggle: requiredElement<HTMLInputElement>("#autoPunctuationToggle"),
+    numberedListsToggle: requiredElement<HTMLInputElement>("#numberedListsToggle"),
+    noiseSuppressionToggle: requiredElement<HTMLInputElement>("#noiseSuppressionToggle"),
+    hotkeyHint: requiredElement<HTMLElement>("#hotkeyHint"),
+    captureModeHint: requiredElement<HTMLElement>("#captureModeHint"),
   };
 }
 
