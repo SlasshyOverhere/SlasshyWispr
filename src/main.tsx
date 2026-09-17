@@ -49,7 +49,6 @@ import {
   persistAchievementStates as persistAchievementStatesService,
   persistHomeHistory as persistHomeHistoryService,
   persistUsageStats as persistUsageStatsService,
-  renderFullHistory as renderFullHistoryService,
   updateAndPersistDockLayout as updateAndPersistDockLayoutService,
   persistDockPositionFromWindow as persistDockPositionFromWindowService,
 } from "./state/persist";
@@ -198,6 +197,9 @@ import {
   initAssistantInfo,
   renderAssistantInfo as renderAssistantInfoService,
 } from "./shell/assistant-info";
+import {
+  initHistoryView,
+} from "./history/history-view";
 import {
   copyToClipboard as copyToClipboardService,
   initClipboard,
@@ -1925,21 +1927,8 @@ applyModelToSttBtn.addEventListener("click", () => {
   setNoticeService(`STT model set to "${selected}".`);
 });
 
-clearHistoryBtn.addEventListener("click", async () => {
-  if (await confirmDestructiveAction("Clear all transcription history from this device?")) {
-    clearAllHistory();
-  }
-});
 
-clearHistoryBtnFull.addEventListener("click", async () => {
-  if (await confirmDestructiveAction("Clear all transcription history from this device?")) {
-    clearAllHistory();
-  }
-});
 
-viewFullHistoryBtn.addEventListener("click", () => {
-  setActivePage("history");
-});
 
 /* Home tab search-button → switch to History and focus the search
    input. rAF ensures the React tree has time to mount the History
@@ -1970,14 +1959,6 @@ window.addEventListener("slasshy:focus-settings", () => {
   }
 });
 
-document.querySelectorAll(".filter-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    const filter = btn.getAttribute("data-filter") as "all" | "day" | "week" | "month";
-    renderFullHistoryService(filter);
-  });
-});
 
 const datePickerBtn = requiredElement<HTMLElement>("#datePickerBtn");
 const customDatePicker = requiredElement<HTMLDivElement>("#customDatePicker");
@@ -1985,93 +1966,50 @@ const datePickerDays = requiredElement<HTMLDivElement>("#datePickerDays");
 const currentMonthYear = requiredElement<HTMLElement>("#currentMonthYear");
 const prevMonthBtn = requiredElement<HTMLElement>("#prevMonthBtn");
 const nextMonthBtn = requiredElement<HTMLElement>("#nextMonthBtn");
+initHistoryView(
+  {
+    datePickerBtn,
+    customDatePicker,
+    datePickerDays,
+    currentMonthYear,
+    prevMonthBtn,
+    nextMonthBtn,
+    clearHistoryBtn,
+    clearHistoryBtnFull,
+    viewFullHistoryBtn,
+    clearStatsBtn,
+  },
+  {
+    notify: (message, isError) => setNoticeService(message, isError),
+    getHomeHistory: () => homeHistoryEntries,
+    setHomeHistory: (entries) => {
+      homeHistoryEntries = entries;
+    },
+    persistHomeHistory: () => persistHomeHistoryService(),
+    notifyStoreUpdated: () => {
+      window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+    },
+    clearRecentTurns: () => {
+      recentTurns.length = 0;
+    },
+    resetUsageStats: () => {
+      usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
+      persistUsageStatsService();
+      analyticsSessionDetails = [];
+      persistAnalyticsSessionDetailsService();
+      achievementStates = [];
+      persistAchievementStatesService();
+    },
+    renderMetrics: () => updateUsageMetricsService(),
+    setActivePage: (page) => setActivePage(page),
+  },
+);
 
-let currentPickerDate = new Date();
-let selectedDate: string | null = null;
 
-datePickerBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  customDatePicker.hidden = !customDatePicker.hidden;
-  renderDatePicker();
-});
 
-document.addEventListener("click", (e) => {
-  if (!customDatePicker.contains(e.target as Node) && e.target !== datePickerBtn) {
-    customDatePicker.hidden = true;
-  }
-});
 
-prevMonthBtn.addEventListener("click", () => {
-  currentPickerDate = new Date(currentPickerDate.getFullYear(), currentPickerDate.getMonth() - 1, 1);
-  renderDatePicker();
-});
 
-nextMonthBtn.addEventListener("click", () => {
-  currentPickerDate = new Date(currentPickerDate.getFullYear(), currentPickerDate.getMonth() + 1, 1);
-  renderDatePicker();
-});
 
-function renderDatePicker(): void {
-  const year = currentPickerDate.getFullYear();
-  const month = currentPickerDate.getMonth();
-  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  currentMonthYear.textContent = `${monthNames[month]} ${year}`;
-
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-
-  let html = "";
-  for (let i = 0; i < firstDay; i++) {
-    html += '<div class="date-picker-day empty"></div>';
-  }
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const isSelected = selectedDate === dateStr;
-    const isToday = dateStr === todayStr;
-    const classes = ["date-picker-day"];
-    if (isSelected) classes.push("selected");
-    if (isToday) classes.push("today");
-    html += `<div class="${classes.join(" ")}" data-date="${dateStr}">${day}</div>`;
-  }
-  datePickerDays.innerHTML = html;
-
-  datePickerDays.querySelectorAll(".date-picker-day:not(.empty)").forEach(dayEl => {
-    dayEl.addEventListener("click", () => {
-      selectedDate = dayEl.getAttribute("data-date");
-      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-      datePickerBtn.classList.add("active");
-      renderFullHistoryService("all", selectedDate!);
-      customDatePicker.hidden = true;
-      renderDatePicker();
-    });
-  });
-}
-
-clearStatsBtn.addEventListener("click", async () => {
-  if (!await confirmDestructiveAction("Reset all usage statistics for this device?")) {
-    return;
-  }
-  usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
-  persistUsageStatsService();
-  analyticsSessionDetails = [];
-  persistAnalyticsSessionDetailsService();
-  achievementStates = [];
-  persistAchievementStatesService();
-  updateUsageMetricsService();
-  window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
-  setNoticeService("Statistics have been reset.");
-});
-
-function clearAllHistory(): void {
-  homeHistoryEntries = [];
-  persistHomeHistoryService();
-  // Notify React to re-render with cleared history.
-  window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
-  recentTurns.length = 0;
-  setNoticeService("History cleared.");
-}
 
 navigator.mediaDevices?.addEventListener?.("devicechange", () => {
   void refreshMicrophonesService(false);
