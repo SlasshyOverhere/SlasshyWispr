@@ -153,6 +153,48 @@ export function applyUpdateCheckResultView(result: UpdateCheckResultView, silent
   );
 }
 
+export interface UpdaterButtonState {
+  isTauri: boolean;
+  checkInFlight: boolean;
+  installInFlight: boolean;
+  result: {
+    available: boolean;
+    latestVersion: string;
+    installerDownloadUrl?: string | null;
+  } | null;
+}
+
+export interface UpdaterButtonElements {
+  checkUpdatesBtn: HTMLButtonElement;
+  installUpdateBtn: HTMLButtonElement;
+  skipUpdateVersionBtn: HTMLButtonElement;
+  snoozeUpdateBtn: HTMLButtonElement;
+}
+
+export function syncUpdaterButtonsView(
+  buttons: UpdaterButtonElements,
+  state: UpdaterButtonState,
+): void {
+  if (!state.isTauri) {
+    buttons.checkUpdatesBtn.disabled = true;
+    buttons.installUpdateBtn.disabled = true;
+    return;
+  }
+
+  buttons.checkUpdatesBtn.disabled = state.checkInFlight || state.installInFlight;
+  buttons.installUpdateBtn.disabled =
+    state.checkInFlight ||
+    state.installInFlight ||
+    !state.result?.available ||
+    !state.result.installerDownloadUrl;
+  buttons.installUpdateBtn.textContent = state.result?.available
+    ? `Download & install ${state.result.latestVersion || "update"}`
+    : "Download & install";
+  buttons.skipUpdateVersionBtn.disabled =
+    state.checkInFlight || state.installInFlight || !state.result?.available;
+  buttons.snoozeUpdateBtn.disabled = state.checkInFlight || state.installInFlight;
+}
+
 export function initializeUpdaterPanel(): void {
   viewElements.currentVersion.textContent = "-";
   viewElements.latestVersion.textContent = "-";

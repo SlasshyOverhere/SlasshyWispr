@@ -9,11 +9,9 @@ import "./style.css";
 import "./settings.css";
 import {
   captureSelectedText as ipcCaptureSelectedText,
-  checkForAppUpdate as ipcCheckForAppUpdate,
   configureLaunchAtLogin as ipcConfigureLaunchAtLogin,
   deactivateLocalSttModel as ipcDeactivateLocalSttModel,
   deleteLocalSttModel as ipcDeleteLocalSttModel,
-  downloadAndInstallAppUpdate as ipcDownloadAndInstallAppUpdate,
   downloadLocalSttModel as ipcDownloadLocalSttModel,
   ensureVoiceModel as ipcEnsureVoiceModel,
   fetchLocalSttModels as ipcFetchLocalSttModels,
@@ -109,14 +107,19 @@ import {
 } from "./settings/settings-state";
 import { APP_UPDATE_AUTO_CHECK_CHANGED_EVENT } from "./updater/updater-client-shim";
 import {
-  applyUpdateCheckResultView,
   initializeUpdaterPanel as initializeUpdaterPanelService,
   initUpdaterView,
-  refreshUpdateLastCheckedText as refreshUpdateLastCheckedTextService,
-  setUpdateInstallProgress as setUpdateInstallProgressService,
-  setUpdaterStatus as setUpdaterStatusService,
-  showManualDownloadFallback as showManualDownloadFallbackService,
 } from "./updater/updater-view";
+import {
+  getCachedUpdateResult,
+  handleCheckForUpdates as handleCheckForUpdatesService,
+  handleInstallUpdate as handleInstallUpdateService,
+  initUpdaterFlow,
+  registerUpdateInstallProgressListener as registerUpdateInstallProgressListenerService,
+  startAutomaticUpdateChecks as startAutomaticUpdateChecksService,
+  stopAutomaticUpdateChecks,
+  syncUpdaterButtons as syncUpdaterButtonsService,
+} from "./updater/updater-flow";
 import {
   isExternalMediaMutedForDictation,
   pauseExternalMediaForDictation as pauseExternalMediaForDictationService,
@@ -217,7 +220,6 @@ import {
   DOCK_LAYOUT_STORAGE_KEY,
   LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
-  APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
   LOCAL_STT_MODEL_SIZE_LABELS,
   ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS,
@@ -249,9 +251,6 @@ import type {
   LocalSttWarmupResponse,
   TtsSetupStatusResponse,
   AssistantPipelineResponse,
-  AppUpdateCheckResponse,
-  AppUpdateInstallProgressEvent,
-  InstallAppUpdateRequest,
   PersistedSettings,
   HotkeySpec,
   UsageStats,
@@ -639,12 +638,6 @@ let ttsSetupPollingId: number | null = null;
 let ttsSetupRunning = false;
 let ttsSetupPollInFlight = false;
 let launchAtLoginSyncNonce = 0;
-let updateCheckInFlight = false;
-let updateInstallInFlight = false;
-let cachedUpdateResult: AppUpdateCheckResponse | null = null;
-let updateAutoCheckTimerId: number | null = null;
-let updateAutoCheckTimeoutId: number | null = null;
-let updateInstallProgressUnlisten: (() => void) | null = null;
 let foregroundBlockStatusCache: ForegroundInputBlockStatus = {
   blocked: false,
   processName: "",
@@ -665,14 +658,8 @@ const dockChannel = new BroadcastChannel("slasshywispr-dock");
 const selectionPopupChannel = new BroadcastChannel("slasshywispr-selection-popup");
 const ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION = true;
 const MAIN_WINDOW_VISIBILITY_EVENT = "slasshy://main-window-visibility";
-const UPDATE_INSTALL_PROGRESS_EVENT = "slasshy://update-install-progress";
 import {
-  APP_UPDATE_CHECK_INTERVAL_MS,
-  readAppUpdateAutoCheckEnabled,
-  isUpdateSnoozed,
   snoozeUpdateFor24Hours,
-  shouldRunStartupUpdateCheck,
-  msUntilNextAutomaticUpdateCheck,
 } from "./updater/updater-client";
 
 const NOTE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -776,25 +763,52 @@ initUpdaterView(
     openExternal: (url) => openInSystemBrowser(url),
   },
 );
-function refreshUpdateLastCheckedText(): void {
-  refreshUpdateLastCheckedTextService();
-}
-function setUpdaterStatus(stage: "idle" | "processing" | "speaking" | "error", message: string): void {
-  setUpdaterStatusService(stage, message);
-}
-function setUpdateInstallProgress(percent: number, message: string, detail = "", visible = true): void {
-  setUpdateInstallProgressService(percent, message, detail, visible);
-}
-function showManualDownloadFallback(detail: string): void {
-  showManualDownloadFallbackService(detail);
-}
-function applyUpdateCheckResult(result: AppUpdateCheckResponse, silent: boolean): void {
-  applyUpdateCheckResultView(result, silent);
-  syncUpdaterButtons();
-}
 function initializeUpdaterPanel(): void {
   initializeUpdaterPanelService();
   syncUpdaterButtons();
+}
+initUpdaterFlow(
+  {
+    checkUpdatesBtn,
+    installUpdateBtn,
+    skipUpdateVersionBtn,
+    snoozeUpdateBtn,
+  },
+  {
+    isTauri: isTauriEnvironment,
+    notify: (message, isError) => setNotice(message, isError),
+    log: (message) => logClientEvent(message),
+    openUpdateSettings: (reason) => {
+      openSettings(reason);
+      setActiveSettingsPane("update-security", reason);
+    },
+    confirmInstall: (version) =>
+      confirmDestructiveAction(
+        `Install ${version} now? The installer will download, this app will close, and any unsaved work in the current session may be lost.`,
+      ),
+    getNotificationPermissionRequested: () => notificationPermissionRequested,
+    setNotificationPermissionRequested: (requested) => {
+      notificationPermissionRequested = requested;
+    },
+  },
+);
+function syncUpdaterButtons(): void {
+  syncUpdaterButtonsService();
+}
+async function handleCheckForUpdates(options?: {
+  silent?: boolean;
+  source?: "manual" | "startup" | "interval";
+}): Promise<void> {
+  await handleCheckForUpdatesService(options);
+}
+async function handleInstallUpdate(): Promise<void> {
+  await handleInstallUpdateService();
+}
+async function registerUpdateInstallProgressListener(): Promise<void> {
+  await registerUpdateInstallProgressListenerService();
+}
+function startAutomaticUpdateChecks(): void {
+  startAutomaticUpdateChecksService();
 }
 const settingsCoreDeps: SettingsCoreDeps = {
   isCapturingHotkey: () => isHotkeyCaptureActive(),
@@ -1064,9 +1078,10 @@ installUpdateBtn.addEventListener("click", () => {
 });
 
 skipUpdateVersionBtn.addEventListener("click", () => {
-  if (cachedUpdateResult?.latestVersion) {
-    localStorage.setItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY, cachedUpdateResult.latestVersion);
-    setNotice(`Version ${cachedUpdateResult.latestVersion} will be skipped. You won't be notified about this version again.`);
+  const latestVersion = getCachedUpdateResult()?.latestVersion;
+  if (latestVersion) {
+    localStorage.setItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY, latestVersion);
+    setNotice(`Version ${latestVersion} will be skipped. You won't be notified about this version again.`);
     syncUpdaterButtons();
   }
 });
@@ -1078,18 +1093,7 @@ snoozeUpdateBtn.addEventListener("click", () => {
 });
 
 window.addEventListener("beforeunload", () => {
-  if (updateAutoCheckTimerId !== null) {
-    window.clearInterval(updateAutoCheckTimerId);
-    updateAutoCheckTimerId = null;
-  }
-  if (updateAutoCheckTimeoutId !== null) {
-    window.clearTimeout(updateAutoCheckTimeoutId);
-    updateAutoCheckTimeoutId = null;
-  }
-  if (updateInstallProgressUnlisten) {
-    updateInstallProgressUnlisten();
-    updateInstallProgressUnlisten = null;
-  }
+  stopAutomaticUpdateChecks();
 });
 
 closeSettingsBtn.addEventListener("click", () => {
@@ -2553,26 +2557,6 @@ function openInSystemBrowser(url: string): void {
   });
 }
 
-function syncUpdaterButtons(): void {
-  if (!isTauriEnvironment()) {
-    checkUpdatesBtn.disabled = true;
-    installUpdateBtn.disabled = true;
-    return;
-  }
-
-  checkUpdatesBtn.disabled = updateCheckInFlight || updateInstallInFlight;
-  installUpdateBtn.disabled =
-    updateCheckInFlight ||
-    updateInstallInFlight ||
-    !cachedUpdateResult?.available ||
-    !cachedUpdateResult.installerDownloadUrl;
-  installUpdateBtn.textContent = cachedUpdateResult?.available
-    ? `Download & install ${cachedUpdateResult.latestVersion || "update"}`
-    : "Download & install";
-  skipUpdateVersionBtn.disabled = updateCheckInFlight || updateInstallInFlight || !cachedUpdateResult?.available;
-  snoozeUpdateBtn.disabled = updateCheckInFlight || updateInstallInFlight;
-}
-
 function setupCustomWindowControls(): void {
   if (!isTauriEnvironment()) {
     windowMinimizeBtn.disabled = true;
@@ -2593,242 +2577,6 @@ function setupCustomWindowControls(): void {
       setNotice(`Close failed: ${asErrorMessage(error)}`, true);
     });
   });
-}
-
-function openUpdateSettings(reason: string): void {
-  openSettings(reason);
-  setActiveSettingsPane("update-security", reason);
-}
-
-const notifiedVersionsThisSession = new Set<string>();
-
-function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "startup" | "interval" | "manual"): void {
-  const version = result.latestVersion.trim();
-  if (!version) {
-    return;
-  }
-
-  // Check localStorage skip before in-memory dedup — user explicitly skipped this version
-  if (localStorage.getItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY) === version) {
-    return;
-  }
-
-  // Use in-memory set per session so on restart the user is re-notified
-  // if the update is still pending. Persisting this across restarts caused
-  // silent suppression after a failed install.
-  if (notifiedVersionsThisSession.has(version)) {
-    return;
-  }
-
-  if (isUpdateSnoozed()) {
-    return;
-  }
-
-  notifiedVersionsThisSession.add(version);
-  const message = `Update ${version} is available. Open Updates to download and install it.`;
-  setNotice(message);
-
-  if (typeof Notification === "undefined") {
-    return;
-  }
-
-  const showNotification = (): void => {
-    try {
-      const notification = new Notification("SlasshyWispr update available", {
-        body: message,
-      });
-      notification.onclick = () => {
-        window.focus();
-        openUpdateSettings(`update-notification-${source}`);
-      };
-    } catch {
-      // Ignore notification failures; in-app notice remains visible.
-    }
-  };
-
-  if (Notification.permission === "granted") {
-    showNotification();
-    return;
-  }
-
-  if (Notification.permission !== "default" || notificationPermissionRequested) {
-    return;
-  }
-
-  notificationPermissionRequested = true;
-  void Notification.requestPermission()
-    .then((permission) => {
-      if (permission === "granted") {
-        showNotification();
-      }
-    })
-    .catch(() => {
-      // Ignore notification permission errors.
-    });
-}
-
-async function handleCheckForUpdates(options?: {
-  silent?: boolean;
-  source?: "manual" | "startup" | "interval";
-}): Promise<void> {
-  if (!isTauriEnvironment() || updateCheckInFlight) {
-    return;
-  }
-
-  const silent = options?.silent ?? false;
-
-  if (silent && isUpdateSnoozed()) {
-    return;
-  }
-
-  const source = options?.source ?? "manual";
-  updateCheckInFlight = true;
-  syncUpdaterButtons();
-  if (!silent) {
-    setUpdaterStatus("processing", "Checking GitHub release channel...");
-  }
-
-  try {
-    const result = await ipcCheckForAppUpdate();
-    cachedUpdateResult = result;
-    localStorage.setItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY, String(Date.now()));
-    refreshUpdateLastCheckedText();
-    applyUpdateCheckResult(result, silent);
-    if (result.available) {
-      notifyAppUpdateAvailable(result, source);
-    }
-  } catch (error) {
-    showManualDownloadFallback(`Update check failed: ${asErrorMessage(error)}`);
-  } finally {
-    updateCheckInFlight = false;
-    syncUpdaterButtons();
-  }
-}
-
-async function handleInstallUpdate(): Promise<void> {
-  if (!isTauriEnvironment()) {
-    return;
-  }
-
-  if (!cachedUpdateResult || !cachedUpdateResult.available || !cachedUpdateResult.installerDownloadUrl) {
-    showManualDownloadFallback("No update package is ready.");
-    return;
-  }
-
-  const request: InstallAppUpdateRequest = {
-    downloadUrl: cachedUpdateResult.installerDownloadUrl,
-    assetName: cachedUpdateResult.installerAssetName || undefined,
-    silent: true,
-    expectedSha256: cachedUpdateResult.expectedSha256 || undefined,
-  };
-
-  const targetVersion = cachedUpdateResult.latestVersion || "the available update";
-  const confirmed = await confirmDestructiveAction(
-    `Install ${targetVersion} now? The installer will download, this app will close, and any unsaved work in the current session may be lost.`,
-  );
-  if (!confirmed) {
-    return;
-  }
-
-  updateInstallInFlight = true;
-  syncUpdaterButtons();
-  setUpdateInstallProgress(0, "Preparing update download...", "", true);
-  setUpdaterStatus("processing", "Downloading update installer...");
-
-  try {
-    await ipcDownloadAndInstallAppUpdate(request);
-    setUpdaterStatus("processing", "Installer started. The app will close now.");
-  } catch (error) {
-    updateInstallInFlight = false;
-    showManualDownloadFallback(`Installer launch failed: ${asErrorMessage(error)}`);
-    syncUpdaterButtons();
-  }
-}
-
-function handleUpdateInstallProgressEvent(payload: AppUpdateInstallProgressEvent): void {
-  const totalBytes = payload.totalBytes > 0 ? payload.totalBytes : payload.downloadedBytes;
-  const detail =
-    totalBytes > 0
-      ? `(${formatBytes(payload.downloadedBytes)} / ${formatBytes(totalBytes)})`
-      : payload.downloadedBytes > 0
-        ? `(${formatBytes(payload.downloadedBytes)})`
-        : "";
-
-  if (payload.stage === "error") {
-    updateInstallInFlight = false;
-    setUpdateInstallProgress(payload.progressPercent, payload.message, detail, true);
-    showManualDownloadFallback(payload.message);
-    // Reset the "last checked" timestamp so the next startup re-checks immediately,
-    // and clear in-session notification suppression so user gets re-notified.
-    localStorage.removeItem(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY);
-    notifiedVersionsThisSession.clear();
-    refreshUpdateLastCheckedText();
-    syncUpdaterButtons();
-    return;
-  }
-
-  if (payload.stage === "starting" || payload.stage === "downloading" || payload.stage === "downloaded") {
-    updateInstallInFlight = true;
-    setUpdateInstallProgress(payload.progressPercent, payload.message, detail, true);
-    setUpdaterStatus("processing", payload.message);
-    syncUpdaterButtons();
-    return;
-  }
-
-  if (payload.stage === "installing") {
-    setUpdateInstallProgress(100, payload.message, "", true);
-    setUpdaterStatus("processing", payload.message);
-    syncUpdaterButtons();
-  }
-}
-
-async function registerUpdateInstallProgressListener(): Promise<void> {
-  if (!isTauriEnvironment() || updateInstallProgressUnlisten) {
-    return;
-  }
-
-  updateInstallProgressUnlisten = await listen<AppUpdateInstallProgressEvent>(
-    UPDATE_INSTALL_PROGRESS_EVENT,
-    (event) => {
-      handleUpdateInstallProgressEvent(event.payload);
-    },
-  );
-}
-
-function startAutomaticUpdateChecks(): void {
-  if (!isTauriEnvironment()) {
-    return;
-  }
-
-  if (updateAutoCheckTimerId !== null) {
-    window.clearInterval(updateAutoCheckTimerId);
-    updateAutoCheckTimerId = null;
-  }
-  if (updateAutoCheckTimeoutId !== null) {
-    window.clearTimeout(updateAutoCheckTimeoutId);
-    updateAutoCheckTimeoutId = null;
-  }
-
-  if (!readAppUpdateAutoCheckEnabled()) {
-    return;
-  }
-
-  const dueInMs = msUntilNextAutomaticUpdateCheck();
-  if (dueInMs <= 0 || shouldRunStartupUpdateCheck()) {
-    void handleCheckForUpdates({ silent: true, source: "startup" });
-    updateAutoCheckTimerId = window.setInterval(() => {
-      void handleCheckForUpdates({ silent: true, source: "interval" });
-    }, APP_UPDATE_CHECK_INTERVAL_MS);
-    return;
-  }
-
-  updateAutoCheckTimeoutId = window.setTimeout(() => {
-    updateAutoCheckTimeoutId = null;
-    void handleCheckForUpdates({ silent: true, source: "interval" });
-    updateAutoCheckTimerId = window.setInterval(() => {
-      void handleCheckForUpdates({ silent: true, source: "interval" });
-    }, APP_UPDATE_CHECK_INTERVAL_MS);
-  }, dueInMs);
 }
 
 function requestLaunchAtLoginSync(enabled: boolean): void {
