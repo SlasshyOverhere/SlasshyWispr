@@ -2042,18 +2042,6 @@ fn update_github_token() -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn validates_tts_input_length() {
-        let short = "Short text.";
-        assert!(validate_tts_input_length(short).is_ok());
-
-        let boundary = "a".repeat(MAX_TTS_INPUT_LENGTH);
-        assert!(validate_tts_input_length(&boundary).is_ok());
-
-        let long = "a".repeat(MAX_TTS_INPUT_LENGTH + 1);
-        assert!(validate_tts_input_length(&long).is_err());
-    }
-
     // validates_safe_update_urls moved to updater::tests
     use super::*;
 
@@ -2095,19 +2083,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn normalizes_math_heavy_piper_text() {
-        let input = "5,000,000 - 200 = 4,999,800 and 200 / 30 = 6.67";
-        let normalized = normalize_piper_text_for_tts(input);
-
-        assert!(normalized.contains("five million"));
-        assert!(normalized.contains("minus two hundred"));
-        assert!(normalized.contains("equals"));
-        assert!(normalized.contains("four million"));
-        assert!(normalized.contains("nine hundred and ninety nine thousand"));
-        assert!(normalized.contains("two hundred divided by thirty"));
-        assert!(normalized.contains("six point six seven"));
-    }
+    // TTS normalize tests live in pipeline::tts::normalize::tests.
 
     #[test]
     fn normalizes_latex_heavy_assistant_responses() {
@@ -2130,17 +2106,6 @@ Explanation:
         assert!(!normalized.contains("\\["));
         assert!(!normalized.contains("\\frac"));
         assert!(!normalized.contains("\\Longrightarrow"));
-    }
-
-    #[test]
-    fn keeps_punctuation_after_numeric_tokens() {
-        let input = "Result: 4,999,800. Next: 6.67, then 30.";
-        let normalized = normalize_piper_text_for_tts(input);
-
-        assert!(normalized.contains("four million"));
-        assert!(normalized.contains("eight hundred."));
-        assert!(normalized.contains("six point six seven,"));
-        assert!(normalized.ends_with("thirty."));
     }
 
     #[test]
@@ -2326,16 +2291,8 @@ Explanation:
         assert!(validate_python_binary_path("").is_err());
     }
 
-    #[test]
-    fn validates_piper_binary_path() {
-        assert!(validate_piper_binary_path("piper").is_ok());
-        assert!(validate_piper_binary_path("piper.exe").is_ok());
-        assert!(validate_piper_binary_path("/usr/local/bin/piper").is_ok());
-        assert!(validate_piper_binary_path("C:/Program Files (x86)/piper/piper.exe").is_ok());
-
-        assert!(validate_piper_binary_path("bash").is_err());
-        assert!(validate_piper_binary_path("piper\nbad").is_err());
-    }    // Updater tests moved to updater::tests
+    // TTS binary-path validation tests live in pipeline::tts::normalize::tests.
+    // Updater tests moved to updater::tests
 
     // ===== PIPELINE MODE ROUTING — FULL COVERAGE =====
 
