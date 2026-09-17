@@ -71,8 +71,6 @@ import {
   expandSnippetsInText,
   normalizeDictionaryEntries,
   normalizeSnippetEntries,
-  validateApiBaseUrl,
-  validateAssistantName,
   validateDictionaryEntry,
   validateQuickNote,
   validateSnippetEntry,
@@ -88,14 +86,22 @@ import {
   coerceInteger,
   asStyleProfile,
   asThemeMode,
-  asDictationLanguageMode,
   normalizeDictationLanguageCode,
   normalizeDictationLanguageAllowList,
-  formatDictationLanguageLabel,
   asPiperQuality,
   asPiperEmotion,
   resolveSttLanguageConfig,
 } from "./state/settings-store";
+import {
+  applyDictationLanguageSettingsToForm as applyDictationLanguageSettingsToFormService,
+  applySettingsValidation as applySettingsValidationService,
+  applyTheme as applyThemeService,
+  syncHybridRuntimeFieldVisibility as syncHybridRuntimeFieldVisibilityService,
+  syncRuntimeModePaneVisibility as syncRuntimeModePaneVisibilityService,
+  syncThemeCardSelection as syncThemeCardSelectionService,
+  updateRuntimeModeNotice as updateRuntimeModeNoticeService,
+} from "./settings/settings-service";
+import { querySettingsFormRefs } from "./settings/settings-form-refs";
 import { parseJson } from "./state/storage";
 import { countWords, formatSpeakingTime } from "./analytics/analytics-service";
 import {
@@ -174,7 +180,6 @@ import {
 
 import type {
   Stage,
-  ThemeMode,
   StyleProfile,
   MainPage,
   SettingsPane,
@@ -401,16 +406,9 @@ const apiKeyInput = requiredElement<HTMLInputElement>("#apiKeyInput");
 const apiBaseUrlInput = requiredElement<HTMLInputElement>("#apiBaseUrlInput");
 const sttModelInput = requiredElement<HTMLInputElement>("#sttModelInput");
 const aiModelInput = requiredElement<HTMLInputElement>("#aiModelInput");
-const onlineProviderSection = requiredElement<HTMLDivElement>("#onlineProviderSection");
-const onlineProviderModeNotice = requiredElement<HTMLParagraphElement>("#onlineProviderModeNotice");
-const onlineSttModelField = requiredElement<HTMLElement>('[data-online-field="stt-model"]');
-const onlineAiModelField = requiredElement<HTMLElement>('[data-online-field="ai-model"]');
 const providerModelCatalogSelect = requiredElement<HTMLSelectElement>("#providerModelCatalogSelect");
 const localOllamaBaseUrlInput = requiredElement<HTMLInputElement>("#localOllamaBaseUrlInput");
 const localOllamaModelInput = requiredElement<HTMLInputElement>("#localOllamaModelInput");
-const offlineOllamaSection = requiredElement<HTMLDivElement>("#offlineOllamaSection");
-const offlineSttSection = requiredElement<HTMLDivElement>("#offlineSttSection");
-const offlineRuntimeModeNotice = requiredElement<HTMLParagraphElement>("#offlineRuntimeModeNotice");
 const localOllamaModelCatalogSelect = requiredElement<HTMLSelectElement>(
   "#localOllamaModelCatalogSelect",
 );
@@ -430,8 +428,6 @@ const dictationLanguageModeSingleInput = requiredElement<HTMLInputElement>(
 const dictationLanguageModeMultipleInput = requiredElement<HTMLInputElement>(
   "#dictationLanguageModeMultiple",
 );
-const dictationLanguageSummary = requiredElement<HTMLParagraphElement>("#dictationLanguageSummary");
-const dictationLanguageMultiWrap = requiredElement<HTMLDivElement>("#dictationLanguageMultiWrap");
 const dictationLanguageOptionInputs = Array.from(
   document.querySelectorAll<HTMLInputElement>("[data-dictation-lang-option]"),
 );
@@ -458,7 +454,6 @@ const sttRuntimeModeOnlineInput = requiredElement<HTMLInputElement>("#sttRuntime
 const sttRuntimeModeOfflineInput = requiredElement<HTMLInputElement>("#sttRuntimeModeOffline");
 const aiRuntimeModeOnlineInput = requiredElement<HTMLInputElement>("#aiRuntimeModeOnline");
 const aiRuntimeModeOfflineInput = requiredElement<HTMLInputElement>("#aiRuntimeModeOffline");
-const runtimeModeNotice = requiredElement<HTMLParagraphElement>("#runtimeModeNotice");
 const ollamaStatusNotice = requiredElement<HTMLParagraphElement>("#ollamaStatusNotice");
 const localSttStatusBadge = requiredElement<HTMLSpanElement>("#localSttStatusBadge");
 const localSttStatusDetail = requiredElement<HTMLParagraphElement>("#localSttStatusDetail");
@@ -477,6 +472,7 @@ const themeModeSelect = requiredElement<HTMLSelectElement>("#themeModeSelect");
 const themeCardInputs = Array.from(
   document.querySelectorAll<HTMLInputElement>("input[data-theme-card]"),
 );
+const settingsFormRefs = querySettingsFormRefs();
 const dictationSoundEffectsToggle = requiredElement<HTMLInputElement>("#dictationSoundEffectsToggle");
 const muteMusicWhileDictatingToggle = requiredElement<HTMLInputElement>(
   "#muteMusicWhileDictatingToggle",
@@ -2129,52 +2125,11 @@ function readSettingsFromForm(): PersistedSettings {
   };
 }
 
-function applyInputValidationState(
-  input: HTMLInputElement | HTMLTextAreaElement,
-  error: string | null,
-): void {
-  input.setCustomValidity(error ?? "");
-  input.toggleAttribute("aria-invalid", Boolean(error));
-}
 
-function applySettingsValidation(next: PersistedSettings): void {
-  applyInputValidationState(apiBaseUrlInput, validateApiBaseUrl(next.apiBaseUrl));
-  applyInputValidationState(assistantNameInput, validateAssistantName(next.assistantName));
-}
 
-function applyDictationLanguageSettingsToForm(next: PersistedSettings): void {
-  const primaryLanguage = normalizeDictationLanguageCode(next.dictationLanguage);
-  let mode = asDictationLanguageMode(next.dictationLanguageMode);
-  let allowList = normalizeDictationLanguageAllowList(next.dictationLanguageAllowList);
-  if (mode === "multiple" && allowList.length === 0 && primaryLanguage) {
-    allowList = [primaryLanguage];
-  }
-  if (allowList.length > 1) {
-    mode = "multiple";
-  }
 
-  dictationLanguageSelect.value = primaryLanguage;
-  dictationLanguageModeSingleInput.checked = mode === "single";
-  dictationLanguageModeMultipleInput.checked = mode === "multiple";
-  dictationLanguageMultiWrap.hidden = mode !== "multiple";
 
-  for (const option of dictationLanguageOptionInputs) {
-    option.checked = mode === "multiple" && allowList.includes(option.value);
-  }
 
-  if (mode === "multiple") {
-    if (allowList.length === 0) {
-      dictationLanguageSummary.textContent = "Whisper language mode: Multiple (choose at least one language).";
-    } else {
-      const labels = allowList.map((code) => formatDictationLanguageLabel(code)).join(", ");
-      dictationLanguageSummary.textContent = `Whisper language mode: Multiple (${labels}).`;
-    }
-  } else if (primaryLanguage) {
-    dictationLanguageSummary.textContent = `Whisper language mode: Single (${formatDictationLanguageLabel(primaryLanguage)}).`;
-  } else {
-    dictationLanguageSummary.textContent = "Whisper language mode: Auto-detect.";
-  }
-}
 
 function applySettingsToForm(next: PersistedSettings): void {
   apiKeyInput.value = next.apiKey;
@@ -2202,7 +2157,7 @@ function applySettingsToForm(next: PersistedSettings): void {
   piperEmotionSelect.value = next.piperEmotion;
   hotkeyInput.value = next.pushToTalkHotkey;
   commandHotkeyInput.value = next.commandHotkey;
-  applyDictationLanguageSettingsToForm(next);
+  applyDictationLanguageSettingsToFormService(settingsFormRefs, next);
   styleProfileSelect.value = next.styleProfile;
   systemPromptInput.value = next.systemPrompt;
   temperatureInput.value = next.temperature.toFixed(2);
@@ -2246,18 +2201,14 @@ function applySettingsToForm(next: PersistedSettings): void {
   const displayHotkey = formatHotkeyForDisplay(next.pushToTalkHotkey);
   hotkeyHint.textContent = displayHotkey;
   captureModeHint.textContent = captureModeLabel(next.captureMode);
-  applyTheme(next.themeMode);
-  syncThemeCardSelection(next.themeMode);
-  updateRuntimeModeNotice(next.sttRuntimeMode, next.aiRuntimeMode);
-  syncRuntimeModePaneVisibility(next.sttRuntimeMode, next.aiRuntimeMode);
-  syncHybridRuntimeFieldVisibility(next.sttRuntimeMode, next.aiRuntimeMode);
+  applyThemeService(next.themeMode);
+  syncThemeCardSelectionService(settingsFormRefs, next.themeMode);
+  updateRuntimeModeNoticeService(settingsFormRefs, next.sttRuntimeMode, next.aiRuntimeMode);
+  syncRuntimeModePaneVisibilityService(settingsFormRefs, () => setActiveSettingsPane("models"));
+  syncHybridRuntimeFieldVisibilityService(settingsFormRefs, next.sttRuntimeMode, next.aiRuntimeMode);
 }
 
-function syncThemeCardSelection(themeMode: ThemeMode): void {
-  for (const input of themeCardInputs) {
-    input.checked = input.value === themeMode;
-  }
-}
+
 
 async function handleSettingsChange(): Promise<void> {
   const previousSettings = { ...settings };
@@ -2287,7 +2238,7 @@ async function handleSettingsChange(): Promise<void> {
     commandHotkeyInput.value = commandParsed.label;
   }
 
-  applySettingsValidation(next);
+  applySettingsValidationService(settingsFormRefs, next);
   settings = next;
   cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
   const previousDiagnosticsSignature = [
@@ -2315,16 +2266,16 @@ async function handleSettingsChange(): Promise<void> {
       )}" to="${summarizeSettingsForDiagnostics(settings)}"`,
     );
   }
-  applyDictationLanguageSettingsToForm(settings);
+  applyDictationLanguageSettingsToFormService(settingsFormRefs, settings);
   temperatureValue.textContent = settings.temperature.toFixed(2);
   piperSpeedValue.textContent = `${settings.piperSpeed.toFixed(2)}x`;
   updateWakePhrasePreview(settings.assistantName);
   hotkeyHint.textContent = cachedHotkeyDisplay;
   captureModeHint.textContent = captureModeLabel(settings.captureMode);
-  applyTheme(settings.themeMode);
-  updateRuntimeModeNotice(settings.sttRuntimeMode, settings.aiRuntimeMode);
-  syncRuntimeModePaneVisibility(settings.sttRuntimeMode, settings.aiRuntimeMode);
-  syncHybridRuntimeFieldVisibility(settings.sttRuntimeMode, settings.aiRuntimeMode);
+  applyThemeService(settings.themeMode);
+  updateRuntimeModeNoticeService(settingsFormRefs, settings.sttRuntimeMode, settings.aiRuntimeMode);
+  syncRuntimeModePaneVisibilityService(settingsFormRefs, () => setActiveSettingsPane("models"));
+  syncHybridRuntimeFieldVisibilityService(settingsFormRefs, settings.sttRuntimeMode, settings.aiRuntimeMode);
   setActiveTtsProfile("piper");
   if (providerModelCatalog.includes(settings.aiModelName)) {
     providerModelCatalogSelect.value = settings.aiModelName;
@@ -2410,70 +2361,11 @@ async function handleSettingsChange(): Promise<void> {
   }
 }
 
-function updateRuntimeModeNotice(sttMode: RuntimeMode, aiMode: RuntimeMode): void {
-  if (sttMode === "local" && aiMode === "local") {
-    runtimeModeNotice.textContent =
-      "Offline mode is active for both STT and AI (local Parakeet + local Ollama).";
-    return;
-  }
-  if (sttMode === "online" && aiMode === "online") {
-    runtimeModeNotice.textContent =
-      "Online mode is active for both STT and AI (provider API base URL + API key).";
-    return;
-  }
-  runtimeModeNotice.textContent = `Hybrid mode: STT is ${sttMode}, AI is ${aiMode}.`;
-}
 
-function syncHybridRuntimeFieldVisibility(sttMode: RuntimeMode, aiMode: RuntimeMode): void {
-  const sttOnline = sttMode === "online";
-  const aiOnline = aiMode === "online";
-  const sttLocal = sttMode === "local";
-  const aiLocal = aiMode === "local";
-  const anyOnline = sttOnline || aiOnline;
-  const anyLocal = sttLocal || aiLocal;
 
-  onlineProviderSection.hidden = !anyOnline;
-  onlineSttModelField.hidden = !sttOnline;
-  onlineAiModelField.hidden = !aiOnline;
-  offlineOllamaSection.hidden = !aiLocal;
-  offlineSttSection.hidden = !sttLocal;
-  onlineProviderModeNotice.hidden = !anyOnline;
-  offlineRuntimeModeNotice.hidden = !anyLocal;
 
-  if (sttOnline && aiOnline) {
-    onlineProviderModeNotice.textContent =
-      "Online routing active for STT + AI. Configure API base URL, key, and provider models.";
-  } else if (sttOnline) {
-    onlineProviderModeNotice.textContent =
-      "Online routing active for STT. Configure API base URL, key, and online STT model.";
-  } else if (aiOnline) {
-    onlineProviderModeNotice.textContent =
-      "Online routing active for AI. Configure API base URL, key, and online AI model.";
-  }
 
-  if (!anyLocal) {
-    return;
-  }
 
-  if (sttLocal && aiLocal) {
-    offlineRuntimeModeNotice.textContent =
-      "Offline routing active for STT + AI. Configure local STT model and local Ollama model.";
-  } else if (aiLocal) {
-    offlineRuntimeModeNotice.textContent =
-      "Offline routing active for AI. Configure local Ollama model. STT stays online.";
-  } else {
-    offlineRuntimeModeNotice.textContent =
-      "Offline routing active for STT. Configure local STT model download/load. AI stays online.";
-  }
-}
-
-function syncRuntimeModePaneVisibility(_sttMode: RuntimeMode, _aiMode: RuntimeMode): void {
-  const activePane = settingsPanels.find((panel) => panel.classList.contains("is-active"));
-  const activePaneId = activePane?.dataset.settingsPane;
-  if (activePaneId === "online" || activePaneId === "offline" || activePaneId === "hybrid") {
-    setActiveSettingsPane("models");
-  }
-}
 
 function getLocalSttActionBlockReason(): string | null {
   if (pipelineRunning) {
@@ -3754,15 +3646,7 @@ clearRecordingsBtn.addEventListener("click", () => {
   void handleClearRecordingsClick();
 });
 
-function applyTheme(themeMode: ThemeMode): void {
-  const root = document.documentElement;
-  if (themeMode === "system") {
-    root.removeAttribute("data-theme");
-    return;
-  }
 
-  root.setAttribute("data-theme", themeMode);
-}
 
 function updateMicrophoneSummary(): void {
   const selected = microphoneSelect.selectedOptions.item(0);
@@ -6814,7 +6698,7 @@ function renderAssistantInfo(info: AssistantInfoResponse): void {
   sttModelInput.placeholder = info.sttModel || "Enter STT model id";
   aiModelInput.placeholder = info.aiModel || "Enter AI model id";
   localOllamaBaseUrlInput.placeholder = DEFAULT_LOCAL_OLLAMA_BASE_URL;
-  updateRuntimeModeNotice(settings.sttRuntimeMode, settings.aiRuntimeMode);
+  updateRuntimeModeNoticeService(settingsFormRefs, settings.sttRuntimeMode, settings.aiRuntimeMode);
   piperStatusValue.textContent = info.piperInstalled ? "Installed" : "Missing";
   piperPathValue.textContent = info.piperPath || "-";
   voiceStatusValue.textContent = info.voiceInstalled ? "Installed" : "Missing";
