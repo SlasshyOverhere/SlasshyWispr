@@ -69,7 +69,6 @@ import {
   runSettingsHandlePipeline,
   setPersistErrorReporter,
   summarizeSettingsForDiagnostics,
-  updateRuntimeModeNotice as updateRuntimeModeNoticeService,
   wireSettingsFormInputs as wireSettingsFormInputsService,
   type SettingsCoreDeps,
   type SettingsHandleEffects,
@@ -192,6 +191,10 @@ import {
   renderNotesList as renderNotesListService,
   renderSnippetsList as renderSnippetsListService,
 } from "./collections/collections-view";
+import {
+  initAssistantInfo,
+  renderAssistantInfo as renderAssistantInfoService,
+} from "./shell/assistant-info";
 import {
   copyToClipboard as copyToClipboardService,
   initClipboard,
@@ -337,7 +340,6 @@ import {
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
-  DEFAULT_LOCAL_OLLAMA_BASE_URL,
   DEFAULT_HOTKEY,
   DEFAULT_COMMAND_HOTKEY,
 } from "./constants";
@@ -1071,6 +1073,37 @@ initLocalSttClient(
   },
 );
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
+initAssistantInfo(
+  {
+    settingsVersionText,
+    updateCurrentVersion,
+    baseUrlValue,
+    sttModelValue,
+    aiModelValue,
+    piperStatusValue,
+    piperPathValue,
+    voiceStatusValue,
+    voicePathValue,
+  },
+  {
+    getSttRuntimeMode: () => settings.sttRuntimeMode,
+    getAiRuntimeMode: () => settings.aiRuntimeMode,
+    getLocalOllamaBaseUrl: () => settings.localOllamaBaseUrl,
+    getApiBaseUrl: () => settings.apiBaseUrl,
+    getLocalSttModel: () => settings.localSttModel,
+    getSttModelName: () => settings.sttModelName,
+    getLocalOllamaModel: () => settings.localOllamaModel,
+    getAiModelName: () => settings.aiModelName,
+    getFormRefs: () => settingsFormRefs,
+    setLatestDefaults: (info) => {
+      latestAssistantInfoDefaults = info;
+    },
+    setPiperRuntimeReady: (ready) => {
+      piperRuntimeReady = ready;
+    },
+    updateTtsSetupGate: () => updateTtsSetupGate(),
+  },
+);
 initClipboard({
   isTauri: isTauriEnvironment,
   notify: (message, isError) => setNotice(message, isError),
@@ -2666,33 +2699,7 @@ function interruptTtsPlaybackForCaptureIntent(): boolean {
 }
 
 function renderAssistantInfo(info: AssistantInfoResponse): void {
-  latestAssistantInfoDefaults = info;
-  const appVersion = info.appVersion?.trim();
-  settingsVersionText.textContent = appVersion ? `SlasshyWispr v${appVersion}` : "SlasshyWispr";
-  updateCurrentVersion.textContent = appVersion || "-";
-  const sttLocalMode = settings.sttRuntimeMode === "local";
-  const aiLocalMode = settings.aiRuntimeMode === "local";
-  const configuredBaseUrl =
-    sttLocalMode && aiLocalMode
-      ? settings.localOllamaBaseUrl.trim() || DEFAULT_LOCAL_OLLAMA_BASE_URL
-      : settings.apiBaseUrl.trim();
-  const configuredSttModel = sttLocalMode ? settings.localSttModel.trim() : settings.sttModelName.trim();
-  const configuredAiModel = aiLocalMode ? settings.localOllamaModel.trim() : settings.aiModelName.trim();
-
-  baseUrlValue.textContent = configuredBaseUrl || info.baseUrl || "Not set";
-  sttModelValue.textContent = configuredSttModel || info.sttModel || "Not set";
-  aiModelValue.textContent = configuredAiModel || info.aiModel || "Not set";
-  settingsFormRefs.apiBaseUrlInput.placeholder = info.baseUrl || "Enter provider URL (example: https://api.example.com/v1)";
-  settingsFormRefs.sttModelInput.placeholder = info.sttModel || "Enter STT model id";
-  settingsFormRefs.aiModelInput.placeholder = info.aiModel || "Enter AI model id";
-  settingsFormRefs.localOllamaBaseUrlInput.placeholder = DEFAULT_LOCAL_OLLAMA_BASE_URL;
-  updateRuntimeModeNoticeService(settingsFormRefs, settings.sttRuntimeMode, settings.aiRuntimeMode);
-  piperStatusValue.textContent = info.piperInstalled ? "Installed" : "Missing";
-  piperPathValue.textContent = info.piperPath || "-";
-  voiceStatusValue.textContent = info.voiceInstalled ? "Installed" : "Missing";
-  voicePathValue.textContent = info.voiceModelPath;
-  piperRuntimeReady = Boolean(info.piperInstalled && info.voiceInstalled);
-  updateTtsSetupGate();
+  renderAssistantInfoService(info);
 }
 
 function setStage(next: Stage, detail: string): void {
