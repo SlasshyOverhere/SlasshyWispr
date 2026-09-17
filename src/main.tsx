@@ -151,6 +151,10 @@ import {
   initAnalyticsRender,
   updateUsageMetrics as updateUsageMetricsService,
 } from "./analytics/analytics-render";
+import {
+  initUsageTracker,
+  trackUsage as trackUsageService,
+} from "./analytics/usage-tracker";
 import { buildSelectionPopupPayload } from "./windows/selection-intent";
 import {
   inferLocalSttProviderFromModel,
@@ -1832,6 +1836,31 @@ document.addEventListener("visibilitychange", () => {
 function updateUsageMetrics(): void {
   updateUsageMetricsService();
 }
+initUsageTracker({
+  getStats: () => usageStats,
+  setStats: (stats) => {
+    usageStats = stats;
+  },
+  getSessions: () => analyticsSessionDetails,
+  setSessions: (sessions) => {
+    analyticsSessionDetails = sessions;
+  },
+  getAchievements: () => achievementStates,
+  appendAchievements: (unlocked) => {
+    achievementStates.push(...unlocked);
+  },
+  getRecordingStartedAt: () => recordingStartedAt,
+  persistStats: () => persistUsageStats(),
+  persistSessions: () => persistAnalyticsSessionDetails(),
+  persistAchievements: () => persistAchievementStates(),
+  renderMetrics: () => updateUsageMetrics(),
+  notifyStoreUpdated: () => {
+    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+  },
+});
+function trackUsage(transcript: string): void {
+  trackUsageService(transcript);
+}
 async function bootstrap(): Promise<void> {
   logClientEvent("[bootstrap] start");
   await hydrateSettingsFromNativeStorage();
@@ -3156,36 +3185,6 @@ function renderNotesList(): void {
     fragment.append(row);
   }
   notesList.append(fragment);
-}
-
-function trackUsage(transcript: string): void {
-  const words = countWords(transcript);
-  if (words === 0) return;
-  usageStats.sessions += 1;
-  usageStats.words += words;
-  const seconds = Math.max((Date.now() - recordingStartedAt) / 1000, 1);
-  usageStats.speakingSeconds += Math.round(seconds);
-  const currentWpm = (words / seconds) * 60;
-  usageStats.avgWpm = Math.round(((usageStats.avgWpm * (usageStats.sessions - 1)) + currentWpm) / usageStats.sessions);
-  persistUsageStats();
-  updateUsageMetrics();
-
-  analyticsSessionDetails.push({
-    date: recordingStartedAt,
-    words,
-    speakingSeconds: Math.round(seconds),
-    wpm: Math.round(currentWpm),
-  });
-  if (analyticsSessionDetails.length > 5000) {
-    analyticsSessionDetails = analyticsSessionDetails.slice(-5000);
-  }
-  persistAnalyticsSessionDetails();
-  checkAndUnlockAchievements(usageStats);
-  // Notify the UI on every dictation. The previous `if (activePage === "analytics")`
-  // guard meant that sessions dictated on the Home / History / etc. pages never
-  // reached the React store, so switching to the Analytics tab afterwards showed
-  // stale (empty) data until the page was reloaded.
-  window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
 }
 
 function createId(): string {
