@@ -140,6 +140,20 @@ import {
   isTypingElement,
 } from "./hotkeys/hotkey-service";
 import {
+  beginCommandHotkeyCapture,
+  beginHotkeyCapture,
+  cancelCommandHotkeyCapture,
+  cancelHotkeyCapture,
+  handleCommandHotkeyCaptureKeydown,
+  handleCommandHotkeyCaptureKeyup,
+  handleHotkeyCaptureKeydown,
+  handleHotkeyCaptureKeyup,
+  initHotkeyCapture,
+  isAnyHotkeyCaptureActive,
+  isCommandHotkeyCaptureActive,
+  isHotkeyCaptureActive,
+} from "./hotkeys/hotkey-capture";
+import {
   decodeAudioSample,
   audioBufferToWavBlob,
   shouldOptimizeOnlineSttUpload,
@@ -534,20 +548,6 @@ let selectionAssistantWindow: WebviewWindow | null = null;
 let latestSelectionPopupPayload: SelectionPopupPayload | null = null;
 let selectionPopupTokenCounter = 0;
 let dockLayout = loadDockLayout();
-let hotkeyCaptureActive = false;
-const hotkeyCaptureModifiers = {
-  ctrl: false,
-  shift: false,
-  alt: false,
-  meta: false,
-};
-let commandHotkeyCaptureActive = false;
-const commandHotkeyCaptureModifiers = {
-  ctrl: false,
-  shift: false,
-  alt: false,
-  meta: false,
-};
 
 let dictionaryTerms = loadDictionaryFromState();
 let snippets = loadSnippetsFromState();
@@ -687,8 +687,8 @@ function resumeExternalMediaAfterDictation(): void {
   resumeExternalMediaAfterDictationService(mediaControlDeps);
 }
 const settingsCoreDeps: SettingsCoreDeps = {
-  isCapturingHotkey: () => hotkeyCaptureActive,
-  isCapturingCommandHotkey: () => commandHotkeyCaptureActive,
+  isCapturingHotkey: () => isHotkeyCaptureActive(),
+  isCapturingCommandHotkey: () => isCommandHotkeyCaptureActive(),
   currentSettings: getSettingsSnapshot,
   refreshRecordingsStorageHint: () => {
     void refreshRecordingsStorageHint();
@@ -974,11 +974,11 @@ sttHardwareAdvisorCancelBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (hotkeyCaptureActive) {
+  if (isHotkeyCaptureActive()) {
     handleHotkeyCaptureKeydown(event);
     return;
   }
-  if (commandHotkeyCaptureActive) {
+  if (isCommandHotkeyCaptureActive()) {
     handleCommandHotkeyCaptureKeydown(event);
     return;
   }
@@ -1097,11 +1097,11 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("keyup", (event) => {
-  if (hotkeyCaptureActive) {
+  if (isHotkeyCaptureActive()) {
     handleHotkeyCaptureKeyup(event);
     return;
   }
-  if (commandHotkeyCaptureActive) {
+  if (isCommandHotkeyCaptureActive()) {
     handleCommandHotkeyCaptureKeyup(event);
     return;
   }
@@ -1149,7 +1149,7 @@ window.addEventListener("blur", () => {
 });
 
 window.addEventListener("focus", () => {
-  if (!globalShortcutsActive && !hotkeyCaptureActive && !commandHotkeyCaptureActive) {
+  if (!globalShortcutsActive && !isAnyHotkeyCaptureActive()) {
     requestGlobalShortcutSync();
   }
 });
@@ -1204,6 +1204,18 @@ window.addEventListener(SETTINGS_PATCH_EVENT, (event) => {
   applySettingsPatchToFormService(settingsFormRefs, patch);
   void handleSettingsChange();
 });
+
+initHotkeyCapture(
+  { hotkeyInput, commandHotkeyInput },
+  {
+    getPushHotkey: () => settings.pushToTalkHotkey,
+    getCommandHotkey: () => settings.commandHotkey,
+    notify: (message, isError) => setNotice(message, isError),
+    onCommitted: () => {
+      void handleSettingsChange();
+    },
+  },
+);
 
 wireSettingsFormInputsService({
   refs: settingsFormRefs,
@@ -1271,7 +1283,7 @@ hotkeyInput.addEventListener("click", () => {
 });
 
 hotkeyInput.addEventListener("blur", () => {
-  if (hotkeyCaptureActive) {
+  if (isHotkeyCaptureActive()) {
     cancelHotkeyCapture();
   }
 });
@@ -1285,7 +1297,7 @@ commandHotkeyInput.addEventListener("click", () => {
 });
 
 commandHotkeyInput.addEventListener("blur", () => {
-  if (commandHotkeyCaptureActive) {
+  if (isCommandHotkeyCaptureActive()) {
     cancelCommandHotkeyCapture();
   }
 });
@@ -2840,7 +2852,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
       (event as { state?: unknown }).state ?? "",
     )}`,
   );
-  if (hotkeyCaptureActive || commandHotkeyCaptureActive) {
+  if (isAnyHotkeyCaptureActive()) {
     logClientEvent("[hotkey.global.event] ignored because hotkey capture UI is active");
     return;
   }
@@ -2957,237 +2969,6 @@ function shouldIgnoreLocalShortcutFromRecentGlobal(
     );
   }
   return shouldIgnore;
-}
-
-function beginHotkeyCapture(): void {
-  if (hotkeyInput.disabled || hotkeyCaptureActive) {
-    return;
-  }
-  if (commandHotkeyCaptureActive) {
-    cancelCommandHotkeyCapture();
-  }
-
-  hotkeyCaptureActive = true;
-  hotkeyCaptureModifiers.ctrl = false;
-  hotkeyCaptureModifiers.shift = false;
-  hotkeyCaptureModifiers.alt = false;
-  hotkeyCaptureModifiers.meta = false;
-  hotkeyInput.classList.add("is-capturing-hotkey");
-  hotkeyInput.value = "Press shortcut...";
-  setNotice("Hotkey capture enabled. Press your shortcut combination now.");
-}
-
-function cancelHotkeyCapture(): void {
-  hotkeyCaptureActive = false;
-  hotkeyCaptureModifiers.ctrl = false;
-  hotkeyCaptureModifiers.shift = false;
-  hotkeyCaptureModifiers.alt = false;
-  hotkeyCaptureModifiers.meta = false;
-  hotkeyInput.classList.remove("is-capturing-hotkey");
-  hotkeyInput.value = settings.pushToTalkHotkey;
-}
-
-function handleHotkeyCaptureKeydown(event: KeyboardEvent): void {
-  if (!hotkeyCaptureActive) {
-    return;
-  }
-
-  event.preventDefault();
-  event.stopPropagation();
-
-  const normalizedKey = normalizeEventKey(event.key);
-  hotkeyCaptureModifiers.ctrl = event.ctrlKey;
-  hotkeyCaptureModifiers.shift = event.shiftKey;
-  hotkeyCaptureModifiers.alt = event.altKey;
-  hotkeyCaptureModifiers.meta = event.metaKey;
-  if (
-    normalizedKey === "escape" &&
-    !hotkeyCaptureModifiers.ctrl &&
-    !hotkeyCaptureModifiers.shift &&
-    !hotkeyCaptureModifiers.alt &&
-    !hotkeyCaptureModifiers.meta
-  ) {
-    cancelHotkeyCapture();
-    setNotice("Hotkey capture canceled.");
-    return;
-  }
-
-  if (isModifierKey(normalizedKey)) {
-    hotkeyInput.value = formatHotkeyCapturePreview();
-    return;
-  }
-
-  const candidateTokens: string[] = [];
-  if (hotkeyCaptureModifiers.ctrl) candidateTokens.push("ctrl");
-  if (hotkeyCaptureModifiers.shift) candidateTokens.push("shift");
-  if (hotkeyCaptureModifiers.alt) candidateTokens.push("alt");
-  if (hotkeyCaptureModifiers.meta) candidateTokens.push("meta");
-
-  candidateTokens.push(normalizedKey);
-
-  const parsed = parseHotkey(candidateTokens.join("+"));
-  if (!parsed) {
-    hotkeyInput.value = formatHotkeyCapturePreview();
-    setNotice("Unsupported hotkey key. Try another combination.", true);
-    return;
-  }
-
-  hotkeyCaptureActive = false;
-  hotkeyInput.classList.remove("is-capturing-hotkey");
-  hotkeyInput.value = parsed.label;
-  handleSettingsChange();
-  setNotice(`Push-to-talk hotkey updated to ${formatHotkeyForDisplay(parsed.label)}.`);
-  hotkeyInput.blur();
-}
-
-function handleHotkeyCaptureKeyup(event: KeyboardEvent): void {
-  if (!hotkeyCaptureActive) {
-    return;
-  }
-
-  event.preventDefault();
-  event.stopPropagation();
-
-  hotkeyCaptureModifiers.ctrl = event.ctrlKey;
-  hotkeyCaptureModifiers.shift = event.shiftKey;
-  hotkeyCaptureModifiers.alt = event.altKey;
-  hotkeyCaptureModifiers.meta = event.metaKey;
-
-  if (isModifierKey(normalizeEventKey(event.key))) {
-    hotkeyInput.value = formatHotkeyCapturePreview();
-  }
-}
-
-function formatHotkeyCapturePreview(): string {
-  const parts: string[] = [];
-  if (hotkeyCaptureModifiers.ctrl) parts.push("Ctrl");
-  if (hotkeyCaptureModifiers.shift) parts.push("Shift");
-  if (hotkeyCaptureModifiers.alt) parts.push("Alt");
-  if (hotkeyCaptureModifiers.meta) parts.push("Meta");
-
-  if (parts.length === 0) {
-    return "Press shortcut...";
-  }
-
-  return `${parts.join(" + ")} + ...`;
-}
-
-function isModifierKey(key: string): boolean {
-  return key === "control" || key === "shift" || key === "alt" || key === "meta";
-}
-
-function beginCommandHotkeyCapture(): void {
-  if (commandHotkeyInput.disabled || commandHotkeyCaptureActive) {
-    return;
-  }
-  if (hotkeyCaptureActive) {
-    cancelHotkeyCapture();
-  }
-
-  commandHotkeyCaptureActive = true;
-  commandHotkeyCaptureModifiers.ctrl = false;
-  commandHotkeyCaptureModifiers.shift = false;
-  commandHotkeyCaptureModifiers.alt = false;
-  commandHotkeyCaptureModifiers.meta = false;
-  commandHotkeyInput.classList.add("is-capturing-hotkey");
-  commandHotkeyInput.value = "Press shortcut...";
-  setNotice("Command hotkey capture enabled. Press your shortcut combination now.");
-}
-
-function cancelCommandHotkeyCapture(): void {
-  commandHotkeyCaptureActive = false;
-  commandHotkeyCaptureModifiers.ctrl = false;
-  commandHotkeyCaptureModifiers.shift = false;
-  commandHotkeyCaptureModifiers.alt = false;
-  commandHotkeyCaptureModifiers.meta = false;
-  commandHotkeyInput.classList.remove("is-capturing-hotkey");
-  commandHotkeyInput.value = settings.commandHotkey;
-}
-
-function handleCommandHotkeyCaptureKeydown(event: KeyboardEvent): void {
-  if (!commandHotkeyCaptureActive) {
-    return;
-  }
-
-  event.preventDefault();
-  event.stopPropagation();
-
-  const normalizedKey = normalizeEventKey(event.key);
-  commandHotkeyCaptureModifiers.ctrl = event.ctrlKey;
-  commandHotkeyCaptureModifiers.shift = event.shiftKey;
-  commandHotkeyCaptureModifiers.alt = event.altKey;
-  commandHotkeyCaptureModifiers.meta = event.metaKey;
-  if (
-    normalizedKey === "escape" &&
-    !commandHotkeyCaptureModifiers.ctrl &&
-    !commandHotkeyCaptureModifiers.shift &&
-    !commandHotkeyCaptureModifiers.alt &&
-    !commandHotkeyCaptureModifiers.meta
-  ) {
-    cancelCommandHotkeyCapture();
-    setNotice("Command hotkey capture canceled.");
-    return;
-  }
-
-  if (isModifierKey(normalizedKey)) {
-    commandHotkeyInput.value = formatModifierPreview(commandHotkeyCaptureModifiers);
-    return;
-  }
-
-  const candidateTokens: string[] = [];
-  if (commandHotkeyCaptureModifiers.ctrl) candidateTokens.push("ctrl");
-  if (commandHotkeyCaptureModifiers.shift) candidateTokens.push("shift");
-  if (commandHotkeyCaptureModifiers.alt) candidateTokens.push("alt");
-  if (commandHotkeyCaptureModifiers.meta) candidateTokens.push("meta");
-
-  candidateTokens.push(normalizedKey);
-  const parsed = parseHotkey(candidateTokens.join("+"));
-  if (!parsed) {
-    commandHotkeyInput.value = formatModifierPreview(commandHotkeyCaptureModifiers);
-    setNotice("Unsupported key for command hotkey.", true);
-    return;
-  }
-
-  commandHotkeyCaptureActive = false;
-  commandHotkeyInput.classList.remove("is-capturing-hotkey");
-  commandHotkeyInput.value = parsed.label;
-  handleSettingsChange();
-  setNotice(`Command mode hotkey updated to ${formatHotkeyForDisplay(parsed.label)}.`);
-  commandHotkeyInput.blur();
-}
-
-function handleCommandHotkeyCaptureKeyup(event: KeyboardEvent): void {
-  if (!commandHotkeyCaptureActive) {
-    return;
-  }
-
-  event.preventDefault();
-  event.stopPropagation();
-  commandHotkeyCaptureModifiers.ctrl = event.ctrlKey;
-  commandHotkeyCaptureModifiers.shift = event.shiftKey;
-  commandHotkeyCaptureModifiers.alt = event.altKey;
-  commandHotkeyCaptureModifiers.meta = event.metaKey;
-
-  if (isModifierKey(normalizeEventKey(event.key))) {
-    commandHotkeyInput.value = formatModifierPreview(commandHotkeyCaptureModifiers);
-  }
-}
-
-function formatModifierPreview(modifiers: {
-  ctrl: boolean;
-  shift: boolean;
-  alt: boolean;
-  meta: boolean;
-}): string {
-  const parts: string[] = [];
-  if (modifiers.ctrl) parts.push("Ctrl");
-  if (modifiers.shift) parts.push("Shift");
-  if (modifiers.alt) parts.push("Alt");
-  if (modifiers.meta) parts.push("Meta");
-  if (parts.length === 0) {
-    return "Press shortcut...";
-  }
-  return `${parts.join(" + ")} + ...`;
 }
 
 function formatRecordingsStorage(stats: RecordingsStats): string {
@@ -5555,7 +5336,7 @@ async function handleRecordToggle(): Promise<void> {
 }
 
 async function handleDockMicToggle(): Promise<void> {
-  if (hotkeyCaptureActive || commandHotkeyCaptureActive) {
+  if (isAnyHotkeyCaptureActive()) {
     return;
   }
 
