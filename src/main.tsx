@@ -810,7 +810,10 @@ initRecordingController(
       void primeSelectionSnapshotForCommandMode();
     },
     clearPushToTalkHolds: () => clearPushToTalkHoldsService(),
-    showMissingApiKeyNotice: (source) => showMissingApiKeyNotice(source),
+    showMissingApiKeyNotice: (source) => showDesktopNotice(MISSING_API_KEY_MESSAGE, {
+      failureReason: "Missing API key for online runtime.",
+      logSource: source,
+    }),
     setNotice: (message, isError) => setNoticeService(message, isError),
     log: (message) => logClientEventService(message),
     transition: (event) => {
@@ -2409,7 +2412,10 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
         logClientEventService(
           "[hotkey.global.push] blocked before reveal because API key is missing for online runtime",
         );
-        showMissingApiKeyNotice("global-hotkey");
+        showDesktopNotice(MISSING_API_KEY_MESSAGE, {
+          failureReason: "Missing API key for online runtime.",
+          logSource: "global-hotkey",
+        });
         return;
       }
       if (settings.captureMode === "push-to-talk") {
@@ -2474,13 +2480,6 @@ async function refreshAssistantInfo(): Promise<void> {
 
 }
 
-
-function showMissingApiKeyNotice(source: string): void {
-  showDesktopNotice(MISSING_API_KEY_MESSAGE, {
-    failureReason: "Missing API key for online runtime.",
-    logSource: source,
-  });
-}
 
 function setStage(next: Stage, detail: string): void {
   const previousStage = stage;
