@@ -192,6 +192,13 @@ import {
   logClientEvent as logClientEventService,
   setNotice as setNoticeService,
 } from "./shell/diagnostics";
+import {
+  MISSING_API_KEY_MESSAGE,
+  initDesktopNotice,
+  isNotificationPermissionRequested,
+  setNotificationPermissionRequested,
+  showDesktopNotice,
+} from "./shell/notify";
 import { parseJson } from "./state/storage";
 import {
   initAnalyticsRender,
@@ -681,7 +688,6 @@ let foregroundBlockMonitorInFlight = false;
 let lastCaptureIntentStartedAt = 0;
 let lastCaptureIntentLabel = "";
 let mainWindowHiddenToTray = false;
-let notificationPermissionRequested = false;
 const dockChannel = new BroadcastChannel("slasshywispr-dock");
 const selectionPopupChannel = new BroadcastChannel("slasshywispr-selection-popup");
 const ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION = true;
@@ -862,6 +868,13 @@ initRecordingController(
   },
 );
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
+initDesktopNotice({
+  setNotice: (message, isError) => setNotice(message, isError),
+  log: (message) => logClientEvent(message),
+  transition: (event) => {
+    transitionRecordingState(event);
+  },
+});
 initMicrophones(
   { select: microphoneSelect, summary: microphoneSummary },
   {
@@ -969,9 +982,9 @@ initUpdaterFlow(
       confirmDestructiveAction(
         `Install ${version} now? The installer will download, this app will close, and any unsaved work in the current session may be lost.`,
       ),
-    getNotificationPermissionRequested: () => notificationPermissionRequested,
+    getNotificationPermissionRequested: () => isNotificationPermissionRequested(),
     setNotificationPermissionRequested: (requested) => {
-      notificationPermissionRequested = requested;
+      setNotificationPermissionRequested(requested);
     },
   },
 );
@@ -4312,44 +4325,10 @@ async function openLocalSttModelPath(): Promise<void> {
 }
 
 function showMissingApiKeyNotice(source: string): void {
-  const message =
-    "Recording blocked: API key is missing for online mode. Add API key in Settings > Models > Online provider.";
-  setNotice(message, true);
-  transitionRecordingState({ type: "recording-failed", reason: "Missing API key for online runtime." });
-  logClientEvent(`[record.start.blocked] missing-api-key notice source=${source}`);
-
-  if (typeof Notification === "undefined") {
-    return;
-  }
-
-  if (Notification.permission === "granted") {
-    try {
-      new Notification("SlasshyWispr", { body: message });
-    } catch {
-      // Ignore notification failures; notice is still shown in-app.
-    }
-    return;
-  }
-
-  if (Notification.permission !== "default" || notificationPermissionRequested) {
-    return;
-  }
-
-  notificationPermissionRequested = true;
-  void Notification.requestPermission()
-    .then((permission) => {
-      if (permission !== "granted") {
-        return;
-      }
-      try {
-        new Notification("SlasshyWispr", { body: message });
-      } catch {
-        // Ignore notification failures; notice is still shown in-app.
-      }
-    })
-    .catch(() => {
-      // Ignore notification permission errors.
-    });
+  showDesktopNotice(MISSING_API_KEY_MESSAGE, {
+    failureReason: "Missing API key for online runtime.",
+    logSource: source,
+  });
 }
 
 async function handleRecordToggle(): Promise<void> {
