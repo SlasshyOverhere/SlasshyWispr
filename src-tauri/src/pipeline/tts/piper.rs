@@ -266,7 +266,16 @@ pub async fn ensure_voice_files(
     app: &AppHandle,
     client: &Client,
 ) -> Result<(PathBuf, PathBuf), String> {
+    // Boundary: resolve roots once here; the download core takes owned paths.
     let (model_path, config_path) = voice_paths(app)?;
+    return ensure_voice_files_in(model_path, config_path, client).await;
+}
+
+async fn ensure_voice_files_in(
+    model_path: PathBuf,
+    config_path: PathBuf,
+    client: &Client,
+) -> Result<(PathBuf, PathBuf), String> {
 
     if !file_exists_with_content(&model_path) {
         download_file(client, VOICE_MODEL_URL, &model_path).await?;
@@ -320,10 +329,14 @@ fn extract_zip_archive(archive_path: &Path, destination: &Path) -> Result<(), St
 }
 
 pub async fn ensure_piper_binary(app: &AppHandle, client: &Client) -> Result<PathBuf, String> {
+    // Boundary: resolve roots once here; the download core takes an owned dir.
+    let runtime_dir = piper_runtime_dir(app)?;
+    return ensure_piper_binary_in(runtime_dir, client).await;
+}
+
+async fn ensure_piper_binary_in(runtime_dir: PathBuf, client: &Client) -> Result<PathBuf, String> {
     #[cfg(target_os = "windows")]
     {
-        let runtime_dir = piper_runtime_dir(app)?;
-
         if let Some(existing_path) = find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)? {
             return Ok(existing_path);
         }
@@ -339,7 +352,7 @@ pub async fn ensure_piper_binary(app: &AppHandle, client: &Client) -> Result<Pat
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (app, client);
+        let _ = (runtime_dir, client);
         Err(
             "Automatic Piper download is currently implemented for Windows in this build."
                 .to_string(),
