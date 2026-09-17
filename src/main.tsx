@@ -313,12 +313,10 @@ import type {
   Stage,
   MainPage,
   SettingsPane,
-  RuntimeMode,
   TtsProfilePane,
   HoldSource,
 
   AssistantInfoResponse,
-  LocalSttWarmupResponse,
   PersistedSettings,
   HotkeySpec,
   UsageStats,
@@ -864,11 +862,11 @@ initPipelineClient(
     commitFormSettings: () => {
       void handleSettingsChange();
     },
-    checkModelFileExists: (model) => checkModelFileExists(model),
-    localSttModelLabel: (model) => localSttModelLabel(model),
-    refreshLocalSttRuntimeState: (options) => refreshLocalSttRuntimeState(options),
-    warmupActiveLocalSttModel: (options) => warmupActiveLocalSttModel(options),
-    isSelectedLocalSttModelLoaded: () => isSelectedLocalSttModelLoaded(),
+    checkModelFileExists: (model) => checkModelFileExistsService(model),
+    localSttModelLabel: (model) => localSttModelLabelService(model),
+    refreshLocalSttRuntimeState: (options) => refreshLocalSttRuntimeStateService(options),
+    warmupActiveLocalSttModel: (options) => warmupActiveLocalSttModelService(options),
+    isSelectedLocalSttModelLoaded: () => isSelectedLocalSttModelLoadedService(),
     getLocalSttRuntimeLoaded: () => localSttRuntimeLoaded,
     getLastWarmedLocalSttModel: () => lastWarmedLocalSttModel,
     setLastWarmedLocalSttModel: (model) => {
@@ -908,8 +906,8 @@ initLocalSttState({
   getCatalogSelection: () => localSttModelCatalogSelect.value,
   isPipelineRunning: () => pipelineRunning,
   getStage: () => stage,
-  renderSidebarToggle: () => renderSidebarLocalSttToggle(),
-  renderSettingsStatus: () => renderLocalSttSettingsStatus(),
+  renderSidebarToggle: () => renderSidebarLocalSttToggleService(),
+  renderSettingsStatus: () => renderLocalSttSettingsStatusService(),
 });
 initLocalSttDiagnostics({
   readSettings: () => readSettingsFromForm(),
@@ -922,7 +920,7 @@ initLocalSttDiagnostics({
   setActiveSettingsPane: (pane, reason) => setActiveSettingsPane(pane, reason),
   openInSystemBrowser: (url) => openInSystemBrowser(url),
   activateSelectedLocalSttModel: () => {
-    void activateSelectedLocalSttModel();
+    void activateSelectedLocalSttModelService();
   },
 });
 initLocalSttClient(
@@ -964,9 +962,9 @@ initLocalSttClient(
     setActiveSettingsPane: (pane, reason) => setActiveSettingsPane(pane, reason),
     refreshAssistantInfo: () => refreshAssistantInfoSafely(),
     renderFetchedCatalog: (models, selected) => renderLocalSttModelCatalog(models, selected),
-    checkModelFileExists: (model) => checkModelFileExists(model),
-    checkPythonDependencies: (model) => checkPythonDependencies(model),
-    checkAvailableMemory: (model) => checkAvailableMemory(model),
+    checkModelFileExists: (model) => checkModelFileExistsService(model),
+    checkPythonDependencies: (model) => checkPythonDependenciesService(model),
+    checkAvailableMemory: (model) => checkAvailableMemoryService(model),
     showOfflineModeDiagnostic: (issue, details) => showOfflineModeDiagnostic(issue, details),
     ensureSelectedLocalSttModelForWarmup: () => ensureSelectedLocalSttModelService({ quiet: true }),
     isSettingsOpen: () => isSettingsOpen(),
@@ -1232,7 +1230,7 @@ function applySettingsToForm(next: PersistedSettings): void {
 }
 let cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
 applySettingsToForm(settings);
-renderSidebarLocalSttToggle();
+renderSidebarLocalSttToggleService();
 initModelCatalogs(
   {
     providerSelect: providerModelCatalogSelect,
@@ -1808,7 +1806,7 @@ localSttModelCatalogSelect.addEventListener("change", () => {
   localSttModelInput.value = selected;
   markCatalogSelectionChanged();
   handleSettingsChange();
-  void refreshSelectedLocalSttModelAvailability({ quiet: true });
+  void refreshSelectedLocalSttModelAvailabilityService({ quiet: true });
 });
 
 hotkeyInput.addEventListener("focus", () => {
@@ -2083,9 +2081,9 @@ navigator.mediaDevices?.addEventListener?.("devicechange", () => {
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
-    void releasePreWarmedStream();
+    void releasePreWarmedStreamService();
   } else if (stage === "idle") {
-    void preWarmMicrophoneStream(settings.microphoneDeviceId);
+    void preWarmMicrophoneStreamService(settings.microphoneDeviceId);
   }
 });
 
@@ -2153,11 +2151,11 @@ async function bootstrap(): Promise<void> {
   }
   await refreshOllamaStatus({ quiet: true });
   await fetchOllamaModels({ quiet: true, autoSelect: true });
-  await fetchLocalSttModels({ quiet: true, autoSelect: true });
-  await refreshSelectedLocalSttModelAvailability({ quiet: true });
-  await pollLocalSttDownloadStatusOnce({ quiet: true });
+  await fetchLocalSttModelsService({ quiet: true, autoSelect: true });
+  await refreshSelectedLocalSttModelAvailabilityService({ quiet: true });
+  await pollLocalSttDownloadStatusOnceService({ quiet: true });
   try {
-    await syncLocalSttRuntimeForMode(settings.sttRuntimeMode);
+    await syncLocalSttRuntimeForModeService(settings.sttRuntimeMode);
   } catch (error) {
     setNotice(`Unable to initialize local STT runtime: ${asErrorMessage(error)}`, true);
   }
@@ -2475,7 +2473,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
     const previousSttRuntimeMode = previous.sttRuntimeMode;
     const previousAiRuntimeMode = previous.aiRuntimeMode;
     const previousShortcutSignature = buildShortcutSyncSignature(previous);
-    renderSidebarLocalSttToggle();
+    renderSidebarLocalSttToggleService();
     refreshRecordButton();
     syncActionAvailability();
     updateMicrophoneSummary();
@@ -2506,7 +2504,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
       }
     }
     if (sttRuntimeModeChanged) {
-      requestLocalSttRuntimeSyncForMode(next.sttRuntimeMode, {
+      requestLocalSttRuntimeSyncForModeService(next.sttRuntimeMode, {
         showLoadOverlay: next.sttRuntimeMode === "local",
       });
     }
@@ -2522,20 +2520,6 @@ const settingsHandleEffects: SettingsHandleEffects = {
     }
   },
 };
-
-async function refreshSelectedLocalSttModelAvailability(options: { quiet?: boolean } = {},): Promise<boolean> {
-  return refreshSelectedLocalSttModelAvailabilityService(options);
-}
-
-function requestLocalSttRuntimeSyncForMode(targetMode: RuntimeMode,
-  options: { showLoadOverlay?: boolean } = {},): void {
-  requestLocalSttRuntimeSyncForModeService(targetMode, options);
-}
-
-async function syncLocalSttRuntimeForMode(mode: RuntimeMode,
-  options: { showLoadOverlay?: boolean } = {},): Promise<void> {
-  await syncLocalSttRuntimeForModeService(mode, options);
-}
 
 
 function isTauriEnvironment(): boolean {
@@ -3326,53 +3310,9 @@ async function refreshAssistantInfo(): Promise<void> {
 
 }
 
-async function fetchLocalSttModels(options: { quiet?: boolean; autoSelect?: boolean } = {}): Promise<void> {
-  await fetchLocalSttModelsService(options);
-}
-
-function renderSidebarLocalSttToggle(): void {
-  renderSidebarLocalSttToggleService();
-}
-
-function renderLocalSttSettingsStatus(): void {
-  renderLocalSttSettingsStatusService();
-}
-
-function isSelectedLocalSttModelLoaded(): boolean {
-  return isSelectedLocalSttModelLoadedService();
-}
-
-function localSttModelLabel(model: string): string {
-  return localSttModelLabelService(model);
-}
-
-
-function hideLocalSttLoadOverlay(): void {
-  hideLocalSttLoadOverlayService();
-}
-
-async function refreshLocalSttRuntimeState(options: { quiet?: boolean } = {}): Promise<void> {
-  await refreshLocalSttRuntimeStateService(options);
-}
-
-async function activateSelectedLocalSttModel(): Promise<void> {
-  await activateSelectedLocalSttModelService();
-}
-
-async function warmupActiveLocalSttModel(options: { quiet?: boolean; force?: boolean; explicit?: boolean } = {}): Promise<LocalSttWarmupResponse | null> {
-  return warmupActiveLocalSttModelService(options);
-}
 
 function stopLocalSttDownloadStatusPolling(): void {
   stopLocalSttDownloadStatusPollingService();
-}
-
-function startLocalSttDownloadStatusPolling(): void {
-  startLocalSttDownloadStatusPollingService();
-}
-
-async function pollLocalSttDownloadStatusOnce(options: { quiet?: boolean } = {}): Promise<void> {
-  await pollLocalSttDownloadStatusOnceService(options);
 }
 
 function showMissingApiKeyNotice(source: string): void {
@@ -3597,8 +3537,8 @@ async function closeSelectionAssistantWindowForTray(): Promise<void> {
 
 function stopNonEssentialUiPollingForTray(): void {
   stopTtsSetupPollingService();
-  stopLocalSttDownloadStatusPolling();
-  hideLocalSttLoadOverlay();
+  stopLocalSttDownloadStatusPollingService();
+  hideLocalSttLoadOverlayService();
 }
 
 function resumeNonEssentialUiPollingAfterTray(): void {
@@ -3607,8 +3547,8 @@ function resumeNonEssentialUiPollingAfterTray(): void {
     void pollTtsSetupStatusOnceService();
   }
   if (localSttDownloadActive) {
-    startLocalSttDownloadStatusPolling();
-    void pollLocalSttDownloadStatusOnce({ quiet: true });
+    startLocalSttDownloadStatusPollingService();
+    void pollLocalSttDownloadStatusOnceService({ quiet: true });
   }
 }
 
@@ -3657,7 +3597,7 @@ function setStage(next: Stage, detail: string): void {
   void syncFloatingIndicatorWindow();
 
   if (previousStage !== "idle" && next === "idle") {
-    void preWarmMicrophoneStream(settings.microphoneDeviceId);
+    void preWarmMicrophoneStreamService(settings.microphoneDeviceId);
   }
 
   if (previousStage !== "recording" && next === "recording") {
@@ -3735,28 +3675,28 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
         setNotice(action.message, action.isError);
         break;
       case "release-recorder":
-        releaseMicrophone();
+        releaseMicrophoneService();
         break;
       case "clear-chunks":
         recordedChunks = [];
         break;
       case "stop-recording-ticker":
-        stopRecordingTicker();
+        stopRecordingTickerService();
         break;
       case "begin-recording-ticker":
-        beginRecordingTicker();
+        beginRecordingTickerService();
         break;
       case "set-recording-started-at":
         recordingStartedAt = action.timestamp;
         break;
       case "stop-amplitude-monitoring":
-        stopAmplitudeMonitoring();
+        stopAmplitudeMonitoringService();
         break;
       case "start-amplitude-monitoring":
         // amplitude monitoring is started with the stream, not via action
         break;
       case "pre-warm-microphone":
-        void preWarmMicrophoneStream(settings.microphoneDeviceId);
+        void preWarmMicrophoneStreamService(settings.microphoneDeviceId);
         break;
       case "resume-external-media":
         if (isExternalMediaMutedForDictation()) {
@@ -4145,7 +4085,7 @@ async function canPreWarmMicrophone(): Promise<boolean> {
 
 async function primeCaptureReadiness(deviceId: string, shouldPrimeDock: boolean): Promise<void> {
   if (await canPreWarmMicrophone()) {
-    void preWarmMicrophoneStream(deviceId);
+    void preWarmMicrophoneStreamService(deviceId);
   }
 
   if (shouldPrimeDock && isTauriEnvironment() && !voiceIndicatorWindow) {
@@ -4290,7 +4230,7 @@ function syncActionAvailability(): void {
   dictionaryAddBtn.disabled = busy;
   dictionaryAddBtnTop.disabled = busy;
   snippetAddBtn.disabled = busy;
-  renderLocalSttSettingsStatus();
+  renderLocalSttSettingsStatusService();
   snippetsAddBtnTop.disabled = busy;
 
   const allRuntimeLocal = settings.sttRuntimeMode === "local" && settings.aiRuntimeMode === "local";
@@ -4396,30 +4336,6 @@ function isHotkeyReleaseEvent(event: KeyboardEvent, hotkey: HotkeySpec): boolean
   return false;
 }
 
-function stopAmplitudeMonitoring(resetLevel = true): void {
-  stopAmplitudeMonitoringService(resetLevel);
-}
-
-function beginRecordingTicker(): void {
-  beginRecordingTickerService();
-}
-
-function stopRecordingTicker(): void {
-  stopRecordingTickerService();
-}
-
-function releaseMicrophone(): void {
-  releaseMicrophoneService();
-}
-
-async function releasePreWarmedStream(): Promise<void> {
-  await releasePreWarmedStreamService();
-}
-
-async function preWarmMicrophoneStream(deviceId: string): Promise<void> {
-  await preWarmMicrophoneStreamService(deviceId);
-}
-
 // ============================================================================
 // OFFLINE MODE DIAGNOSTICS - User-Friendly Error Handling
 // ============================================================================
@@ -4427,24 +4343,12 @@ async function preWarmMicrophoneStream(deviceId: string): Promise<void> {
 /**
  * Checks if a model file exists on disk
  */
-async function checkModelFileExists(_model: string): Promise<boolean> {
-  return checkModelFileExistsService(_model);
-}
-
 /**
  * Checks if Python dependencies are installed
  */
-async function checkPythonDependencies(model: string): Promise<boolean> {
-  return checkPythonDependenciesService(model);
-}
-
 /**
  * Checks available system memory
  */
-async function checkAvailableMemory(model: string): Promise<{ sufficient: boolean; availableMB?: number }> {
-  return checkAvailableMemoryService(model);
-}
-
 /**
  * Shows a detailed diagnostic dialog when offline mode setup fails
  */
