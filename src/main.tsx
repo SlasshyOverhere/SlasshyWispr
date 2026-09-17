@@ -749,7 +749,7 @@ initCaptureMonitors(
     setAmplitude: (level) => {
       dockAmplitude = level;
     },
-    publishDockState: () => publishDockState(),
+    publishDockState: () => publishDockStateService(),
     now: () => Date.now(),
     getRecordingStartedAt: () => recordingStartedAt,
     getMediaStream: () => mediaStream,
@@ -763,7 +763,7 @@ initCommandMode({
   captureSelectedText: () => ipcCaptureSelectedText(),
   setNotice: (message, isError) => setNotice(message, isError),
   log: (message) => logClientEvent(message),
-  publishDockState: () => publishDockState(),
+  publishDockState: () => publishDockStateService(),
 });
 initCaptureTriggers({
   getStage: () => stage,
@@ -1149,7 +1149,7 @@ initMicrophones(
     getStage: () => stage,
     getShowFlowBar: () => settings.showFlowBar,
     primeCapture: (deviceId, showFlowBar) => {
-      void primeCaptureReadiness(deviceId, showFlowBar);
+      void primeCaptureReadinessService(deviceId, showFlowBar);
     },
     notify: (message, isError) => setNotice(message, isError),
   },
@@ -1378,7 +1378,7 @@ persistUsageStatsService();
 if (systemThemeMediaQuery) {
   const handleSystemThemeChange = (): void => {
     if (settings.themeMode === "system") {
-      publishDockState();
+      publishDockStateService();
     }
   };
 
@@ -1746,7 +1746,7 @@ initHotkeySync({
   getSettings: getSettingsSnapshot,
   notify: (message, isError) => setNotice(message, isError),
   log: (message) => logClientEvent(message),
-  publishDockState: () => publishDockState(),
+  publishDockState: () => publishDockStateService(),
   onShortcutEvent: (event) => handleGlobalShortcutEvent(event),
 });
 wireSettingsFormInputsService({
@@ -2135,7 +2135,7 @@ async function bootstrap(): Promise<void> {
 
   await refreshMicrophonesService(false);
   if (stage === "idle") {
-    void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
+    void primeCaptureReadinessService(settings.microphoneDeviceId, settings.showFlowBar);
   }
   await refreshOllamaStatusService({ quiet: true });
   await fetchOllamaModelsService({ quiet: true, autoSelect: true });
@@ -2497,14 +2497,14 @@ const settingsHandleEffects: SettingsHandleEffects = {
       });
     }
     updateTtsSetupGate();
-    publishDockState();
-    void syncFloatingIndicatorWindow();
+    publishDockStateService();
+    void syncFloatingIndicatorWindowService();
     if (
       stageAtChange === "idle" &&
       (previousMicrophoneDeviceId !== next.microphoneDeviceId ||
         (!previousShowFlowBar && next.showFlowBar))
     ) {
-      void primeCaptureReadiness(next.microphoneDeviceId, next.showFlowBar);
+      void primeCaptureReadinessService(next.microphoneDeviceId, next.showFlowBar);
     }
   },
 };
@@ -2705,8 +2705,8 @@ function setStage(next: Stage, detail: string): void {
   statusPill.textContent = stageLabel(next);
   statusDetail.textContent = detail;
   refreshRecordButton();
-  publishDockState();
-  void syncFloatingIndicatorWindow();
+  publishDockStateService();
+  void syncFloatingIndicatorWindowService();
 
   if (previousStage !== "idle" && next === "idle") {
     void preWarmMicrophoneStreamService(settings.microphoneDeviceId);
@@ -2816,7 +2816,7 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
         }
         break;
       case "publish-dock-state":
-        publishDockState();
+        publishDockStateService();
         break;
       // set-stage, play-sound, and run-pipeline are handled by setStage()
       // or by the calling function respectively
@@ -2840,10 +2840,6 @@ function setNotice(message: string, isError = false): void {
 
 function logClientEvent(message: string): void {
   logClientEventService(message);
-}
-
-function publishDockState(): void {
-  publishDockStateService();
 }
 
 function refreshRecordButton(): void {
@@ -2874,14 +2870,6 @@ function refreshRecordButton(): void {
   document.querySelector(".app-frame")?.classList.remove("is-recording");
   notesQuickMicBtn.dataset.stage = "idle";
   notesQuickMicBtn.disabled = false;
-}
-
-async function primeCaptureReadiness(deviceId: string, shouldPrimeDock: boolean): Promise<void> {
-  await primeCaptureReadinessService(deviceId, shouldPrimeDock);
-}
-
-async function syncFloatingIndicatorWindow(): Promise<void> {
-  await syncFloatingIndicatorWindowService();
 }
 
 function syncActionAvailability(): void {
