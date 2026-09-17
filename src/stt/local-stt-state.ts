@@ -163,6 +163,17 @@ export function getLocalSttActionBlockReason(): string | null {
   return null;
 }
 
+export function isLocalSttBusy(): boolean {
+  return (
+    localSttDownloadInFlight ||
+    localSttDeleteInFlight ||
+    localSttDeactivateInFlight ||
+    localSttWarmupInFlight ||
+    localSttRuntimeStateInFlight ||
+    localSttDownloadActive
+  );
+}
+
 export function hasShownLocalSttHardwareAdvisor(): boolean {
   return localStorage.getItem(LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY) === "1";
 }
