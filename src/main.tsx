@@ -26,7 +26,6 @@ import {
   openLocalSttModelPath as ipcOpenLocalSttModelPath,
   pasteClipboardText as ipcPasteClipboardText,
   pasteTextViaClipboard as ipcPasteTextViaClipboard,
-  runAssistantPipeline as ipcRunAssistantPipeline,
   saveDictationRecording as ipcSaveDictationRecording,
   setClipboardText as ipcSetClipboardText,
   setupCoquiRuntime as ipcSetupCoquiRuntime,
@@ -51,7 +50,6 @@ import {
   asErrorMessage,
   boolFlag,
   escapeHtml,
-  expandSnippetsInText,
   formatBytes,
   normalizeDictionaryEntries,
   normalizeSnippetEntries,
@@ -69,7 +67,6 @@ import {
   coerceNumber,
   coerceInteger,
   asThemeMode,
-  resolveSttLanguageConfig,
 } from "./state/settings-store";
 import {
   applySettingsPatchToForm as applySettingsPatchToFormService,
@@ -110,17 +107,18 @@ import {
   syncUpdaterButtons as syncUpdaterButtonsService,
 } from "./updater/updater-flow";
 import {
-  buildEffectiveSystemPrompt,
   initPipelinePrompt,
 } from "./pipeline/pipeline-prompt";
 import {
   initPipelineRender,
-  renderPipelineResponse as renderPipelineResponseService,
 } from "./pipeline/pipeline-render";
+import {
+  initPipelineClient,
+  runPipeline as runPipelineService,
+} from "./pipeline/pipeline-client";
 import {
   initPlayback,
   interruptTtsPlaybackForCaptureIntent as interruptTtsPlaybackService,
-  playGeneratedAudio as playGeneratedAudioService,
 } from "./recording/playback";
 import {
   canPreWarmMicrophone as canPreWarmMicrophoneService,
@@ -139,8 +137,6 @@ import {
   releasePushToTalk as releasePushToTalkService,
 } from "./recording/capture-triggers";
 import {
-  captureSelectedTextForRewrite as captureSelectedTextService,
-  getCommandSelectionSnapshot,
   initCommandMode,
   isCommandModeArmed,
   primeSelectionSnapshotForCommandMode,
@@ -208,7 +204,6 @@ import {
   initUsageTracker,
   trackUsage as trackUsageService,
 } from "./analytics/usage-tracker";
-import { buildSelectionPopupPayload } from "./windows/selection-intent";
 import {
   inferLocalSttProviderFromModel,
   pickDefaultLocalSttModelFromCatalog as pickDefaultLocalSttModelFromList,
@@ -256,11 +251,6 @@ import {
   syncGlobalShortcuts as syncGlobalShortcutsService,
 } from "./hotkeys/hotkey-sync";
 import {
-  decodeAudioSample,
-  audioBufferToWavBlob,
-  shouldOptimizeOnlineSttUpload,
-  resolvePreferredOnlineSttBitrate,
-  blobToBase64,
   missingApiKeyForOnlineRuntime,
 } from "./recording/audio-utils";
 import {
@@ -298,14 +288,12 @@ import {
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
   DEFAULT_HOTKEY,
   DEFAULT_COMMAND_HOTKEY,
-  DEFAULT_ASSISTANT_NAME,
 } from "./constants";
 
 import type {
   Stage,
   MainPage,
   SettingsPane,
-  TtsEngine,
   RuntimeMode,
   TtsProfilePane,
   HoldSource,
@@ -316,7 +304,6 @@ import type {
   LocalSttModelStatusResponse,
   LocalSttHardwareAdviceResponse,
   LocalSttWarmupResponse,
-  AssistantPipelineResponse,
   PersistedSettings,
   HotkeySpec,
   UsageStats,
@@ -865,6 +852,64 @@ initRecordingController(
     setLastSavedRecordingId: (id) => {
       lastSavedRecordingId = id;
     },
+  },
+);
+initPipelineClient(
+  { localSttModelInput, localSttModelCatalogSelect },
+  {
+    readSettings: () => readSettingsFromForm(),
+    getStage: () => stage,
+    markIdle: (detail) => setStage("idle", detail),
+    transition: (event) => {
+      transitionRecordingState(event);
+    },
+    syncAvailability: () => syncActionAvailability(),
+    setPipelineRunning: (running) => {
+      pipelineRunning = running;
+    },
+    notify: (message, isError) => setNotice(message, isError),
+    log: (message) => logClientEvent(message),
+    getLocalSttCatalog: () => localSttModelCatalog,
+    commitFormSettings: () => {
+      void handleSettingsChange();
+    },
+    checkModelFileExists: (model) => checkModelFileExists(model),
+    localSttModelLabel: (model) => localSttModelLabel(model),
+    refreshLocalSttRuntimeState: (options) => refreshLocalSttRuntimeState(options),
+    warmupActiveLocalSttModel: (options) => warmupActiveLocalSttModel(options),
+    isSelectedLocalSttModelLoaded: () => isSelectedLocalSttModelLoaded(),
+    getLocalSttRuntimeLoaded: () => localSttRuntimeLoaded,
+    getLastWarmedLocalSttModel: () => lastWarmedLocalSttModel,
+    setLastWarmedLocalSttModel: (model) => {
+      lastWarmedLocalSttModel = model;
+    },
+    ensureLocalOllamaModelSelected: (options) => ensureLocalOllamaModelSelected(options),
+    getDictionaryTerms: () => dictionaryTerms,
+    getSnippets: () => snippets,
+    nextSelectionPopupToken: () => nextSelectionPopupToken(),
+    dismissSelectionPopup: async () => {
+      latestSelectionPopupPayload = null;
+      if (selectionAssistantWindow) {
+        try {
+          await selectionAssistantWindow.hide();
+        } catch (hideError) {
+          logClientEvent(`selection.popup hide failed: ${asErrorMessage(hideError)}`);
+          try {
+            await selectionAssistantWindow.close();
+          } catch (closeError) {
+            logClientEvent(`selection.popup close fallback failed: ${asErrorMessage(closeError)}`);
+          } finally {
+            selectionAssistantWindow = null;
+          }
+        }
+      }
+    },
+    showSelectionAssistantPopup: (payload) => showSelectionAssistantPopup(payload),
+    triggerAutoPaste: (text) => triggerAutoPaste(text),
+    copyToClipboard: (text) => copyToClipboard(text),
+    openSettings: (reason) => openSettings(reason),
+    setActiveSettingsPane: (pane, reason) => setActiveSettingsPane(pane, reason),
+    refreshAssistantInfo: () => refreshAssistantInfoSafely(),
   },
 );
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
@@ -4348,309 +4393,7 @@ function stopRecording(options: StopRecordingOptions = {}): void {
 }
 
 async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void> {
-  const activeSettings = readSettingsFromForm();
-  const pipelineInvokeStartedAt = performance.now();
-
-  transitionRecordingState({ type: "pipeline-started" });
-  syncActionAvailability();
-
-  try {
-    let pipelineAudioBlob = audioBlob;
-    let pipelineAudioMimeType = audioMimeType;
-    let rawPcmBase64: string | null = null;
-    if (activeSettings.noiseSuppression) {
-      // Fast path: decode WebM → raw f32 PCM, send directly to Rust (skip WAV roundtrip)
-      try {
-        const decoded = await decodeAudioSample(audioBlob);
-        const channelData = decoded.getChannelData(0); // mono f32
-        // Pack as: [sample_rate: u32 LE][samples: f32 LE...]
-        const header = new ArrayBuffer(4);
-        new DataView(header).setUint32(0, decoded.sampleRate, true);
-        const pcmBytes = new Uint8Array(header.byteLength + channelData.length * 4);
-        pcmBytes.set(new Uint8Array(header), 0);
-        pcmBytes.set(new Uint8Array(channelData.buffer), header.byteLength);
-        // Convert to base64
-        let binary = "";
-        for (let i = 0; i < pcmBytes.length; i++) {
-          binary += String.fromCharCode(pcmBytes[i]);
-        }
-        rawPcmBase64 = btoa(binary);
-        logClientEvent(`[pipeline.audio] raw PCM ready samples=${channelData.length} sampleRate=${decoded.sampleRate} bytes=${pcmBytes.length}`);
-      } catch (error) {
-        logClientEvent(`raw PCM conversion failed, falling back to WAV: ${asErrorMessage(error)}`);
-        try {
-          const decoded = await decodeAudioSample(audioBlob);
-          pipelineAudioBlob = audioBufferToWavBlob(decoded);
-          pipelineAudioMimeType = "audio/wav";
-        } catch (e2) {
-          logClientEvent(`wav fallback also failed: ${asErrorMessage(e2)}`);
-        }
-      }
-    } else if (activeSettings.sttRuntimeMode === "local") {
-      try {
-        const decoded = await decodeAudioSample(audioBlob);
-        pipelineAudioBlob = audioBufferToWavBlob(decoded);
-        pipelineAudioMimeType = "audio/wav";
-      } catch (error) {
-        logClientEvent(`local.stt wav conversion skipped: ${asErrorMessage(error)}`);
-      }
-    } else if (shouldOptimizeOnlineSttUpload(activeSettings)) {
-      logClientEvent(
-        `online.stt optimized transport bytes=${audioBlob.size} mime=${audioMimeType || "unknown"} bitrate=${resolvePreferredOnlineSttBitrate(activeSettings) ?? "default"}`,
-      );
-    }
-
-    const base64EncodeStartedAt = performance.now();
-    const audioBase64 = await blobToBase64(pipelineAudioBlob);
-    logClientEvent(
-      `[pipeline.audio] base64Ms=${Math.round(
-        performance.now() - base64EncodeStartedAt,
-      )} bytes=${pipelineAudioBlob.size} mime=${pipelineAudioMimeType || "unknown"}`,
-    );
-    const systemPrompt = buildEffectiveSystemPrompt(activeSettings, isCommandModeArmed());
-    const pipelineTtsEngine: TtsEngine = "piper";
-    let selectedTextForRewrite: string | null = null;
-    if (isCommandModeArmed()) {
-      const primedSelected = (getCommandSelectionSnapshot() ?? "").trim();
-      const selected = primedSelected || (await captureSelectedTextService({ silent: true })).trim();
-      if (selected) {
-        selectedTextForRewrite = selected;
-      } else {
-        const explicitSelected = (await captureSelectedTextService()).trim();
-        if (explicitSelected) {
-          selectedTextForRewrite = explicitSelected;
-        } else {
-          setNotice("No selected text detected. Command mode will run without selection replace.", true);
-        }
-      }
-    }
-    logClientEvent(
-      `pipeline.selection commandMode=${isCommandModeArmed()} selectedChars=${selectedTextForRewrite ? selectedTextForRewrite.length : 0}`,
-    );
-
-    let resolvedLocalOllamaModel = activeSettings.localOllamaModel.trim();
-    if (activeSettings.sttRuntimeMode === "local") {
-      let selectedLocalSttModel = activeSettings.localSttModel.trim();
-      if (!selectedLocalSttModel) {
-        const fallbackLocalSttModel = pickDefaultLocalSttModelFromList(localSttModelCatalog);
-        if (fallbackLocalSttModel) {
-          localSttModelInput.value = fallbackLocalSttModel;
-          if (localSttModelCatalog.includes(fallbackLocalSttModel)) {
-            localSttModelCatalogSelect.value = fallbackLocalSttModel;
-          }
-          handleSettingsChange();
-          selectedLocalSttModel = fallbackLocalSttModel;
-        }
-      }
-      if (selectedLocalSttModel && !(await checkModelFileExists(selectedLocalSttModel))) {
-        logClientEvent("pipeline.blocked reason=missing-local-stt-files");
-        setNotice(
-          `Local STT model "${localSttModelLabel(selectedLocalSttModel)}" is not downloaded yet. Click Download Model in the sidebar first.`,
-          true,
-        );
-        openSettings("missing-local-stt-files");
-        setActiveSettingsPane("models", "missing-local-stt-files");
-        transitionRecordingState({ type: "pipeline-blocked", reason: "Local setup required." });
-        return;
-      }
-      if (!selectedLocalSttModel) {
-        logClientEvent("pipeline.blocked reason=missing-local-stt-model");
-        setNotice(
-          "Local STT mode needs a local STT model (Parakeet). Open Settings > Models and select one.",
-          true,
-        );
-        setActiveSettingsPane("models");
-        transitionRecordingState({ type: "pipeline-blocked", reason: "Local setup required." });
-        return;
-      }
-
-      await refreshLocalSttRuntimeState({ quiet: true });
-      const needsWarmup =
-        !localSttRuntimeLoaded ||
-        !selectedLocalSttModel ||
-        lastWarmedLocalSttModel.trim() !== selectedLocalSttModel;
-      if (needsWarmup) {
-        await warmupActiveLocalSttModel({ quiet: true, explicit: true });
-        await refreshLocalSttRuntimeState({ quiet: true });
-      } else if (selectedLocalSttModel) {
-        lastWarmedLocalSttModel = selectedLocalSttModel;
-      }
-      if (!isSelectedLocalSttModelLoaded()) {
-        logClientEvent("pipeline.blocked reason=local-stt-not-loaded");
-        setNotice("Local STT is not loaded. Click Load STT in the left sidebar.", true);
-        transitionRecordingState({ type: "pipeline-blocked", reason: "Local setup required." });
-        return;
-      }
-    }
-    if (activeSettings.aiRuntimeMode === "local") {
-      resolvedLocalOllamaModel = await ensureLocalOllamaModelSelected({ quiet: true });
-      if (!resolvedLocalOllamaModel) {
-        logClientEvent("pipeline.blocked reason=missing-local-ollama-model");
-        setNotice(
-          "Local AI mode needs a local Ollama model. Open Settings > Models and pull/download one.",
-          true,
-        );
-        setActiveSettingsPane("models");
-        transitionRecordingState({ type: "pipeline-blocked", reason: "Local setup required." });
-        return;
-      }
-    }
-
-    const sttLanguageConfig = resolveSttLanguageConfig(activeSettings);
-
-    const response = await ipcRunAssistantPipeline({
-        apiKey: activeSettings.apiKey,
-        apiBaseUrl: activeSettings.apiBaseUrl || null,
-        sttModel: activeSettings.sttModelName || null,
-        aiModel: activeSettings.aiModelName || null,
-        localMode:
-          activeSettings.sttRuntimeMode === "local" && activeSettings.aiRuntimeMode === "local",
-        sttLocalMode: activeSettings.sttRuntimeMode === "local",
-        aiLocalMode: activeSettings.aiRuntimeMode === "local",
-        localOllamaBaseUrl: activeSettings.localOllamaBaseUrl || null,
-        localOllamaModel: resolvedLocalOllamaModel || null,
-        localSttModel: activeSettings.localSttModel || null,
-        piperPath: activeSettings.piperPath || null,
-        audioBase64,
-        audioMimeType: pipelineAudioMimeType,
-        language: sttLanguageConfig.language,
-        allowedLanguages: sttLanguageConfig.allowedLanguages,
-        systemPrompt,
-        temperature: activeSettings.temperature,
-        maxTokens: activeSettings.maxTokens,
-        dictionaryEntries: dictionaryTerms.map((item) => ({
-          source: item.source,
-          target: item.target,
-        })),
-        snippetEntries: snippets.map((item) => ({
-          trigger: item.trigger,
-          expansion: item.expansion,
-        })),
-        rawMode: activeSettings.rawMode,
-        applyBacktrack: activeSettings.backtrackCorrection,
-        removeFillers: activeSettings.removeFillers,
-        autoPunctuation: activeSettings.autoPunctuation,
-        autoNumberedLists: activeSettings.numberedLists,
-        noiseSuppression: activeSettings.noiseSuppression,
-        rawPcmBase64: rawPcmBase64,
-        commandMode: isCommandModeArmed(),
-        wakeWordEnabled: activeSettings.wakeWordEnabled,
-        assistantName: activeSettings.assistantName || DEFAULT_ASSISTANT_NAME,
-        selectedText: selectedTextForRewrite,
-        ttsEngine: pipelineTtsEngine,
-        piper: {
-          speed: activeSettings.piperSpeed,
-          quality: activeSettings.piperQuality,
-          emotion: activeSettings.piperEmotion,
-        },
-        coqui: null,
-    } as Record<string, unknown>);
-    logClientEvent(
-      `[pipeline.invoke] totalMs=${Math.round(
-        performance.now() - pipelineInvokeStartedAt,
-      )} sttMs=${Math.round(response.sttLatencyMs)} aiMs=${Math.round(
-        response.aiLatencyMs,
-      )} ttsMs=${Math.round(response.ttsLatencyMs)} endToEndMs=${Math.round(response.totalLatencyMs)}`,
-    );
-
-    const resolvedResponse =
-      response.mode === "dictation"
-        ? {
-            ...response,
-            assistantResponse: expandSnippetsInText(response.assistantResponse, snippets),
-          }
-        : response;
-
-    renderPipelineResponse(resolvedResponse);
-    let playbackCompleted = true;
-    const selectionPopupPayload = buildSelectionPopupPayload(resolvedResponse, nextSelectionPopupToken());
-    if (!selectionPopupPayload) {
-      latestSelectionPopupPayload = null;
-      if (selectionAssistantWindow) {
-        try {
-          await selectionAssistantWindow.hide();
-        } catch (hideError) {
-          logClientEvent(`selection.popup hide failed: ${asErrorMessage(hideError)}`);
-          try {
-            await selectionAssistantWindow.close();
-          } catch (closeError) {
-            logClientEvent(`selection.popup close fallback failed: ${asErrorMessage(closeError)}`);
-          } finally {
-            selectionAssistantWindow = null;
-          }
-        }
-      }
-    }
-    const selectionPopupOpened = selectionPopupPayload
-      ? await showSelectionAssistantPopup(selectionPopupPayload)
-      : false;
-
-    if (
-      !selectionPopupOpened &&
-      resolvedResponse.mode === "assistant" &&
-      resolvedResponse.audioBase64.trim()
-    ) {
-      playbackCompleted = await playGeneratedAudio(resolvedResponse.audioBase64, pipelineTtsEngine);
-    }
-
-    let dictationPasted = false;
-    if (resolvedResponse.mode === "dictation") {
-      if (activeSettings.autoPasteDictation) {
-        dictationPasted = await triggerAutoPaste(resolvedResponse.assistantResponse);
-        if (dictationPasted) {
-          setNotice("Dictation copied and pasted.");
-        }
-      }
-      // Bug fix: also copy dictation to clipboard when copyToClipboard is enabled
-      // and autoPaste is disabled (previously transcriptions were silently lost)
-      if (
-        !dictationPasted &&
-        activeSettings.copyToClipboard &&
-        !resolvedResponse.selectionPending &&
-        !selectionPopupOpened
-      ) {
-        await copyToClipboard(resolvedResponse.assistantResponse);
-      }
-    } else if (
-      activeSettings.copyToClipboard &&
-      !resolvedResponse.selectionPending &&
-      !selectionPopupOpened
-    ) {
-      await copyToClipboard(resolvedResponse.assistantResponse);
-    }
-
-    resetCommandMode();
-
-    if (stage !== "recording") {
-      if (resolvedResponse.mode === "dictation") {
-        if (dictationPasted) {
-          // Notice already set above.
-        } else {
-          setNotice("Dictation ready. Copy it from Home if needed.");
-        }
-      } else if (selectionPopupOpened || response.selectionRewrite || response.selectionPending) {
-        // Notice already set above.
-      } else {
-        setNotice(playbackCompleted ? "Pipeline completed." : "Playback interrupted for new dictation.");
-      }
-      setStage("idle", "Ready for next request.");
-    }
-  } catch (error) {
-    setNotice(`Pipeline failed: ${asErrorMessage(error)}`, true);
-    transitionRecordingState({ type: "pipeline-failed", reason: `Pipeline failed: ${asErrorMessage(error)}` });
-  } finally {
-    pipelineRunning = false;
-    await refreshAssistantInfoSafely();
-    syncActionAvailability();
-  }
-}
-
-function renderPipelineResponse(response: AssistantPipelineResponse): void {
-  renderPipelineResponseService(response);
-}
-
-async function playGeneratedAudio(audioBase64: string, engine: TtsEngine): Promise<boolean> {
-  return playGeneratedAudioService(audioBase64, engine);
+  await runPipelineService(audioBlob, audioMimeType);
 }
 
 function renderAssistantInfo(info: AssistantInfoResponse): void {
