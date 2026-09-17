@@ -34,7 +34,8 @@ use crate::services::transcribe::{
     open_path_in_file_explorer, resolve_local_stt_repo_and_dir, setup_local_stt_runtime_blocking,
     stt_models_dir, warmup_local_stt_hf_model_blocking, warmup_local_stt_parakeet_model_blocking,
 };
-use crate::{build_local_stt_hardware_advice, ProviderModelsResponse};
+use crate::services::hardware::build_local_stt_hardware_advice;
+use crate::ProviderModelsResponse;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
