@@ -33,7 +33,8 @@ use crate::pipeline::tts::{
 };
 
 use crate::state::AppState;
-use crate::{list_coqui_voice_ids, resolve_piper_path, setup_coqui_runtime_blocking};
+use crate::{list_coqui_voice_ids, setup_coqui_runtime_blocking};
+use crate::services::pipeline_service::resolve_piper_path;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

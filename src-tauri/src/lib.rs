@@ -864,31 +864,6 @@ fn resolve_pipeline_mode(request: &AssistantPipelineRequest) -> Result<PipelineM
     pipeline::routing::resolve_pipeline_mode(&routing_input)
 }
 
-fn resolve_piper_path(app: &AppHandle, requested_path: Option<&str>) -> Result<String, String> {
-    if let Some(path) = requested_path
-        .map(str::trim)
-        .filter(|path| !path.is_empty())
-    {
-        validate_piper_binary_path(path)?;
-        if file_exists_with_content(Path::new(path)) {
-            return Ok(path.to_string());
-        }
-    }
-
-    if let Some(installed_path) = discover_installed_piper_path(app)? {
-        let installed = installed_path.to_string_lossy().into_owned();
-        validate_piper_binary_path(&installed)?;
-        return Ok(installed);
-    }
-
-    Err(
-        "Piper is not configured or the saved Piper path is stale. Click 'Auto Setup Runtime' inside the app first."
-            .to_string(),
-    )
-}
-
-
-
 fn resolve_user_home_dir() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
@@ -1119,11 +1094,6 @@ mod launch_at_login_preference_tests {
         assert_eq!(preference_from_json("{}"), true);
         let _ = dir;
     }
-}
-
-fn discover_installed_piper_path(app: &AppHandle) -> Result<Option<PathBuf>, String> {
-    let runtime_dir = piper_runtime_dir(app)?;
-    find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)
 }
 
 fn detect_nvidia_gpu() -> bool {

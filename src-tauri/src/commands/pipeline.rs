@@ -5,7 +5,6 @@
 //! used by Phase 7 service split). Service thinning (repair/TTL sync
 //! into services) is Phase 7.
 
-use std::path::Path;
 use std::time::Instant;
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
@@ -15,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
 use crate::constants::DEFAULT_SYSTEM_PROMPT;
-use crate::pipeline::fs::file_exists_with_content;
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::process::elapsed_ms;
 use crate::pipeline::input::{apply_noise_suppression, validate_audio_input};
@@ -41,9 +39,11 @@ use crate::pipeline::stt::{
     is_known_stt_hallucination, looks_like_repetitive_transcript_noise,
     normalize_stt_allowed_languages, normalize_stt_language_hint,
 };
-use crate::pipeline::tts::{ensure_piper_binary, ensure_voice_files, voice_paths};
-use crate::services::{transcribe_audio, transcribe_audio_local};
-use crate::{resolve_piper_path, resolve_pipeline_mode};
+use crate::services::{
+    resolve_piper_assets, sync_orchestrator_pending_rewrite_to_app_state, sync_selection_context,
+    transcribe_audio, transcribe_audio_local,
+};
+use crate::resolve_pipeline_mode;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -130,79 +130,15 @@ pub(crate) async fn run_assistant_pipeline(
         warn!("[pipeline] coqui requested but disabled in zero-python mode; falling back to piper");
     }
 
-    let mut piper_path = if use_coqui {
-        None
-    } else {
-        match resolve_piper_path(&app, request.piper_path.as_deref()) {
-            Ok(path) => Some(path),
-            Err(error) => {
-                warn!(
-                    "[pipeline] piper path resolution deferred/skipped: {}",
-                    error
-                );
-                None
-            }
-        }
-    };
-
-    let mut piper_model_path = if use_coqui {
-        None
-    } else {
-        match voice_paths(&app) {
-            Ok((model_path, config_path)) => {
-                if file_exists_with_content(&model_path) && file_exists_with_content(&config_path) {
-                    Some(model_path)
-                } else {
-                    warn!("[pipeline] piper voice model files missing; deferred/skipped");
-                    None
-                }
-            }
-            Err(error) => {
-                warn!("[pipeline] piper voice paths resolution failed: {}", error);
-                None
-            }
-        }
-    };
-
-    if !use_coqui {
-        let piper_binary_missing = piper_path
-            .as_deref()
-            .map(|path| !file_exists_with_content(Path::new(path)))
-            .unwrap_or(true);
-        let piper_voice_missing = piper_model_path
-            .as_ref()
-            .map(|path| !file_exists_with_content(path))
-            .unwrap_or(true);
-
-        if piper_binary_missing || piper_voice_missing {
-            warn!(
-                "[pipeline] piper assets missing/stale; attempting runtime auto-repair binary_missing={} voice_missing={}",
-                piper_binary_missing,
-                piper_voice_missing
-            );
-
-            match ensure_piper_binary(&app, &state.http).await {
-                Ok(path) => {
-                    piper_path = Some(path.to_string_lossy().into_owned());
-                }
-                Err(error) => {
-                    warn!("[pipeline] piper auto-repair failed for binary: {}", error);
-                }
-            }
-
-            match ensure_voice_files(&app, &state.http).await {
-                Ok((model_path, _config_path)) => {
-                    piper_model_path = Some(model_path);
-                }
-                Err(error) => {
-                    warn!(
-                        "[pipeline] piper auto-repair failed for voice files: {}",
-                        error
-                    );
-                }
-            }
-        }
-    }
+    let piper_assets = resolve_piper_assets(
+        &app,
+        &state.http,
+        request.piper_path.as_deref(),
+        use_coqui,
+    )
+    .await;
+    let piper_path = piper_assets.piper_path;
+    let piper_model_path = piper_assets.piper_model_path;
 
     let audio_bytes = validate_audio_input(&request.audio_base64)?;
     let audio_bytes = apply_noise_suppression(
@@ -418,21 +354,18 @@ pub(crate) async fn run_assistant_pipeline(
     let selection_edit_intent = seems_like_selection_edit_instruction(&command_for_ai);
     let selection_context_query_intent = seems_like_selection_context_query(&command_for_ai);
     let selection_intent_active = selection_edit_intent || selection_context_query_intent;
-    let pending_rewrite_present = state.peek_pending_selection_rewrite()?.is_some();
-    let mut selected_text = request
+    let frontend_selected_text = request
         .selected_text
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
-    let mut selected_text_source = if selected_text.is_some() {
-        "frontend"
-    } else {
-        "none"
-    };
     let should_try_backend_selection_capture = !wake_only
-        && selected_text.is_none()
-        && (selection_intent_active || command_mode || pending_rewrite_present);
+        && frontend_selected_text.is_none()
+        && (selection_intent_active
+            || command_mode
+            || state.peek_pending_selection_rewrite()?.is_some());
+    let mut backend_selected_text: Option<String> = None;
     if should_try_backend_selection_capture {
         #[cfg(target_os = "windows")]
         {
@@ -440,8 +373,7 @@ pub(crate) async fn run_assistant_pipeline(
                 Ok(captured) => {
                     let trimmed = captured.trim();
                     if !trimmed.is_empty() {
-                        selected_text = Some(trimmed.to_string());
-                        selected_text_source = "backend-fallback";
+                        backend_selected_text = Some(trimmed.to_string());
                     }
                 }
                 Err(error) => {
@@ -453,19 +385,21 @@ pub(crate) async fn run_assistant_pipeline(
             }
         }
     }
-    if command_mode && selected_text.is_none() && selection_intent_active {
-        if let Some(recent) = state.peek_recent_selection_context()? {
-            let recent_chars = recent.chars().count();
-            selected_text = Some(recent);
-            selected_text_source = "recent-context";
-            info!(
-                "[pipeline] selection context recovered from recent cache chars={}",
-                recent_chars
-            );
-        }
-    }
-    if let Some(selected) = selected_text.as_ref() {
-        state.set_recent_selection_context(selected.clone())?;
+    let selection_sync = sync_selection_context(
+        &state,
+        command_mode,
+        selection_intent_active,
+        frontend_selected_text,
+        backend_selected_text,
+    )?;
+    let pending_rewrite_present = selection_sync.pending_rewrite_present;
+    let selected_text = selection_sync.selected_text;
+    let selected_text_source = selection_sync.selected_text_source;
+    if selected_text_source == "recent-context" {
+        info!(
+            "[pipeline] selection context recovered from recent cache chars={}",
+            selected_text.as_ref().map(|text| text.chars().count()).unwrap_or(0)
+        );
     }
     let selected_context_available = selected_text.is_some();
     let selection_control_mode = selected_context_available
@@ -526,11 +460,7 @@ pub(crate) async fn run_assistant_pipeline(
     let selection_context_used = orch_result.decision.selection_context_used;
 
     // Sync pending rewrite state
-    if orch_state.peek_pending_rewrite().is_none() {
-        state.clear_pending_selection_rewrite()?;
-    } else if let Some(pending) = orch_state.peek_pending_rewrite() {
-        state.set_pending_selection_rewrite(pending)?;
-    }
+    sync_orchestrator_pending_rewrite_to_app_state(&state, &orch_state)?;
 
     let mut ai_latency_ms = 0_u64;
     let mut assistant_response;
@@ -690,11 +620,7 @@ pub(crate) async fn run_assistant_pipeline(
             skip_tts = edit_result.skip_tts;
 
             // Sync orchestrator state to AppState after selection-edit apply
-            if orch_state.peek_pending_rewrite().is_none() {
-                state.clear_pending_selection_rewrite()?;
-            } else if let Some(pending) = orch_state.peek_pending_rewrite() {
-                state.set_pending_selection_rewrite(pending)?;
-            }
+            sync_orchestrator_pending_rewrite_to_app_state(&state, &orch_state)?;
 
             // NoEdit with empty response → generate AI answer with selected context
             if assistant_response.is_empty() {
