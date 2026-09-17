@@ -146,7 +146,11 @@ import {
   setNotice as setNoticeService,
 } from "./shell/diagnostics";
 import { parseJson } from "./state/storage";
-import { countWords, formatSpeakingTime } from "./analytics/analytics-service";
+import { countWords } from "./analytics/analytics-service";
+import {
+  initAnalyticsRender,
+  updateUsageMetrics as updateUsageMetricsService,
+} from "./analytics/analytics-render";
 import { buildSelectionPopupPayload } from "./windows/selection-intent";
 import {
   inferLocalSttProviderFromModel,
@@ -1033,6 +1037,19 @@ setActiveSettingsPane(activeSettingsPane);
 renderDictionaryList();
 renderSnippetsList();
 renderNotesList();
+initAnalyticsRender(
+  {
+    words: metricWords,
+    speakingTime: metricSpeakingTime,
+    sessions: metricSessions,
+    wpm: metricWpm,
+    wordsTrend,
+    timeTrend,
+    sessionsTrend,
+    wpmTrend,
+  },
+  { getStats: () => usageStats },
+);
 updateUsageMetrics();
 refreshRecordButton();
 syncActionAvailability();
@@ -1812,6 +1829,9 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+function updateUsageMetrics(): void {
+  updateUsageMetricsService();
+}
 async function bootstrap(): Promise<void> {
   logClientEvent("[bootstrap] start");
   await hydrateSettingsFromNativeStorage();
@@ -3136,50 +3156,6 @@ function renderNotesList(): void {
     fragment.append(row);
   }
   notesList.append(fragment);
-}
-
-function updateUsageMetrics(): void {
-  const totalWords = usageStats.words + usageStats.prevWords;
-  const totalSeconds = usageStats.speakingSeconds + usageStats.prevSpeakingSeconds;
-  const totalSessions = usageStats.sessions + usageStats.prevSessions;
-  metricWords.textContent = `${totalWords} words`;
-  metricSpeakingTime.textContent = formatSpeakingTime(totalSeconds);
-  metricSessions.textContent = `${totalSessions}`;
-  const lifetimeWpm = totalSeconds > 0 ? Math.round((totalWords / totalSeconds) * 60) : 0;
-  metricWpm.textContent = `${lifetimeWpm} `;
-  const unit = document.createElement("span");
-  unit.className = "stat-unit";
-  unit.textContent = "wpm";
-  metricWpm.append(unit);
-
-  updateTrendIndicator(wordsTrend, usageStats.words, usageStats.prevWords);
-  updateTrendIndicator(timeTrend, usageStats.speakingSeconds, usageStats.prevSpeakingSeconds);
-  updateTrendIndicator(sessionsTrend, usageStats.sessions, usageStats.prevSessions);
-  updateTrendIndicator(wpmTrend, usageStats.avgWpm, usageStats.prevWpm);
-}
-
-function updateTrendIndicator(element: HTMLElement, current: number, previous: number): void {
-  const span = element.querySelector("span");
-  if (!span) return;
-  
-  if (previous === 0 || current === 0) {
-    element.className = "stat-trend stat-trend-neutral";
-    span.textContent = "--";
-    return;
-  }
-  
-  const percentChange = ((current - previous) / previous) * 100;
-  
-  if (percentChange > 0) {
-    element.className = "stat-trend stat-trend-up";
-    span.textContent = `+${Math.round(percentChange)}%`;
-  } else if (percentChange < 0) {
-    element.className = "stat-trend stat-trend-down";
-    span.textContent = `${Math.round(percentChange)}%`;
-  } else {
-    element.className = "stat-trend stat-trend-neutral";
-    span.textContent = "0%";
-  }
 }
 
 function trackUsage(transcript: string): void {
