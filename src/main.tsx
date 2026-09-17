@@ -53,7 +53,6 @@ import {
   type Monitor,
 } from "@tauri-apps/api/window";
 import {
-  register as registerGlobalShortcut,
   unregisterAll as unregisterAllGlobalShortcuts,
   type ShortcutEvent,
 } from "@tauri-apps/plugin-global-shortcut";
@@ -185,6 +184,18 @@ import {
   isCommandHotkeyCaptureActive,
   isHotkeyCaptureActive,
 } from "./hotkeys/hotkey-capture";
+import {
+  getNormalizedRegisteredShortcuts,
+  initHotkeySync,
+  isGlobalShortcutsActive,
+  isShortcutSuppressionActive,
+  markGlobalShortcutHandled as markGlobalShortcutHandledService,
+  requestGlobalShortcutSync as requestGlobalShortcutSyncService,
+  setShortcutSuppressionActive,
+  shouldBypassLocalShortcutHandling as shouldBypassLocalShortcutHandlingService,
+  shouldIgnoreLocalShortcutFromRecentGlobal as shouldIgnoreLocalShortcutFromRecentGlobalService,
+  syncGlobalShortcuts as syncGlobalShortcutsService,
+} from "./hotkeys/hotkey-sync";
 import {
   decodeAudioSample,
   audioBufferToWavBlob,
@@ -585,16 +596,6 @@ let activePage: MainPage = loadPersistedMainPage();
 let activeSettingsPane: SettingsPane = loadPersistedSettingsPane();
 let settingsCloseTimer: number | null = null;
 let settingsPaneTransitionTimer: number | null = null;
-let globalShortcutsActive = false;
-let shortcutsSuppressedByBlockedApp = false;
-let registeredPushShortcut = "";
-let registeredCommandShortcut = "";
-let registeredShortcutSignature = "";
-let lastGlobalShortcutToken = "";
-let lastGlobalShortcutState: "pressed" | "released" | "" = "";
-let lastGlobalShortcutHandledAt = 0;
-let shortcutSyncInFlight: Promise<void> | null = null;
-let shortcutSyncQueued = false;
 let dockRuntimeErrorShown = false;
 let providerModelCatalog: string[] = [];
 let localOllamaModelCatalog: string[] = [];
@@ -1302,7 +1303,7 @@ window.addEventListener("blur", () => {
 });
 
 window.addEventListener("focus", () => {
-  if (!globalShortcutsActive && !isAnyHotkeyCaptureActive()) {
+  if (!isGlobalShortcutsActive() && !isAnyHotkeyCaptureActive()) {
     requestGlobalShortcutSync();
   }
 });
@@ -1370,6 +1371,32 @@ initHotkeyCapture(
   },
 );
 
+initHotkeySync({
+  isTauri: isTauriEnvironment,
+  getSettings: getSettingsSnapshot,
+  notify: (message, isError) => setNotice(message, isError),
+  log: (message) => logClientEvent(message),
+  publishDockState: () => publishDockState(),
+  onShortcutEvent: (event) => handleGlobalShortcutEvent(event),
+});
+function requestGlobalShortcutSync(force = false): void {
+  requestGlobalShortcutSyncService(force);
+}
+async function syncGlobalShortcuts(force = false): Promise<void> {
+  await syncGlobalShortcutsService(force);
+}
+function markGlobalShortcutHandled(shortcutToken: string, state: "pressed" | "released"): void {
+  markGlobalShortcutHandledService(shortcutToken, state);
+}
+function shouldBypassLocalShortcutHandling(shortcutToken: string): boolean {
+  return shouldBypassLocalShortcutHandlingService(shortcutToken);
+}
+function shouldIgnoreLocalShortcutFromRecentGlobal(
+  shortcutToken: string,
+  state: "pressed" | "released",
+): boolean {
+  return shouldIgnoreLocalShortcutFromRecentGlobalService(shortcutToken, state);
+}
 wireSettingsFormInputsService({
   refs: settingsFormRefs,
   onFieldChange: () => {
@@ -2405,150 +2432,6 @@ async function syncLocalSttRuntimeForMode(
 }
 
 
-function requestGlobalShortcutSync(force = false): void {
-  logClientEvent(
-    `[hotkey.sync.request] force=${boolFlag(force)} inFlight=${boolFlag(
-      Boolean(shortcutSyncInFlight),
-    )} queued=${boolFlag(shortcutSyncQueued)} sig=${buildShortcutSyncSignature(settings)}`,
-  );
-  if (force) {
-    registeredShortcutSignature = "";
-  }
-
-  if (shortcutSyncInFlight) {
-    shortcutSyncQueued = true;
-    logClientEvent("[hotkey.sync.request] queued=1 because sync is already running");
-    return;
-  }
-
-  shortcutSyncInFlight = syncGlobalShortcuts(force)
-    .catch((error) => {
-      logClientEvent(`[hotkey.sync.error] ${asErrorMessage(error)}`);
-      setNotice(`Global hotkey sync failed: ${asErrorMessage(error)}`, true);
-    })
-    .finally(() => {
-      logClientEvent(
-        `[hotkey.sync.finally] queued=${boolFlag(shortcutSyncQueued)} active=${boolFlag(
-          globalShortcutsActive,
-        )} push=${registeredPushShortcut || "-"} command=${registeredCommandShortcut || "-"}`,
-      );
-      shortcutSyncInFlight = null;
-      if (shortcutSyncQueued) {
-        shortcutSyncQueued = false;
-        logClientEvent("[hotkey.sync.finally] draining queued sync request");
-        requestGlobalShortcutSync();
-      }
-    });
-}
-
-async function syncGlobalShortcuts(force = false): Promise<void> {
-  logClientEvent(
-    `[hotkey.sync.run] force=${boolFlag(force)} tauri=${boolFlag(
-      isTauriEnvironment(),
-    )} suppressed=${boolFlag(shortcutsSuppressedByBlockedApp)} ${summarizeSettingsForDiagnostics(
-      settings,
-    )}`,
-  );
-  if (!isTauriEnvironment()) {
-    registeredPushShortcut = "";
-    registeredCommandShortcut = "";
-    registeredShortcutSignature = "";
-    globalShortcutsActive = false;
-    publishDockState();
-    logClientEvent("[hotkey.sync.run] skipped because app is not running in tauri");
-    return;
-  }
-
-  if (shortcutsSuppressedByBlockedApp) {
-    if (globalShortcutsActive) {
-      try {
-        await unregisterAllGlobalShortcuts();
-      } catch {
-        // Ignore cleanup errors while blocked-app suppression is active.
-      }
-    }
-    registeredPushShortcut = "";
-    registeredCommandShortcut = "";
-    registeredShortcutSignature = "";
-    globalShortcutsActive = false;
-    publishDockState();
-    logClientEvent("[hotkey.sync.run] shortcuts disabled by blocked foreground app");
-    return;
-  }
-
-  const pushSpec = parseHotkey(settings.pushToTalkHotkey);
-  if (!pushSpec) {
-    registeredPushShortcut = "";
-    registeredCommandShortcut = "";
-    registeredShortcutSignature = "";
-    globalShortcutsActive = false;
-    publishDockState();
-    logClientEvent(
-      `[hotkey.sync.run] skipped because push-to-talk hotkey is invalid: "${settings.pushToTalkHotkey}"`,
-    );
-    return;
-  }
-
-  const pushShortcut = toGlobalShortcutString(pushSpec);
-  const shortcuts = [pushShortcut];
-  let commandShortcut = "";
-
-  if (settings.commandMode) {
-    const commandSpec = parseHotkey(settings.commandHotkey);
-    if (commandSpec) {
-      const normalizedPush = normalizeShortcutToken(pushShortcut);
-      const normalizedCommand = normalizeShortcutToken(toGlobalShortcutString(commandSpec));
-      if (normalizedPush !== normalizedCommand) {
-        commandShortcut = toGlobalShortcutString(commandSpec);
-        shortcuts.push(commandShortcut);
-      }
-    }
-  }
-
-  const desiredSignature = [
-    settings.captureMode,
-    normalizeShortcutToken(pushShortcut),
-    settings.commandMode ? "1" : "0",
-    normalizeShortcutToken(commandShortcut),
-  ].join("|");
-  logClientEvent(
-    `[hotkey.sync.plan] push=${pushShortcut} command=${
-      commandShortcut || "-"
-    } desired=${desiredSignature} current=${registeredShortcutSignature || "-"}`,
-  );
-
-  if (!force && globalShortcutsActive && desiredSignature === registeredShortcutSignature) {
-    logClientEvent("[hotkey.sync.plan] skipped because registered shortcuts already match");
-    return;
-  }
-
-  try {
-    await unregisterAllGlobalShortcuts();
-  } catch {
-    // Ignore cleanup errors. We'll still try to register next.
-  }
-
-  try {
-    await registerGlobalShortcut(shortcuts, handleGlobalShortcutEvent);
-    registeredPushShortcut = pushShortcut;
-    registeredCommandShortcut = commandShortcut;
-    registeredShortcutSignature = desiredSignature;
-    globalShortcutsActive = true;
-    publishDockState();
-    logClientEvent(
-      `[hotkey.sync.success] registered=${shortcuts.join(",")} signature=${registeredShortcutSignature}`,
-    );
-  } catch (error) {
-    registeredPushShortcut = "";
-    registeredCommandShortcut = "";
-    registeredShortcutSignature = "";
-    globalShortcutsActive = false;
-    logClientEvent(`[hotkey.sync.failure] ${asErrorMessage(error)}`);
-    setNotice(`Global hotkeys unavailable. Using in-app hotkeys only: ${asErrorMessage(error)}`, true);
-    publishDockState();
-  }
-}
-
 function isTauriEnvironment(): boolean {
   return "__TAURI_INTERNALS__" in window || "__TAURI__" in window;
 }
@@ -2642,8 +2525,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
   }
 
   const shortcut = normalizeShortcutToken(event.shortcut);
-  const pushShortcut = normalizeShortcutToken(registeredPushShortcut);
-  const commandShortcut = normalizeShortcutToken(registeredCommandShortcut);
+  const { push: pushShortcut, command: commandShortcut } = getNormalizedRegisteredShortcuts();
   logClientEvent(
     `[hotkey.global.event] normalized shortcut=${shortcut || "-"} push=${
       pushShortcut || "-"
@@ -2701,48 +2583,6 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
   }
 
   logClientEvent("[hotkey.global.event] no handler matched the incoming shortcut");
-}
-
-function markGlobalShortcutHandled(shortcutToken: string, state: "pressed" | "released"): void {
-  lastGlobalShortcutToken = shortcutToken;
-  lastGlobalShortcutState = state;
-  lastGlobalShortcutHandledAt = Date.now();
-}
-
-function shouldBypassLocalShortcutHandling(shortcutToken: string): boolean {
-  if (!globalShortcutsActive || !shortcutToken) {
-    return false;
-  }
-
-  const registeredPush = normalizeShortcutToken(registeredPushShortcut);
-  const registeredCommand = normalizeShortcutToken(registeredCommandShortcut);
-  const shouldBypass = shortcutToken === registeredPush || shortcutToken === registeredCommand;
-  if (shouldBypass) {
-    logClientEvent(`[hotkey.local.bypass] delegated to global shortcut=${shortcutToken}`);
-  }
-  return shouldBypass;
-}
-
-function shouldIgnoreLocalShortcutFromRecentGlobal(
-  shortcutToken: string,
-  state: "pressed" | "released",
-): boolean {
-  if (!globalShortcutsActive) {
-    return false;
-  }
-
-  if (lastGlobalShortcutState !== state || lastGlobalShortcutToken !== shortcutToken) {
-    return false;
-  }
-
-  const elapsed = Date.now() - lastGlobalShortcutHandledAt;
-  const shouldIgnore = elapsed >= 0 && elapsed <= 180;
-  if (shouldIgnore) {
-    logClientEvent(
-      `[hotkey.local.dedupe] ignored state=${state} shortcut=${shortcutToken} elapsedMs=${elapsed}`,
-    );
-  }
-  return shouldIgnore;
 }
 
 function persistDictionaryTerms(): void {
@@ -5717,11 +5557,11 @@ async function refreshBlockedAppShortcutSuppression(): Promise<void> {
   try {
     const status = await fetchForegroundInputBlockStatus(true);
     const shouldSuppress = status.blocked;
-    if (shouldSuppress === shortcutsSuppressedByBlockedApp) {
+    if (shouldSuppress === isShortcutSuppressionActive()) {
       return;
     }
 
-    shortcutsSuppressedByBlockedApp = shouldSuppress;
+    setShortcutSuppressionActive(shouldSuppress);
     if (shouldSuppress) {
       clearPushToTalkHolds();
       await syncGlobalShortcuts(true);
@@ -6005,7 +5845,7 @@ function publishDockState(): void {
       hotkey: cachedHotkeyDisplay,
       showFlowBar: settings.showFlowBar,
       commandModeArmed,
-      globalShortcutsActive,
+      globalShortcutsActive: isGlobalShortcutsActive(),
     });
   } catch {
     // Ignore post errors to keep main flow resilient.
