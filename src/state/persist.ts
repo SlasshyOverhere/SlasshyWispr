@@ -20,6 +20,7 @@ import {
 // ponytail: key lives in main.tsx today; move to constants.ts when the
 // settings-pane owner consolidates (Phase 4 follow-up), then import it.
 const ACTIVE_SETTINGS_PANE_STORAGE_KEY = "slasshy-wispr-active-settings-pane-v1";
+import type { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type {
   AchievementState,
   AnalyticsSessionDetail,
@@ -163,4 +164,17 @@ export function updateAndPersistDockLayout(x: number, y: number): void {
     y: Math.round(y),
   });
   persistDockLayout(persistDeps.getDockLayout() as DockLayout);
+}
+
+export async function persistDockPositionFromWindow(win: WebviewWindow | null): Promise<void> {
+  if (!win) {
+    return;
+  }
+
+  try {
+    const position = await win.outerPosition();
+    updateAndPersistDockLayout(position.x, position.y);
+  } catch {
+    // Best-effort snapshot only.
+  }
 }

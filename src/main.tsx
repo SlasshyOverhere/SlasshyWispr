@@ -54,6 +54,7 @@ import {
   persistUsageStats as persistUsageStatsService,
   renderFullHistory as renderFullHistoryService,
   updateAndPersistDockLayout as updateAndPersistDockLayoutService,
+  persistDockPositionFromWindow as persistDockPositionFromWindowService,
 } from "./state/persist";
 import { loadAnalyticsSessions as loadCanonicalAnalyticsSessions } from "./state/usage";
 import {
@@ -634,15 +635,15 @@ let voiceIndicatorWindow: WebviewWindow | null = null;
 let selectionAssistantWindow: WebviewWindow | null = null;
 let latestSelectionPopupPayload: SelectionPopupPayload | null = null;
 let selectionPopupTokenCounter = 0;
-let dockLayout = loadDockLayout();
+let dockLayout = loadDockLayoutService();
 
-let usageStats = loadUsageStats();
+let usageStats = loadUsageStatsService();
 let analyticsSessionDetails: AnalyticsSessionDetail[] = loadCanonicalAnalyticsSessions();
-let achievementStates: AchievementState[] = loadAchievementStates();
+let achievementStates: AchievementState[] = loadAchievementStatesService();
 let homeHistoryEntries = loadHistory();
 const recentTurns: Array<{ speaker: string; content: string }> = [];
-let activePage: MainPage = loadPersistedMainPage();
-let activeSettingsPane: SettingsPane = loadPersistedSettingsPane();
+let activePage: MainPage = loadPersistedMainPageService();
+let activeSettingsPane: SettingsPane = loadPersistedSettingsPaneService();
 let settingsCloseTimer: number | null = null;
 let settingsPaneTransitionTimer: number | null = null;
 let dockRuntimeErrorShown = false;
@@ -724,7 +725,7 @@ initPipelineRender(
     setHomeHistory: (entries) => {
       homeHistoryEntries = entries;
     },
-    persistHomeHistory: () => persistHomeHistory(),
+    persistHomeHistory: () => persistHomeHistoryService(),
     notifyStoreUpdated: () => {
       window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
     },
@@ -955,8 +956,8 @@ initDock(
     setRuntimeErrorShown: (shown) => {
       dockRuntimeErrorShown = shown;
     },
-    persistDockPosition: (win) => persistDockPositionFromWindow(win),
-    persistLayout: (x, y) => updateAndPersistDockLayout(x, y),
+    persistDockPosition: (win) => persistDockPositionFromWindowService(win),
+    persistLayout: (x, y) => updateAndPersistDockLayoutService(x, y),
     resolveStartPosition: (w, h) => resolveDockStartPosition(w, h),
     canPreWarmMicrophone: () => canPreWarmMicrophoneService(),
     preWarmMicrophoneStream: (deviceId) => {
@@ -1314,7 +1315,7 @@ updateTtsSetupGate();
 persistDictionaryTermsService();
 persistSnippetsService();
 persistQuickNotesService();
-persistUsageStats();
+persistUsageStatsService();
 
 if (systemThemeMediaQuery) {
   const handleSystemThemeChange = (): void => {
@@ -1641,7 +1642,7 @@ window.addEventListener("beforeunload", () => {
     });
     setExternalMediaMutedForDictation(false);
   }
-  void persistDockPositionFromWindow(voiceIndicatorWindow);
+  void persistDockPositionFromWindowService(voiceIndicatorWindow);
   dockChannel.close();
   selectionPopupChannel.close();
   if (isTauriEnvironment()) {
@@ -1915,7 +1916,7 @@ document.querySelectorAll(".filter-btn").forEach(btn => {
     document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     const filter = btn.getAttribute("data-filter") as "all" | "day" | "week" | "month";
-    renderFullHistory(filter);
+    renderFullHistoryService(filter);
   });
 });
 
@@ -1982,7 +1983,7 @@ function renderDatePicker(): void {
       selectedDate = dayEl.getAttribute("data-date");
       document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
       datePickerBtn.classList.add("active");
-      renderFullHistory("all", selectedDate!);
+      renderFullHistoryService("all", selectedDate!);
       customDatePicker.hidden = true;
       renderDatePicker();
     });
@@ -1994,11 +1995,11 @@ clearStatsBtn.addEventListener("click", async () => {
     return;
   }
   usageStats = { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
-  persistUsageStats();
+  persistUsageStatsService();
   analyticsSessionDetails = [];
-  persistAnalyticsSessionDetails();
+  persistAnalyticsSessionDetailsService();
   achievementStates = [];
-  persistAchievementStates();
+  persistAchievementStatesService();
   updateUsageMetricsService();
   window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
   setNotice("Statistics have been reset.");
@@ -2006,7 +2007,7 @@ clearStatsBtn.addEventListener("click", async () => {
 
 function clearAllHistory(): void {
   homeHistoryEntries = [];
-  persistHomeHistory();
+  persistHomeHistoryService();
   // Notify React to re-render with cleared history.
   window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
   recentTurns.length = 0;
@@ -2039,9 +2040,9 @@ initUsageTracker({
     achievementStates.push(...unlocked);
   },
   getRecordingStartedAt: () => recordingStartedAt,
-  persistStats: () => persistUsageStats(),
-  persistSessions: () => persistAnalyticsSessionDetails(),
-  persistAchievements: () => persistAchievementStates(),
+  persistStats: () => persistUsageStatsService(),
+  persistSessions: () => persistAnalyticsSessionDetailsService(),
+  persistAchievements: () => persistAchievementStatesService(),
   renderMetrics: () => updateUsageMetricsService(),
   notifyStoreUpdated: () => {
     window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
@@ -2322,7 +2323,7 @@ async function backfillHistoryRecordingIds(): Promise<void> {
       return entry;
     });
     if (patched > 0) {
-      persistHomeHistory();
+      persistHomeHistoryService();
       window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
       logClientEvent(`[recordings.backfill] attached=${patched} of ${matches.length}`);
     }
@@ -2607,71 +2608,14 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
   logClientEvent("[hotkey.global.event] no handler matched the incoming shortcut");
 }
 
-function loadUsageStats(): UsageStats {
-  return loadUsageStatsService();
-}
-
-function persistUsageStats(): void {
-  persistUsageStatsService();
-}
-
-function persistAnalyticsSessionDetails(): void {
-  persistAnalyticsSessionDetailsService();
-}
-
-function loadAchievementStates(): AchievementState[] {
-  return loadAchievementStatesService();
-}
-
-function persistAchievementStates(): void {
-  persistAchievementStatesService();
-}
-
 function checkAndUnlockAchievements(stats: UsageStats): void {
   const unlocked = newlyUnlockedAchievements(stats, achievementStates, Date.now());
   if (unlocked.length > 0) {
     achievementStates.push(...unlocked);
-    persistAchievementStates();
+    persistAchievementStatesService();
   }
 }
 
-function loadPersistedMainPage(): MainPage {
-  return loadPersistedMainPageService();
-}
-
-function loadPersistedSettingsPane(): SettingsPane {
-  return loadPersistedSettingsPaneService();
-}
-
-function persistHomeHistory(): void {
-  persistHomeHistoryService();
-}
-
-
-function renderFullHistory(filter: "all" | "day" | "week" | "month" = "all", specificDate?: string): void {
-  renderFullHistoryService(filter, specificDate);
-}
-
-function loadDockLayout(): DockLayout | null {
-  return loadDockLayoutService();
-}
-
-function updateAndPersistDockLayout(x: number, y: number): void {
-  updateAndPersistDockLayoutService(x, y);
-}
-
-async function persistDockPositionFromWindow(win: WebviewWindow | null): Promise<void> {
-  if (!win) {
-    return;
-  }
-
-  try {
-    const position = await win.outerPosition();
-    updateAndPersistDockLayout(position.x, position.y);
-  } catch {
-    // Best-effort snapshot only.
-  }
-}
 
 function clampDockAxis(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) {
