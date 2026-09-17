@@ -108,6 +108,15 @@ import {
 } from "./settings/settings-state";
 import { APP_UPDATE_AUTO_CHECK_CHANGED_EVENT } from "./updater/updater-client-shim";
 import {
+  applyUpdateCheckResultView,
+  initializeUpdaterPanel as initializeUpdaterPanelService,
+  initUpdaterView,
+  refreshUpdateLastCheckedText as refreshUpdateLastCheckedTextService,
+  setUpdateInstallProgress as setUpdateInstallProgressService,
+  setUpdaterStatus as setUpdaterStatusService,
+  showManualDownloadFallback as showManualDownloadFallbackService,
+} from "./updater/updater-view";
+import {
   isExternalMediaMutedForDictation,
   pauseExternalMediaForDictation as pauseExternalMediaForDictationService,
   resumeExternalMediaAfterDictation as resumeExternalMediaAfterDictationService,
@@ -203,7 +212,6 @@ import {
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
-  GITHUB_RELEASES_PAGE_URL,
   LOCAL_STT_MODEL_SIZE_LABELS,
   ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS,
   MAX_HISTORY_ITEMS,
@@ -656,11 +664,8 @@ import {
   readAppUpdateAutoCheckEnabled,
   isUpdateSnoozed,
   snoozeUpdateFor24Hours,
-  readLastAppUpdateCheckedAtMs,
   shouldRunStartupUpdateCheck,
   msUntilNextAutomaticUpdateCheck,
-  isSafeGithubReleasePageUrl,
-  formatPublishedDate,
 } from "./updater/updater-client";
 
 const NOTE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -737,6 +742,52 @@ initRecordings(
 );
 async function refreshRecordingsStorageHint(): Promise<void> {
   await refreshRecordingsStorageHintService();
+}
+initUpdaterView(
+  {
+    statusPill: updateStatusPill,
+    statusText: updateStatusText,
+    currentVersion: updateCurrentVersion,
+    latestVersion: updateLatestVersion,
+    publishedAt: updatePublishedAt,
+    lastCheckedText: updateLastCheckedText,
+    releaseCard: updateReleaseCard,
+    releaseName: updateReleaseName,
+    releaseNotes: updateReleaseNotes,
+    releaseLink: updateReleaseLink,
+    installProgressWrap: updateInstallProgressWrap,
+    installProgressTrack: updateInstallProgressTrack,
+    installProgressBar: updateInstallProgressBar,
+    installProgressText: updateInstallProgressText,
+    manualDownloadRow: updateManualDownloadRow,
+    manualDownloadText: updateManualDownloadText,
+    openGithubReleasesBtn: openGithubReleasesBtn,
+    autoCheckUpdatesToggle: autoCheckUpdatesToggle,
+  },
+  {
+    isTauri: isTauriEnvironment,
+    openExternal: (url) => openInSystemBrowser(url),
+  },
+);
+function refreshUpdateLastCheckedText(): void {
+  refreshUpdateLastCheckedTextService();
+}
+function setUpdaterStatus(stage: "idle" | "processing" | "speaking" | "error", message: string): void {
+  setUpdaterStatusService(stage, message);
+}
+function setUpdateInstallProgress(percent: number, message: string, detail = "", visible = true): void {
+  setUpdateInstallProgressService(percent, message, detail, visible);
+}
+function showManualDownloadFallback(detail: string): void {
+  showManualDownloadFallbackService(detail);
+}
+function applyUpdateCheckResult(result: AppUpdateCheckResponse, silent: boolean): void {
+  applyUpdateCheckResultView(result, silent);
+  syncUpdaterButtons();
+}
+function initializeUpdaterPanel(): void {
+  initializeUpdaterPanelService();
+  syncUpdaterButtons();
 }
 const settingsCoreDeps: SettingsCoreDeps = {
   isCapturingHotkey: () => isHotkeyCaptureActive(),
@@ -2458,16 +2509,6 @@ function openInSystemBrowser(url: string): void {
   });
 }
 
-function refreshUpdateLastCheckedText(): void {
-  const lastCheckedAt = readLastAppUpdateCheckedAtMs();
-  if (lastCheckedAt <= 0) {
-    updateLastCheckedText.textContent = "Last checked: Never.";
-    return;
-  }
-
-  updateLastCheckedText.textContent = `Last checked: ${new Date(lastCheckedAt).toLocaleString()}.`;
-}
-
 function syncUpdaterButtons(): void {
   if (!isTauriEnvironment()) {
     checkUpdatesBtn.disabled = true;
@@ -2486,41 +2527,6 @@ function syncUpdaterButtons(): void {
     : "Download & install";
   skipUpdateVersionBtn.disabled = updateCheckInFlight || updateInstallInFlight || !cachedUpdateResult?.available;
   snoozeUpdateBtn.disabled = updateCheckInFlight || updateInstallInFlight;
-}
-
-function initializeUpdaterPanel(): void {
-  updateCurrentVersion.textContent = "-";
-  updateLatestVersion.textContent = "-";
-  updatePublishedAt.textContent = "-";
-  updateReleaseCard.hidden = true;
-  updateReleaseName.textContent = "-";
-  updateReleaseNotes.textContent = "Release notes are unavailable for this build.";
-  updateReleaseLink.href = "https://github.com";
-  updateReleaseLink.hidden = true;
-  updateReleaseLink.addEventListener("click", (event) => {
-    if (!isTauriEnvironment()) {
-      return;
-    }
-    event.preventDefault();
-    openInSystemBrowser(updateReleaseLink.href);
-  });
-  updateInstallProgressWrap.hidden = true;
-  updateInstallProgressBar.style.setProperty("--p", "0");
-  updateInstallProgressTrack.setAttribute("aria-valuenow", "0");
-  updateInstallProgressTrack.setAttribute("aria-valuetext", "Waiting to start update download.");
-  updateInstallProgressText.textContent = "Waiting to start update download.";
-  updateManualDownloadRow.hidden = true;
-  openGithubReleasesBtn.addEventListener("click", () => {
-    openInSystemBrowser(GITHUB_RELEASES_PAGE_URL);
-  });
-  autoCheckUpdatesToggle.checked = readAppUpdateAutoCheckEnabled();
-  refreshUpdateLastCheckedText();
-  setUpdaterStatus("idle", "Check to see if a new version is available.");
-  syncUpdaterButtons();
-
-  if (!isTauriEnvironment()) {
-    setUpdaterStatus("error", "Updater works only inside the desktop app build.");
-  }
 }
 
 function setupCustomWindowControls(): void {
@@ -2545,47 +2551,12 @@ function setupCustomWindowControls(): void {
   });
 }
 
-function setUpdaterStatus(stage: "idle" | "processing" | "speaking" | "error", message: string): void {
-  updateStatusPill.dataset.stage = stage;
-  if (stage === "idle") {
-    updateStatusPill.textContent = "Idle";
-  } else if (stage === "processing") {
-    updateStatusPill.textContent = "Checking";
-  } else if (stage === "speaking") {
-    updateStatusPill.textContent = "Available";
-  } else {
-    updateStatusPill.textContent = "Error";
-  }
-  updateStatusText.textContent = message;
-}
-
-function setUpdateInstallProgress(
-  percent: number,
-  message: string,
-  detail = "",
-  visible = true,
-): void {
-  updateInstallProgressWrap.hidden = !visible;
-  const normalizedPercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
-  updateInstallProgressBar.style.setProperty("--p", String(normalizedPercent / 100));
-  const progressText = detail ? `${message} ${detail}` : message;
-  updateInstallProgressTrack.setAttribute("aria-valuenow", String(Math.round(normalizedPercent)));
-  updateInstallProgressTrack.setAttribute("aria-valuetext", progressText);
-  updateInstallProgressText.textContent = progressText;
-}
-
 function openUpdateSettings(reason: string): void {
   openSettings(reason);
   setActiveSettingsPane("update-security", reason);
 }
 
 const notifiedVersionsThisSession = new Set<string>();
-
-function showManualDownloadFallback(detail: string): void {
-  updateManualDownloadText.textContent = `Download the latest version from GitHub Releases instead.`;
-  updateManualDownloadRow.hidden = false;
-  setUpdaterStatus("error", detail);
-}
 
 function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "startup" | "interval" | "manual"): void {
   const version = result.latestVersion.trim();
@@ -2650,49 +2621,6 @@ function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source: "start
     .catch(() => {
       // Ignore notification permission errors.
     });
-}
-
-function applyUpdateCheckResult(result: AppUpdateCheckResponse, silent: boolean): void {
-  updateCurrentVersion.textContent = result.currentVersion || "-";
-  updateLatestVersion.textContent = result.latestVersion || "-";
-  updatePublishedAt.textContent = formatPublishedDate(result.publishedAt);
-  updateReleaseName.textContent = result.releaseName?.trim() || result.latestVersion || "Release information unavailable";
-  updateReleaseNotes.textContent = result.releaseNotes?.trim() || "Release notes are unavailable for this build.";
-  const hasReleaseDetails = Boolean(
-    result.releaseName?.trim() || result.releaseNotes?.trim() || isSafeGithubReleasePageUrl(result.releaseUrl),
-  );
-  updateReleaseCard.hidden = !hasReleaseDetails;
-  if (isSafeGithubReleasePageUrl(result.releaseUrl)) {
-    updateReleaseLink.href = result.releaseUrl;
-    updateReleaseLink.hidden = false;
-  } else {
-    updateReleaseLink.href = "https://github.com";
-    updateReleaseLink.hidden = true;
-  }
-
-  if (result.available && result.installerDownloadUrl) {
-    setUpdaterStatus(
-      "speaking",
-      `Update ${result.latestVersion} is available. Click "Download & install".`,
-    );
-    syncUpdaterButtons();
-    return;
-  }
-
-  if (result.latestVersion && result.latestVersion !== result.currentVersion) {
-    setUpdaterStatus(
-      "error",
-      "A newer release exists, but no Windows installer package was detected for auto-update.",
-    );
-    syncUpdaterButtons();
-    return;
-  }
-
-  setUpdaterStatus(
-    "idle",
-    silent ? "You are already on the latest version." : "You are already on the latest version.",
-  );
-  syncUpdaterButtons();
 }
 
 async function handleCheckForUpdates(options?: {
