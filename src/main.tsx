@@ -131,6 +131,12 @@ import {
   updateMicrophoneSummary as updateMicrophoneSummaryService,
 } from "./shell/microphones";
 import {
+  initModelCatalogs,
+  renderLocalOllamaModelCatalog as renderLocalOllamaModelCatalogService,
+  renderLocalSttModelCatalog as renderLocalSttModelCatalogService,
+  renderProviderModelCatalog as renderProviderModelCatalogService,
+} from "./shell/model-catalogs";
+import {
   initRecordings,
   refreshRecordingsStorageHint as refreshRecordingsStorageHintService,
 } from "./shell/recordings";
@@ -808,6 +814,43 @@ function applySettingsToForm(next: PersistedSettings): void {
 let cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
 applySettingsToForm(settings);
 renderSidebarLocalSttToggle();
+initModelCatalogs(
+  {
+    providerSelect: providerModelCatalogSelect,
+    localOllamaSelect: localOllamaModelCatalogSelect,
+    localSttSelect: localSttModelCatalogSelect,
+  },
+  {
+    getAiModelInput: () => settingsFormRefs.aiModelInput.value,
+    getSttModelInput: () => settingsFormRefs.sttModelInput.value,
+    getAiModelName: () => settings.aiModelName,
+    getSttModelName: () => settings.sttModelName,
+    getLocalOllamaModelInput: () => localOllamaModelInput.value,
+    getLocalOllamaModelName: () => settings.localOllamaModel,
+    getLocalSttModelInput: () => localSttModelInput.value,
+    setProviderCatalog: (models) => {
+      providerModelCatalog = models;
+    },
+    setLocalOllamaCatalog: (models) => {
+      localOllamaModelCatalog = models;
+    },
+    setLocalSttCatalog: (models) => {
+      localSttModelCatalog = models;
+    },
+    setLocalSttModelInput: (value) => {
+      localSttModelInput.value = value;
+    },
+  },
+);
+function renderProviderModelCatalog(models: string[], selectedModel = ""): void {
+  renderProviderModelCatalogService(models, selectedModel);
+}
+function renderLocalOllamaModelCatalog(models: string[], selectedModel = ""): void {
+  renderLocalOllamaModelCatalogService(models, selectedModel);
+}
+function renderLocalSttModelCatalog(models: string[], selectedModel = ""): void {
+  renderLocalSttModelCatalogService(models, selectedModel);
+}
 renderProviderModelCatalog([], settings.aiModelName || settings.sttModelName);
 renderLocalOllamaModelCatalog([], settings.localOllamaModel);
 renderLocalSttModelCatalog([], settings.localSttModel);
@@ -3916,124 +3959,6 @@ async function handleSetupAllTts(): Promise<void> {
     setStage("error", "Setup failed to start.");
     syncActionAvailability();
   }
-}
-
-function renderProviderModelCatalog(models: string[], selectedModel = ""): void {
-  const next: string[] = [];
-  const seen = new Set<string>();
-  for (const model of models) {
-    const trimmed = model.trim();
-    if (trimmed && !seen.has(trimmed)) {
-      seen.add(trimmed);
-      next.push(trimmed);
-    }
-  }
-  const normalized = next.sort();
-  const fallbackModel =
-    selectedModel.trim() ||
-    settingsFormRefs.aiModelInput.value.trim() ||
-    settingsFormRefs.sttModelInput.value.trim() ||
-    settings.aiModelName.trim() ||
-    settings.sttModelName.trim();
-  const finalModels =
-    normalized.length > 0
-      ? normalized
-      : fallbackModel
-        ? [fallbackModel]
-        : [];
-  providerModelCatalog = finalModels;
-
-  if (finalModels.length === 0) {
-    providerModelCatalogSelect.innerHTML = '<option value="">No models available</option>';
-    return;
-  }
-
-  const selected = finalModels.includes(selectedModel)
-    ? selectedModel
-    : finalModels.includes(fallbackModel)
-      ? fallbackModel
-      : "";
-  const options = ['<option value="">Select a model...</option>'];
-  for (const model of finalModels) {
-    const active = model === selected ? " selected" : "";
-    options.push(`<option value="${escapeHtml(model)}"${active}>${escapeHtml(model)}</option>`);
-  }
-  providerModelCatalogSelect.innerHTML = options.join("");
-  providerModelCatalogSelect.value = selected;
-}
-
-function renderLocalOllamaModelCatalog(models: string[], selectedModel = ""): void {
-  const next: string[] = [];
-  const seen = new Set<string>();
-  for (const model of models) {
-    const trimmed = model.trim();
-    if (trimmed && !seen.has(trimmed)) {
-      seen.add(trimmed);
-      next.push(trimmed);
-    }
-  }
-  const normalized = next.sort();
-  const fallbackModel =
-    selectedModel.trim() || localOllamaModelInput.value.trim() || settings.localOllamaModel.trim();
-  const finalModels =
-    normalized.length > 0
-      ? normalized
-      : fallbackModel
-        ? [fallbackModel]
-        : [];
-  localOllamaModelCatalog = finalModels;
-
-  if (finalModels.length === 0) {
-    localOllamaModelCatalogSelect.innerHTML = '<option value="">No models available</option>';
-    return;
-  }
-
-  const selected = finalModels.includes(selectedModel)
-    ? selectedModel
-    : finalModels.includes(fallbackModel)
-      ? fallbackModel
-      : "";
-  const options = ['<option value="">Select a model...</option>'];
-  for (const model of finalModels) {
-    const active = model === selected ? " selected" : "";
-    options.push(`<option value="${escapeHtml(model)}"${active}>${escapeHtml(model)}</option>`);
-  }
-  localOllamaModelCatalogSelect.innerHTML = options.join("");
-  localOllamaModelCatalogSelect.value = selected;
-}
-
-function renderLocalSttModelCatalog(models: string[], selectedModel = ""): void {
-  const next: string[] = [];
-  const seen = new Set<string>();
-  for (const model of models) {
-    const trimmed = model.trim();
-    if (trimmed && !seen.has(trimmed)) {
-      seen.add(trimmed);
-      next.push(trimmed);
-    }
-  }
-  const normalized = next;
-  localSttModelCatalog = normalized;
-
-  if (normalized.length === 0) {
-    localSttModelCatalogSelect.innerHTML = '<option value="">No models available</option>';
-    return;
-  }
-
-  const selected = normalized.includes(selectedModel.trim()) ? selectedModel.trim() : "";
-  const currentInputModel = localSttModelInput.value.trim();
-  const selectedOrCurrent = selected || (normalized.includes(currentInputModel) ? currentInputModel : "");
-  if (currentInputModel && !normalized.includes(currentInputModel)) {
-    localSttModelInput.value = "";
-  }
-  const options = ['<option value="">Select a model...</option>'];
-  for (const model of normalized) {
-    const active = model === selectedOrCurrent ? " selected" : "";
-    const label = LOCAL_STT_MODEL_SIZE_LABELS[model] || model;
-    options.push(`<option value="${escapeHtml(model)}"${active}>${escapeHtml(label)}</option>`);
-  }
-  localSttModelCatalogSelect.innerHTML = options.join("");
-  localSttModelCatalogSelect.value = selectedOrCurrent;
 }
 
 async function fetchProviderModels(): Promise<void> {
