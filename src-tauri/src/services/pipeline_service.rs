@@ -20,6 +20,28 @@ use crate::pipeline::tts::{
 };
 use crate::state::AppState;
 
+use crate::commands::pipeline::AssistantPipelineRequest;
+use crate::pipeline::routing::{PipelineModeConfig, PipelineRoutingInput};
+
+/// Thin adapter that converts an IPC request into a pure routing input
+/// and delegates to `pipeline::routing::resolve_pipeline_mode`.
+pub(crate) fn resolve_pipeline_mode(
+    request: &AssistantPipelineRequest,
+) -> Result<PipelineModeConfig, String> {
+    let routing_input = PipelineRoutingInput {
+        api_key: request.api_key.clone(),
+        api_base_url: request.api_base_url.clone(),
+        stt_model: request.stt_model.clone(),
+        ai_model: request.ai_model.clone(),
+        stt_local_mode: request.stt_local_mode,
+        ai_local_mode: request.ai_local_mode,
+        local_ollama_base_url: request.local_ollama_base_url.clone(),
+        local_ollama_model: request.local_ollama_model.clone(),
+        local_stt_model: request.local_stt_model.clone(),
+    };
+    crate::pipeline::routing::resolve_pipeline_mode(&routing_input)
+}
+
 pub(crate) fn discover_installed_piper_path(app: &AppHandle) -> Result<Option<PathBuf>, String> {
     let runtime_dir = crate::pipeline::tts::piper_runtime_dir(app)?;
     find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)
@@ -206,7 +228,7 @@ pub(crate) fn sync_orchestrator_pending_rewrite_to_app_state(
 mod tests {
     use super::*;
     use crate::pipeline::routing::{AiModeConfig, SttModeConfig};
-    use crate::{resolve_pipeline_mode};
+    
     use crate::pipeline::process::validate_python_binary_path;
 
 fn pipeline_mode_request_template() -> crate::commands::pipeline::AssistantPipelineRequest {
@@ -291,7 +313,7 @@ fn online_pipeline_request() -> crate::commands::pipeline::AssistantPipelineRequ
 #[test]
 fn fully_online_pipeline_resolves_both_stages_to_online() {
     let request = online_pipeline_request();
-    let mode = crate::resolve_pipeline_mode(&request).expect("should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("should resolve");
     assert!(matches!(mode.stt, crate::pipeline::routing::SttModeConfig::Online { .. }));
     assert!(matches!(mode.ai, crate::pipeline::routing::AiModeConfig::Online { .. }));
 }
@@ -302,7 +324,7 @@ fn fully_local_pipeline_resolves_both_stages_to_local() {
     request.stt_local_mode = Some(true);
     request.ai_local_mode = Some(true);
     request.api_key = String::new();
-    let mode = crate::resolve_pipeline_mode(&request).expect("should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("should resolve");
     assert!(matches!(mode.stt, crate::pipeline::routing::SttModeConfig::Local(_)));
     assert!(matches!(mode.ai, crate::pipeline::routing::AiModeConfig::Local(_)));
 }
@@ -312,7 +334,7 @@ fn hybrid_online_stt_local_ai_resolves_correctly() {
     let mut request = online_pipeline_request();
     request.stt_local_mode = Some(false);
     request.ai_local_mode = Some(true);
-    let mode = crate::resolve_pipeline_mode(&request).expect("should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("should resolve");
     assert!(matches!(mode.stt, crate::pipeline::routing::SttModeConfig::Online { .. }));
     assert!(matches!(mode.ai, crate::pipeline::routing::AiModeConfig::Local(_)));
 }
@@ -322,7 +344,7 @@ fn hybrid_local_stt_online_ai_resolves_correctly() {
     let mut request = online_pipeline_request();
     request.stt_local_mode = Some(true);
     request.ai_local_mode = Some(false);
-    let mode = crate::resolve_pipeline_mode(&request).expect("should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("should resolve");
     assert!(matches!(mode.stt, crate::pipeline::routing::SttModeConfig::Local(_)));
     assert!(matches!(mode.ai, crate::pipeline::routing::AiModeConfig::Online { .. }));
 }
@@ -331,7 +353,7 @@ fn hybrid_local_stt_online_ai_resolves_correctly() {
 fn fully_online_pipeline_stt_model_is_preserved() {
     let mut request = online_pipeline_request();
     request.stt_model = Some("whisper-large-v3".to_string());
-    let mode = crate::resolve_pipeline_mode(&request).expect("should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("should resolve");
     match &mode.stt {
         crate::pipeline::routing::SttModeConfig::Online { stt_model, .. } => {
             assert_eq!(stt_model, "whisper-large-v3");
@@ -344,7 +366,7 @@ fn fully_online_pipeline_stt_model_is_preserved() {
 fn fully_online_pipeline_ai_model_is_preserved() {
     let mut request = online_pipeline_request();
     request.ai_model = Some("claude-3-opus".to_string());
-    let mode = crate::resolve_pipeline_mode(&request).expect("should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("should resolve");
     match &mode.ai {
         AiModeConfig::Online { ai_model, .. } => {
             assert_eq!(ai_model, "claude-3-opus");
@@ -360,7 +382,7 @@ fn fully_local_pipeline_ollama_config_is_preserved() {
     request.ai_local_mode = Some(true);
     request.api_key = String::new();
     request.local_ollama_model = Some("mistral:latest".to_string());
-    let mode = crate::resolve_pipeline_mode(&request).expect("should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("should resolve");
     match &mode.ai {
         crate::pipeline::routing::AiModeConfig::Local(config) => {
             assert_eq!(config.ollama_model.as_deref(), Some("mistral:latest"));
@@ -377,7 +399,7 @@ fn fully_local_pipeline_stt_model_is_canonicalized() {
     request.ai_local_mode = Some(true);
     request.api_key = String::new();
     request.local_stt_model = Some("nvidia/parakeet-tdt-0.6b-v2".to_string());
-    let mode = crate::resolve_pipeline_mode(&request).expect("should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("should resolve");
     match &mode.stt {
         crate::pipeline::routing::SttModeConfig::Local(config) => {
             // v2 alias → canonical v2 id
@@ -392,32 +414,32 @@ fn pipeline_error_messages_are_user_friendly() {
     // Missing API key
     let mut req = online_pipeline_request();
     req.api_key = String::new();
-    let err = crate::resolve_pipeline_mode(&req).unwrap_err();
+    let err = resolve_pipeline_mode(&req).unwrap_err();
     assert!(err.contains("API key is required"));
 
     // Missing API base URL
     let mut req = online_pipeline_request();
     req.api_base_url = None;
-    let err = crate::resolve_pipeline_mode(&req).unwrap_err();
+    let err = resolve_pipeline_mode(&req).unwrap_err();
     assert!(err.contains("API base URL is required"));
 
     // Missing online STT model
     let mut req = online_pipeline_request();
     req.stt_model = None;
-    let err = crate::resolve_pipeline_mode(&req).unwrap_err();
+    let err = resolve_pipeline_mode(&req).unwrap_err();
     assert!(err.contains("Online STT model is required"));
 
     // Missing online AI model
     let mut req = online_pipeline_request();
     req.ai_model = None;
-    let err = crate::resolve_pipeline_mode(&req).unwrap_err();
+    let err = resolve_pipeline_mode(&req).unwrap_err();
     assert!(err.contains("Online AI model is required"));
 
     // Missing local STT model
     let mut req = online_pipeline_request();
     req.stt_local_mode = Some(true);
     req.local_stt_model = None;
-    let err = crate::resolve_pipeline_mode(&req).unwrap_err();
+    let err = resolve_pipeline_mode(&req).unwrap_err();
     assert!(err.contains("Local STT model is required"));
 }
 
@@ -427,7 +449,7 @@ fn resolve_pipeline_mode_supports_local_stt_online_ai() {
     request.stt_local_mode = Some(true);
     request.ai_local_mode = Some(false);
 
-    let mode = crate::resolve_pipeline_mode(&request).expect("pipeline mode should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("pipeline mode should resolve");
     assert!(matches!(mode.stt, crate::pipeline::routing::SttModeConfig::Local(_)));
     assert!(matches!(mode.ai, crate::pipeline::routing::AiModeConfig::Online { .. }));
 }
@@ -438,7 +460,7 @@ fn resolve_pipeline_mode_supports_online_stt_local_ai() {
     request.stt_local_mode = Some(false);
     request.ai_local_mode = Some(true);
 
-    let mode = crate::resolve_pipeline_mode(&request).expect("pipeline mode should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("pipeline mode should resolve");
     assert!(matches!(mode.stt, crate::pipeline::routing::SttModeConfig::Online { .. }));
     assert!(matches!(mode.ai, crate::pipeline::routing::AiModeConfig::Local(_)));
 }
@@ -451,7 +473,7 @@ fn resolve_pipeline_mode_requires_api_key_if_any_online_mode_enabled() {
     request.ai_local_mode = Some(false);
 
     let error =
-        crate::resolve_pipeline_mode(&request).expect_err("expected missing api key validation");
+        resolve_pipeline_mode(&request).expect_err("expected missing api key validation");
     assert!(error.contains("API key is required"));
 }
 
@@ -488,7 +510,7 @@ fn resolve_pipeline_mode_supports_fully_local() {
     request.api_key = String::new();
     request.api_base_url = None;
 
-    let mode = crate::resolve_pipeline_mode(&request).expect("fully local should resolve without api key");
+    let mode = resolve_pipeline_mode(&request).expect("fully local should resolve without api key");
     assert!(matches!(mode.stt, crate::pipeline::routing::SttModeConfig::Local(_)));
     assert!(matches!(mode.ai, crate::pipeline::routing::AiModeConfig::Local(_)));
 }
@@ -496,7 +518,7 @@ fn resolve_pipeline_mode_supports_fully_local() {
 #[test]
 fn resolve_pipeline_mode_supports_fully_online() {
     let request = pipeline_mode_request_template();
-    let mode = crate::resolve_pipeline_mode(&request).expect("fully online should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("fully online should resolve");
     assert!(matches!(mode.stt, crate::pipeline::routing::SttModeConfig::Online { .. }));
     assert!(matches!(mode.ai, crate::pipeline::routing::AiModeConfig::Online { .. }));
 }
@@ -505,7 +527,7 @@ fn resolve_pipeline_mode_supports_fully_online() {
 fn resolve_pipeline_mode_fails_when_api_base_url_missing_for_online() {
     let mut request = pipeline_mode_request_template();
     request.api_base_url = None;
-    let error = crate::resolve_pipeline_mode(&request)
+    let error = resolve_pipeline_mode(&request)
         .expect_err("should fail when api base url missing");
     assert!(error.contains("API base URL is required"));
 }
@@ -514,7 +536,7 @@ fn resolve_pipeline_mode_fails_when_api_base_url_missing_for_online() {
 fn resolve_pipeline_mode_fails_when_api_key_empty_for_online() {
     let mut request = pipeline_mode_request_template();
     request.api_key = String::new();
-    let error = crate::resolve_pipeline_mode(&request)
+    let error = resolve_pipeline_mode(&request)
         .expect_err("should fail when api key empty");
     assert!(error.contains("API key is required"));
 }
@@ -523,7 +545,7 @@ fn resolve_pipeline_mode_fails_when_api_key_empty_for_online() {
 fn resolve_pipeline_mode_fails_when_online_stt_model_missing() {
     let mut request = pipeline_mode_request_template();
     request.stt_model = None;
-    let error = crate::resolve_pipeline_mode(&request)
+    let error = resolve_pipeline_mode(&request)
         .expect_err("should fail when online stt model missing");
     assert!(error.contains("Online STT model is required"));
 }
@@ -532,7 +554,7 @@ fn resolve_pipeline_mode_fails_when_online_stt_model_missing() {
 fn resolve_pipeline_mode_fails_when_online_ai_model_missing() {
     let mut request = pipeline_mode_request_template();
     request.ai_model = None;
-    let error = crate::resolve_pipeline_mode(&request)
+    let error = resolve_pipeline_mode(&request)
         .expect_err("should fail when online ai model missing");
     assert!(error.contains("Online AI model is required"));
 }
@@ -542,7 +564,7 @@ fn resolve_pipeline_mode_fails_when_local_stt_model_missing() {
     let mut request = pipeline_mode_request_template();
     request.stt_local_mode = Some(true);
     request.local_stt_model = None;
-    let error = crate::resolve_pipeline_mode(&request)
+    let error = resolve_pipeline_mode(&request)
         .expect_err("should fail when local stt model missing");
     assert!(error.contains("Local STT model is required"));
 }
@@ -552,7 +574,7 @@ fn resolve_pipeline_mode_local_ai_allows_empty_ollama_model() {
     let mut request = pipeline_mode_request_template();
     request.ai_local_mode = Some(true);
     request.local_ollama_model = None;
-    let mode = crate::resolve_pipeline_mode(&request).expect("local ai should resolve without ollama model");
+    let mode = resolve_pipeline_mode(&request).expect("local ai should resolve without ollama model");
     match &mode.ai {
         crate::pipeline::routing::AiModeConfig::Local(config) => {
             assert!(config.ollama_model.is_none());
@@ -564,7 +586,7 @@ fn resolve_pipeline_mode_local_ai_allows_empty_ollama_model() {
 #[test]
 fn resolve_pipeline_mode_online_stt_carries_correct_credentials() {
     let request = pipeline_mode_request_template();
-    let mode = crate::resolve_pipeline_mode(&request).expect("online should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("online should resolve");
     match &mode.stt {
         crate::pipeline::routing::SttModeConfig::Online { api_key, api_base_url, stt_model } => {
             assert_eq!(api_key, "test-key");
@@ -580,7 +602,7 @@ fn resolve_pipeline_mode_local_stt_uses_canonical_model_id() {
     let mut request = pipeline_mode_request_template();
     request.stt_local_mode = Some(true);
     request.local_stt_model = Some("nvidia/parakeet-tdt-0.6b-v2".to_string());
-    let mode = crate::resolve_pipeline_mode(&request).expect("should resolve");
+    let mode = resolve_pipeline_mode(&request).expect("should resolve");
     match &mode.stt {
         crate::pipeline::routing::SttModeConfig::Local(config) => {
             // v2 alias should be canonicalized to v2 legacy id

@@ -213,21 +213,6 @@ struct ProviderModelsResponse {
 
 // normalize_api_key_secret has been moved to pipeline::routing.
 
-fn resolve_pipeline_mode(request: &AssistantPipelineRequest) -> Result<PipelineModeConfig, String> {
-    let routing_input = PipelineRoutingInput {
-        api_key: request.api_key.clone(),
-        api_base_url: request.api_base_url.clone(),
-        stt_model: request.stt_model.clone(),
-        ai_model: request.ai_model.clone(),
-        stt_local_mode: request.stt_local_mode,
-        ai_local_mode: request.ai_local_mode,
-        local_ollama_base_url: request.local_ollama_base_url.clone(),
-        local_ollama_model: request.local_ollama_model.clone(),
-        local_stt_model: request.local_stt_model.clone(),
-    };
-    pipeline::routing::resolve_pipeline_mode(&routing_input)
-}
-
 #[cfg(test)]
 mod tests {
     // validates_safe_update_urls moved to updater::tests

@@ -43,7 +43,7 @@ use crate::services::{
     resolve_piper_assets, sync_orchestrator_pending_rewrite_to_app_state, sync_selection_context,
     transcribe_audio, transcribe_audio_local,
 };
-use crate::resolve_pipeline_mode;
+use crate::services::pipeline_service::resolve_pipeline_mode;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
