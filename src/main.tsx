@@ -10,7 +10,6 @@ import "./settings.css";
 import {
   captureSelectedText as ipcCaptureSelectedText,
   checkForAppUpdate as ipcCheckForAppUpdate,
-  clearDictationRecordings as ipcClearDictationRecordings,
   configureLaunchAtLogin as ipcConfigureLaunchAtLogin,
   deactivateLocalSttModel as ipcDeactivateLocalSttModel,
   deleteLocalSttModel as ipcDeleteLocalSttModel,
@@ -32,7 +31,6 @@ import {
   launchAtLoginStatus as ipcLaunchAtLoginStatus,
   loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
   listDictationRecordingIds as ipcListDictationRecordingIds,
-  listDictationRecordingsStats as ipcListDictationRecordingsStats,
   openLocalSttModelPath as ipcOpenLocalSttModelPath,
   pasteClipboardText as ipcPasteClipboardText,
   pasteTextViaClipboard as ipcPasteTextViaClipboard,
@@ -123,6 +121,10 @@ import {
   setMicrophonePermissionGranted,
   updateMicrophoneSummary as updateMicrophoneSummaryService,
 } from "./shell/microphones";
+import {
+  initRecordings,
+  refreshRecordingsStorageHint as refreshRecordingsStorageHintService,
+} from "./shell/recordings";
 import {
   initDiagnostics,
   logClientEvent as logClientEventService,
@@ -243,7 +245,6 @@ import type {
   DockLayout,
   ForegroundInputBlockStatus,
   HomeHistoryEntry,
-  RecordingsStats,
   DockPlacementBounds,
   ActiveTtsPlayback,
   SelectionPopupPayload,
@@ -452,9 +453,6 @@ const localSttStatusDetail = requiredElement<HTMLParagraphElement>("#localSttSta
 const localSttDownloadNotice = requiredElement<HTMLParagraphElement>("#localSttDownloadNotice");
 const localSttDownloadProgressBar = requiredElement<HTMLSpanElement>("#localSttDownloadProgressBar");
 const localSttDownloadProgressText = requiredElement<HTMLParagraphElement>("#localSttDownloadProgressText");
-const clearRecordingsBtn = requiredElement<HTMLButtonElement>("#clearRecordingsBtn");
-const recordingsStorageHint = requiredElement<HTMLSpanElement>("#recordingsStorageHint");
-const recordingsStorageHintWeb = requiredElement<HTMLParagraphElement>("#recordingsStorageHintWeb");
 const settingsFormRefs = querySettingsFormRefs();
 const pushToTalkSoundSelect = requiredElement<HTMLSelectElement>("#pushToTalkSoundSelect");
 const pushToTalkEndSoundSelect = requiredElement<HTMLSelectElement>("#pushToTalkEndSoundSelect");
@@ -721,6 +719,24 @@ function pauseExternalMediaForDictation(): void {
 }
 function resumeExternalMediaAfterDictation(): void {
   resumeExternalMediaAfterDictationService(mediaControlDeps);
+}
+initRecordings(
+  {
+    clearButton: settingsFormRefs.clearRecordingsBtn,
+    storageHint: settingsFormRefs.recordingsStorageHint,
+    storageHintWeb: settingsFormRefs.recordingsStorageHintWeb,
+  },
+  {
+    isTauri: isTauriEnvironment,
+    notify: (message, isError) => setNotice(message, isError),
+    log: (message) => logClientEvent(message),
+    notifyStoreUpdated: () => {
+      window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+    },
+  },
+);
+async function refreshRecordingsStorageHint(): Promise<void> {
+  await refreshRecordingsStorageHintService();
 }
 const settingsCoreDeps: SettingsCoreDeps = {
   isCapturingHotkey: () => isHotkeyCaptureActive(),
@@ -3006,61 +3022,6 @@ function shouldIgnoreLocalShortcutFromRecentGlobal(
   }
   return shouldIgnore;
 }
-
-function formatRecordingsStorage(stats: RecordingsStats): string {
-  const files = stats.fileCount;
-  const bytes = stats.totalBytes;
-  let sizeLabel: string;
-  if (bytes < 1024) {
-    sizeLabel = `${bytes} B`;
-  } else if (bytes < 1024 * 1024) {
-    sizeLabel = `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 0 : 1)} KB`;
-  } else if (bytes < 1024 * 1024 * 1024) {
-    sizeLabel = `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  } else {
-    sizeLabel = `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  }
-  return `${files} file${files === 1 ? "" : "s"} · ${sizeLabel}`;
-}
-
-async function refreshRecordingsStorageHint(): Promise<void> {
-  if (!isTauriEnvironment()) {
-    recordingsStorageHint.textContent = "Desktop only";
-    recordingsStorageHintWeb.hidden = false;
-    return;
-  }
-  try {
-    const stats = await ipcListDictationRecordingsStats();
-    recordingsStorageHint.textContent = formatRecordingsStorage(stats);
-  } catch (error) {
-    recordingsStorageHint.textContent = "Unable to read storage";
-    logClientEvent(`[recordings] stats failed: ${asErrorMessage(error)}`);
-  }
-}
-
-async function handleClearRecordingsClick(): Promise<void> {
-  if (!isTauriEnvironment()) {
-    setNotice("Recordings can only be cleared from the desktop app.");
-    return;
-  }
-  clearRecordingsBtn.disabled = true;
-  try {
-    await ipcClearDictationRecordings();
-    await refreshRecordingsStorageHint();
-    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
-    setNotice("Recordings cleared.");
-  } catch (error) {
-    setNotice(`Unable to clear recordings: ${asErrorMessage(error)}`, true);
-  } finally {
-    clearRecordingsBtn.disabled = false;
-  }
-}
-
-clearRecordingsBtn.addEventListener("click", () => {
-  void handleClearRecordingsClick();
-});
-
-
 
 function persistDictionaryTerms(): void {
   localStorage.setItem(DICTIONARY_STORAGE_KEY, JSON.stringify(dictionaryTerms));

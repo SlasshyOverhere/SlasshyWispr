@@ -72,6 +72,7 @@ export interface SettingsFormRefs {
   saveRecordingsToggle: HTMLInputElement;
   recordingsStorageHint: HTMLElement;
   recordingsStorageHintWeb: HTMLParagraphElement;
+  clearRecordingsBtn: HTMLButtonElement;
   themeModeSelect: HTMLSelectElement;
   dictationSoundEffectsToggle: HTMLInputElement;
   muteMusicWhileDictatingToggle: HTMLInputElement;
@@ -157,6 +158,7 @@ export function querySettingsFormRefs(): SettingsFormRefs {
     saveRecordingsToggle: requiredElement<HTMLInputElement>("#saveRecordingsToggle"),
     recordingsStorageHint: requiredElement<HTMLElement>("#recordingsStorageHint"),
     recordingsStorageHintWeb: requiredElement<HTMLParagraphElement>("#recordingsStorageHintWeb"),
+    clearRecordingsBtn: requiredElement<HTMLButtonElement>("#clearRecordingsBtn"),
     themeModeSelect: requiredElement<HTMLSelectElement>("#themeModeSelect"),
     dictationSoundEffectsToggle: requiredElement<HTMLInputElement>("#dictationSoundEffectsToggle"),
     muteMusicWhileDictatingToggle: requiredElement<HTMLInputElement>(
