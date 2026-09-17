@@ -53,7 +53,6 @@ import {
   escapeHtml,
   expandSnippetsInText,
   formatBytes,
-  formatLatency,
   normalizeDictionaryEntries,
   normalizeSnippetEntries,
   validateDictionaryEntry,
@@ -115,6 +114,10 @@ import {
   initPipelinePrompt,
 } from "./pipeline/pipeline-prompt";
 import {
+  initPipelineRender,
+  renderPipelineResponse as renderPipelineResponseService,
+} from "./pipeline/pipeline-render";
+import {
   isExternalMediaMutedForDictation,
   pauseExternalMediaForDictation as pauseExternalMediaForDictationService,
   resumeExternalMediaAfterDictation as resumeExternalMediaAfterDictationService,
@@ -150,7 +153,6 @@ import {
   setNotice as setNoticeService,
 } from "./shell/diagnostics";
 import { parseJson } from "./state/storage";
-import { countWords } from "./analytics/analytics-service";
 import {
   initAnalyticsRender,
   updateUsageMetrics as updateUsageMetricsService,
@@ -247,7 +249,6 @@ import {
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
   LOCAL_STT_MODEL_SIZE_LABELS,
   ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS,
-  MAX_HISTORY_ITEMS,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
   BLOCKED_INPUT_NOTICE_COOLDOWN_MS,
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
@@ -284,8 +285,6 @@ import type {
   ActiveTtsPlayback,
   SelectionPopupPayload,
 } from "./types";
-
-type HomeHistoryMetrics = Pick<HomeHistoryEntry, "wpm" | "pipelineMs" | "spokenSeconds">;
 
 type StopRecordingOptions = {
   cancelPipeline?: boolean;
@@ -685,6 +684,27 @@ settings.commandHotkey = settings.commandHotkey.trim() || DEFAULT_COMMAND_HOTKEY
 initSettingsState(settings);
 setPersistErrorReporter((message) => setNotice(message, true));
 initPipelinePrompt({ getRecentTurns: () => recentTurns });
+initPipelineRender(
+  { sttLatency, aiLatency, ttsLatency, totalLatency },
+  {
+    isIncognito: () => settings.incognitoMode,
+    now: () => Date.now(),
+    getRecordingStartedAt: () => recordingStartedAt,
+    getLastSavedRecordingId: () => lastSavedRecordingId,
+    getLastCaptureIntentLabel: () => lastCaptureIntentLabel,
+    trackUsage: (transcript) => trackUsage(transcript),
+    addQuickNote: (text) => addQuickNote(text),
+    getHomeHistory: () => homeHistoryEntries,
+    setHomeHistory: (entries) => {
+      homeHistoryEntries = entries;
+    },
+    persistHomeHistory: () => persistHomeHistory(),
+    notifyStoreUpdated: () => {
+      window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+    },
+    getRecentTurns: () => recentTurns,
+  },
+);
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
 initMicrophones(
   { select: microphoneSelect, summary: microphoneSummary },
@@ -4851,76 +4871,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
 }
 
 function renderPipelineResponse(response: AssistantPipelineResponse): void {
-  sttLatency.textContent = formatLatency(response.sttLatencyMs);
-  aiLatency.textContent = formatLatency(response.aiLatencyMs);
-  ttsLatency.textContent = formatLatency(response.ttsLatencyMs);
-  totalLatency.textContent = formatLatency(response.totalLatencyMs);
-
-  if (!settings.incognitoMode) {
-    const userWords = countWords(response.transcript);
-    const spokenSeconds = Math.max((Date.now() - recordingStartedAt) / 1000, 0);
-    const userWpm = userWords > 0 && spokenSeconds > 0
-      ? Math.round((userWords / spokenSeconds) * 60)
-      : 0;
-    const userMetrics: HomeHistoryMetrics | undefined = userWords > 0
-      ? {
-          wpm: userWpm,
-          pipelineMs: response.totalLatencyMs,
-          spokenSeconds: Math.round(spokenSeconds * 10) / 10,
-        }
-      : undefined;
-    const userRecordingId = lastSavedRecordingId ?? undefined;
-    appendConversationEntry("You", response.transcript, "user", { showInLog: false, metrics: userMetrics, recordingId: userRecordingId });
-    if (response.selectionRewrite) {
-      appendConversationEntry("Rewrite", response.assistantResponse, "assistant", { metrics: userMetrics, recordingId: userRecordingId });
-    } else if (response.selectionPending) {
-      appendConversationEntry("Rewrite pending", response.assistantResponse, "assistant", { metrics: userMetrics, recordingId: userRecordingId });
-    } else if (response.selectionContextUsed) {
-      appendConversationEntry("Selection", response.assistantResponse, "assistant", { metrics: userMetrics, recordingId: userRecordingId });
-    } else if (response.mode === "assistant") {
-      appendConversationEntry("SlasshyWispr", response.assistantResponse, "assistant", { metrics: userMetrics, recordingId: userRecordingId });
-    } else {
-      appendConversationEntry("Dictation", response.assistantResponse, "assistant", { metrics: userMetrics, recordingId: userRecordingId });
-    }
-  }
-
-  trackUsage(response.transcript);
-  if (lastCaptureIntentLabel === "notes-button") {
-    addQuickNote(response.transcript);
-  }
-}
-
-function appendConversationEntry(
-  speaker: string,
-  content: string,
-  tone: "user" | "assistant",
-  options: { showInLog?: boolean; metrics?: HomeHistoryMetrics; recordingId?: string } = {},
-): void {
-  const showInLog = options.showInLog ?? true;
-  if (showInLog) {
-    const historyEntry: HomeHistoryEntry = {
-      speaker,
-      content,
-      tone,
-      timestamp: Date.now(),
-      ...(options.metrics ?? {}),
-      ...(options.recordingId ? { recordingId: options.recordingId } : {}),
-    };
-
-    homeHistoryEntries.unshift(historyEntry);
-    while (homeHistoryEntries.length > MAX_HISTORY_ITEMS) {
-      homeHistoryEntries.pop();
-    }
-    persistHomeHistory();
-    // Notify React to re-render with updated history from localStorage.
-    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
-  }
-
-  recentTurns.unshift({ speaker, content });
-
-  while (recentTurns.length > MAX_HISTORY_ITEMS) {
-    recentTurns.pop();
-  }
+  renderPipelineResponseService(response);
 }
 
 async function playGeneratedAudio(audioBase64: string, _engine: TtsEngine): Promise<boolean> {
