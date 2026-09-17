@@ -125,7 +125,6 @@ import {
 import {
   canPreWarmMicrophone as canPreWarmMicrophoneService,
   initMicStream,
-  openMicrophoneStream as openMicrophoneStreamService,
   preWarmMicrophoneStream as preWarmMicrophoneStreamService,
   releasePreWarmedStream as releasePreWarmedStreamService,
 } from "./recording/mic-stream";
@@ -133,10 +132,14 @@ import {
   beginRecordingTicker as beginRecordingTickerService,
   initCaptureMonitors,
   releaseMicrophone as releaseMicrophoneService,
-  startAmplitudeMonitoring as startAmplitudeMonitoringService,
   stopAmplitudeMonitoring as stopAmplitudeMonitoringService,
   stopRecordingTicker as stopRecordingTickerService,
 } from "./recording/capture-monitors";
+import {
+  initRecordingController,
+  startRecording as startRecordingService,
+  stopRecording as stopRecordingService,
+} from "./recording/recording-controller";
 import {
   isExternalMediaMutedForDictation,
   pauseExternalMediaForDictation as pauseExternalMediaForDictationService,
@@ -232,7 +235,6 @@ import {
   audioBufferToWavBlob,
   shouldOptimizeOnlineSttUpload,
   resolvePreferredOnlineSttBitrate,
-  pickBestRecorderMimeType,
   blobToBase64,
   missingApiKeyForOnlineRuntime,
 } from "./recording/audio-utils";
@@ -741,6 +743,83 @@ initCaptureMonitors(
     getMediaStream: () => mediaStream,
     setMediaStream: (stream) => {
       mediaStream = stream;
+    },
+  },
+);
+initRecordingController(
+  {
+    getStage: () => stage,
+    isPipelineRunning: () => pipelineRunning,
+    getHoldCount: () => pushToTalkHoldSources.size,
+    getCommandModeArmed: () => commandModeArmed,
+    getCaptureMode: () => settings.captureMode,
+    readSettings: () => readSettingsFromForm(),
+    readLiveSettings: () => settings,
+    summarizeSettings: (next) => summarizeSettingsForDiagnostics(next),
+    shouldBlockFromForegroundApp: () => shouldBlockAssistantInputFromForegroundApp(),
+    primeSelectionSnapshot: () => {
+      void primeSelectionSnapshotForCommandMode();
+    },
+    clearPushToTalkHolds: () => clearPushToTalkHolds(),
+    showMissingApiKeyNotice: (source) => showMissingApiKeyNotice(source),
+    setNotice: (message, isError) => setNotice(message, isError),
+    log: (message) => logClientEvent(message),
+    transition: (event) => {
+      transitionRecordingState(event);
+    },
+    syncAvailability: () => syncActionAvailability(),
+    getRecordingStartedAt: () => recordingStartedAt,
+    clearCaptureIntent: () => {
+      lastCaptureIntentStartedAt = 0;
+      lastCaptureIntentLabel = "";
+    },
+    getCaptureIntentStartedAt: () => lastCaptureIntentStartedAt,
+    getCaptureIntentLabel: () => lastCaptureIntentLabel,
+    setCaptureIntent: (startedAt, label) => {
+      lastCaptureIntentStartedAt = startedAt;
+      lastCaptureIntentLabel = label;
+    },
+    setMicrophonePermissionGranted: (granted) => setMicrophonePermissionGranted(granted),
+    refreshRecordingsStorageHint: () => {
+      void refreshRecordingsStorageHint();
+    },
+    isTauri: isTauriEnvironment,
+    now: () => Date.now(),
+    performanceNow: () => performance.now(),
+    runPipeline: (blob, mimeType) => runPipeline(blob, mimeType),
+    createId: () => createId(),
+    saveDictationRecording: (args) => ipcSaveDictationRecording(args),
+  },
+  {
+    getMediaRecorder: () => mediaRecorder,
+    setMediaRecorder: (recorder) => {
+      mediaRecorder = recorder;
+    },
+    getMediaStream: () => mediaStream,
+    setMediaStream: (stream) => {
+      mediaStream = stream;
+    },
+    getRecorderMimeType: () => recorderMimeType,
+    setRecorderMimeType: (mimeType) => {
+      recorderMimeType = mimeType;
+    },
+    getRecordedChunks: () => recordedChunks,
+    setRecordedChunks: (chunks) => {
+      recordedChunks = chunks;
+    },
+    pushRecordedChunk: (chunk) => {
+      recordedChunks.push(chunk);
+    },
+    getSkipPipeline: () => skipPipelineAfterRecorderStop,
+    setSkipPipeline: (skip) => {
+      skipPipelineAfterRecorderStop = skip;
+    },
+    getSkipNotice: () => skipPipelineAfterRecorderStopNotice,
+    setSkipNotice: (notice) => {
+      skipPipelineAfterRecorderStopNotice = notice;
+    },
+    setLastSavedRecordingId: (id) => {
+      lastSavedRecordingId = id;
     },
   },
 );
@@ -4333,229 +4412,11 @@ function interruptTtsPlaybackForCaptureIntent(): boolean {
 }
 
 async function startRecording(): Promise<void> {
-  const startRequestedAt = performance.now();
-  logClientEvent(
-    `[record.start] requested stage=${stage} pipelineRunning=${boolFlag(
-      pipelineRunning,
-    )} holdCount=${pushToTalkHoldSources.size} commandModeArmed=${boolFlag(commandModeArmed)}`,
-  );
-  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-    logClientEvent("[record.start] blocked because browser media recording APIs are unavailable");
-    lastCaptureIntentStartedAt = 0;
-    lastCaptureIntentLabel = "";
-    transitionRecordingState({ type: "recording-failed", reason: "Media APIs unavailable." });
-    return;
-  }
-
-  const foregroundCheckStartedAt = performance.now();
-  if (await shouldBlockAssistantInputFromForegroundApp()) {
-    logClientEvent(
-      `[record.start] blocked by foreground app policy after ${Math.round(
-        performance.now() - foregroundCheckStartedAt,
-      )}ms`,
-    );
-    logClientEvent("[record.start] blocked by foreground app policy");
-    lastCaptureIntentStartedAt = 0;
-    lastCaptureIntentLabel = "";
-    clearPushToTalkHolds();
-    return;
-  }
-
-  const activeSettings = readSettingsFromForm();
-  logClientEvent(`[record.start] settings ${summarizeSettingsForDiagnostics(activeSettings)}`);
-  if (commandModeArmed) {
-    logClientEvent("[record.start] command mode was armed; capturing selection snapshot");
-    void primeSelectionSnapshotForCommandMode();
-  }
-  if (missingApiKeyForOnlineRuntime(activeSettings)) {
-    logClientEvent(
-      `[record.start.blocked] missing-api-key stt=${activeSettings.sttRuntimeMode} ai=${activeSettings.aiRuntimeMode} remember=${boolFlag(
-        activeSettings.rememberApiKey,
-      )}`,
-    );
-    lastCaptureIntentStartedAt = 0;
-    lastCaptureIntentLabel = "";
-    clearPushToTalkHolds();
-    showMissingApiKeyNotice("record-start");
-    return;
-  }
-
-  const recorderOptions: MediaRecorderOptions = {};
-
-  const preferredMimeType = pickBestRecorderMimeType();
-  if (preferredMimeType) {
-    recorderOptions.mimeType = preferredMimeType;
-  }
-  const preferredBitrate = resolvePreferredOnlineSttBitrate(activeSettings);
-  recorderOptions.audioBitsPerSecond = preferredBitrate ?? 96_000;
-  logClientEvent(
-    `[record.start] opening microphone device=${
-      activeSettings.microphoneDeviceId || "default"
-    } preferredMime=${preferredMimeType || "auto"} bitrate=${recorderOptions.audioBitsPerSecond}`,
-  );
-
-  try {
-    const micOpenStartedAt = performance.now();
-    const stream = await openMicrophoneStream(activeSettings.microphoneDeviceId);
-    mediaStream = stream;
-    setMicrophonePermissionGranted(true);
-    logClientEvent(
-      `[record.start] microphone stream opened tracks=${stream.getAudioTracks().length} openMs=${Math.round(
-        performance.now() - micOpenStartedAt,
-      )}`,
-    );
-
-    const recorderInitStartedAt = performance.now();
-    mediaRecorder = new MediaRecorder(stream, recorderOptions);
-    recorderMimeType = mediaRecorder.mimeType || preferredMimeType || "audio/webm";
-    recordedChunks = [];
-    startAmplitudeMonitoring(stream);
-
-    mediaRecorder.addEventListener("dataavailable", (event: BlobEvent) => {
-      if (event.data.size > 0) {
-        recordedChunks.push(event.data);
-      }
-    });
-
-    mediaRecorder.addEventListener("error", () => {
-      logClientEvent("[record.start] media recorder emitted error event");
-      transitionRecordingState({ type: "recording-failed", reason: "Recording failed due to media recorder error." });
-    });
-
-    mediaRecorder.addEventListener("stop", () => {
-      logClientEvent("[record.start] media recorder stop event received");
-      void finalizeRecording();
-    });
-
-    mediaRecorder.start(180);
-    const recordingReadyLatencyMs = Math.round(performance.now() - startRequestedAt);
-    logClientEvent(
-      `[record.start] media recorder started mime=${recorderMimeType} recorderInitMs=${Math.round(
-        performance.now() - recorderInitStartedAt,
-      )} readyMs=${recordingReadyLatencyMs}`,
-    );
-    transitionRecordingState({ type: "recording-ready" });
-    if (lastCaptureIntentStartedAt > 0) {
-      logClientEvent(
-        `[record.intent.ready] source=${lastCaptureIntentLabel || "unknown"} totalMs=${Math.round(
-          performance.now() - lastCaptureIntentStartedAt,
-        )}`,
-      );
-      lastCaptureIntentStartedAt = 0;
-      lastCaptureIntentLabel = "";
-    }
-    if (settings.captureMode === "push-to-talk") {
-      setNotice("Recording started. Release the hotkey or mic button to stop.");
-    } else {
-      setNotice("Recording started. Tap again to stop.");
-    }
-    syncActionAvailability();
-  } catch (error) {
-    logClientEvent(`[record.start] failed to open microphone: ${asErrorMessage(error)}`);
-    lastCaptureIntentStartedAt = 0;
-    lastCaptureIntentLabel = "";
-    transitionRecordingState({ type: "recording-failed", reason: `Microphone access failed: ${asErrorMessage(error)}` });
-    syncActionAvailability();
-  }
-}
-
-async function openMicrophoneStream(preferredDeviceId: string): Promise<MediaStream> {
-  return openMicrophoneStreamService(preferredDeviceId);
+  await startRecordingService();
 }
 
 function stopRecording(options: StopRecordingOptions = {}): void {
-  const cancelPipeline = Boolean(options.cancelPipeline);
-  const cancelNotice = options.cancelNotice?.trim();
-  logClientEvent(
-    `[record.stop] requested stage=${stage} recorderState=${mediaRecorder?.state || "none"}`,
-  );
-  clearPushToTalkHolds();
-
-  if (!mediaRecorder) {
-    skipPipelineAfterRecorderStop = false;
-    skipPipelineAfterRecorderStopNotice = "";
-    logClientEvent("[record.stop] no active mediaRecorder");
-    return;
-  }
-
-  const recorderWasActive = mediaRecorder.state !== "inactive";
-  skipPipelineAfterRecorderStop = cancelPipeline && recorderWasActive;
-  skipPipelineAfterRecorderStopNotice = cancelPipeline && recorderWasActive ? cancelNotice || "" : "";
-
-  if (recorderWasActive) {
-    logClientEvent("[record.stop] invoking mediaRecorder.stop()");
-    mediaRecorder.stop();
-  }
-
-  stopRecordingTicker();
-  releaseMicrophone();
-  if (cancelPipeline) {
-    transitionRecordingState({ type: "stop-recording", cancelPipeline: true });
-  } else {
-    transitionRecordingState({ type: "stop-recording" });
-  }
-  syncActionAvailability();
-}
-
-async function finalizeRecording(): Promise<void> {
-  const skipPipeline = skipPipelineAfterRecorderStop;
-  const skipNotice = skipPipelineAfterRecorderStopNotice;
-  skipPipelineAfterRecorderStop = false;
-  skipPipelineAfterRecorderStopNotice = "";
-
-  if (skipPipeline) {
-    logClientEvent("[record.finalize] pipeline canceled before transcription");
-    transitionRecordingState({ type: "recording-stopped", cancelPipeline: true });
-    if (skipNotice) {
-      setNotice(skipNotice);
-    }
-    syncActionAvailability();
-    return;
-  }
-
-  const blob = new Blob(recordedChunks, { type: recorderMimeType });
-  recordedChunks = [];
-  logClientEvent(`[record.finalize] blobSize=${blob.size} mime=${recorderMimeType}`);
-
-  if (blob.size === 0) {
-    logClientEvent("[record.finalize] blocked because captured blob is empty");
-    transitionRecordingState({ type: "audio-empty" });
-    syncActionAvailability();
-    return;
-  }
-
-  const saveRecordingsEnabled = settings.saveRecordings && isTauriEnvironment();
-  if (saveRecordingsEnabled) {
-    try {
-      await saveDictationAudio(blob, recorderMimeType);
-    } catch (error) {
-      logClientEvent(`[record.finalize.save] failed: ${asErrorMessage(error)}`);
-    }
-  }
-
-  await runPipeline(blob, recorderMimeType);
-}
-
-async function saveDictationAudio(
-  audioBlob: Blob,
-  audioMimeType: string,
-): Promise<void> {
-  if (!isTauriEnvironment()) {
-    return;
-  }
-  const recordingId = `rec_${recordingStartedAt || Date.now()}_${createId().replace(/-/g, "").slice(0, 8)}`;
-  const audioBase64 = await blobToBase64(audioBlob);
-  const base64Body = audioBase64.startsWith("data:") ? audioBase64.split(",", 2)[1] : audioBase64;
-  await ipcSaveDictationRecording({
-    recordingId,
-    mimeType: audioMimeType,
-    audioBase64: base64Body,
-  });
-  lastSavedRecordingId = recordingId;
-  logClientEvent(
-    `[record.finalize.save] saved id=${recordingId} bytes=${audioBlob.size} mime=${audioMimeType}`,
-  );
-  void refreshRecordingsStorageHint();
+  stopRecordingService(options);
 }
 
 async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void> {
@@ -5988,10 +5849,6 @@ function isHotkeyReleaseEvent(event: KeyboardEvent, hotkey: HotkeySpec): boolean
   if (hotkey.alt && key === "alt") return true;
   if (hotkey.meta && key === "meta") return true;
   return false;
-}
-
-function startAmplitudeMonitoring(stream: MediaStream): void {
-  startAmplitudeMonitoringService(stream);
 }
 
 function stopAmplitudeMonitoring(resetLevel = true): void {
