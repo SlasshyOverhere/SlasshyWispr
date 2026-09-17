@@ -31,7 +31,6 @@ import {
   createId,
 } from "./utils";
 import { matchHistoryToRecordings } from "./store";
-import { newlyUnlockedAchievements } from "./analytics/analytics-service";
 import { loadHistory } from "./state/history";
 import {
   initShellPersist,
@@ -55,17 +54,12 @@ import {
 import {
   applySettingsPatchToForm as applySettingsPatchToFormService,
   applySettingsToForm as applySettingsToFormService,
-  buildShortcutSyncSignature,
   flushPendingSettings,
   persistSettings,
   readSettingsFromForm as readSettingsFromFormService,
-  hydrateSettingsFromNativeStorage as hydrateSettingsFromNativeStorageService,
-  runSettingsHandlePipeline,
   setPersistErrorReporter,
   summarizeSettingsForDiagnostics,
   wireSettingsFormInputs as wireSettingsFormInputsService,
-  type SettingsCoreDeps,
-  type SettingsHandleEffects,
 } from "./settings/settings-service";
 import { querySettingsFormRefs } from "./settings/settings-form-refs";
 import {
@@ -75,6 +69,14 @@ import {
   getSettingsSnapshot,
   setSettingsSnapshot,
 } from "./settings/settings-state";
+import {
+  backfillAchievementsFromUsageStats as backfillAchievementsFromUsageStatsService,
+  getCachedHotkeyDisplay as getCachedHotkeyDisplayService,
+  getSettingsCoreDeps as getSettingsCoreDepsService,
+  handleSettingsChange as handleSettingsChangeService,
+  hydrateSettingsFromNativeStorage as hydrateSettingsFromNativeStorageChangeService,
+  initSettingsChange,
+} from "./settings/settings-change";
 import { APP_UPDATE_AUTO_CHECK_CHANGED_EVENT } from "./updater/updater-client-shim";
 import {
   initializeUpdaterPanel as initializeUpdaterPanelService,
@@ -781,7 +783,7 @@ initRecordingController(
     getHoldCount: () => getPushToTalkHoldCount(),
     getCommandModeArmed: () => isCommandModeArmed(),
     getCaptureMode: () => settings.captureMode,
-    readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
+    readSettings: () => readSettingsFromFormService(settingsFormRefs, getSettingsCoreDepsService()),
     readLiveSettings: () => settings,
     summarizeSettings: (next) => summarizeSettingsForDiagnostics(next),
     shouldBlockFromForegroundApp: () => shouldBlockAssistantInputFromForegroundAppService(),
@@ -857,7 +859,7 @@ initRecordingController(
 initPipelineClient(
   { localSttModelInput, localSttModelCatalogSelect },
   {
-    readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
+    readSettings: () => readSettingsFromFormService(settingsFormRefs, getSettingsCoreDepsService()),
     getStage: () => stage,
     markIdle: (detail) => setStageService("idle", detail),
     transition: (event) => {
@@ -871,7 +873,7 @@ initPipelineClient(
     log: (message) => logClientEventService(message),
     getLocalSttCatalog: () => localSttModelCatalog,
     commitFormSettings: () => {
-      void handleSettingsChange();
+      void handleSettingsChangeService();
     },
     checkModelFileExists: (model) => checkModelFileExistsService(model),
     localSttModelLabel: (model) => localSttModelLabelService(model),
@@ -897,7 +899,7 @@ initPipelineClient(
   },
 );
 initLocalSttState({
-  readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
+  readSettings: () => readSettingsFromFormService(settingsFormRefs, getSettingsCoreDepsService()),
   getCatalogSelection: () => localSttModelCatalogSelect.value,
   isPipelineRunning: () => pipelineRunning,
   getStage: () => stage,
@@ -905,9 +907,9 @@ initLocalSttState({
   renderSettingsStatus: () => renderLocalSttSettingsStatusService(),
 });
 initLocalSttDiagnostics({
-  readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
+  readSettings: () => readSettingsFromFormService(settingsFormRefs, getSettingsCoreDepsService()),
   commitSettings: (next) => {
-    applySettingsToFormService(settingsFormRefs, settingsCoreDeps, next);
+    applySettingsToFormService(settingsFormRefs, getSettingsCoreDepsService(), next);
     persistSettings(next);
   },
   notify: (message, isError) => setNoticeService(message, isError),
@@ -953,7 +955,7 @@ initDock(
     getShowDockAlways: () => settings.showDockAlways,
     getThemeMode: () => settings.themeMode,
     getCaptureMode: () => settings.captureMode,
-    getHotkeyDisplay: () => cachedHotkeyDisplay,
+    getHotkeyDisplay: () => getCachedHotkeyDisplayService(),
     isCommandModeArmed: () => isCommandModeArmed(),
     isGlobalShortcutsActive: () => isGlobalShortcutsActive(),
     isMainWindowHiddenToTray: () => mainWindowHiddenToTray,
@@ -1043,9 +1045,9 @@ initLocalSttClient(
     hardwareAdvisorCancelBtn: sttHardwareAdvisorCancelBtn,
   },
   {
-    readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
+    readSettings: () => readSettingsFromFormService(settingsFormRefs, getSettingsCoreDepsService()),
     commitFormSettings: () => {
-      void handleSettingsChange();
+      void handleSettingsChangeService();
     },
     getCatalog: () => localSttModelCatalog,
     isPipelineRunning: () => pipelineRunning,
@@ -1225,7 +1227,7 @@ initAssistantStatus({
   getSettings: () => settings,
   getPiperPathInput: () => settingsFormRefs.piperPathInput,
   onSettingsChanged: () => {
-    void handleSettingsChange();
+    void handleSettingsChangeService();
   },
 });
 
@@ -1372,9 +1374,9 @@ initOllamaClient(
     applyModelToSttBtn,
   },
   {
-    readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
+    readSettings: () => readSettingsFromFormService(settingsFormRefs, getSettingsCoreDepsService()),
     commitSettings: () => {
-      void handleSettingsChange();
+      void handleSettingsChangeService();
     },
     isBusy: () => pipelineRunning || stage === "recording",
     isInstallBusy: () => ollamaInstallBusy || pipelineRunning || stage === "recording",
@@ -1424,13 +1426,13 @@ initTtsClient(
   },
   {
     isBusy: () => pipelineRunning || stage === "recording",
-    readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
+    readSettings: () => readSettingsFromFormService(settingsFormRefs, getSettingsCoreDepsService()),
     getPiperPathInput: () => settingsFormRefs.piperPathInput.value,
     setPiperPathInput: (value) => {
       settingsFormRefs.piperPathInput.value = value;
     },
     commitSettings: () => {
-      void handleSettingsChange();
+      void handleSettingsChangeService();
     },
     setNotice: (message, isError) => setNoticeService(message, isError),
     setStage: (next, detail) => setStageService(next, detail),
@@ -1449,18 +1451,96 @@ initTtsClient(
   },
 );
 let ttsSetupPollInFlight = false;
-const settingsCoreDeps: SettingsCoreDeps = {
-  isCapturingHotkey: () => isHotkeyCaptureActive(),
-  isCapturingCommandHotkey: () => isCommandHotkeyCaptureActive(),
-  currentSettings: getSettingsSnapshot,
-  refreshRecordingsStorageHint: () => {
-    void refreshRecordingsStorageHint();
+initSettingsChange({
+  getSettings: () => settings,
+  setSettings: (next) => {
+    settings = next;
   },
+  commitSettingsSnapshot: (next) => setSettingsSnapshot(next),
+  getFormRefs: () => settingsFormRefs,
+  getCatalogs: () => ({
+    providerModels: providerModelCatalog,
+    localOllamaModels: localOllamaModelCatalog,
+    localSttModels: localSttModelCatalog,
+  }),
+  getAssistantInfoDefaults: () => latestAssistantInfoDefaults,
+  getStage: () => stage,
+  currentSettings: () => getSettingsSnapshot(),
+  buildCaptureDeps: () => ({
+    isCapturingHotkey: () => isHotkeyCaptureActive(),
+    isCapturingCommandHotkey: () => isCommandHotkeyCaptureActive(),
+    refreshRecordingsStorageHint: () => {
+      void refreshRecordingsStorageHint();
+    },
+    isTauri: isTauriEnvironment,
+    showStaleRuntimePane: () => setActiveSettingsPaneService("models"),
+  }),
+  formatHotkeyDisplay: (hotkey) => formatHotkeyForDisplay(hotkey),
+  log: (message) => logClientEventService(message),
+  warn: (message) => console.warn(message),
+  renderSidebarLocalSttToggle: () => renderSidebarLocalSttToggleService(),
+  refreshRecordButton: () => refreshRecordButtonService(),
+  syncActionAvailability: () => syncActionAvailabilityService(),
+  updateMicrophoneSummary: () => updateMicrophoneSummaryService(),
+  renderNotesList: () => renderNotesListService(),
+  renderAssistantInfo: (info) => renderAssistantInfoService(info),
+  setActiveTtsProfile: (profile) => setActiveTtsProfileService(profile),
+  setCatalogSelects: (next, catalogs) => {
+    if (catalogs.providerModels.includes(next.aiModelName)) {
+      providerModelCatalogSelect.value = next.aiModelName;
+    } else if (catalogs.providerModels.includes(next.sttModelName)) {
+      providerModelCatalogSelect.value = next.sttModelName;
+    } else if (catalogs.providerModels.length > 0) {
+      providerModelCatalogSelect.value = "";
+    }
+    if (catalogs.localOllamaModels.includes(next.localOllamaModel)) {
+      localOllamaModelCatalogSelect.value = next.localOllamaModel;
+    } else if (catalogs.localOllamaModels.length > 0) {
+      localOllamaModelCatalogSelect.value = "";
+    }
+    if (catalogs.localSttModels.includes(next.localSttModel)) {
+      localSttModelCatalogSelect.value = next.localSttModel;
+    } else if (catalogs.localSttModels.length > 0) {
+      localSttModelCatalogSelect.value = "";
+    }
+  },
+  requestGlobalShortcutSync: () => requestGlobalShortcutSyncService(),
+  requestLaunchAtLoginSync: (enabled) => requestLaunchAtLoginSync(enabled),
+  interruptTtsPlayback: () => interruptTtsPlaybackService(),
+  notice: (message, isError) => setNoticeService(message, isError),
+  requestLocalSttRuntimeSyncForMode: (mode, options) =>
+    requestLocalSttRuntimeSyncForModeService(mode as "local" | "online", options),
+  updateTtsSetupGate: () => updateTtsSetupGateService(),
+  publishDockState: () => publishDockStateService(),
+  syncFloatingIndicatorWindow: () => syncFloatingIndicatorWindowService(),
+  primeCaptureReadiness: (deviceId, showFlowBar) => {
+    void primeCaptureReadinessService(deviceId, showFlowBar);
+  },
+  clearCaptureHolds: () => clearPushToTalkHoldsService(),
+  notifyIncognitoChanged: () => {},
+  syncExternalMediaMute: (muted) => {
+    if (muted) {
+      pauseExternalMediaForDictationService(mediaControlDeps);
+    } else {
+      resumeExternalMediaAfterDictationService(mediaControlDeps);
+    }
+  },
+  persist: (next) => persistSettings(next),
+  notifyStoreUpdated: () => {
+    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+  },
+  readSettingsFromForm: (refs, coreDeps) => readSettingsFromFormService(refs, coreDeps),
+  applySettingsToForm: (refs, coreDeps, next) => applySettingsToFormService(refs, coreDeps, next),
+  getUsageStats: () => usageStats,
+  getSessionCount: () => analyticsSessionDetails.length,
+  getAchievements: () => achievementStates,
+  appendAchievements: (unlocked) => {
+    achievementStates.push(...unlocked);
+  },
+  persistAchievements: () => persistAchievementStatesService(),
   isTauri: isTauriEnvironment,
-  showStaleRuntimePane: () => setActiveSettingsPaneService("models"),
-};
-let cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
-applySettingsToFormService(settingsFormRefs, settingsCoreDeps, settings);
+  loadNativeSettings: () => ipcLoadPersistedLocalSettings(),
+});
 renderSidebarLocalSttToggleService();
 initModelCatalogs(
   {
@@ -1638,7 +1718,7 @@ window.addEventListener(SETTINGS_PATCH_EVENT, (event) => {
     return;
   }
   applySettingsPatchToFormService(settingsFormRefs, patch);
-  void handleSettingsChange();
+  void handleSettingsChangeService();
 });
 
 initHotkeyCapture(
@@ -1648,7 +1728,7 @@ initHotkeyCapture(
     getCommandHotkey: () => settings.commandHotkey,
     notify: (message, isError) => setNoticeService(message, isError),
     onCommitted: () => {
-      void handleSettingsChange();
+      void handleSettingsChangeService();
     },
   },
 );
@@ -1666,7 +1746,7 @@ initGlobalShortcutDispatch({
   isCaptureActive: () => isAnyHotkeyCaptureActive(),
   getNormalizedShortcuts: () => getNormalizedRegisteredShortcuts(),
   markHandled: (shortcut, state) => markGlobalShortcutHandledService(shortcut, state),
-  readActiveSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
+  readActiveSettings: () => readSettingsFromFormService(settingsFormRefs, getSettingsCoreDepsService()),
   isApiKeyMissingForOnlineRuntime: (activeSettings) =>
     missingApiKeyForOnlineRuntime(activeSettings),
   showApiKeyMissingNotice: () =>
@@ -1729,14 +1809,14 @@ wireHotkeyInputButtons({ hotkeyInput, commandHotkeyInput });
 wireSettingsFormInputsService({
   refs: settingsFormRefs,
   onFieldChange: () => {
-    void handleSettingsChange();
+    void handleSettingsChangeService();
   },
   onThemeCardChange: (value) => {
     const next = asThemeMode(value);
     if (settingsFormRefs.themeModeSelect.value !== next) {
       settingsFormRefs.themeModeSelect.value = next;
     }
-    void handleSettingsChange();
+    void handleSettingsChangeService();
   },
   onVolumePreview: (value) => {
     settingsFormRefs.pttVolumeHint.textContent = `${value}%`;
@@ -1756,7 +1836,7 @@ providerModelCatalogSelect.addEventListener("change", () => {
     return;
   }
   settingsFormRefs.aiModelInput.value = selected;
-  handleSettingsChange();
+  handleSettingsChangeService();
 });
 
 localOllamaModelCatalogSelect.addEventListener("change", () => {
@@ -1765,7 +1845,7 @@ localOllamaModelCatalogSelect.addEventListener("change", () => {
     return;
   }
   settingsFormRefs.localOllamaModelInput.value = selected;
-  handleSettingsChange();
+  handleSettingsChangeService();
 });
 
 localSttModelCatalogSelect.addEventListener("change", () => {
@@ -1776,7 +1856,7 @@ localSttModelCatalogSelect.addEventListener("change", () => {
   }
   localSttModelInput.value = selected;
   markCatalogSelectionChanged();
-  handleSettingsChange();
+  handleSettingsChangeService();
   void refreshSelectedLocalSttModelAvailabilityService({ quiet: true });
 });
 
@@ -1847,7 +1927,7 @@ applyModelToAiBtn.addEventListener("click", () => {
     return;
   }
   settingsFormRefs.aiModelInput.value = selected;
-  handleSettingsChange();
+  handleSettingsChangeService();
   setNoticeService(`AI model set to "${selected}".`);
 });
 
@@ -1858,7 +1938,7 @@ applyModelToSttBtn.addEventListener("click", () => {
     return;
   }
   settingsFormRefs.sttModelInput.value = selected;
-  handleSettingsChange();
+  handleSettingsChangeService();
   setNoticeService(`STT model set to "${selected}".`);
 });
 
@@ -1975,7 +2055,7 @@ initUsageTracker({
 });
 async function bootstrap(): Promise<void> {
   logClientEventService("[bootstrap] start");
-  await hydrateSettingsFromNativeStorage();
+  await hydrateSettingsFromNativeStorageChangeService();
   logClientEventService(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
 
   // Register global hotkeys immediately — user should be able to press the
@@ -2024,52 +2104,10 @@ async function bootstrap(): Promise<void> {
   }
   syncActionAvailabilityService();
   startAutomaticUpdateChecksService();
-  if (analyticsSessionDetails.length > 0 && achievementStates.length === 0) {
-    const totalWords = usageStats.words + usageStats.prevWords;
-    const totalSessions = usageStats.sessions + usageStats.prevSessions;
-    const totalSeconds = usageStats.speakingSeconds + usageStats.prevSpeakingSeconds;
-    if (totalWords > 0 || totalSessions > 0 || totalSeconds > 0) {
-      {
-        const unlocked = newlyUnlockedAchievements(
-          {
-            ...usageStats,
-            words: totalWords,
-            sessions: totalSessions,
-            speakingSeconds: totalSeconds,
-          },
-          achievementStates,
-          Date.now(),
-        );
-        if (unlocked.length > 0) {
-          achievementStates.push(...unlocked);
-          persistAchievementStatesService();
-        }
-      }
-      window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
-    }
-  }
+  backfillAchievementsFromUsageStatsService();
   logClientEventService("[bootstrap] completed");
 }
 
-async function hydrateSettingsFromNativeStorage(): Promise<void> {
-  const hydrated = await hydrateSettingsFromNativeStorageService({
-    isTauri: isTauriEnvironment,
-    loadNative: () => ipcLoadPersistedLocalSettings(),
-    log: (message) => logClientEventService(message),
-    warn: (message) => console.warn(message),
-    applyAll: (next) => {
-      settings = next;
-      applySettingsToFormService(settingsFormRefs, settingsCoreDeps, next);
-    },
-    onChanged: () => {
-      void handleSettingsChange();
-    },
-  });
-  if (hydrated) {
-    settings = hydrated;
-    setSettingsSnapshot(settings);
-  }
-}
 
 async function backfillHistoryRecordingIds(): Promise<void> {
   if (!isTauriEnvironment()) {
@@ -2108,128 +2146,6 @@ async function backfillHistoryRecordingIds(): Promise<void> {
     logClientEventService(`[recordings.backfill] failed: ${asErrorMessage(error)}`);
   }
 }
-
-async function handleSettingsChange(): Promise<void> {
-  const previousSettings = { ...settings };
-
-  settings = runSettingsHandlePipeline({
-    refs: settingsFormRefs,
-    coreDeps: settingsCoreDeps,
-    previous: previousSettings,
-    catalogs: {
-      providerModels: providerModelCatalog,
-      localOllamaModels: localOllamaModelCatalog,
-      localSttModels: localSttModelCatalog,
-    },
-    assistantInfo: latestAssistantInfoDefaults,
-    stage,
-    effects: settingsHandleEffects,
-    updateCachedHotkeyDisplay: (display) => {
-      cachedHotkeyDisplay = formatHotkeyForDisplay(display);
-    },
-  });
-  setSettingsSnapshot(settings);
-}
-
-const settingsHandleEffects: SettingsHandleEffects = {
-  notifyChange: (previous, next) => {
-    logClientEventService(
-      `[settings.change] from="${summarizeSettingsForDiagnostics(
-        previous,
-      )}" to="${summarizeSettingsForDiagnostics(next)}"`,
-    );
-  },
-  syncDerivedFormState: (_refs, next, catalogs, assistantInfo) => {
-    setActiveTtsProfileService("piper");
-    if (catalogs.providerModels.includes(next.aiModelName)) {
-      providerModelCatalogSelect.value = next.aiModelName;
-    } else if (catalogs.providerModels.includes(next.sttModelName)) {
-      providerModelCatalogSelect.value = next.sttModelName;
-    } else if (catalogs.providerModels.length > 0) {
-      providerModelCatalogSelect.value = "";
-    }
-    if (catalogs.localOllamaModels.includes(next.localOllamaModel)) {
-      localOllamaModelCatalogSelect.value = next.localOllamaModel;
-    } else if (catalogs.localOllamaModels.length > 0) {
-      localOllamaModelCatalogSelect.value = "";
-    }
-    if (catalogs.localSttModels.includes(next.localSttModel)) {
-      localSttModelCatalogSelect.value = next.localSttModel;
-    } else if (catalogs.localSttModels.length > 0) {
-      localSttModelCatalogSelect.value = "";
-    }
-    if (assistantInfo) {
-      renderAssistantInfoService(assistantInfo as AssistantInfoResponse);
-    }
-  },
-  clearCaptureHolds: () => clearPushToTalkHoldsService(),
-  notifyIncognitoChanged: () => {
-    // Notify React to re-render with updated incognito state from localStorage.
-    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
-  },
-  syncExternalMediaMute: (muted) => {
-    if (muted) {
-      pauseExternalMediaForDictationService(mediaControlDeps);
-    } else {
-      resumeExternalMediaAfterDictationService(mediaControlDeps);
-    }
-  },
-  persist: (next) => persistSettings(next),
-  afterPersist: (previous, next, stageAtChange) => {
-    const previousMicrophoneDeviceId = previous.microphoneDeviceId;
-    const previousShowFlowBar = previous.showFlowBar;
-    const previousLaunchAtLogin = previous.launchAtLogin;
-    const previousTtsEngine = previous.ttsEngine;
-    const previousSttRuntimeMode = previous.sttRuntimeMode;
-    const previousAiRuntimeMode = previous.aiRuntimeMode;
-    const previousShortcutSignature = buildShortcutSyncSignature(previous);
-    renderSidebarLocalSttToggleService();
-    refreshRecordButtonService();
-    syncActionAvailabilityService();
-    updateMicrophoneSummaryService();
-    renderNotesListService();
-    const nextShortcutSignature = buildShortcutSyncSignature(next);
-    if (previousShortcutSignature !== nextShortcutSignature) {
-      requestGlobalShortcutSyncService();
-    }
-    if (previousLaunchAtLogin !== next.launchAtLogin) {
-      requestLaunchAtLoginSync(next.launchAtLogin);
-    }
-    if (previousTtsEngine !== next.ttsEngine) {
-      interruptTtsPlaybackService();
-    }
-    const sttRuntimeModeChanged = previousSttRuntimeMode !== next.sttRuntimeMode;
-    const aiRuntimeModeChanged = previousAiRuntimeMode !== next.aiRuntimeMode;
-    if (sttRuntimeModeChanged || aiRuntimeModeChanged) {
-      if (next.sttRuntimeMode === next.aiRuntimeMode) {
-        setNoticeService(
-          next.sttRuntimeMode === "local"
-            ? "Offline mode enabled for both STT and AI."
-            : "Online mode enabled for both STT and AI.",
-        );
-      } else {
-        setNoticeService(
-          `Hybrid mode enabled (STT: ${next.sttRuntimeMode}, AI: ${next.aiRuntimeMode}).`,
-        );
-      }
-    }
-    if (sttRuntimeModeChanged) {
-      requestLocalSttRuntimeSyncForModeService(next.sttRuntimeMode, {
-        showLoadOverlay: next.sttRuntimeMode === "local",
-      });
-    }
-    updateTtsSetupGateService();
-    publishDockStateService();
-    void syncFloatingIndicatorWindowService();
-    if (
-      stageAtChange === "idle" &&
-      (previousMicrophoneDeviceId !== next.microphoneDeviceId ||
-        (!previousShowFlowBar && next.showFlowBar))
-    ) {
-      void primeCaptureReadinessService(next.microphoneDeviceId, next.showFlowBar);
-    }
-  },
-};
 
 
 // ===== Recording State Machine Integration =====
