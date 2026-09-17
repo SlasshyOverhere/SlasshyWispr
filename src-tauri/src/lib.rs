@@ -1,14 +1,6 @@
 use log::{info, warn};
-use reqwest::{multipart, Client};
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::OnceLock;
-use std::time::{Duration, Instant};
-
-use tauri::{menu::MenuItem, AppHandle, Manager};
+use tauri::Manager;
 
 pub mod audio;
 pub mod commands;
@@ -38,14 +30,6 @@ use commands::{
     toggle_main_window_visibility, validate_coqui, validate_piper, warmup_local_stt_model,
 };
 use state::AppState;
-
-#[cfg(test)]
-use pipeline::response::normalize_assistant_response_text;
-#[cfg(test)]
-use pipeline::selection::{
-    is_affirmative_selection_confirmation, is_negative_selection_confirmation,
-    is_rewrite_suspicious, parse_selection_edit_decision, SelectionEditAction,
-};
 
 
 
