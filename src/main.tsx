@@ -123,6 +123,13 @@ import {
   playGeneratedAudio as playGeneratedAudioService,
 } from "./recording/playback";
 import {
+  canPreWarmMicrophone as canPreWarmMicrophoneService,
+  initMicStream,
+  openMicrophoneStream as openMicrophoneStreamService,
+  preWarmMicrophoneStream as preWarmMicrophoneStreamService,
+  releasePreWarmedStream as releasePreWarmedStreamService,
+} from "./recording/mic-stream";
+import {
   isExternalMediaMutedForDictation,
   pauseExternalMediaForDictation as pauseExternalMediaForDictationService,
   resumeExternalMediaAfterDictation as resumeExternalMediaAfterDictationService,
@@ -131,7 +138,6 @@ import {
 import { playDictationSoundEffect as playDictationSoundEffectService } from "./shell/sound-effects";
 import {
   initMicrophones,
-  isMicrophonePermissionGranted,
   refreshMicrophones as refreshMicrophonesService,
   setMicrophonePermissionGranted,
   updateMicrophoneSummary as updateMicrophoneSummaryService,
@@ -567,9 +573,6 @@ let stage: Stage = "idle";
 let pipelineRunning = false;
 let mediaRecorder: MediaRecorder | null = null;
 let mediaStream: MediaStream | null = null;
-let preWarmedStream: MediaStream | null = null;
-let preWarmedStreamDeviceId: string | null = null;
-let preWarmedStreamCreateTime = 0;
 let recorderMimeType = "audio/webm";
 let recordedChunks: Blob[] = [];
 let recordingStartedAt = 0;
@@ -720,6 +723,10 @@ initPlayback(assistantAudio, {
     transitionRecordingState(event);
   },
   syncAvailability: () => syncActionAvailability(),
+});
+initMicStream({
+  notify: (message, isError) => setNotice(message, isError),
+  log: (message) => logClientEvent(message),
 });
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
 initMicrophones(
@@ -4437,35 +4444,7 @@ async function startRecording(): Promise<void> {
 }
 
 async function openMicrophoneStream(preferredDeviceId: string): Promise<MediaStream> {
-  if (preWarmedStream && preWarmedStreamDeviceId === preferredDeviceId && preWarmedStream.active) {
-    logClientEvent(`[record.mic] reusing pre-warmed stream age=${Date.now() - preWarmedStreamCreateTime}ms`);
-    const clonedStream = preWarmedStream.clone();
-    return clonedStream;
-  }
-
-  await releasePreWarmedStream();
-
-  const baseConstraints: MediaTrackConstraints = {
-    channelCount: 1,
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
-  };
-
-  if (preferredDeviceId) {
-    try {
-      return await navigator.mediaDevices.getUserMedia({
-        audio: {
-          ...baseConstraints,
-          deviceId: { exact: preferredDeviceId },
-        },
-      });
-    } catch {
-      setNotice("Selected microphone is unavailable. Falling back to default device.", true);
-    }
-  }
-
-  return navigator.mediaDevices.getUserMedia({ audio: baseConstraints });
+  return openMicrophoneStreamService(preferredDeviceId);
 }
 
 function stopRecording(options: StopRecordingOptions = {}): void {
@@ -5615,24 +5594,7 @@ async function showVoiceIndicatorWindow(): Promise<boolean> {
 }
 
 async function canPreWarmMicrophone(): Promise<boolean> {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    return false;
-  }
-
-  if (isMicrophonePermissionGranted()) {
-    return true;
-  }
-
-  if (typeof navigator.permissions?.query !== "function") {
-    return false;
-  }
-
-  try {
-    const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
-    return status.state === "granted";
-  } catch {
-    return false;
-  }
+  return canPreWarmMicrophoneService();
 }
 
 async function primeCaptureReadiness(deviceId: string, shouldPrimeDock: boolean): Promise<void> {
@@ -6133,47 +6095,11 @@ function releaseMicrophone(): void {
 }
 
 async function releasePreWarmedStream(): Promise<void> {
-  if (!preWarmedStream) return;
-  for (const track of preWarmedStream.getTracks()) {
-    track.stop();
-  }
-  preWarmedStream = null;
-  preWarmedStreamDeviceId = null;
-  preWarmedStreamCreateTime = 0;
-  logClientEvent("[record.prewarm] released pre-warmed stream");
+  await releasePreWarmedStreamService();
 }
 
 async function preWarmMicrophoneStream(deviceId: string): Promise<void> {
-  if (!navigator.mediaDevices?.getUserMedia) return;
-
-  if (preWarmedStream && preWarmedStreamDeviceId === deviceId && preWarmedStream.active) {
-    return;
-  }
-
-  await releasePreWarmedStream();
-
-  const baseConstraints: MediaTrackConstraints = {
-    channelCount: 1,
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
-  };
-
-  try {
-    const constraints: MediaStreamConstraints = {
-      audio: deviceId
-        ? { ...baseConstraints, deviceId: { exact: deviceId } }
-        : baseConstraints,
-    };
-    preWarmedStream = await navigator.mediaDevices.getUserMedia(constraints);
-    preWarmedStreamDeviceId = deviceId;
-    preWarmedStreamCreateTime = Date.now();
-    logClientEvent(`[record.prewarm] stream opened deviceId=${deviceId || "default"}`);
-  } catch (error) {
-    logClientEvent(`[record.prewarm] failed: ${asErrorMessage(error)}`);
-    preWarmedStream = null;
-    preWarmedStreamDeviceId = null;
-  }
+  await preWarmMicrophoneStreamService(deviceId);
 }
 
 // ============================================================================
