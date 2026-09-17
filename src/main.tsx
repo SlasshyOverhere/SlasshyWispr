@@ -41,11 +41,23 @@ import {
 import { matchHistoryToRecordings } from "./store";
 import { newlyUnlockedAchievements } from "./analytics/analytics-service";
 import { loadHistory } from "./state/history";
+import {
+  initShellPersist,
+  loadAchievementStates as loadAchievementStatesService,
+  loadDockLayout as loadDockLayoutService,
+  loadPersistedMainPage as loadPersistedMainPageService,
+  loadPersistedSettingsPane as loadPersistedSettingsPaneService,
+  loadUsageStats as loadUsageStatsService,
+  persistAnalyticsSessionDetails as persistAnalyticsSessionDetailsService,
+  persistAchievementStates as persistAchievementStatesService,
+  persistHomeHistory as persistHomeHistoryService,
+  persistUsageStats as persistUsageStatsService,
+  renderFullHistory as renderFullHistoryService,
+  updateAndPersistDockLayout as updateAndPersistDockLayoutService,
+} from "./state/persist";
 import { loadAnalyticsSessions as loadCanonicalAnalyticsSessions } from "./state/usage";
 import {
   loadSettings,
-  coerceNumber,
-  coerceInteger,
   asThemeMode,
 } from "./state/settings-store";
 import {
@@ -194,7 +206,6 @@ import {
   setNotificationPermissionRequested,
   showDesktopNotice,
 } from "./shell/notify";
-import { parseJson } from "./state/storage";
 import {
   initAnalyticsRender,
   updateUsageMetrics as updateUsageMetricsService,
@@ -309,13 +320,8 @@ import type {
 } from "./recording-state-machine";
 
 import {
-  ACHIEVEMENTS_STATE_KEY,
   ACTIVE_PAGE_STORAGE_KEY,
-  ANALYTICS_SESSIONS_KEY,
-  HOME_HISTORY_STORAGE_KEY,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
-  USAGE_STORAGE_KEY,
-  DOCK_LAYOUT_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
@@ -689,6 +695,19 @@ let settings = loadSettings();
 settings.pushToTalkHotkey = settings.pushToTalkHotkey.trim() || DEFAULT_HOTKEY;
 settings.commandHotkey = settings.commandHotkey.trim() || DEFAULT_COMMAND_HOTKEY;
 initSettingsState(settings);
+initShellPersist({
+  getUsageStats: () => usageStats,
+  getSessions: () => analyticsSessionDetails,
+  getAchievements: () => achievementStates,
+  getHomeHistory: () => homeHistoryEntries,
+  getDockLayout: () => dockLayout,
+  setDockLayout: (layout) => {
+    dockLayout = layout;
+  },
+  parseMainPage: (value) => asMainPage(value),
+  parseSettingsPane: (value) => asSettingsPane(value),
+});
+
 setPersistErrorReporter((message) => setNotice(message, true));
 initPipelinePrompt({ getRecentTurns: () => recentTurns });
 initPipelineRender(
@@ -2589,63 +2608,23 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
 }
 
 function loadUsageStats(): UsageStats {
-  const raw = localStorage.getItem(USAGE_STORAGE_KEY);
-  if (!raw) {
-    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<UsageStats>;
-    const now = Date.now();
-    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-    const lastReset = parsed.lastPeriodReset || 0;
-    
-    if (now - lastReset > sevenDaysMs) {
-      const totalPrevWords = (parsed.prevWords || 0) + (parsed.words || 0);
-      const totalPrevSeconds = (parsed.prevSpeakingSeconds || 0) + (parsed.speakingSeconds || 0);
-      return {
-        sessions: 0,
-        words: 0,
-        avgWpm: 0,
-        speakingSeconds: 0,
-        prevSessions: coerceInteger((parsed.prevSessions || 0) + (parsed.sessions || 0), 0, 0, 999_999),
-        prevWords: coerceInteger(totalPrevWords, 0, 0, 99_999_999),
-        prevWpm: coerceNumber(totalPrevSeconds > 0 ? Math.round((totalPrevWords / totalPrevSeconds) * 60) : 0, 0, 0, 600),
-        prevSpeakingSeconds: coerceInteger(totalPrevSeconds, 0, 0, 99_999_999),
-        lastPeriodReset: now,
-      };
-    }
-    
-    return {
-      sessions: coerceInteger(parsed.sessions, 0, 0, 999_999),
-      words: coerceInteger(parsed.words, 0, 0, 99_999_999),
-      avgWpm: coerceNumber(parsed.avgWpm, 0, 0, 600),
-      speakingSeconds: coerceInteger(parsed.speakingSeconds, 0, 0, 99_999_999),
-      prevSessions: coerceInteger(parsed.prevSessions, 0, 0, 999_999),
-      prevWords: coerceInteger(parsed.prevWords, 0, 0, 99_999_999),
-      prevWpm: coerceNumber(parsed.prevWpm, 0, 0, 600),
-      prevSpeakingSeconds: coerceInteger(parsed.prevSpeakingSeconds, 0, 0, 99_999_999),
-      lastPeriodReset: coerceInteger(lastReset, 0, 0, Number.MAX_SAFE_INTEGER),
-    };
-  } catch {
-    return { sessions: 0, words: 0, avgWpm: 0, speakingSeconds: 0, prevSessions: 0, prevWords: 0, prevWpm: 0, prevSpeakingSeconds: 0, lastPeriodReset: Date.now() };
-  }
+  return loadUsageStatsService();
 }
 
 function persistUsageStats(): void {
-  localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(usageStats));
+  persistUsageStatsService();
 }
 
 function persistAnalyticsSessionDetails(): void {
-  localStorage.setItem(ANALYTICS_SESSIONS_KEY, JSON.stringify(analyticsSessionDetails));
+  persistAnalyticsSessionDetailsService();
 }
 
 function loadAchievementStates(): AchievementState[] {
-  return parseJson<AchievementState[]>(ACHIEVEMENTS_STATE_KEY, []);
+  return loadAchievementStatesService();
 }
 
 function persistAchievementStates(): void {
-  localStorage.setItem(ACHIEVEMENTS_STATE_KEY, JSON.stringify(achievementStates));
+  persistAchievementStatesService();
 }
 
 function checkAndUnlockAchievements(stats: UsageStats): void {
@@ -2657,60 +2636,28 @@ function checkAndUnlockAchievements(stats: UsageStats): void {
 }
 
 function loadPersistedMainPage(): MainPage {
-  const persisted = localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY);
-  return asMainPage(persisted ?? undefined) ?? "home";
+  return loadPersistedMainPageService();
 }
 
 function loadPersistedSettingsPane(): SettingsPane {
-  const persisted = localStorage.getItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY);
-  return asSettingsPane(persisted ?? undefined) ?? "general";
+  return loadPersistedSettingsPaneService();
 }
 
 function persistHomeHistory(): void {
-  localStorage.setItem(HOME_HISTORY_STORAGE_KEY, JSON.stringify(homeHistoryEntries));
+  persistHomeHistoryService();
 }
 
 
 function renderFullHistory(filter: "all" | "day" | "week" | "month" = "all", specificDate?: string): void {
-  // React owns #fullHistoryLog. Dispatch filter event for React to apply.
-  window.dispatchEvent(new CustomEvent("slasshy:history-filter", { detail: { filter, specificDate } }));
+  renderFullHistoryService(filter, specificDate);
 }
 
 function loadDockLayout(): DockLayout | null {
-  const raw = localStorage.getItem(DOCK_LAYOUT_STORAGE_KEY);
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<DockLayout>;
-    if (!Number.isFinite(parsed.x) || !Number.isFinite(parsed.y)) {
-      return null;
-    }
-
-    return {
-      x: Math.round(Number(parsed.x)),
-      y: Math.round(Number(parsed.y)),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function persistDockLayout(layout: DockLayout): void {
-  localStorage.setItem(DOCK_LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+  return loadDockLayoutService();
 }
 
 function updateAndPersistDockLayout(x: number, y: number): void {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    return;
-  }
-
-  dockLayout = {
-    x: Math.round(x),
-    y: Math.round(y),
-  };
-  persistDockLayout(dockLayout);
+  updateAndPersistDockLayoutService(x, y);
 }
 
 async function persistDockPositionFromWindow(win: WebviewWindow | null): Promise<void> {
