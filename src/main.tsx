@@ -704,7 +704,7 @@ initShellPersist({
   parseSettingsPane: (value) => asSettingsPane(value),
 });
 
-setPersistErrorReporter((message) => setNotice(message, true));
+setPersistErrorReporter((message) => setNoticeService(message, true));
 initPipelinePrompt({ getRecentTurns: () => recentTurns });
 initPipelineRender(
   { sttLatency, aiLatency, ttsLatency, totalLatency },
@@ -739,8 +739,8 @@ initPlayback(assistantAudio, {
   syncAvailability: () => syncActionAvailability(),
 });
 initMicStream({
-  notify: (message, isError) => setNotice(message, isError),
-  log: (message) => logClientEvent(message),
+  notify: (message, isError) => setNoticeService(message, isError),
+  log: (message) => logClientEventService(message),
 });
 initCaptureMonitors(
   { recordTimer },
@@ -762,7 +762,7 @@ initCommandMode({
   isTauri: isTauriEnvironment,
   captureSelectedText: () => ipcCaptureSelectedText(),
   setNotice: (message, isError) => setNotice(message, isError),
-  log: (message) => logClientEvent(message),
+  log: (message) => logClientEventService(message),
   publishDockState: () => publishDockStateService(),
 });
 initCaptureTriggers({
@@ -770,9 +770,9 @@ initCaptureTriggers({
   isPipelineRunning: () => pipelineRunning,
   getCaptureMode: () => settings.captureMode,
   setNotice: (message, isError) => setNotice(message, isError),
-  log: (message) => logClientEvent(message),
+  log: (message) => logClientEventService(message),
   shouldBlockFromForegroundApp: () => shouldBlockAssistantInputFromForegroundAppService(),
-  interruptPlayback: () => interruptTtsPlaybackForCaptureIntent(),
+  interruptPlayback: () => interruptTtsPlaybackService(),
   setCaptureIntent: (startedAt, label) => {
     lastCaptureIntentStartedAt = startedAt;
     lastCaptureIntentLabel = label;
@@ -797,10 +797,10 @@ initRecordingController(
     primeSelectionSnapshot: () => {
       void primeSelectionSnapshotForCommandMode();
     },
-    clearPushToTalkHolds: () => clearPushToTalkHolds(),
+    clearPushToTalkHolds: () => clearPushToTalkHoldsService(),
     showMissingApiKeyNotice: (source) => showMissingApiKeyNotice(source),
-    setNotice: (message, isError) => setNotice(message, isError),
-    log: (message) => logClientEvent(message),
+    setNotice: (message, isError) => setNoticeService(message, isError),
+    log: (message) => logClientEventService(message),
     transition: (event) => {
       transitionRecordingState(event);
     },
@@ -873,8 +873,8 @@ initPipelineClient(
     setPipelineRunning: (running) => {
       pipelineRunning = running;
     },
-    notify: (message, isError) => setNotice(message, isError),
-    log: (message) => logClientEvent(message),
+    notify: (message, isError) => setNoticeService(message, isError),
+    log: (message) => logClientEventService(message),
     getLocalSttCatalog: () => localSttModelCatalog,
     commitFormSettings: () => {
       void handleSettingsChange();
@@ -916,7 +916,7 @@ initLocalSttDiagnostics({
     applySettingsToFormService(settingsFormRefs, settingsCoreDeps, next);
     persistSettings(next);
   },
-  notify: (message, isError) => setNotice(message, isError),
+  notify: (message, isError) => setNoticeService(message, isError),
   openSettings: (reason) => openSettings(reason),
   setActiveSettingsPane: (pane, reason) => setActiveSettingsPane(pane, reason),
   openInSystemBrowser: (url) => openInSystemBrowser(url),
@@ -926,7 +926,7 @@ initLocalSttDiagnostics({
 });
 initForegroundPolicy({
   isTauri: isTauriEnvironment,
-  notify: (message, isError) => setNotice(message, isError),
+  notify: (message, isError) => setNoticeService(message, isError),
   clearPushToTalkHolds: () => clearPushToTalkHoldsService(),
   syncGlobalShortcuts: (force) => syncGlobalShortcutsService(force),
   requestGlobalShortcutSync: (force) => requestGlobalShortcutSyncService(force),
@@ -965,8 +965,8 @@ initDock(
     isMainWindowHiddenToTray: () => mainWindowHiddenToTray,
     getAmplitude: () => dockAmplitude,
     isTauri: isTauriEnvironment,
-    notify: (message, isError) => setNotice(message, isError),
-    log: (message) => logClientEvent(message),
+    notify: (message, isError) => setNoticeService(message, isError),
+    log: (message) => logClientEventService(message),
     getWindow: () => voiceIndicatorWindow,
     setWindow: (win) => {
       voiceIndicatorWindow = win;
@@ -1001,8 +1001,8 @@ initDockGeometry({
 initSelectionPopup(
   {
     isTauri: isTauriEnvironment,
-    notify: (message, isError) => setNotice(message, isError),
-    log: (message) => logClientEvent(message),
+    notify: (message, isError) => setNoticeService(message, isError),
+    log: (message) => logClientEventService(message),
     copyResult: (text) => {
       void copyToClipboardService(text, {
         successMessage: "Selection result copied to clipboard.",
@@ -1057,8 +1057,8 @@ initLocalSttClient(
     isPipelineRunning: () => pipelineRunning,
     getStage: () => stage,
     setStage: (next, detail) => setStage(next, detail),
-    notify: (message, isError) => setNotice(message, isError),
-    log: (message) => logClientEvent(message),
+    notify: (message, isError) => setNoticeService(message, isError),
+    log: (message) => logClientEventService(message),
     syncAvailability: () => syncActionAvailability(),
     openSettings: (reason) => openSettings(reason),
     setActiveSettingsPane: (pane, reason) => setActiveSettingsPane(pane, reason),
@@ -1106,7 +1106,7 @@ initAssistantInfo(
 );
 initClipboard({
   isTauri: isTauriEnvironment,
-  notify: (message, isError) => setNotice(message, isError),
+  notify: (message, isError) => setNoticeService(message, isError),
 });
 
 initCollectionsView(
@@ -1126,14 +1126,14 @@ initCollectionsView(
   },
   {
     isIncognito: () => settings.incognitoMode,
-    notify: (message, isError) => setNotice(message, isError),
+    notify: (message, isError) => setNoticeService(message, isError),
     formatNoteTime: (createdAt) => NOTE_TIME_FORMATTER.format(createdAt),
   },
 );
 
 initDesktopNotice({
   setNotice: (message, isError) => setNotice(message, isError),
-  log: (message) => logClientEvent(message),
+  log: (message) => logClientEventService(message),
   transition: (event) => {
     transitionRecordingState(event);
   },
@@ -1151,7 +1151,7 @@ initMicrophones(
     primeCapture: (deviceId, showFlowBar) => {
       void primeCaptureReadinessService(deviceId, showFlowBar);
     },
-    notify: (message, isError) => setNotice(message, isError),
+    notify: (message, isError) => setNoticeService(message, isError),
   },
 );
 const soundDeps = {
@@ -1171,8 +1171,8 @@ initRecordings(
   },
   {
     isTauri: isTauriEnvironment,
-    notify: (message, isError) => setNotice(message, isError),
-    log: (message) => logClientEvent(message),
+    notify: (message, isError) => setNoticeService(message, isError),
+    log: (message) => logClientEventService(message),
     notifyStoreUpdated: () => {
       window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
     },
@@ -1216,8 +1216,8 @@ initUpdaterFlow(
   },
   {
     isTauri: isTauriEnvironment,
-    notify: (message, isError) => setNotice(message, isError),
-    log: (message) => logClientEvent(message),
+    notify: (message, isError) => setNoticeService(message, isError),
+    log: (message) => logClientEventService(message),
     openUpdateSettings: (reason) => {
       openSettings(reason);
       setActiveSettingsPane("update-security", reason);
@@ -1275,7 +1275,7 @@ initOllamaClient(
     renderProviderCatalog: (models, selected) => renderProviderModelCatalogService(models, selected),
     renderOllamaCatalog: (models, selected) => renderLocalOllamaModelCatalogService(models, selected),
     renderStatus: (status) => renderOllamaStatusService(status),
-    setNotice: (message, isError) => setNotice(message, isError),
+    setNotice: (message, isError) => setNoticeService(message, isError),
     setStage: (next, detail) => setStage(next, detail),
     syncAvailability: () => syncActionAvailability(),
     openModelsPane: () => setActiveSettingsPane("models"),
@@ -1307,7 +1307,7 @@ initTtsClient(
     commitSettings: () => {
       void handleSettingsChange();
     },
-    setNotice: (message, isError) => setNotice(message, isError),
+    setNotice: (message, isError) => setNoticeService(message, isError),
     setStage: (next, detail) => setStage(next, detail),
     getStage: () => stage,
     refreshAssistantInfo: () => refreshAssistantInfoSafely(),
@@ -1610,7 +1610,7 @@ document.addEventListener("keydown", (event) => {
     }
 
     event.preventDefault();
-    void engagePushToTalk("hotkey");
+    void engagePushToTalkService("hotkey");
     return;
   }
 
@@ -1653,7 +1653,7 @@ document.addEventListener("keyup", (event) => {
   }
 
   event.preventDefault();
-  releasePushToTalk("hotkey");
+  releasePushToTalkService("hotkey");
 });
 
 window.addEventListener("blur", () => {
@@ -1668,7 +1668,7 @@ window.addEventListener("blur", () => {
   logClientEvent(
     `[record.ptt.blur] clearing holds=${getPushToTalkHoldCount()} stage=${stage}`,
   );
-  clearPushToTalkHolds();
+  clearPushToTalkHoldsService();
   if (stage === "recording") {
     logClientEvent("[record.ptt.blur] window blurred during recording -> stopRecording()");
     stopRecordingService();
@@ -1734,7 +1734,7 @@ initHotkeyCapture(
   {
     getPushHotkey: () => settings.pushToTalkHotkey,
     getCommandHotkey: () => settings.commandHotkey,
-    notify: (message, isError) => setNotice(message, isError),
+    notify: (message, isError) => setNoticeService(message, isError),
     onCommitted: () => {
       void handleSettingsChange();
     },
@@ -1744,8 +1744,8 @@ initHotkeyCapture(
 initHotkeySync({
   isTauri: isTauriEnvironment,
   getSettings: getSettingsSnapshot,
-  notify: (message, isError) => setNotice(message, isError),
-  log: (message) => logClientEvent(message),
+  notify: (message, isError) => setNoticeService(message, isError),
+  log: (message) => logClientEventService(message),
   publishDockState: () => publishDockStateService(),
   onShortcutEvent: (event) => handleGlobalShortcutEvent(event),
 });
@@ -2329,7 +2329,7 @@ async function hydrateSettingsFromNativeStorage(): Promise<void> {
   const hydrated = await hydrateSettingsFromNativeStorageService({
     isTauri: isTauriEnvironment,
     loadNative: () => ipcLoadPersistedLocalSettings(),
-    log: (message) => logClientEvent(message),
+    log: (message) => logClientEventService(message),
     warn: (message) => console.warn(message),
     applyAll: (next) => {
       settings = next;
@@ -2440,7 +2440,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
       renderAssistantInfoService(assistantInfo as AssistantInfoResponse);
     }
   },
-  clearCaptureHolds: () => clearPushToTalkHolds(),
+  clearCaptureHolds: () => clearPushToTalkHoldsService(),
   notifyIncognitoChanged: () => {
     // Notify React to re-render with updated incognito state from localStorage.
     window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
@@ -2474,7 +2474,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
       requestLaunchAtLoginSync(next.launchAtLogin);
     }
     if (previousTtsEngine !== next.ttsEngine) {
-      interruptTtsPlaybackForCaptureIntent();
+      interruptTtsPlaybackService();
     }
     const sttRuntimeModeChanged = previousSttRuntimeMode !== next.sttRuntimeMode;
     const aiRuntimeModeChanged = previousAiRuntimeMode !== next.aiRuntimeMode;
@@ -2629,7 +2629,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
           logClientEvent("[hotkey.global.push] ignored repeated press because hold is already active");
           return;
         }
-        void engagePushToTalk("hotkey");
+        void engagePushToTalkService("hotkey");
       } else {
         void handleRecordToggleService();
       }
@@ -2637,7 +2637,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
     if (released && (settings.captureMode === "push-to-talk" || hasPushToTalkHold("hotkey"))) {
       markGlobalShortcutHandledService(shortcut, "released");
       logClientEvent("[hotkey.global.push] released -> release push-to-talk hold");
-      releasePushToTalk("hotkey");
+      releasePushToTalkService("hotkey");
     }
     return;
   }
@@ -2692,10 +2692,6 @@ function showMissingApiKeyNotice(source: string): void {
     failureReason: "Missing API key for online runtime.",
     logSource: source,
   });
-}
-
-function interruptTtsPlaybackForCaptureIntent(): boolean {
-  return interruptTtsPlaybackService();
 }
 
 function setStage(next: Stage, detail: string): void {
@@ -2778,7 +2774,7 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
         pipelineRunning = action.running;
         break;
       case "clear-ptt-holds":
-        clearPushToTalkHolds();
+        clearPushToTalkHoldsService();
         break;
       case "reset-command-mode":
         resetCommandMode();
@@ -2968,18 +2964,6 @@ function syncActionAvailability(): void {
   providerModelCatalogSelect.disabled = providerModelCatalogSelect.disabled || allRuntimeLocal;
 }
 
-async function engagePushToTalk(source: HoldSource): Promise<void> {
-  await engagePushToTalkService(source);
-}
-
-function releasePushToTalk(source: HoldSource): void {
-  releasePushToTalkService(source);
-}
-
-function clearPushToTalkHolds(): void {
-  clearPushToTalkHoldsService();
-}
-
 function bindPushToTalkPointerHold(button: HTMLButtonElement, source: HoldSource): void {
   button.addEventListener("pointerdown", (event) => {
     if (settings.captureMode !== "push-to-talk") {
@@ -2991,7 +2975,7 @@ function bindPushToTalkPointerHold(button: HTMLButtonElement, source: HoldSource
 
     event.preventDefault();
     button.setPointerCapture(event.pointerId);
-    void engagePushToTalk(source);
+    void engagePushToTalkService(source);
   });
 
   const release = (event: PointerEvent): void => {
@@ -3002,13 +2986,13 @@ function bindPushToTalkPointerHold(button: HTMLButtonElement, source: HoldSource
     if (button.hasPointerCapture(event.pointerId)) {
       button.releasePointerCapture(event.pointerId);
     }
-    releasePushToTalk(source);
+    releasePushToTalkService(source);
   };
 
   button.addEventListener("pointerup", release);
   button.addEventListener("pointercancel", release);
   button.addEventListener("lostpointercapture", () => {
-    releasePushToTalk(source);
+    releasePushToTalkService(source);
   });
 }
 
@@ -3028,7 +3012,7 @@ function bindPushToTalkKeyboardHold(button: HTMLButtonElement, source: HoldSourc
       return;
     }
     keyboardHoldActive = true;
-    void engagePushToTalk(source);
+    void engagePushToTalkService(source);
   });
 
   button.addEventListener("keyup", (event) => {
@@ -3037,7 +3021,7 @@ function bindPushToTalkKeyboardHold(button: HTMLButtonElement, source: HoldSourc
     }
     event.preventDefault();
     keyboardHoldActive = false;
-    releasePushToTalk(source);
+    releasePushToTalkService(source);
   });
 
   button.addEventListener("blur", () => {
@@ -3045,7 +3029,7 @@ function bindPushToTalkKeyboardHold(button: HTMLButtonElement, source: HoldSourc
       return;
     }
     keyboardHoldActive = false;
-    releasePushToTalk(source);
+    releasePushToTalkService(source);
   });
 }
 
