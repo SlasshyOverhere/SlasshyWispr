@@ -215,6 +215,10 @@ import {
   updateTtsSetupGate as updateTtsSetupGateService,
 } from "./shell/navigation";
 import {
+  initAvailability,
+  syncActionAvailability as syncActionAvailabilityService,
+} from "./shell/availability";
+import {
   initStageView,
   refreshRecordButton as refreshRecordButtonService,
   setStage as setStageService,
@@ -750,7 +754,7 @@ initPlayback(assistantAudio, {
   transition: (event) => {
     transitionRecordingState(event);
   },
-  syncAvailability: () => syncActionAvailability(),
+  syncAvailability: () => syncActionAvailabilityService(),
 });
 initMicStream({
   notify: (message, isError) => setNoticeService(message, isError),
@@ -792,7 +796,7 @@ initCaptureTriggers({
     lastCaptureIntentLabel = label;
   },
   getRecorderState: () => mediaRecorder?.state ?? null,
-  syncAvailability: () => syncActionAvailability(),
+  syncAvailability: () => syncActionAvailabilityService(),
   isHotkeyCaptureActive: () => isAnyHotkeyCaptureActive(),
   performanceNow: () => performance.now(),
   now: () => Date.now(),
@@ -824,7 +828,7 @@ initRecordingController(
     transition: (event) => {
       transitionRecordingState(event);
     },
-    syncAvailability: () => syncActionAvailability(),
+    syncAvailability: () => syncActionAvailabilityService(),
     getRecordingStartedAt: () => recordingStartedAt,
     clearCaptureIntent: () => {
       lastCaptureIntentStartedAt = 0;
@@ -889,7 +893,7 @@ initPipelineClient(
     transition: (event) => {
       transitionRecordingState(event);
     },
-    syncAvailability: () => syncActionAvailability(),
+    syncAvailability: () => syncActionAvailabilityService(),
     setPipelineRunning: (running) => {
       pipelineRunning = running;
     },
@@ -1079,7 +1083,7 @@ initLocalSttClient(
     setStage: (next, detail) => setStageService(next, detail),
     notify: (message, isError) => setNoticeService(message, isError),
     log: (message) => logClientEventService(message),
-    syncAvailability: () => syncActionAvailability(),
+    syncAvailability: () => syncActionAvailabilityService(),
     openSettings: (reason) => openSettingsService(reason),
     setActiveSettingsPane: (pane, reason) => setActiveSettingsPaneService(pane, reason),
     refreshAssistantInfo: () => refreshAssistantInfoSafely(),
@@ -1116,6 +1120,55 @@ initNavigation(
     notifyOverlayVisibilityChanged: () => notifySettingsOverlayVisibilityChanged(),
   },
   { page: loadPersistedMainPageService(), pane: loadPersistedSettingsPaneService() },
+);
+initAvailability(
+  {
+    refreshMicsBtn,
+    setupRuntimeBtn,
+    validatePiperBtn,
+    downloadVoiceBtn,
+    setupAllTtsBtn,
+    clearHistoryBtn,
+    fetchProviderModelsBtn,
+    applyModelToAiBtn,
+    applyModelToSttBtn,
+    checkOllamaStatusBtn,
+    installOllamaBtn,
+    fetchOllamaModelsBtn,
+    useOllamaModelBtn,
+    pullOllamaModelBtn,
+    sidebarToggleLocalSttBtn,
+    downloadLocalSttModelBtn,
+    deleteLocalSttModelBtn,
+    openLocalSttModelPathBtn,
+    providerModelCatalogSelect,
+    localOllamaModelCatalogSelect,
+    localSttModelInput,
+    localSttModelCatalogSelect,
+    ttsEngineSelect,
+    hotkeyInput,
+    commandHotkeyInput,
+    toggleMicEditorBtn,
+    toggleHotkeyEditorBtn,
+    dictionaryAddBtn,
+    dictionaryAddBtnTop,
+    snippetAddBtn,
+    snippetsAddBtnTop,
+  },
+  {
+    isPipelineRunning: () => pipelineRunning,
+    getStage: () => stage,
+    isTtsSetupRunning: () => ttsSetupRunning,
+    isOllamaStatusBusy: () => ollamaStatusBusy,
+    isOllamaInstallBusy: () => ollamaInstallBusy,
+    isOllamaPullBusy: () => ollamaPullBusy,
+    isLocalSttHardwareAdvisorOpen: () => isLocalSttHardwareAdvisorOpen(),
+    isLocalSttBusy: () => isLocalSttBusyService(),
+    getSttRuntimeMode: () => settings.sttRuntimeMode,
+    getAiRuntimeMode: () => settings.aiRuntimeMode,
+    getFormRefs: () => settingsFormRefs,
+    renderLocalSttSettingsStatus: () => renderLocalSttSettingsStatusService(),
+  },
 );
 initStageView(
   { statusPill, statusDetail, recordBtn, notesQuickMicBtn },
@@ -1343,7 +1396,7 @@ initOllamaClient(
     renderStatus: (status) => renderOllamaStatusService(status),
     setNotice: (message, isError) => setNoticeService(message, isError),
     setStage: (next, detail) => setStageService(next, detail),
-    syncAvailability: () => syncActionAvailability(),
+    syncAvailability: () => syncActionAvailabilityService(),
     openModelsPane: () => setActiveSettingsPaneService("models"),
   },
 );
@@ -1377,7 +1430,7 @@ initTtsClient(
     setStage: (next, detail) => setStageService(next, detail),
     getStage: () => stage,
     refreshAssistantInfo: () => refreshAssistantInfoSafely(),
-    syncAvailability: () => syncActionAvailability(),
+    syncAvailability: () => syncActionAvailabilityService(),
     updateGate: () => updateTtsSetupGateService(),
     isSetupRunning: () => ttsSetupRunning,
     setSetupRunning: (running) => {
@@ -1471,7 +1524,7 @@ initAnalyticsRender(
 );
 updateUsageMetricsService();
 refreshRecordButtonService();
-syncActionAvailability();
+syncActionAvailabilityService();
 initializeUpdaterPanelService();
 void registerUpdateInstallProgressListenerService();
 setupCustomWindowControls();
@@ -2124,7 +2177,7 @@ async function bootstrap(): Promise<void> {
   } catch {
     // Ignore bootstrap poll failures and continue normal app startup.
   }
-  syncActionAvailability();
+  syncActionAvailabilityService();
   startAutomaticUpdateChecksService();
   if (analyticsSessionDetails.length > 0 && achievementStates.length === 0) {
     const totalWords = usageStats.words + usageStats.prevWords;
@@ -2281,7 +2334,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
     const previousShortcutSignature = buildShortcutSyncSignature(previous);
     renderSidebarLocalSttToggleService();
     refreshRecordButtonService();
-    syncActionAvailability();
+    syncActionAvailabilityService();
     updateMicrophoneSummaryService();
     renderNotesListService();
     const nextShortcutSignature = buildShortcutSyncSignature(next);
@@ -2595,102 +2648,6 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
   }
 
   return result;
-}
-
-function syncActionAvailability(): void {
-  const busy =
-    pipelineRunning ||
-    stage === "recording" ||
-    ttsSetupRunning ||
-    ollamaStatusBusy ||
-    ollamaInstallBusy ||
-    ollamaPullBusy ||
-    isLocalSttHardwareAdvisorOpen();
-  const localSttBusy = busy || isLocalSttBusyService();
-  const sttRuntimeIsLocal = settings.sttRuntimeMode === "local";
-  refreshMicsBtn.disabled = busy;
-  setupRuntimeBtn.disabled = busy;
-  validatePiperBtn.disabled = busy;
-  downloadVoiceBtn.disabled = busy;
-  setupAllTtsBtn.disabled = busy;
-  clearHistoryBtn.disabled = busy;
-  fetchProviderModelsBtn.disabled = busy;
-  applyModelToAiBtn.disabled = busy;
-  applyModelToSttBtn.disabled = busy;
-  checkOllamaStatusBtn.disabled = busy;
-  installOllamaBtn.disabled = busy;
-  fetchOllamaModelsBtn.disabled = busy;
-  useOllamaModelBtn.disabled = busy;
-  pullOllamaModelBtn.disabled = busy;
-  sidebarToggleLocalSttBtn.disabled = localSttBusy || !sttRuntimeIsLocal;
-  downloadLocalSttModelBtn.disabled = localSttBusy;
-  deleteLocalSttModelBtn.disabled = localSttBusy;
-  openLocalSttModelPathBtn.disabled = localSttBusy;
-  settingsFormRefs.sttRuntimeModeOnlineInput.disabled = pipelineRunning || stage === "recording" || ttsSetupRunning;
-  settingsFormRefs.sttRuntimeModeOfflineInput.disabled = pipelineRunning || stage === "recording" || ttsSetupRunning;
-  settingsFormRefs.aiRuntimeModeOnlineInput.disabled = busy;
-  settingsFormRefs.aiRuntimeModeOfflineInput.disabled = busy;
-  settingsFormRefs.microphoneSelect.disabled = busy;
-  settingsFormRefs.dictationLanguageSelect.disabled = busy;
-  settingsFormRefs.dictationLanguageModeSingleInput.disabled = busy;
-  settingsFormRefs.dictationLanguageModeMultipleInput.disabled = busy;
-  for (const option of settingsFormRefs.dictationLanguageOptionInputs) {
-    option.disabled = busy;
-  }
-  settingsFormRefs.styleProfileSelect.disabled = busy;
-  settingsFormRefs.apiKeyInput.disabled = busy;
-  settingsFormRefs.rememberApiKeyInput.disabled = busy;
-  settingsFormRefs.apiBaseUrlInput.disabled = busy;
-  settingsFormRefs.sttModelInput.disabled =busy;
-  settingsFormRefs.aiModelInput.disabled =busy;
-  providerModelCatalogSelect.disabled = busy;
-  settingsFormRefs.localOllamaBaseUrlInput.disabled = busy;
-  settingsFormRefs.localOllamaModelInput.disabled = busy;
-  localOllamaModelCatalogSelect.disabled = busy;
-  localSttModelInput.disabled = localSttBusy;
-  localSttModelCatalogSelect.disabled = localSttBusy;
-  ttsEngineSelect.disabled = busy;
-  settingsFormRefs.piperPathInput.disabled = busy;
-  settingsFormRefs.piperQualitySelect.disabled = busy;
-  settingsFormRefs.piperEmotionSelect.disabled = busy;
-  settingsFormRefs.piperSpeedInput.disabled = busy;
-  hotkeyInput.disabled = busy;
-  commandHotkeyInput.disabled = busy;
-  settingsFormRefs.captureModeSingleInput.disabled = busy;
-  settingsFormRefs.captureModePushToTalkInput.disabled = busy;
-  settingsFormRefs.commandModeToggle.disabled = busy;
-  settingsFormRefs.wakeWordEnabledToggle.disabled = busy;
-  settingsFormRefs.assistantNameInput.disabled = busy;
-  settingsFormRefs.autoPasteDictationToggle.disabled = busy;
-  settingsFormRefs.contextAwarenessToggle.disabled = busy;
-  settingsFormRefs.copyToClipboardToggle.disabled = busy;
-  settingsFormRefs.incognitoModeToggle.disabled = busy;
-  settingsFormRefs.themeModeSelect.disabled = busy;
-  for (const cardInput of settingsFormRefs.themeCardInputs) {
-    cardInput.disabled = busy;
-  }
-  settingsFormRefs.backtrackToggle.disabled = busy;
-  settingsFormRefs.removeFillersToggle.disabled = busy;
-  settingsFormRefs.autoPunctuationToggle.disabled = busy;
-  settingsFormRefs.numberedListsToggle.disabled = busy;
-  toggleMicEditorBtn.disabled = busy;
-  toggleHotkeyEditorBtn.disabled = busy;
-  dictionaryAddBtn.disabled = busy;
-  dictionaryAddBtnTop.disabled = busy;
-  snippetAddBtn.disabled = busy;
-  renderLocalSttSettingsStatusService();
-  snippetsAddBtnTop.disabled = busy;
-
-  const allRuntimeLocal = settings.sttRuntimeMode === "local" && settings.aiRuntimeMode === "local";
-  fetchProviderModelsBtn.disabled = fetchProviderModelsBtn.disabled || allRuntimeLocal;
-  applyModelToAiBtn.disabled = applyModelToAiBtn.disabled || allRuntimeLocal;
-  applyModelToSttBtn.disabled = applyModelToSttBtn.disabled || allRuntimeLocal;
-  settingsFormRefs.apiKeyInput.disabled = settingsFormRefs.apiKeyInput.disabled || allRuntimeLocal;
-  settingsFormRefs.rememberApiKeyInput.disabled = settingsFormRefs.rememberApiKeyInput.disabled || allRuntimeLocal;
-  settingsFormRefs.apiBaseUrlInput.disabled = settingsFormRefs.apiBaseUrlInput.disabled || allRuntimeLocal;
-  settingsFormRefs.sttModelInput.disabled = settingsFormRefs.sttModelInput.disabled || allRuntimeLocal;
-  settingsFormRefs.aiModelInput.disabled = settingsFormRefs.aiModelInput.disabled || allRuntimeLocal;
-  providerModelCatalogSelect.disabled = providerModelCatalogSelect.disabled || allRuntimeLocal;
 }
 
 // ============================================================================
