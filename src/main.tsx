@@ -34,7 +34,6 @@ import {
   listDictationRecordingIds as ipcListDictationRecordingIds,
   listDictationRecordingsStats as ipcListDictationRecordingsStats,
   logClientEvent as ipcLogClientEvent,
-  muteSystemAudio as ipcMuteSystemAudio,
   openLocalSttModelPath as ipcOpenLocalSttModelPath,
   pasteClipboardText as ipcPasteClipboardText,
   pasteTextViaClipboard as ipcPasteTextViaClipboard,
@@ -110,6 +109,12 @@ import {
   setSettingsSnapshot,
 } from "./settings/settings-state";
 import { APP_UPDATE_AUTO_CHECK_CHANGED_EVENT } from "./updater/updater-client-shim";
+import {
+  isExternalMediaMutedForDictation,
+  pauseExternalMediaForDictation as pauseExternalMediaForDictationService,
+  resumeExternalMediaAfterDictation as resumeExternalMediaAfterDictationService,
+  setExternalMediaMutedForDictation,
+} from "./shell/media-control";
 import { parseJson } from "./state/storage";
 import { countWords, formatSpeakingTime } from "./analytics/analytics-service";
 import {
@@ -609,9 +614,6 @@ let ttsSetupPollingId: number | null = null;
 let ttsSetupRunning = false;
 let ttsSetupPollInFlight = false;
 let effectAudioContext: AudioContext | null = null;
-let externalMediaMutedForDictation = false;
-let externalMediaControlInFlight: Promise<void> | null = null;
-let externalMediaControlErrorShown = false;
 let launchAtLoginSyncNonce = 0;
 let updateCheckInFlight = false;
 let updateInstallInFlight = false;
@@ -668,6 +670,17 @@ settings.pushToTalkHotkey = settings.pushToTalkHotkey.trim() || DEFAULT_HOTKEY;
 settings.commandHotkey = settings.commandHotkey.trim() || DEFAULT_COMMAND_HOTKEY;
 initSettingsState(settings);
 setPersistErrorReporter((message) => setNotice(message, true));
+const mediaControlDeps = {
+  isMutingEnabled: () => settings.muteMusicWhileDictating,
+  isTauri: isTauriEnvironment,
+  notify: (message: string, isError?: boolean) => setNotice(message, isError),
+};
+function pauseExternalMediaForDictation(): void {
+  pauseExternalMediaForDictationService(mediaControlDeps);
+}
+function resumeExternalMediaAfterDictation(): void {
+  resumeExternalMediaAfterDictationService(mediaControlDeps);
+}
 const settingsCoreDeps: SettingsCoreDeps = {
   isCapturingHotkey: () => hotkeyCaptureActive,
   isCapturingCommandHotkey: () => commandHotkeyCaptureActive,
@@ -1148,11 +1161,12 @@ window.addEventListener("beforeunload", () => {
     window.clearInterval(foregroundBlockMonitorId);
     foregroundBlockMonitorId = null;
   }
-  if (externalMediaMutedForDictation) {
-    void invokeSystemAudioMute(false).catch(() => {
-      // Ignore shutdown restore failures.
+  if (isExternalMediaMutedForDictation()) {
+    resumeExternalMediaAfterDictationService({
+      ...mediaControlDeps,
+      notify: () => {},
     });
-    externalMediaMutedForDictation = false;
+    setExternalMediaMutedForDictation(false);
   }
   void persistDockPositionFromWindow(voiceIndicatorWindow);
   dockChannel.close();
@@ -6381,15 +6395,6 @@ function playDictationSoundEffect(kind: "start" | "stop" | "error", previewSound
   }
 }
 
-async function invokeSystemAudioMute(mute: boolean): Promise<void> {
-  if (!isTauriEnvironment()) {
-    return;
-  }
-
-  await ipcMuteSystemAudio(mute);
-  externalMediaControlErrorShown = false;
-}
-
 async function fetchForegroundInputBlockStatus(force = false): Promise<ForegroundInputBlockStatus> {
   if (!ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION) {
     const fallback: ForegroundInputBlockStatus = {
@@ -6608,52 +6613,6 @@ async function initializeTrayBackgroundLifecycle(): Promise<void> {
   }
 }
 
-function queueExternalMediaControl(task: () => Promise<void>): void {
-  const previous = externalMediaControlInFlight ?? Promise.resolve();
-  const next = previous
-    .then(task)
-    .catch((error: unknown) => {
-      if (!externalMediaControlErrorShown) {
-        setNotice(`Unable to control media playback: ${asErrorMessage(error)}`, true);
-        externalMediaControlErrorShown = true;
-      }
-    })
-    .finally(() => {
-      if (externalMediaControlInFlight === next) {
-        externalMediaControlInFlight = null;
-      }
-    });
-  externalMediaControlInFlight = next;
-}
-
-function pauseExternalMediaForDictation(): void {
-  if (!settings.muteMusicWhileDictating || externalMediaMutedForDictation) {
-    return;
-  }
-
-  queueExternalMediaControl(async () => {
-    if (!settings.muteMusicWhileDictating || externalMediaMutedForDictation) {
-      return;
-    }
-    await invokeSystemAudioMute(true);
-    externalMediaMutedForDictation = true;
-  });
-}
-
-function resumeExternalMediaAfterDictation(): void {
-  if (!externalMediaMutedForDictation) {
-    return;
-  }
-
-  queueExternalMediaControl(async () => {
-    if (!externalMediaMutedForDictation) {
-      return;
-    }
-    await invokeSystemAudioMute(false);
-    externalMediaMutedForDictation = false;
-  });
-}
-
 function setStage(next: Stage, detail: string): void {
   const previousStage = stage;
   stage = next;
@@ -6678,7 +6637,7 @@ function setStage(next: Stage, detail: string): void {
 
   if (previousStage === "recording" && next !== "recording") {
     playDictationSoundEffect("stop");
-    if (externalMediaMutedForDictation) {
+    if (isExternalMediaMutedForDictation()) {
       resumeExternalMediaAfterDictation();
     }
     return;
@@ -6769,7 +6728,7 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
         void preWarmMicrophoneStream(settings.microphoneDeviceId);
         break;
       case "resume-external-media":
-        if (externalMediaMutedForDictation) {
+        if (isExternalMediaMutedForDictation()) {
           resumeExternalMediaAfterDictation();
         }
         break;
