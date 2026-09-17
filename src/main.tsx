@@ -219,6 +219,10 @@ import {
   syncActionAvailability as syncActionAvailabilityService,
 } from "./shell/availability";
 import {
+  applyPersistedSidebarCollapsed as applyPersistedSidebarCollapsedService,
+  initSidebar,
+} from "./shell/sidebar";
+import {
   initStageView,
   refreshRecordButton as refreshRecordButtonService,
   setStage as setStageService,
@@ -454,14 +458,6 @@ function requiredElement<T extends Element>(selector: string): T {
   return element;
 }
 
-function applySidebarCollapsed(collapsed: boolean): void {
-  document.body.classList.toggle("sidebar-collapsed", collapsed);
-  toggleSidebarBtn.setAttribute("aria-pressed", collapsed ? "true" : "false");
-  const sidebarActionLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";
-  toggleSidebarBtn.setAttribute("aria-label", sidebarActionLabel);
-  toggleSidebarBtn.dataset.label = sidebarActionLabel;
-  syncSidebarHoverTitles(collapsed);
-}
 
 
 const settingsOverlay = requiredElement<HTMLDivElement>("#settingsOverlay");
@@ -514,27 +510,6 @@ const wordsTrend = requiredElement<HTMLElement>("#wordsTrend");
 const timeTrend = requiredElement<HTMLElement>("#timeTrend");
 const sessionsTrend = requiredElement<HTMLElement>("#sessionsTrend");
 const wpmTrend = requiredElement<HTMLElement>("#wpmTrend");
-
-function syncSidebarHoverTitles(collapsed: boolean): void {
-  for (const target of sidebarLabeledButtons) {
-    let label = target.dataset.label?.trim();
-    if (!label) {
-      continue;
-    }
-
-    const hotkey = target.dataset.hotkey?.trim();
-    if (collapsed && hotkey) {
-      label = `${label} (${hotkey})`;
-    }
-
-    if (collapsed) {
-      target.setAttribute("title", label);
-      continue;
-    }
-
-    target.removeAttribute("title");
-  }
-}
 
 const dictionaryList = requiredElement<HTMLDivElement>("#dictionaryList");
 const dictionaryForm = requiredElement<HTMLFormElement>("#dictionaryForm");
@@ -1121,6 +1096,16 @@ initNavigation(
   },
   { page: loadPersistedMainPageService(), pane: loadPersistedSettingsPaneService() },
 );
+initSidebar(
+  { toggleButton: toggleSidebarBtn, labeledButtons: sidebarLabeledButtons },
+  {
+    readCollapsed: () => localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1",
+    writeCollapsed: (collapsed) => {
+      localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, collapsed ? "1" : "0");
+    },
+  },
+);
+
 initAvailability(
   {
     refreshMicsBtn,
@@ -1534,14 +1519,9 @@ commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
 void reconcileLaunchAtLoginWithOs();
 startBlockedAppShortcutSuppressionMonitorService();
-applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
+applyPersistedSidebarCollapsedService();
 
 
-toggleSidebarBtn.addEventListener("click", () => {
-  const collapsed = !document.body.classList.contains("sidebar-collapsed");
-  applySidebarCollapsed(collapsed);
-  localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, collapsed ? "1" : "0");
-});
 
 checkUpdatesBtn.addEventListener("click", () => {
   void handleCheckForUpdatesService();
