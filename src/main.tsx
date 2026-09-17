@@ -232,6 +232,12 @@ import {
   showSelectionAssistantPopup as showSelectionAssistantPopupService,
 } from "./windows/selection-popup";
 import {
+  initDock,
+  primeCaptureReadiness as primeCaptureReadinessService,
+  publishDockState as publishDockStateService,
+  syncFloatingIndicatorWindow as syncFloatingIndicatorWindowService,
+} from "./windows/dock";
+import {
   checkAvailableMemory as checkAvailableMemoryService,
   checkModelFileExists as checkModelFileExistsService,
   checkPythonDependencies as checkPythonDependenciesService,
@@ -900,6 +906,48 @@ initLocalSttDiagnostics({
     void activateSelectedLocalSttModelService();
   },
 });
+initDock(
+  {
+    getStage: () => stage,
+    getShowFlowBar: () => settings.showFlowBar,
+    getShowDockAlways: () => settings.showDockAlways,
+    getThemeMode: () => settings.themeMode,
+    getCaptureMode: () => settings.captureMode,
+    getHotkeyDisplay: () => cachedHotkeyDisplay,
+    isCommandModeArmed: () => isCommandModeArmed(),
+    isGlobalShortcutsActive: () => isGlobalShortcutsActive(),
+    isMainWindowHiddenToTray: () => mainWindowHiddenToTray,
+    getAmplitude: () => dockAmplitude,
+    isTauri: isTauriEnvironment,
+    notify: (message, isError) => setNotice(message, isError),
+    log: (message) => logClientEvent(message),
+    getWindow: () => voiceIndicatorWindow,
+    setWindow: (win) => {
+      voiceIndicatorWindow = win;
+    },
+    getHideTimerId: () => dockHideTimerId,
+    setHideTimerId: (id) => {
+      dockHideTimerId = id;
+    },
+    getRuntimeErrorShown: () => dockRuntimeErrorShown,
+    setRuntimeErrorShown: (shown) => {
+      dockRuntimeErrorShown = shown;
+    },
+    persistDockPosition: (win) => persistDockPositionFromWindow(win),
+    persistLayout: (x, y) => updateAndPersistDockLayout(x, y),
+    resolveStartPosition: (w, h) => resolveDockStartPosition(w, h),
+    canPreWarmMicrophone: () => canPreWarmMicrophoneService(),
+    preWarmMicrophoneStream: (deviceId) => {
+      void preWarmMicrophoneStreamService(deviceId);
+    },
+    getMicrophoneDeviceId: () => settings.microphoneDeviceId,
+    handleDockMicToggle: () => {
+      void handleDockMicToggleService();
+    },
+    systemThemeMatchesLight: () => systemThemeMediaQuery?.matches ?? false,
+  },
+  dockChannel,
+);
 initSelectionPopup(
   {
     isTauri: isTauriEnvironment,
@@ -1276,24 +1324,6 @@ persistDictionaryTerms();
 persistSnippets();
 persistQuickNotes();
 persistUsageStats();
-
-dockChannel.onmessage = (event: MessageEvent<unknown>) => {
-  const payload = event.data as { kind?: string; action?: string } | null;
-  if (!payload || payload.kind !== "action") {
-    return;
-  }
-
-  if (payload.action === "toggle-mic") {
-    void handleDockMicToggleService();
-  } else if (payload.action === "open-app") {
-    void (async () => {
-      const win = getCurrentWindow();
-      await win.show();
-      await win.unminimize();
-      await win.setFocus();
-    })();
-  }
-};
 
 if (systemThemeMediaQuery) {
   const handleSystemThemeChange = (): void => {
@@ -3568,49 +3598,8 @@ function logClientEvent(message: string): void {
   logClientEventService(message);
 }
 
-function shouldDisplayDock(): boolean {
-  if (!settings.showFlowBar) {
-    return false;
-  }
-  if (settings.showDockAlways) {
-    return true;
-  }
-  return (
-    stage === "recording" ||
-    stage === "processing" ||
-    stage === "speaking"
-  );
-}
-
-function resolvedDockTheme(): "light" | "dark" {
-  if (settings.themeMode === "light") {
-    return "light";
-  }
-  if (settings.themeMode === "dark" || settings.themeMode === "mono") {
-    return "dark";
-  }
-
-  return systemThemeMediaQuery?.matches ? "light" : "dark";
-}
-
 function publishDockState(): void {
-  try {
-    dockChannel.postMessage({
-      kind: "state",
-      stage,
-      visible: shouldDisplayDock(),
-      mainWindowHiddenToTray,
-      theme: resolvedDockTheme(),
-      amplitude: dockAmplitude,
-      captureMode: settings.captureMode,
-      hotkey: cachedHotkeyDisplay,
-      showFlowBar: settings.showFlowBar,
-      commandModeArmed: isCommandModeArmed(),
-      globalShortcutsActive: isGlobalShortcutsActive(),
-    });
-  } catch {
-    // Ignore post errors to keep main flow resilient.
-  }
+  publishDockStateService();
 }
 
 function refreshRecordButton(): void {
@@ -3643,201 +3632,12 @@ function refreshRecordButton(): void {
   notesQuickMicBtn.disabled = false;
 }
 
-function voiceIndicatorUrl(): string {
-  if (window.location.origin.startsWith("http")) {
-    return `${window.location.origin}/voice-indicator.html`;
-  }
-  return "voice-indicator.html";
-}
-
-async function ensureVoiceIndicatorWindow(): Promise<WebviewWindow> {
-  if (voiceIndicatorWindow) {
-    return voiceIndicatorWindow;
-  }
-
-  const existing = await WebviewWindow.getByLabel("voice_indicator");
-  if (existing) {
-    await persistDockPositionFromWindow(existing);
-    voiceIndicatorWindow = existing;
-    return existing;
-  }
-
-  const dockWidth = 160;
-  const dockHeight = 140;
-  const dockPosition = await resolveDockStartPosition(dockWidth, dockHeight);
-
-  const created = new WebviewWindow("voice_indicator", {
-    title: "SlasshyWispr Voice Indicator",
-    url: voiceIndicatorUrl(),
-    width: dockWidth,
-    height: dockHeight,
-    x: dockPosition.x,
-    y: dockPosition.y,
-    minWidth: dockWidth,
-    minHeight: dockHeight,
-    maxWidth: dockWidth,
-    maxHeight: dockHeight,
-    resizable: false,
-    decorations: false,
-    transparent: true,
-    shadow: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    visible: false,
-    focus: false,
-  });
-
-  created.once("tauri://destroyed", () => {
-    voiceIndicatorWindow = null;
-  });
-
-  const creationReady = new Promise<void>((resolve, reject) => {
-    let settled = false;
-
-    const finishResolve = (): void => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    };
-
-    const finishReject = (reason: unknown): void => {
-      if (settled) return;
-      settled = true;
-      reject(new Error(asErrorMessage(reason)));
-    };
-
-    created.once("tauri://created", () => {
-      finishResolve();
-    });
-
-    created.once("tauri://error", (event) => {
-      const payload = (event as { payload?: unknown }).payload ?? "unknown error";
-      finishReject(payload);
-    });
-
-    // In some environments the creation event can race quickly, so this avoids a dead wait.
-    window.setTimeout(() => {
-      finishResolve();
-    }, 900);
-  });
-
-  try {
-    await creationReady;
-  } catch (error) {
-    reportDockRuntimeError(
-      `Floating dock window failed to initialize: ${asErrorMessage(error)}`,
-    );
-    throw error;
-  }
-
-  try {
-    await created.onMoved(({ payload }) => {
-      updateAndPersistDockLayout(payload.x, payload.y);
-    });
-  } catch {
-    // Keep dock usable even if move/resize listeners are unavailable.
-  }
-
-  voiceIndicatorWindow = created;
-  return created;
-}
-
-function reportDockRuntimeError(message: string): void {
-  if (!dockRuntimeErrorShown) {
-    setNotice(message, true);
-    dockRuntimeErrorShown = true;
-  }
-  console.error(message);
-}
-
-async function showVoiceIndicatorWindow(): Promise<boolean> {
-  if (dockHideTimerId !== null) {
-    window.clearTimeout(dockHideTimerId);
-    dockHideTimerId = null;
-  }
-
-  try {
-    const wasMissing = !voiceIndicatorWindow;
-    const win = await ensureVoiceIndicatorWindow();
-    await win.show();
-    dockRuntimeErrorShown = false;
-    publishDockState();
-    // ponytail: re-publish after 300ms in case the dock's onmessage listener
-    // wasn't attached yet when the first message fired. Covers the race where
-    // the dock window is shown but the BroadcastChannel subscriber in
-    // voice-indicator.html hasn't been set up yet.
-    setTimeout(() => publishDockState(), 300);
-    return wasMissing;
-  } catch (error) {
-    reportDockRuntimeError(`Unable to show floating dock: ${asErrorMessage(error)}`);
-    return false;
-  }
-}
-
 async function primeCaptureReadiness(deviceId: string, shouldPrimeDock: boolean): Promise<void> {
-  if (await canPreWarmMicrophoneService()) {
-    void preWarmMicrophoneStreamService(deviceId);
-  }
-
-  if (shouldPrimeDock && isTauriEnvironment() && !voiceIndicatorWindow) {
-    void ensureVoiceIndicatorWindow().catch((error) => {
-      logClientEvent(`[dock.prime] failed: ${asErrorMessage(error)}`);
-    });
-  }
-}
-
-async function hideVoiceIndicatorWindow(): Promise<void> {
-  if (dockHideTimerId !== null) {
-    window.clearTimeout(dockHideTimerId);
-    dockHideTimerId = null;
-  }
-
-  if (!voiceIndicatorWindow) {
-    return;
-  }
-
-  try {
-    await persistDockPositionFromWindow(voiceIndicatorWindow);
-    await voiceIndicatorWindow.hide();
-  } catch (error) {
-    reportDockRuntimeError(`Unable to hide floating dock: ${asErrorMessage(error)}`);
-  }
+  await primeCaptureReadinessService(deviceId, shouldPrimeDock);
 }
 
 async function syncFloatingIndicatorWindow(): Promise<void> {
-  publishDockState();
-  const shouldShow = shouldDisplayDock();
-
-  if (shouldShow) {
-    // Cancel any pending hide timer before showing — prevents the race where a
-    // hide timer is already ticking and this show path is followed by a quick
-    // re-entry that hits the early return below and lets the stale hide fire.
-    if (dockHideTimerId !== null) {
-      window.clearTimeout(dockHideTimerId);
-      dockHideTimerId = null;
-    }
-    const wasMissing = await showVoiceIndicatorWindow();
-    // If the dock window was just (re)created, the BroadcastChannel subscriber
-    // in voice-indicator.html may not have been wired yet when the pre-show
-    // publishDockState() above fired. Re-publish to guarantee it lands on a
-    // live listener; the listener can still drop messages it hasn't bound yet
-    // (e.g. destroyed-and-reborn dock), so publish again shortly after to
-    // cover that race.
-    if (wasMissing) {
-      publishDockState();
-      window.setTimeout(() => publishDockState(), 60);
-    }
-    return;
-  }
-
-  if (dockHideTimerId !== null) {
-    return;
-  }
-
-  dockHideTimerId = window.setTimeout(() => {
-    dockHideTimerId = null;
-    void hideVoiceIndicatorWindow();
-  }, 220);
+  await syncFloatingIndicatorWindowService();
 }
 
 function syncActionAvailability(): void {
