@@ -1066,4 +1066,25 @@ pub(crate) async fn transcribe_audio_openai_compatible(
     Ok(transcript)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+#[test]
+fn mime_to_extension_handles_common_types() {
+    assert_eq!(mime_to_extension("audio/webm"), "webm");
+    assert_eq!(mime_to_extension("audio/wav"), "wav");
+    assert_eq!(mime_to_extension("audio/ogg"), "ogg");
+    assert_eq!(mime_to_extension("audio/mp4"), "m4a");
+    assert_eq!(mime_to_extension("audio/mpeg"), "mp3");
+    assert_eq!(mime_to_extension("audio/mp3"), "mp3");
+}
+
+#[test]
+fn mime_to_extension_defaults_to_webm() {
+    assert_eq!(mime_to_extension("audio/unknown"), "webm");
+    assert_eq!(mime_to_extension("application/octet-stream"), "webm");
+}
+
+// ===== SELECTION EDIT DECISION =====
+}

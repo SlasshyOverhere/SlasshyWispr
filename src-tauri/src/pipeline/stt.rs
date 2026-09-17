@@ -294,4 +294,28 @@ mod tests {
             Some("en")
         ));
     }
+
+#[test]
+fn detects_repetitive_transcript_noise() {
+    let noisy = "ලලලලලලලලලලලලලලලලලලලලලලලලලලලල";
+    assert!(looks_like_repetitive_transcript_noise(noisy, Some("en")));
+}
+
+#[test]
+fn rejects_script_mismatch_for_latin_language_hint() {
+    let transcript = "සාරි සාරි සාරි සාරි සාරි";
+    assert!(looks_like_repetitive_transcript_noise(
+        transcript,
+        Some("en")
+    ));
+}
+
+#[test]
+fn accepts_normal_english_transcript() {
+    let transcript = "Hey Lily what do you think about India today";
+    assert!(!looks_like_repetitive_transcript_noise(
+        transcript,
+        Some("en")
+    ));
+}
 }

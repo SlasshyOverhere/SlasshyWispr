@@ -296,4 +296,72 @@ mod tests {
     fn rejects_non_echo() {
         assert!(!looks_like_question_echo("What time is it?", "It's 3 PM."));
     }
+
+#[test]
+fn normalizes_latex_heavy_assistant_responses() {
+    let input = r#"\(x = 37.5\)
+
+Explanation:
+
+\[
+\left(\frac{x}{3}\right) \times 4 + 90 - 40 = 100
+\]
+
+\[
+\frac{4x}{3} + 50 = 100 \;\Longrightarrow\; \frac{4x}{3} = 50 \;\Longrightarrow\; x = 37.5
+\]"#;
+    let normalized = normalize_assistant_response_text(input);
+
+    assert!(normalized.contains("x = 37.5"));
+    assert!(normalized.contains("((x) / (3)) x 4 + 90 - 40 = 100"));
+    assert!(normalized.contains("(4x) / (3) + 50 = 100 => (4x) / (3) = 50 => x = 37.5"));
+    assert!(!normalized.contains("\\["));
+    assert!(!normalized.contains("\\frac"));
+    assert!(!normalized.contains("\\Longrightarrow"));
+}
+
+#[test]
+fn flags_incomplete_draft_outputs() {
+    let incomplete =
+        "Subject: Sick Leave - Unable to Attend Work Tomorrow\n\nDear [Boss's Name],\n\nI am";
+    assert!(crate::pipeline::selection::looks_like_incomplete_draft_output(incomplete));
+
+    let complete = "Subject: Sick Leave Request for Tomorrow\n\nDear Manager,\n\nI am feeling unwell and will not be able to attend work tomorrow. I will monitor urgent messages and hand over critical items before the day starts.\n\nBest regards,\nSuman";
+    assert!(!crate::pipeline::selection::looks_like_incomplete_draft_output(complete));
+}
+
+
+
+
+
+
+
+
+
+
+
+
+// ===== SINGLE_LINE AND CLIP_TEXT =====
+
+
+
+
+
+
+
+// ===== MIME EXTENSION MAPPING =====
+
+#[test]
+fn looks_like_incomplete_draft_detects_bracket_placeholder() {
+    let text = "Dear [Manager's Name], I am";
+    assert!(crate::pipeline::selection::looks_like_incomplete_draft_output(text));
+}
+
+#[test]
+fn looks_like_incomplete_draft_short_text_is_not_incomplete() {
+    let text = "Yes.";
+    assert!(!crate::pipeline::selection::looks_like_incomplete_draft_output(text));
+}
+
+// ===== SELECTION EDIT / DRAFT INSTRUCTION DETECTION =====
 }
