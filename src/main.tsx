@@ -2118,7 +2118,7 @@ async function bootstrap(): Promise<void> {
 
   try {
     const info = await ipcGetAssistantInfo();
-    renderAssistantInfo(info);
+    renderAssistantInfoService(info);
 
     if (info.piperInstalled && info.voiceInstalled) {
       setNotice("Piper runtime is ready.");
@@ -2437,7 +2437,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
       localSttModelCatalogSelect.value = "";
     }
     if (assistantInfo) {
-      renderAssistantInfo(assistantInfo as AssistantInfoResponse);
+      renderAssistantInfoService(assistantInfo as AssistantInfoResponse);
     }
   },
   clearCaptureHolds: () => clearPushToTalkHolds(),
@@ -2674,7 +2674,7 @@ function checkAndUnlockAchievements(stats: UsageStats): void {
 
 async function refreshAssistantInfo(): Promise<void> {
   const info = await ipcGetAssistantInfo();
-  renderAssistantInfo(info);
+  renderAssistantInfoService(info);
   renderProviderModelCatalogService(providerModelCatalog, settings.aiModelName || settings.sttModelName);
   renderLocalOllamaModelCatalogService(localOllamaModelCatalog, settings.localOllamaModel);
   renderLocalSttModelCatalogService(localSttModelCatalog, settings.localSttModel);
@@ -2696,10 +2696,6 @@ function showMissingApiKeyNotice(source: string): void {
 
 function interruptTtsPlaybackForCaptureIntent(): boolean {
   return interruptTtsPlaybackService();
-}
-
-function renderAssistantInfo(info: AssistantInfoResponse): void {
-  renderAssistantInfoService(info);
 }
 
 function setStage(next: Stage, detail: string): void {
