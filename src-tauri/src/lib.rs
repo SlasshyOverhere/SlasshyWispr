@@ -49,24 +49,6 @@ use pipeline::selection::{
 
 
 
-#[cfg(target_os = "windows")]
-pub(crate) mod win32_native {
-    use windows_sys::Win32::Foundation::RECT;
-
-    #[repr(C)]
-    #[allow(non_snake_case)]
-    pub struct MONITORINFO {
-        pub cbSize: u32,
-        pub rcMonitor: RECT,
-        pub rcWork: RECT,
-        pub dwFlags: u32,
-    }
-
-    extern "system" {
-        pub fn GetMonitorInfoW(hMonitor: isize, lpmi: *mut MONITORINFO) -> i32;
-        pub fn MonitorFromWindow(hwnd: isize, dwFlags: u32) -> isize;
-    }
-}
 
 
 

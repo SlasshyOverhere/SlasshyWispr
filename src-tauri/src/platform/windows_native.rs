@@ -30,6 +30,26 @@ use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 use super::input::policy::is_blocked_terminal_process_name;
 use super::windows_types::ForegroundWindowProbeResult;
+#[cfg(target_os = "windows")]
+pub(crate) mod win32_native {
+    use windows_sys::Win32::Foundation::RECT;
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    pub struct MONITORINFO {
+        pub cbSize: u32,
+        pub rcMonitor: RECT,
+        pub rcWork: RECT,
+        pub dwFlags: u32,
+    }
+
+    extern "system" {
+        pub fn GetMonitorInfoW(hMonitor: isize, lpmi: *mut MONITORINFO) -> i32;
+        pub fn MonitorFromWindow(hwnd: isize, dwFlags: u32) -> isize;
+    }
+}
+
+
 
 #[cfg(target_os = "windows")]
 pub(crate) fn make_key_input(vk: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
@@ -103,7 +123,7 @@ pub(crate) fn get_process_name_from_pid(pid: u32) -> String {
 
 #[cfg(target_os = "windows")]
 pub(crate) fn probe_foreground_window_windows() -> Result<ForegroundWindowProbeResult, String> {
-    use crate::win32_native::{GetMonitorInfoW, MONITORINFO, MonitorFromWindow};
+    use self::win32_native::{GetMonitorInfoW, MONITORINFO, MonitorFromWindow};
 
     unsafe {
         let hwnd = GetForegroundWindow();
