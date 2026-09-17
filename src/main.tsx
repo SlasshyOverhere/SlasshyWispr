@@ -129,6 +129,16 @@ import {
   releasePreWarmedStream as releasePreWarmedStreamService,
 } from "./recording/mic-stream";
 import {
+  clearPushToTalkHolds as clearPushToTalkHoldsService,
+  engagePushToTalk as engagePushToTalkService,
+  getPushToTalkHoldCount,
+  handleDockMicToggle as handleDockMicToggleService,
+  handleRecordToggle as handleRecordToggleService,
+  hasPushToTalkHold,
+  initCaptureTriggers,
+  releasePushToTalk as releasePushToTalkService,
+} from "./recording/capture-triggers";
+import {
   beginRecordingTicker as beginRecordingTickerService,
   initCaptureMonitors,
   releaseMicrophone as releaseMicrophoneService,
@@ -137,7 +147,6 @@ import {
 } from "./recording/capture-monitors";
 import {
   initRecordingController,
-  startRecording as startRecordingService,
   stopRecording as stopRecordingService,
 } from "./recording/recording-controller";
 import {
@@ -268,7 +277,6 @@ import {
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
   LOCAL_STT_MODEL_SIZE_LABELS,
-  ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
   BLOCKED_INPUT_NOTICE_COOLDOWN_MS,
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
@@ -590,8 +598,6 @@ let skipPipelineAfterRecorderStop = false;
 let skipPipelineAfterRecorderStopNotice = "";
 let dockAmplitude = 0;
 let dockHideTimerId: number | null = null;
-const pushToTalkHoldSources = new Set<HoldSource>();
-const pushToTalkHoldStartedAt = new Map<HoldSource, number>();
 let activeTtsPlayback: ActiveTtsPlayback | null = null;
 let voiceIndicatorWindow: WebviewWindow | null = null;
 let selectionAssistantWindow: WebviewWindow | null = null;
@@ -746,11 +752,29 @@ initCaptureMonitors(
     },
   },
 );
+initCaptureTriggers({
+  getStage: () => stage,
+  isPipelineRunning: () => pipelineRunning,
+  getCaptureMode: () => settings.captureMode,
+  setNotice: (message, isError) => setNotice(message, isError),
+  log: (message) => logClientEvent(message),
+  shouldBlockFromForegroundApp: () => shouldBlockAssistantInputFromForegroundApp(),
+  interruptPlayback: () => interruptTtsPlaybackForCaptureIntent(),
+  setCaptureIntent: (startedAt, label) => {
+    lastCaptureIntentStartedAt = startedAt;
+    lastCaptureIntentLabel = label;
+  },
+  getRecorderState: () => mediaRecorder?.state ?? null,
+  syncAvailability: () => syncActionAvailability(),
+  isHotkeyCaptureActive: () => isAnyHotkeyCaptureActive(),
+  performanceNow: () => performance.now(),
+  now: () => Date.now(),
+});
 initRecordingController(
   {
     getStage: () => stage,
     isPipelineRunning: () => pipelineRunning,
-    getHoldCount: () => pushToTalkHoldSources.size,
+    getHoldCount: () => getPushToTalkHoldCount(),
     getCommandModeArmed: () => commandModeArmed,
     getCaptureMode: () => settings.captureMode,
     readSettings: () => readSettingsFromForm(),
@@ -1518,7 +1542,7 @@ document.addEventListener("keyup", (event) => {
     return;
   }
 
-  if (!pushToTalkHoldSources.has("hotkey")) {
+  if (!hasPushToTalkHold("hotkey")) {
     return;
   }
 
@@ -1546,12 +1570,12 @@ window.addEventListener("blur", () => {
     return;
   }
 
-  if (pushToTalkHoldSources.size === 0) {
+  if (getPushToTalkHoldCount() === 0) {
     return;
   }
 
   logClientEvent(
-    `[record.ptt.blur] clearing holds=${pushToTalkHoldSources.size} stage=${stage}`,
+    `[record.ptt.blur] clearing holds=${getPushToTalkHoldCount()} stage=${stage}`,
   );
   clearPushToTalkHolds();
   if (stage === "recording") {
@@ -2779,7 +2803,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
     if (pressed) {
       markGlobalShortcutHandled(shortcut, "pressed");
       logClientEvent(
-        `[hotkey.global.push] pressed capture=${settings.captureMode} holdCount=${pushToTalkHoldSources.size}`,
+        `[hotkey.global.push] pressed capture=${settings.captureMode} holdCount=${getPushToTalkHoldCount()}`,
       );
       const activeSettings = readSettingsFromForm();
       if (missingApiKeyForOnlineRuntime(activeSettings)) {
@@ -2790,7 +2814,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
         return;
       }
       if (settings.captureMode === "push-to-talk") {
-        if (pushToTalkHoldSources.has("hotkey")) {
+        if (hasPushToTalkHold("hotkey")) {
           logClientEvent("[hotkey.global.push] ignored repeated press because hold is already active");
           return;
         }
@@ -2799,7 +2823,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
         void handleRecordToggle();
       }
     }
-    if (released && (settings.captureMode === "push-to-talk" || pushToTalkHoldSources.has("hotkey"))) {
+    if (released && (settings.captureMode === "push-to-talk" || hasPushToTalkHold("hotkey"))) {
       markGlobalShortcutHandled(shortcut, "released");
       logClientEvent("[hotkey.global.push] released -> release push-to-talk hold");
       releasePushToTalk("hotkey");
@@ -4355,64 +4379,15 @@ function showMissingApiKeyNotice(source: string): void {
 }
 
 async function handleRecordToggle(): Promise<void> {
-  logClientEvent(
-    `[record.toggle] stage=${stage} pipelineRunning=${boolFlag(
-      pipelineRunning,
-    )} holdCount=${pushToTalkHoldSources.size}`,
-  );
-  if (settings.captureMode === "push-to-talk") {
-    logClientEvent("[record.toggle] ignored because capture mode is push-to-talk");
-    if (stage !== "recording") {
-      setNotice("Push-to-talk is enabled. Hold the hotkey or mic button while speaking.");
-    }
-    return;
-  }
-  if (stage === "recording") {
-    logClientEvent("[record.toggle] stage is recording -> stopRecording()");
-    stopRecording();
-    return;
-  }
-
-  if (await shouldBlockAssistantInputFromForegroundApp()) {
-    logClientEvent("[record.toggle] blocked by foreground app policy");
-    return;
-  }
-
-  const interruptedPlayback = interruptTtsPlaybackForCaptureIntent();
-  if (interruptedPlayback) {
-    logClientEvent("[record.toggle] interrupted active TTS playback before recording");
-  }
-
-  if (pipelineRunning) {
-    logClientEvent("[record.toggle] blocked because pipeline is already running");
-    return;
-  }
-
-  logClientEvent("[record.toggle] invoking startRecording()");
-  lastCaptureIntentStartedAt = performance.now();
-  lastCaptureIntentLabel = "toggle";
-  await startRecording();
+  await handleRecordToggleService();
 }
 
 async function handleDockMicToggle(): Promise<void> {
-  if (isAnyHotkeyCaptureActive()) {
-    return;
-  }
-
-  if (settings.captureMode === "push-to-talk") {
-    setNotice("Push-to-talk is enabled. Hold the hotkey or mic button while speaking.");
-    return;
-  }
-
-  await handleRecordToggle();
+  await handleDockMicToggleService();
 }
 
 function interruptTtsPlaybackForCaptureIntent(): boolean {
   return interruptTtsPlaybackService();
-}
-
-async function startRecording(): Promise<void> {
-  await startRecordingService();
 }
 
 function stopRecording(options: StopRecordingOptions = {}): void {
@@ -5644,132 +5619,15 @@ function syncActionAvailability(): void {
 }
 
 async function engagePushToTalk(source: HoldSource): Promise<void> {
-  logClientEvent(
-    `[record.ptt.engage] source=${source} capture=${settings.captureMode} stage=${stage} pipelineRunning=${boolFlag(
-      pipelineRunning,
-    )} holds=${pushToTalkHoldSources.size}`,
-  );
-  if (settings.captureMode !== "push-to-talk") {
-    logClientEvent("[record.ptt.engage] ignored because capture mode is not push-to-talk");
-    return;
-  }
-
-  if (pushToTalkHoldSources.has(source)) {
-    logClientEvent("[record.ptt.engage] ignored because this hold source is already active");
-    return;
-  }
-
-  const holdStartedAt = Date.now();
-  pushToTalkHoldSources.add(source);
-  pushToTalkHoldStartedAt.set(source, holdStartedAt);
-  logClientEvent(`[record.ptt.engage] hold added source=${source} holds=${pushToTalkHoldSources.size}`);
-
-  if (await shouldBlockAssistantInputFromForegroundApp()) {
-    pushToTalkHoldSources.delete(source);
-    pushToTalkHoldStartedAt.delete(source);
-    logClientEvent("[record.ptt.engage] blocked by foreground app policy");
-    return;
-  }
-
-  if (!pushToTalkHoldSources.has(source)) {
-    logClientEvent("[record.ptt.engage] hold was released before capture could begin");
-    return;
-  }
-
-  const interruptedPlayback = interruptTtsPlaybackForCaptureIntent();
-  if (interruptedPlayback) {
-    logClientEvent("[record.ptt.engage] interrupted active TTS playback");
-  }
-
-  if (pipelineRunning || stage === "recording") {
-    logClientEvent(
-      `[record.ptt.engage] delayed because pipelineRunning=${boolFlag(
-        pipelineRunning,
-      )} stage=${stage}`,
-    );
-    return;
-  }
-
-  logClientEvent("[record.ptt.engage] invoking startRecording()");
-  lastCaptureIntentStartedAt = performance.now();
-  lastCaptureIntentLabel = source;
-  await startRecording();
-
-  if (mediaRecorder?.state !== "recording") {
-    logClientEvent(
-      `[record.ptt.engage] startRecording did not reach recording state (state=${
-        mediaRecorder?.state || "none"
-      }); removing hold`,
-    );
-    pushToTalkHoldSources.delete(source);
-    pushToTalkHoldStartedAt.delete(source);
-    return;
-  }
-
-  if (!pushToTalkHoldSources.has(source) && pushToTalkHoldSources.size === 0) {
-    const holdDurationMs = Date.now() - holdStartedAt;
-    const cancelShortHotkeyTap =
-      source === "hotkey" && holdDurationMs <= ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS;
-    logClientEvent(
-      `[record.ptt.engage] hold released before recording stabilized source=${source} holdMs=${holdDurationMs} cancel=${boolFlag(
-        cancelShortHotkeyTap,
-      )}`,
-    );
-    stopRecording(
-      cancelShortHotkeyTap
-        ? {
-            cancelPipeline: true,
-            cancelNotice: "Short hotkey tap detected. STT request canceled.",
-            cancelStatus: "Hotkey tap canceled.",
-          }
-        : undefined,
-    );
-  }
+  await engagePushToTalkService(source);
 }
 
 function releasePushToTalk(source: HoldSource): void {
-  const holdStartedAt = pushToTalkHoldStartedAt.get(source) ?? 0;
-  pushToTalkHoldStartedAt.delete(source);
-  if (!pushToTalkHoldSources.delete(source)) {
-    logClientEvent(`[record.ptt.release] ignored because hold source is not active: ${source}`);
-    return;
-  }
-  const holdDurationMs = holdStartedAt > 0 ? Date.now() - holdStartedAt : -1;
-  const cancelShortHotkeyTap =
-    source === "hotkey" &&
-    holdDurationMs >= 0 &&
-    holdDurationMs <= ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS;
-  logClientEvent(
-    `[record.ptt.release] source=${source} remainingHolds=${pushToTalkHoldSources.size} holdMs=${holdDurationMs} cancel=${boolFlag(
-      cancelShortHotkeyTap,
-    )}`,
-  );
-
-  if (stage === "recording" && pushToTalkHoldSources.size === 0) {
-    logClientEvent("[record.ptt.release] no holds left while recording -> stopRecording()");
-    stopRecording(
-      cancelShortHotkeyTap
-        ? {
-            cancelPipeline: true,
-            cancelNotice: "Short hotkey tap detected. STT request canceled.",
-            cancelStatus: "Hotkey tap canceled.",
-          }
-        : undefined,
-    );
-    return;
-  }
-
-  if (settings.captureMode !== "push-to-talk") {
-    logClientEvent("[record.ptt.release] capture mode changed; nothing to stop");
-  }
+  releasePushToTalkService(source);
 }
 
 function clearPushToTalkHolds(): void {
-  if (pushToTalkHoldSources.size > 0) {
-    logClientEvent(`[record.ptt.clear] clearing holds=${pushToTalkHoldSources.size}`);
-  }
-  pushToTalkHoldSources.clear();
-  pushToTalkHoldStartedAt.clear();
+  clearPushToTalkHoldsService();
 }
 
 function bindPushToTalkPointerHold(button: HTMLButtonElement, source: HoldSource): void {
