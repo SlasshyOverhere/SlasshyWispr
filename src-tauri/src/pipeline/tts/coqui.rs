@@ -50,6 +50,18 @@ pub async fn synthesize_with_coqui(
     coqui: &CoquiPipelineRequest,
     text: String,
 ) -> Result<Vec<u8>, String> {
+    // Boundary: resolve roots once here; the rest takes owned values.
+    let python_path = resolve_coqui_python_path(app, coqui.python_path.as_deref())?;
+    let voice_dir = coqui_voices_dir(app)?;
+    return synthesize_with_coqui_resolved(&python_path, &voice_dir, coqui, text).await;
+}
+
+async fn synthesize_with_coqui_resolved(
+    python_path: &str,
+    voice_dir: &std::path::Path,
+    coqui: &CoquiPipelineRequest,
+    text: String,
+) -> Result<Vec<u8>, String> {
     if crate::pipeline::routing::zero_python_mode_enabled() {
         return Err(ZERO_PYTHON_COQUI_NOTICE.to_string());
     }
@@ -98,14 +110,14 @@ pub async fn synthesize_with_coqui(
         .to_string();
     let use_gpu = coqui.use_gpu.unwrap_or(false);
     let split_sentences = coqui.split_sentences.unwrap_or(false);
-    let python_path = resolve_coqui_python_path(app, coqui.python_path.as_deref())?;
+    let python_path = python_path.to_string();
 
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| format!("Failed to compute timestamp: {error}"))?
         .as_millis();
     let output_path = std::env::temp_dir().join(format!("slasshy-coqui-tts-{stamp}.wav"));
-    let voice_dir = coqui_voices_dir(app)?;
+    let voice_dir = voice_dir.to_path_buf();
 
     let python_for_worker = python_path;
     let output_path_for_worker = output_path.clone();
