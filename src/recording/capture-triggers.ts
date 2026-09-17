@@ -222,3 +222,86 @@ export function clearPushToTalkHolds(): void {
 }
 
 export type { StopRecordingOptions };
+
+export interface PushToTalkBindDeps {
+  isPushToTalkMode: () => boolean;
+}
+
+let bindDeps: PushToTalkBindDeps | null = null;
+
+export function initPushToTalkBindings(deps: PushToTalkBindDeps): void {
+  bindDeps = deps;
+}
+
+function isPushToTalkMode(): boolean {
+  return bindDeps ? bindDeps.isPushToTalkMode() : false;
+}
+
+export function bindPushToTalkPointerHold(button: HTMLButtonElement, source: HoldSource): void {
+  button.addEventListener("pointerdown", (event) => {
+    if (!isPushToTalkMode()) {
+      return;
+    }
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    void engagePushToTalk(source);
+  });
+
+  const release = (event: PointerEvent): void => {
+    if (event.type === "pointerup" && event.button !== 0) {
+      return;
+    }
+
+    if (button.hasPointerCapture(event.pointerId)) {
+      button.releasePointerCapture(event.pointerId);
+    }
+    releasePushToTalk(source);
+  };
+
+  button.addEventListener("pointerup", release);
+  button.addEventListener("pointercancel", release);
+  button.addEventListener("lostpointercapture", () => {
+    releasePushToTalk(source);
+  });
+}
+
+export function bindPushToTalkKeyboardHold(button: HTMLButtonElement, source: HoldSource): void {
+  let keyboardHoldActive = false;
+
+  button.addEventListener("keydown", (event) => {
+    if (!isPushToTalkMode()) {
+      return;
+    }
+    if (event.repeat || (event.key !== " " && event.key !== "Enter")) {
+      return;
+    }
+
+    event.preventDefault();
+    if (keyboardHoldActive) {
+      return;
+    }
+    keyboardHoldActive = true;
+    void engagePushToTalk(source);
+  });
+
+  button.addEventListener("keyup", (event) => {
+    if (!keyboardHoldActive || (event.key !== " " && event.key !== "Enter")) {
+      return;
+    }
+    event.preventDefault();
+    keyboardHoldActive = false;
+    releasePushToTalk(source);
+  });
+
+  button.addEventListener("blur", () => {
+    if (!keyboardHoldActive) {
+      return;
+    }
+    keyboardHoldActive = false;
+    releasePushToTalk(source);
+  });
+}

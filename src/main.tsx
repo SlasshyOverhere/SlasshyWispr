@@ -117,12 +117,15 @@ import {
 } from "./recording/mic-stream";
 import {
   clearPushToTalkHolds as clearPushToTalkHoldsService,
+  bindPushToTalkKeyboardHold as bindPushToTalkKeyboardHoldService,
+  bindPushToTalkPointerHold as bindPushToTalkPointerHoldService,
   engagePushToTalk as engagePushToTalkService,
   getPushToTalkHoldCount,
   handleDockMicToggle as handleDockMicToggleService,
   handleRecordToggle as handleRecordToggleService,
   hasPushToTalkHold,
   initCaptureTriggers,
+  initPushToTalkBindings,
   releasePushToTalk as releasePushToTalkService,
 } from "./recording/capture-triggers";
 import {
@@ -349,7 +352,6 @@ import type {
   MainPage,
   SettingsPane,
   TtsProfilePane,
-  HoldSource,
 
   AssistantInfoResponse,
   PersistedSettings,
@@ -781,6 +783,9 @@ initCaptureTriggers({
   isHotkeyCaptureActive: () => isAnyHotkeyCaptureActive(),
   performanceNow: () => performance.now(),
   now: () => Date.now(),
+});
+initPushToTalkBindings({
+  isPushToTalkMode: () => settings.captureMode === "push-to-talk",
 });
 initRecordingController(
   {
@@ -1884,8 +1889,8 @@ notesQuickMicBtn.addEventListener("click", () => {
   void handleRecordToggleService();
 });
 
-bindPushToTalkPointerHold(notesQuickMicBtn, "notes-button");
-bindPushToTalkKeyboardHold(notesQuickMicBtn, "notes-button");
+bindPushToTalkPointerHoldService(notesQuickMicBtn, "notes-button");
+bindPushToTalkKeyboardHoldService(notesQuickMicBtn, "notes-button");
 
 refreshMicsBtn.addEventListener("click", () => {
   void refreshMicrophonesService(true);
@@ -2953,75 +2958,6 @@ function syncActionAvailability(): void {
   settingsFormRefs.sttModelInput.disabled = settingsFormRefs.sttModelInput.disabled || allRuntimeLocal;
   settingsFormRefs.aiModelInput.disabled = settingsFormRefs.aiModelInput.disabled || allRuntimeLocal;
   providerModelCatalogSelect.disabled = providerModelCatalogSelect.disabled || allRuntimeLocal;
-}
-
-function bindPushToTalkPointerHold(button: HTMLButtonElement, source: HoldSource): void {
-  button.addEventListener("pointerdown", (event) => {
-    if (settings.captureMode !== "push-to-talk") {
-      return;
-    }
-    if (event.button !== 0) {
-      return;
-    }
-
-    event.preventDefault();
-    button.setPointerCapture(event.pointerId);
-    void engagePushToTalkService(source);
-  });
-
-  const release = (event: PointerEvent): void => {
-    if (event.type === "pointerup" && event.button !== 0) {
-      return;
-    }
-
-    if (button.hasPointerCapture(event.pointerId)) {
-      button.releasePointerCapture(event.pointerId);
-    }
-    releasePushToTalkService(source);
-  };
-
-  button.addEventListener("pointerup", release);
-  button.addEventListener("pointercancel", release);
-  button.addEventListener("lostpointercapture", () => {
-    releasePushToTalkService(source);
-  });
-}
-
-function bindPushToTalkKeyboardHold(button: HTMLButtonElement, source: HoldSource): void {
-  let keyboardHoldActive = false;
-
-  button.addEventListener("keydown", (event) => {
-    if (settings.captureMode !== "push-to-talk") {
-      return;
-    }
-    if (event.repeat || (event.key !== " " && event.key !== "Enter")) {
-      return;
-    }
-
-    event.preventDefault();
-    if (keyboardHoldActive) {
-      return;
-    }
-    keyboardHoldActive = true;
-    void engagePushToTalkService(source);
-  });
-
-  button.addEventListener("keyup", (event) => {
-    if (!keyboardHoldActive || (event.key !== " " && event.key !== "Enter")) {
-      return;
-    }
-    event.preventDefault();
-    keyboardHoldActive = false;
-    releasePushToTalkService(source);
-  });
-
-  button.addEventListener("blur", () => {
-    if (!keyboardHoldActive) {
-      return;
-    }
-    keyboardHoldActive = false;
-    releasePushToTalkService(source);
-  });
 }
 
 // ============================================================================
