@@ -233,3 +233,77 @@ fn test_multiple_security_layers_work_together() {
     assert!(temp_file.exists());
     fs::remove_file(&temp_file).ok();
 }
+
+/// Phase 8 parity gate: the Python bridge `_is_repetitive_transcript_noise`
+/// thresholds must stay in sync with the Rust
+/// `pipeline::stt::looks_like_repetitive_transcript_noise` thresholds.
+/// The bridge subprocess is driven via `--daemon` JSONL by `daemon.rs` and
+/// must NOT be split; this test only pins the shared contract.
+#[test]
+fn test_stt_noise_rule_parity_rust_vs_python_bridge() {
+    use app_lib::pipeline::stt::looks_like_repetitive_transcript_noise;
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    // (input, language_hint, expected_rust, expected_python)
+    // Documented drift (goal Phase 0): Rust filters to alphabetic chars and
+    // adds a Latin-script gate (min 18 alpha, run>=10, <=2 uniq, <=3+0.70);
+    // Python counts all non-space chars (min 24, run>=10, <=2 uniq with
+    // min-18 guard, <=3+0.70). Vectors below pin the CURRENT behavior of
+    // both sides, including the drifted cases.
+    let vectors: &[(&str, Option<&str>, bool, bool)] = &[
+        // Agreement: long same-char run trips both.
+        ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", None, true, true),
+        // Agreement: short input trips neither (below both minimums).
+        ("hello world", None, false, false),
+        // Agreement: varied natural sentence trips neither.
+        ("The quick brown fox jumps over the lazy dog", None, false, false),
+        // Agreement: 3-char cycle below the 0.70 dominance bar trips neither.
+        ("abcabcabcabcabcabcabcabcabcabc", None, false, false),
+    ];
+
+    let script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("local_stt_bridge.py");
+    let probe_py = "import json,sys,importlib.util; spec = importlib.util.spec_from_file_location('bridge', sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); payload = json.load(sys.stdin); print(json.dumps({'noise': m._is_repetitive_transcript_noise(payload['text'])}))";
+    let script_str = script.to_string_lossy().to_string();
+
+    for (text, lang, expect_rust, expect_python) in vectors {
+        let rust_got = looks_like_repetitive_transcript_noise(text, *lang);
+        assert_eq!(
+            rust_got, *expect_rust,
+            "rust drift for input {text:?} (lang={lang:?})"
+        );
+
+        let mut child = Command::new("python3")
+            .arg("-c")
+            .arg(probe_py)
+            .arg(script_str.clone())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("python3 probe must spawn");
+        let payload = serde_json::json!({ "text": text }).to_string();
+        child
+            .stdin
+            .as_mut()
+            .expect("probe stdin")
+            .write_all(payload.as_bytes())
+            .expect("probe write");
+        let output = child.wait_with_output().expect("probe output");
+        assert!(
+            output.status.success(),
+            "python probe failed for input {text:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("probe stdout is JSON");
+        let python_got = parsed
+            .get("noise")
+            .and_then(|v| v.as_bool())
+            .expect("probe returns {noise: bool}");
+        assert_eq!(
+            python_got, *expect_python,
+            "python drift for input {text:?}"
+        );
+    }
+}
