@@ -11,7 +11,6 @@ import {
   captureSelectedText as ipcCaptureSelectedText,
   configureLaunchAtLogin as ipcConfigureLaunchAtLogin,
   getAssistantInfo as ipcGetAssistantInfo,
-  getForegroundInputBlockStatus as ipcGetForegroundInputBlockStatus,
   launchAtLoginStatus as ipcLaunchAtLoginStatus,
   loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
   listDictationRecordingIds as ipcListDictationRecordingIds,
@@ -262,6 +261,12 @@ import {
   initTrayLifecycle,
 } from "./windows/tray-lifecycle";
 import {
+  initForegroundPolicy,
+  shouldBlockAssistantInputFromForegroundApp as shouldBlockAssistantInputFromForegroundAppService,
+  startBlockedAppShortcutSuppressionMonitor as startBlockedAppShortcutSuppressionMonitorService,
+  stopForegroundMonitorForShutdown,
+} from "./windows/foreground-policy";
+import {
   initDockGeometry,
   resolveDockStartPosition as resolveDockStartPositionService,
 } from "./windows/dock-geometry";
@@ -332,8 +337,6 @@ import {
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
-  FOREGROUND_BLOCK_CHECK_CACHE_MS,
-  BLOCKED_INPUT_NOTICE_COOLDOWN_MS,
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
   DEFAULT_HOTKEY,
   DEFAULT_COMMAND_HOTKEY,
@@ -352,7 +355,6 @@ import type {
   UsageStats,
   AnalyticsSessionDetail,
   AchievementState,
-  ForegroundInputBlockStatus,
   HomeHistoryEntry,
   ActiveTtsPlayback,
   SelectionPopupPayload,
@@ -662,24 +664,11 @@ let localSttRuntimeLoaded = false;
 
 let ttsSetupRunning = false;
 let launchAtLoginSyncNonce = 0;
-let foregroundBlockStatusCache: ForegroundInputBlockStatus = {
-  blocked: false,
-  processName: "",
-  reason: "",
-  fullscreen: false,
-};
-let foregroundBlockCheckedAt = 0;
-let foregroundBlockCheckInFlight: Promise<ForegroundInputBlockStatus> | null = null;
-let lastBlockedInputNoticeAt = 0;
-let lastBlockedInputProcess = "";
-let foregroundBlockMonitorId: number | null = null;
-let foregroundBlockMonitorInFlight = false;
 let lastCaptureIntentStartedAt = 0;
 let lastCaptureIntentLabel = "";
 let mainWindowHiddenToTray = false;
 const dockChannel = new BroadcastChannel("slasshywispr-dock");
 const selectionPopupChannel = new BroadcastChannel("slasshywispr-selection-popup");
-const ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION = true;
 const MAIN_WINDOW_VISIBILITY_EVENT = "slasshy://main-window-visibility";
 import {
   snoozeUpdateFor24Hours,
@@ -780,7 +769,7 @@ initCaptureTriggers({
   getCaptureMode: () => settings.captureMode,
   setNotice: (message, isError) => setNotice(message, isError),
   log: (message) => logClientEvent(message),
-  shouldBlockFromForegroundApp: () => shouldBlockAssistantInputFromForegroundApp(),
+  shouldBlockFromForegroundApp: () => shouldBlockAssistantInputFromForegroundAppService(),
   interruptPlayback: () => interruptTtsPlaybackForCaptureIntent(),
   setCaptureIntent: (startedAt, label) => {
     lastCaptureIntentStartedAt = startedAt;
@@ -802,7 +791,7 @@ initRecordingController(
     readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
     readLiveSettings: () => settings,
     summarizeSettings: (next) => summarizeSettingsForDiagnostics(next),
-    shouldBlockFromForegroundApp: () => shouldBlockAssistantInputFromForegroundApp(),
+    shouldBlockFromForegroundApp: () => shouldBlockAssistantInputFromForegroundAppService(),
     primeSelectionSnapshot: () => {
       void primeSelectionSnapshotForCommandMode();
     },
@@ -932,6 +921,16 @@ initLocalSttDiagnostics({
   activateSelectedLocalSttModel: () => {
     void activateSelectedLocalSttModelService();
   },
+});
+initForegroundPolicy({
+  isTauri: isTauriEnvironment,
+  notify: (message, isError) => setNotice(message, isError),
+  clearPushToTalkHolds: () => clearPushToTalkHoldsService(),
+  syncGlobalShortcuts: (force) => syncGlobalShortcutsService(force),
+  requestGlobalShortcutSync: (force) => requestGlobalShortcutSyncService(force),
+  isShortcutSuppressionActive: () => isShortcutSuppressionActive(),
+  setShortcutSuppressionActive: (active) => setShortcutSuppressionActive(active),
+  now: () => Date.now(),
 });
 initTrayLifecycle({
   isTauri: isTauriEnvironment,
@@ -1382,7 +1381,7 @@ hotkeyInput.readOnly = true;
 commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
 void reconcileLaunchAtLoginWithOs();
-startBlockedAppShortcutSuppressionMonitor();
+startBlockedAppShortcutSuppressionMonitorService();
 applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
 
 
@@ -1544,7 +1543,7 @@ document.addEventListener("keydown", (event) => {
     }
     event.preventDefault();
     void (async () => {
-      if (await shouldBlockAssistantInputFromForegroundApp()) {
+      if (await shouldBlockAssistantInputFromForegroundAppService()) {
         logClientEvent("[hotkey.local.command] blocked by foreground app policy");
         return;
       }
@@ -1657,10 +1656,7 @@ window.addEventListener("beforeunload", () => {
     dockHideTimerId = null;
   }
   flushPendingSettings();
-  if (foregroundBlockMonitorId !== null) {
-    window.clearInterval(foregroundBlockMonitorId);
-    foregroundBlockMonitorId = null;
-  }
+  stopForegroundMonitorForShutdown();
   if (isExternalMediaMutedForDictation()) {
     resumeExternalMediaAfterDictationService({
       ...mediaControlDeps,
@@ -2621,7 +2617,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
     markGlobalShortcutHandledService(shortcut, "pressed");
     logClientEvent("[hotkey.global.command] pressed -> toggling command mode");
     void (async () => {
-      if (await shouldBlockAssistantInputFromForegroundApp()) {
+      if (await shouldBlockAssistantInputFromForegroundAppService()) {
         logClientEvent("[hotkey.global.command] blocked by foreground app policy");
         return;
       }
@@ -2697,153 +2693,6 @@ function renderAssistantInfo(info: AssistantInfoResponse): void {
   voicePathValue.textContent = info.voiceModelPath;
   piperRuntimeReady = Boolean(info.piperInstalled && info.voiceInstalled);
   updateTtsSetupGate();
-}
-
-async function fetchForegroundInputBlockStatus(force = false): Promise<ForegroundInputBlockStatus> {
-  if (!ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION) {
-    const fallback: ForegroundInputBlockStatus = {
-      blocked: false,
-      processName: "",
-      reason: "",
-      fullscreen: false,
-    };
-    foregroundBlockStatusCache = fallback;
-    foregroundBlockCheckedAt = Date.now();
-    return fallback;
-  }
-
-  if (!isTauriEnvironment()) {
-    return { blocked: false, processName: "", reason: "", fullscreen: false };
-  }
-
-  const now = Date.now();
-  if (!force && now - foregroundBlockCheckedAt <= FOREGROUND_BLOCK_CHECK_CACHE_MS) {
-    return foregroundBlockStatusCache;
-  }
-
-  if (
-    !force &&
-    foregroundBlockMonitorId !== null &&
-    foregroundBlockCheckedAt > 0 &&
-    now - foregroundBlockCheckedAt <= 1_500
-  ) {
-    void refreshBlockedAppShortcutSuppression();
-    return foregroundBlockStatusCache;
-  }
-
-  if (foregroundBlockCheckInFlight) {
-    return foregroundBlockCheckInFlight;
-  }
-
-  foregroundBlockCheckInFlight = (async () => {
-    try {
-      const status = await ipcGetForegroundInputBlockStatus();
-      const next: ForegroundInputBlockStatus = {
-        blocked: Boolean(status?.blocked),
-        processName: String(status?.processName ?? "").trim().toLowerCase(),
-        reason: String(status?.reason ?? "").trim().toLowerCase(),
-        fullscreen: Boolean(status?.fullscreen),
-      };
-      foregroundBlockStatusCache = next;
-      foregroundBlockCheckedAt = Date.now();
-      return next;
-    } catch {
-      const fallback: ForegroundInputBlockStatus = {
-        blocked: false,
-        processName: "",
-        reason: "",
-        fullscreen: false,
-      };
-      foregroundBlockStatusCache = fallback;
-      foregroundBlockCheckedAt = Date.now();
-      return fallback;
-    } finally {
-      foregroundBlockCheckInFlight = null;
-    }
-  })();
-
-  return foregroundBlockCheckInFlight;
-}
-
-function formatBlockedProcessLabel(processName: string): string {
-  const normalized = processName.trim().toLowerCase();
-  if (!normalized) {
-    return "a blocked app";
-  }
-
-  const base = normalized.endsWith(".exe") ? normalized.slice(0, -4) : normalized;
-  return base.replace(/[-_]+/g, " ");
-}
-
-function notifyBlockedForegroundInput(processName: string): void {
-  const now = Date.now();
-  const normalized = processName.trim().toLowerCase();
-  if (
-    normalized === lastBlockedInputProcess &&
-    now - lastBlockedInputNoticeAt < BLOCKED_INPUT_NOTICE_COOLDOWN_MS
-  ) {
-    return;
-  }
-
-  lastBlockedInputProcess = normalized;
-  lastBlockedInputNoticeAt = now;
-  setNotice(`Assistant input blocked while ${formatBlockedProcessLabel(processName)} is focused.`);
-}
-
-async function shouldBlockAssistantInputFromForegroundApp(force = false): Promise<boolean> {
-  if (!ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION) {
-    return false;
-  }
-
-  const status = await fetchForegroundInputBlockStatus(force);
-  if (!status.blocked) {
-    return false;
-  }
-
-  notifyBlockedForegroundInput(status.processName);
-  return true;
-}
-
-async function refreshBlockedAppShortcutSuppression(): Promise<void> {
-  if (!isTauriEnvironment() || foregroundBlockMonitorInFlight) {
-    return;
-  }
-
-  foregroundBlockMonitorInFlight = true;
-  try {
-    const status = await fetchForegroundInputBlockStatus(true);
-    const shouldSuppress = status.blocked;
-    if (shouldSuppress === isShortcutSuppressionActive()) {
-      return;
-    }
-
-    setShortcutSuppressionActive(shouldSuppress);
-    if (shouldSuppress) {
-      clearPushToTalkHolds();
-      await syncGlobalShortcutsService(true);
-      return;
-    }
-
-    requestGlobalShortcutSyncService(true);
-  } finally {
-    foregroundBlockMonitorInFlight = false;
-  }
-}
-
-function startBlockedAppShortcutSuppressionMonitor(): void {
-  if (!ENABLE_FOREGROUND_SHORTCUT_SUPPRESSION) {
-    return;
-  }
-
-  if (!isTauriEnvironment() || foregroundBlockMonitorId !== null) {
-    return;
-  }
-
-  foregroundBlockMonitorId = window.setInterval(() => {
-    void refreshBlockedAppShortcutSuppression();
-  }, 1200);
-
-  void refreshBlockedAppShortcutSuppression();
 }
 
 function setStage(next: Stage, detail: string): void {
