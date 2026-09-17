@@ -65,6 +65,7 @@ import { open as openExternalUrl } from "@tauri-apps/plugin-shell";
 import {
   boolFlag,
   buildAgentOperatingCorePrompt,
+  escapeHtml,
   expandSnippetsInText,
   normalizeDictionaryEntries,
   normalizeSnippetEntries,
@@ -115,6 +116,13 @@ import {
   setExternalMediaMutedForDictation,
 } from "./shell/media-control";
 import { playDictationSoundEffect as playDictationSoundEffectService } from "./shell/sound-effects";
+import {
+  initMicrophones,
+  isMicrophonePermissionGranted,
+  refreshMicrophones as refreshMicrophonesService,
+  setMicrophonePermissionGranted,
+  updateMicrophoneSummary as updateMicrophoneSummaryService,
+} from "./shell/microphones";
 import {
   initDiagnostics,
   logClientEvent as logClientEventService,
@@ -540,7 +548,6 @@ let amplitudeFrameId: number | null = null;
 let dockAmplitude = 0;
 let lastDockAmplitudePublishAt = 0;
 let dockHideTimerId: number | null = null;
-let microphonePermissionGranted = false;
 const pushToTalkHoldSources = new Set<HoldSource>();
 const pushToTalkHoldStartedAt = new Map<HoldSource, number>();
 let activeTtsPlayback: ActiveTtsPlayback | null = null;
@@ -675,6 +682,28 @@ settings.commandHotkey = settings.commandHotkey.trim() || DEFAULT_COMMAND_HOTKEY
 initSettingsState(settings);
 setPersistErrorReporter((message) => setNotice(message, true));
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
+initMicrophones(
+  { select: microphoneSelect, summary: microphoneSummary },
+  {
+    getMicrophoneDeviceId: () => settings.microphoneDeviceId,
+    setMicrophoneDeviceId: (id) => {
+      settings.microphoneDeviceId = id;
+    },
+    persist: () => persistSettings(settings),
+    getStage: () => stage,
+    getShowFlowBar: () => settings.showFlowBar,
+    primeCapture: (deviceId, showFlowBar) => {
+      void primeCaptureReadiness(deviceId, showFlowBar);
+    },
+    notify: (message, isError) => setNotice(message, isError),
+  },
+);
+function updateMicrophoneSummary(): void {
+  updateMicrophoneSummaryService();
+}
+async function refreshMicrophones(requestPermission: boolean): Promise<void> {
+  await refreshMicrophonesService(requestPermission);
+}
 const soundDeps = {
   currentSettings: getSettingsSnapshot,
   previewVolume: () => Number(settingsFormRefs.pushToTalkSoundVolumeRange.value),
@@ -3033,11 +3062,6 @@ clearRecordingsBtn.addEventListener("click", () => {
 
 
 
-function updateMicrophoneSummary(): void {
-  const selected = microphoneSelect.selectedOptions.item(0);
-  microphoneSummary.textContent = selected?.textContent?.trim() || "Auto-detect";
-}
-
 function persistDictionaryTerms(): void {
   localStorage.setItem(DICTIONARY_STORAGE_KEY, JSON.stringify(dictionaryTerms));
 }
@@ -3814,69 +3838,6 @@ function setCommandModeArmed(next: boolean): void {
 
 function toggleCommandModeArmed(): void {
   setCommandModeArmed(!commandModeArmed);
-}
-
-async function refreshMicrophones(requestPermission: boolean): Promise<void> {
-  if (!navigator.mediaDevices?.enumerateDevices) {
-    microphoneSelect.innerHTML = "<option value=''>Microphone listing not supported</option>";
-    updateMicrophoneSummary();
-    return;
-  }
-
-  try {
-    if (requestPermission && !microphonePermissionGranted) {
-      const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      for (const track of tempStream.getTracks()) {
-        track.stop();
-      }
-      microphonePermissionGranted = true;
-    }
-
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const microphones = devices.filter((device) => device.kind === "audioinput");
-
-    if (microphones.length === 0) {
-      microphoneSelect.innerHTML = "<option value=''>No microphones found</option>";
-      settings.microphoneDeviceId = "";
-      persistSettings(settings);
-      updateMicrophoneSummary();
-      return;
-    }
-
-    const currentId = settings.microphoneDeviceId;
-    const hasCurrent = microphones.some((device) => device.deviceId === currentId);
-    // When the saved device isn't in the current list, select the first device in
-    // the dropdown for display but keep the saved ID so it persists across sessions
-    // (the device may reconnect or be a transient enumeration gap).
-    const displayId = hasCurrent ? currentId : microphones[0]?.deviceId ?? "";
-
-    microphoneSelect.innerHTML = microphones
-      .map((device, index) => {
-        const label = device.label?.trim() || `Microphone ${index + 1}`;
-        const selected = device.deviceId === displayId ? " selected" : "";
-        return `<option value="${escapeHtml(device.deviceId)}"${selected}>${escapeHtml(label)}</option>`;
-      })
-      .join("");
-
-    if (hasCurrent) {
-      // Device found — update in-memory settings to stay in sync with dropdown.
-      settings.microphoneDeviceId = currentId;
-    }
-    // Always persist: if device was found, we updated the id; if not, we preserve
-    // the saved id so the user's choice survives restarts.
-    persistSettings(settings);
-    updateMicrophoneSummary();
-
-    if (requestPermission && stage === "idle") {
-      void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
-    }
-
-    if (!microphonePermissionGranted && microphones.every((device) => !device.label)) {
-      setNotice("Click refresh in Settings > General to grant mic permission and show device names.");
-    }
-  } catch (error) {
-    setNotice(`Unable to list microphones: ${asErrorMessage(error)}`, true);
-  }
 }
 
 async function refreshAssistantInfo(): Promise<void> {
@@ -5448,7 +5409,7 @@ async function startRecording(): Promise<void> {
     const micOpenStartedAt = performance.now();
     const stream = await openMicrophoneStream(activeSettings.microphoneDeviceId);
     mediaStream = stream;
-    microphonePermissionGranted = true;
+    setMicrophonePermissionGranted(true);
     logClientEvent(
       `[record.start] microphone stream opened tracks=${stream.getAudioTracks().length} openMs=${Math.round(
         performance.now() - micOpenStartedAt,
@@ -6810,7 +6771,7 @@ async function canPreWarmMicrophone(): Promise<boolean> {
     return false;
   }
 
-  if (microphonePermissionGranted) {
+  if (isMicrophonePermissionGranted()) {
     return true;
   }
 
@@ -6932,7 +6893,7 @@ function syncActionAvailability(): void {
   settingsFormRefs.sttRuntimeModeOfflineInput.disabled = pipelineRunning || stage === "recording" || ttsSetupRunning;
   settingsFormRefs.aiRuntimeModeOnlineInput.disabled = busy;
   settingsFormRefs.aiRuntimeModeOfflineInput.disabled = busy;
-  microphoneSelect.disabled = busy;
+  settingsFormRefs.microphoneSelect.disabled = busy;
   settingsFormRefs.dictationLanguageSelect.disabled = busy;
   settingsFormRefs.dictationLanguageModeSingleInput.disabled = busy;
   settingsFormRefs.dictationLanguageModeMultipleInput.disabled = busy;
@@ -7369,15 +7330,6 @@ async function preWarmMicrophoneStream(deviceId: string): Promise<void> {
 
 function formatLatency(value: number): string {
   return `${Math.round(value)} ms`;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function asErrorMessage(error: unknown): string {
