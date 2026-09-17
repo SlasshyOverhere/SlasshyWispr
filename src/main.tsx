@@ -690,7 +690,7 @@ initPipelineRender(
     getRecordingStartedAt: () => recordingStartedAt,
     getLastSavedRecordingId: () => lastSavedRecordingId,
     getLastCaptureIntentLabel: () => lastCaptureIntentLabel,
-    trackUsage: (transcript) => trackUsage(transcript),
+    trackUsage: (transcript) => trackUsageService(transcript),
     addQuickNote: (text) => addQuickNote(text),
     getHomeHistory: () => homeHistoryEntries,
     setHomeHistory: (entries) => {
@@ -766,7 +766,7 @@ initRecordingController(
     getHoldCount: () => getPushToTalkHoldCount(),
     getCommandModeArmed: () => isCommandModeArmed(),
     getCaptureMode: () => settings.captureMode,
-    readSettings: () => readSettingsFromForm(),
+    readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
     readLiveSettings: () => settings,
     summarizeSettings: (next) => summarizeSettingsForDiagnostics(next),
     shouldBlockFromForegroundApp: () => shouldBlockAssistantInputFromForegroundApp(),
@@ -839,7 +839,7 @@ initRecordingController(
 initPipelineClient(
   { localSttModelInput, localSttModelCatalogSelect },
   {
-    readSettings: () => readSettingsFromForm(),
+    readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
     getStage: () => stage,
     markIdle: (detail) => setStage("idle", detail),
     transition: (event) => {
@@ -865,21 +865,21 @@ initPipelineClient(
     setLastWarmedLocalSttModel: (model) => {
       lastWarmedLocalSttModel = model;
     },
-    ensureLocalOllamaModelSelected: (options) => ensureLocalOllamaModelSelected(options),
+    ensureLocalOllamaModelSelected: (options) => ensureLocalOllamaModelSelectedService(options),
     getDictionaryTerms: () => dictionaryTerms,
     getSnippets: () => snippets,
     nextSelectionPopupToken: () => nextSelectionPopupTokenService(),
     dismissSelectionPopup: () => dismissSelectionPopupService(),
     showSelectionAssistantPopup: (payload) => showSelectionAssistantPopupService(payload),
-    triggerAutoPaste: (text) => triggerAutoPaste(text),
-    copyToClipboard: (text) => copyToClipboard(text),
+    triggerAutoPaste: (text) => triggerAutoPasteService(text),
+    copyToClipboard: (text) => copyToClipboardService(text),
     openSettings: (reason) => openSettings(reason),
     setActiveSettingsPane: (pane, reason) => setActiveSettingsPane(pane, reason),
     refreshAssistantInfo: () => refreshAssistantInfoSafely(),
   },
 );
 initLocalSttState({
-  readSettings: () => readSettingsFromForm(),
+  readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
   getCatalogSelection: () => localSttModelCatalogSelect.value,
   isPipelineRunning: () => pipelineRunning,
   getStage: () => stage,
@@ -887,9 +887,9 @@ initLocalSttState({
   renderSettingsStatus: () => renderLocalSttSettingsStatusService(),
 });
 initLocalSttDiagnostics({
-  readSettings: () => readSettingsFromForm(),
+  readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
   commitSettings: (next) => {
-    applySettingsToForm(next);
+    applySettingsToFormService(settingsFormRefs, settingsCoreDeps, next);
     persistSettings(next);
   },
   notify: (message, isError) => setNotice(message, isError),
@@ -951,7 +951,7 @@ initLocalSttClient(
     hardwareAdvisorCancelBtn: sttHardwareAdvisorCancelBtn,
   },
   {
-    readSettings: () => readSettingsFromForm(),
+    readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
     commitFormSettings: () => {
       void handleSettingsChange();
     },
@@ -1132,7 +1132,7 @@ initOllamaClient(
     applyModelToSttBtn,
   },
   {
-    readSettings: () => readSettingsFromForm(),
+    readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
     commitSettings: () => {
       void handleSettingsChange();
     },
@@ -1177,9 +1177,6 @@ async function fetchOllamaModels(
 ): Promise<void> {
   await fetchOllamaModelsService(options);
 }
-async function ensureLocalOllamaModelSelected(options: { quiet?: boolean } = {}): Promise<string> {
-  return ensureLocalOllamaModelSelectedService(options);
-}
 initTtsClient(
   {
     setupLogs: ttsSetupLogs,
@@ -1195,7 +1192,7 @@ initTtsClient(
   },
   {
     isBusy: () => pipelineRunning || stage === "recording",
-    readSettings: () => readSettingsFromForm(),
+    readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
     getPiperPathInput: () => settingsFormRefs.piperPathInput.value,
     setPiperPathInput: (value) => {
       settingsFormRefs.piperPathInput.value = value;
@@ -1230,14 +1227,8 @@ const settingsCoreDeps: SettingsCoreDeps = {
   isTauri: isTauriEnvironment,
   showStaleRuntimePane: () => setActiveSettingsPane("models"),
 };
-function readSettingsFromForm(): PersistedSettings {
-  return readSettingsFromFormService(settingsFormRefs, settingsCoreDeps);
-}
-function applySettingsToForm(next: PersistedSettings): void {
-  applySettingsToFormService(settingsFormRefs, settingsCoreDeps, next);
-}
 let cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
-applySettingsToForm(settings);
+applySettingsToFormService(settingsFormRefs, settingsCoreDeps, settings);
 renderSidebarLocalSttToggleService();
 initModelCatalogs(
   {
@@ -2056,9 +2047,6 @@ initUsageTracker({
     window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
   },
 });
-function trackUsage(transcript: string): void {
-  trackUsageService(transcript);
-}
 async function bootstrap(): Promise<void> {
   logClientEvent("[bootstrap] start");
   await hydrateSettingsFromNativeStorage();
@@ -2289,7 +2277,7 @@ async function hydrateSettingsFromNativeStorage(): Promise<void> {
     warn: (message) => console.warn(message),
     applyAll: (next) => {
       settings = next;
-      applySettingsToForm(next);
+      applySettingsToFormService(settingsFormRefs, settingsCoreDeps, next);
     },
     onChanged: () => {
       void handleSettingsChange();
@@ -2572,7 +2560,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
       logClientEvent(
         `[hotkey.global.push] pressed capture=${settings.captureMode} holdCount=${getPushToTalkHoldCount()}`,
       );
-      const activeSettings = readSettingsFromForm();
+      const activeSettings = readSettingsFromFormService(settingsFormRefs, settingsCoreDeps);
       if (missingApiKeyForOnlineRuntime(activeSettings)) {
         logClientEvent(
           "[hotkey.global.push] blocked before reveal because API key is missing for online runtime",
@@ -3149,15 +3137,6 @@ function createId(): string {
     return window.crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-async function copyToClipboard(value: string,
-  options: { quiet?: boolean; successMessage?: string; errorMessage?: string } = {},): Promise<boolean> {
-  return copyToClipboardService(value, options);
-}
-
-async function triggerAutoPaste(text?: string): Promise<boolean> {
-  return triggerAutoPasteService(text);
 }
 
 async function confirmDestructiveAction(message: string): Promise<boolean> {
