@@ -2,6 +2,7 @@
 //!
 //! Services own business logic; commands stay thin adapters.
 
+pub mod coqui_setup;
 pub mod hardware;
 pub mod pipeline_service;
 pub mod transcribe;
