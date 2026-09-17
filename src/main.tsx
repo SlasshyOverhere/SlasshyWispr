@@ -701,7 +701,7 @@ setPersistErrorReporter((message) => setNotice(message, true));
 const settingsCoreDeps: SettingsCoreDeps = {
   isCapturingHotkey: () => hotkeyCaptureActive,
   isCapturingCommandHotkey: () => commandHotkeyCaptureActive,
-  currentSettings: () => settings,
+  currentSettings: getSettingsSnapshot,
   refreshRecordingsStorageHint: () => {
     void refreshRecordingsStorageHint();
   },
@@ -1829,6 +1829,10 @@ async function hydrateSettingsFromNativeStorage(): Promise<void> {
   }
 }
 
+export function getSettingsSnapshot(): PersistedSettings {
+  return settings;
+}
+
 async function backfillHistoryRecordingIds(): Promise<void> {
   if (!isTauriEnvironment()) {
     return;
@@ -1896,22 +1900,22 @@ const settingsHandleEffects: SettingsHandleEffects = {
       )}" to="${summarizeSettingsForDiagnostics(next)}"`,
     );
   },
-  syncDerivedFormState: (_refs, catalogs, assistantInfo) => {
+  syncDerivedFormState: (_refs, next, catalogs, assistantInfo) => {
     setActiveTtsProfile("piper");
-    if (catalogs.providerModels.includes(settings.aiModelName)) {
-      providerModelCatalogSelect.value = settings.aiModelName;
-    } else if (catalogs.providerModels.includes(settings.sttModelName)) {
-      providerModelCatalogSelect.value = settings.sttModelName;
+    if (catalogs.providerModels.includes(next.aiModelName)) {
+      providerModelCatalogSelect.value = next.aiModelName;
+    } else if (catalogs.providerModels.includes(next.sttModelName)) {
+      providerModelCatalogSelect.value = next.sttModelName;
     } else if (catalogs.providerModels.length > 0) {
       providerModelCatalogSelect.value = "";
     }
-    if (catalogs.localOllamaModels.includes(settings.localOllamaModel)) {
-      localOllamaModelCatalogSelect.value = settings.localOllamaModel;
+    if (catalogs.localOllamaModels.includes(next.localOllamaModel)) {
+      localOllamaModelCatalogSelect.value = next.localOllamaModel;
     } else if (catalogs.localOllamaModels.length > 0) {
       localOllamaModelCatalogSelect.value = "";
     }
-    if (catalogs.localSttModels.includes(settings.localSttModel)) {
-      localSttModelCatalogSelect.value = settings.localSttModel;
+    if (catalogs.localSttModels.includes(next.localSttModel)) {
+      localSttModelCatalogSelect.value = next.localSttModel;
     } else if (catalogs.localSttModels.length > 0) {
       localSttModelCatalogSelect.value = "";
     }

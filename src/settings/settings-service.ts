@@ -640,6 +640,7 @@ export interface SettingsHandleEffects {
   notifyChange: (previous: PersistedSettings, next: PersistedSettings) => void;
   syncDerivedFormState: (
     refs: SettingsFormRefs,
+    next: PersistedSettings,
     catalogs: SettingsCatalogs,
     assistantInfo: unknown,
   ) => void;
@@ -698,7 +699,7 @@ export function runSettingsHandlePipeline(
   updateRuntimeModeNotice(refs, next.sttRuntimeMode, next.aiRuntimeMode);
   syncRuntimeModePaneVisibility(refs, coreDeps.showStaleRuntimePane);
   syncHybridRuntimeFieldVisibility(refs, next.sttRuntimeMode, next.aiRuntimeMode);
-  effects.syncDerivedFormState(refs, context.catalogs, context.assistantInfo);
+  effects.syncDerivedFormState(refs, next, context.catalogs, context.assistantInfo);
 
   if (previous.captureMode !== next.captureMode) {
     effects.clearCaptureHolds();
