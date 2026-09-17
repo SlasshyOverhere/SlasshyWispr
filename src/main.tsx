@@ -330,13 +330,6 @@ import type {
   SelectionPopupPayload,
 } from "./types";
 
-type StopRecordingOptions = {
-  cancelPipeline?: boolean;
-  cancelNotice?: string;
-  cancelStatus?: string;
-};
-
-
 const appRoot = document.querySelector<HTMLDivElement>("#app");
 if (!appRoot) {
   throw new Error("Missing #app root element");
@@ -642,10 +635,6 @@ let piperRuntimeReady = false;
 let localSttDownloadActive = false;
 let lastWarmedLocalSttModel = "";
 let localSttRuntimeLoaded = false;
-
-function syncLocalSttDownloadOverlayVisibility(): void {
-  notifySettingsOverlayVisibilityChanged();
-}
 
 let ttsSetupRunning = false;
 let launchAtLoginSyncNonce = 0;
@@ -965,7 +954,7 @@ initLocalSttClient(
     checkModelFileExists: (model) => checkModelFileExistsService(model),
     checkPythonDependencies: (model) => checkPythonDependenciesService(model),
     checkAvailableMemory: (model) => checkAvailableMemoryService(model),
-    showOfflineModeDiagnostic: (issue, details) => showOfflineModeDiagnostic(issue, details),
+    showOfflineModeDiagnostic: (issue, details) => showOfflineModeDiagnosticService(issue, details),
     ensureSelectedLocalSttModelForWarmup: () => ensureSelectedLocalSttModelService({ quiet: true }),
     isSettingsOpen: () => isSettingsOpen(),
   },
@@ -1285,7 +1274,7 @@ dockChannel.onmessage = (event: MessageEvent<unknown>) => {
   }
 
   if (payload.action === "toggle-mic") {
-    void handleDockMicToggle();
+    void handleDockMicToggleService();
   } else if (payload.action === "open-app") {
     void (async () => {
       const win = getCurrentWindow();
@@ -1605,7 +1594,7 @@ document.addEventListener("keydown", (event) => {
   }
 
   event.preventDefault();
-  void handleRecordToggle();
+  void handleRecordToggleService();
 });
 
 document.addEventListener("keyup", (event) => {
@@ -1656,7 +1645,7 @@ window.addEventListener("blur", () => {
   clearPushToTalkHolds();
   if (stage === "recording") {
     logClientEvent("[record.ptt.blur] window blurred during recording -> stopRecording()");
-    stopRecording();
+    stopRecordingService();
   }
 });
 
@@ -1668,7 +1657,7 @@ window.addEventListener("focus", () => {
 
 window.addEventListener("beforeunload", () => {
   stopTtsSetupPollingService();
-  stopLocalSttDownloadStatusPolling();
+  stopLocalSttDownloadStatusPollingService();
   if (dockHideTimerId !== null) {
     window.clearTimeout(dockHideTimerId);
     dockHideTimerId = null;
@@ -1888,7 +1877,7 @@ notesQuickMicBtn.addEventListener("click", () => {
     return;
   }
 
-  void handleRecordToggle();
+  void handleRecordToggleService();
 });
 
 bindPushToTalkPointerHold(notesQuickMicBtn, "notes-button");
@@ -2312,7 +2301,7 @@ function openSettings(reason = "unspecified"): void {
   settingsOverlay.classList.remove("is-closing");
   void settingsOverlay.offsetWidth;
   settingsOverlay.classList.add("is-open");
-  syncLocalSttDownloadOverlayVisibility();
+  notifySettingsOverlayVisibilityChanged();
 }
 
 function closeSettings(): void {
@@ -2330,7 +2319,7 @@ function closeSettings(): void {
     settingsOverlay.classList.remove("is-closing");
     settingsCloseTimer = null;
   }, 180);
-  syncLocalSttDownloadOverlayVisibility();
+  notifySettingsOverlayVisibilityChanged();
 }
 
 function isSettingsOpen(): boolean {
@@ -2643,7 +2632,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
         }
         void engagePushToTalk("hotkey");
       } else {
-        void handleRecordToggle();
+        void handleRecordToggleService();
       }
     }
     if (released && (settings.captureMode === "push-to-talk" || hasPushToTalkHold("hotkey"))) {
@@ -3311,10 +3300,6 @@ async function refreshAssistantInfo(): Promise<void> {
 }
 
 
-function stopLocalSttDownloadStatusPolling(): void {
-  stopLocalSttDownloadStatusPollingService();
-}
-
 function showMissingApiKeyNotice(source: string): void {
   showDesktopNotice(MISSING_API_KEY_MESSAGE, {
     failureReason: "Missing API key for online runtime.",
@@ -3322,20 +3307,8 @@ function showMissingApiKeyNotice(source: string): void {
   });
 }
 
-async function handleRecordToggle(): Promise<void> {
-  await handleRecordToggleService();
-}
-
-async function handleDockMicToggle(): Promise<void> {
-  await handleDockMicToggleService();
-}
-
 function interruptTtsPlaybackForCaptureIntent(): boolean {
   return interruptTtsPlaybackService();
-}
-
-function stopRecording(options: StopRecordingOptions = {}): void {
-  stopRecordingService(options);
 }
 
 function renderAssistantInfo(info: AssistantInfoResponse): void {
@@ -4079,12 +4052,8 @@ async function showVoiceIndicatorWindow(): Promise<boolean> {
   }
 }
 
-async function canPreWarmMicrophone(): Promise<boolean> {
-  return canPreWarmMicrophoneService();
-}
-
 async function primeCaptureReadiness(deviceId: string, shouldPrimeDock: boolean): Promise<void> {
-  if (await canPreWarmMicrophone()) {
+  if (await canPreWarmMicrophoneService()) {
     void preWarmMicrophoneStreamService(deviceId);
   }
 
@@ -4352,15 +4321,6 @@ function isHotkeyReleaseEvent(event: KeyboardEvent, hotkey: HotkeySpec): boolean
 /**
  * Shows a detailed diagnostic dialog when offline mode setup fails
  */
-function showOfflineModeDiagnostic(issue: string, details?: {
-  model?: string;
-  expectedPath?: string;
-  availableMemory?: number;
-  pythonInstalled?: boolean;
-}): void {
-  showOfflineModeDiagnosticService(issue, details);
-}
-
 /**
  * Returns diagnostic data for specific offline mode issues
  */
