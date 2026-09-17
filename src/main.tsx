@@ -88,22 +88,17 @@ import {
 } from "./state/settings-store";
 import {
   applySettingsToForm as applySettingsToFormService,
-  applyDictationLanguageSettingsToForm as applyDictationLanguageSettingsToFormService,
-  applySettingsValidation as applySettingsValidationService,
-  applyTheme as applyThemeService,
   buildShortcutSyncSignature,
   flushPendingSettings,
-  normalizeHotkeyLabelsInPlace,
   persistSettings,
   readSettingsFromForm as readSettingsFromFormService,
-  refreshGeneralDisplayFromSettings,
+  runSettingsHandlePipeline,
   setPersistErrorReporter,
   summarizeSettingsForDiagnostics,
-  syncHybridRuntimeFieldVisibility as syncHybridRuntimeFieldVisibilityService,
-  syncRuntimeModePaneVisibility as syncRuntimeModePaneVisibilityService,
   updateRuntimeModeNotice as updateRuntimeModeNoticeService,
   wireSettingsFormInputs as wireSettingsFormInputsService,
   type SettingsCoreDeps,
+  type SettingsHandleEffects,
 } from "./settings/settings-service";
 import { querySettingsFormRefs } from "./settings/settings-form-refs";
 import { parseJson } from "./state/storage";
@@ -1898,145 +1893,124 @@ async function backfillHistoryRecordingIds(): Promise<void> {
 
 async function handleSettingsChange(): Promise<void> {
   const previousSettings = { ...settings };
-  const previousMicrophoneDeviceId = settings.microphoneDeviceId;
-  const previousShowFlowBar = settings.showFlowBar;
-  const previousIncognito = settings.incognitoMode;
-  const previousMuteMusicWhileDictating = settings.muteMusicWhileDictating;
-  const previousTtsEngine = settings.ttsEngine;
-  const previousSttRuntimeMode = settings.sttRuntimeMode;
-  const previousAiRuntimeMode = settings.aiRuntimeMode;
-  const previousLaunchAtLogin = settings.launchAtLogin;
-  const previousShortcutSignature = buildShortcutSyncSignature(settings);
-  const previousMode = settings.captureMode;
 
-  const next = readSettingsFromForm();
-
-  normalizeHotkeyLabelsInPlace(settingsFormRefs, next);
-
-  applySettingsValidationService(settingsFormRefs, next);
-  settings = next;
-  cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
-  const previousDiagnosticsSignature = [
-    previousSettings.captureMode,
-    previousSettings.sttRuntimeMode,
-    previousSettings.aiRuntimeMode,
-    boolFlag(previousSettings.rememberApiKey),
-    boolFlag(previousSettings.apiKey.trim().length > 0),
-    buildShortcutSyncSignature(previousSettings),
-    boolFlag(previousSettings.commandMode),
-  ].join("|");
-  const nextDiagnosticsSignature = [
-    settings.captureMode,
-    settings.sttRuntimeMode,
-    settings.aiRuntimeMode,
-    boolFlag(settings.rememberApiKey),
-    boolFlag(settings.apiKey.trim().length > 0),
-    buildShortcutSyncSignature(settings),
-    boolFlag(settings.commandMode),
-  ].join("|");
-  if (previousDiagnosticsSignature !== nextDiagnosticsSignature) {
-    logClientEvent(
-      `[settings.change] from="${summarizeSettingsForDiagnostics(
-        previousSettings,
-      )}" to="${summarizeSettingsForDiagnostics(settings)}"`,
-    );
-  }
-  applyDictationLanguageSettingsToFormService(settingsFormRefs, settings);
-  refreshGeneralDisplayFromSettings(settingsFormRefs, settings);
-  applyThemeService(settings.themeMode);
-  updateRuntimeModeNoticeService(settingsFormRefs, settings.sttRuntimeMode, settings.aiRuntimeMode);
-  syncRuntimeModePaneVisibilityService(settingsFormRefs, () => setActiveSettingsPane("models"));
-  syncHybridRuntimeFieldVisibilityService(settingsFormRefs, settings.sttRuntimeMode, settings.aiRuntimeMode);
-  setActiveTtsProfile("piper");
-  if (providerModelCatalog.includes(settings.aiModelName)) {
-    providerModelCatalogSelect.value = settings.aiModelName;
-  } else if (providerModelCatalog.includes(settings.sttModelName)) {
-    providerModelCatalogSelect.value = settings.sttModelName;
-  } else if (providerModelCatalog.length > 0) {
-    providerModelCatalogSelect.value = "";
-  }
-  if (localOllamaModelCatalog.includes(settings.localOllamaModel)) {
-    localOllamaModelCatalogSelect.value = settings.localOllamaModel;
-  } else if (localOllamaModelCatalog.length > 0) {
-    localOllamaModelCatalogSelect.value = "";
-  }
-  if (localSttModelCatalog.includes(settings.localSttModel)) {
-    localSttModelCatalogSelect.value = settings.localSttModel;
-  } else if (localSttModelCatalog.length > 0) {
-    localSttModelCatalogSelect.value = "";
-  }
-  if (latestAssistantInfoDefaults) {
-    renderAssistantInfo(latestAssistantInfoDefaults);
-  }
-
-  if (previousMode !== settings.captureMode) {
-    clearPushToTalkHolds();
-  }
-
-  if (previousIncognito !== settings.incognitoMode) {
-    // Notify React to re-render with updated incognito state from localStorage.
-    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
-  }
-
-  if (!previousMuteMusicWhileDictating && settings.muteMusicWhileDictating && stage === "recording") {
-    pauseExternalMediaForDictation();
-  } else if (previousMuteMusicWhileDictating && !settings.muteMusicWhileDictating) {
-    resumeExternalMediaAfterDictation();
-  }
-
-  persistSettings(settings);
-  renderSidebarLocalSttToggle();
-  refreshRecordButton();
-  syncActionAvailability();
-  updateMicrophoneSummary();
-  renderNotesList();
-  const nextShortcutSignature = buildShortcutSyncSignature(settings);
-  if (previousShortcutSignature !== nextShortcutSignature) {
-    requestGlobalShortcutSync();
-  }
-  if (previousLaunchAtLogin !== settings.launchAtLogin) {
-    requestLaunchAtLoginSync(settings.launchAtLogin);
-  }
-  if (previousTtsEngine !== settings.ttsEngine) {
-    interruptTtsPlaybackForCaptureIntent();
-  }
-  const sttRuntimeModeChanged = previousSttRuntimeMode !== settings.sttRuntimeMode;
-  const aiRuntimeModeChanged = previousAiRuntimeMode !== settings.aiRuntimeMode;
-  if (sttRuntimeModeChanged || aiRuntimeModeChanged) {
-    if (settings.sttRuntimeMode === settings.aiRuntimeMode) {
-      setNotice(
-        settings.sttRuntimeMode === "local"
-          ? "Offline mode enabled for both STT and AI."
-          : "Online mode enabled for both STT and AI.",
-      );
-    } else {
-      setNotice(
-        `Hybrid mode enabled (STT: ${settings.sttRuntimeMode}, AI: ${settings.aiRuntimeMode}).`,
-      );
-    }
-  }
-  if (sttRuntimeModeChanged) {
-    requestLocalSttRuntimeSyncForMode(settings.sttRuntimeMode, {
-      showLoadOverlay: settings.sttRuntimeMode === "local",
-    });
-  }
-  updateTtsSetupGate();
-  publishDockState();
-  void syncFloatingIndicatorWindow();
-  if (
-    stage === "idle" &&
-    (previousMicrophoneDeviceId !== settings.microphoneDeviceId ||
-      (!previousShowFlowBar && settings.showFlowBar))
-  ) {
-    void primeCaptureReadiness(settings.microphoneDeviceId, settings.showFlowBar);
-  }
+  settings = runSettingsHandlePipeline({
+    refs: settingsFormRefs,
+    coreDeps: settingsCoreDeps,
+    previous: previousSettings,
+    catalogs: {
+      providerModels: providerModelCatalog,
+      localOllamaModels: localOllamaModelCatalog,
+      localSttModels: localSttModelCatalog,
+    },
+    assistantInfo: latestAssistantInfoDefaults,
+    stage,
+    effects: settingsHandleEffects,
+    updateCachedHotkeyDisplay: (display) => {
+      cachedHotkeyDisplay = formatHotkeyForDisplay(display);
+    },
+  });
 }
 
-
-
-
-
-
+const settingsHandleEffects: SettingsHandleEffects = {
+  notifyChange: (previous, next) => {
+    logClientEvent(
+      `[settings.change] from="${summarizeSettingsForDiagnostics(
+        previous,
+      )}" to="${summarizeSettingsForDiagnostics(next)}"`,
+    );
+  },
+  syncDerivedFormState: (_refs, catalogs, assistantInfo) => {
+    setActiveTtsProfile("piper");
+    if (catalogs.providerModels.includes(settings.aiModelName)) {
+      providerModelCatalogSelect.value = settings.aiModelName;
+    } else if (catalogs.providerModels.includes(settings.sttModelName)) {
+      providerModelCatalogSelect.value = settings.sttModelName;
+    } else if (catalogs.providerModels.length > 0) {
+      providerModelCatalogSelect.value = "";
+    }
+    if (catalogs.localOllamaModels.includes(settings.localOllamaModel)) {
+      localOllamaModelCatalogSelect.value = settings.localOllamaModel;
+    } else if (catalogs.localOllamaModels.length > 0) {
+      localOllamaModelCatalogSelect.value = "";
+    }
+    if (catalogs.localSttModels.includes(settings.localSttModel)) {
+      localSttModelCatalogSelect.value = settings.localSttModel;
+    } else if (catalogs.localSttModels.length > 0) {
+      localSttModelCatalogSelect.value = "";
+    }
+    if (assistantInfo) {
+      renderAssistantInfo(assistantInfo as AssistantInfoResponse);
+    }
+  },
+  clearCaptureHolds: () => clearPushToTalkHolds(),
+  notifyIncognitoChanged: () => {
+    // Notify React to re-render with updated incognito state from localStorage.
+    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+  },
+  syncExternalMediaMute: (muted) => {
+    if (muted) {
+      pauseExternalMediaForDictation();
+    } else {
+      resumeExternalMediaAfterDictation();
+    }
+  },
+  persist: (next) => persistSettings(next),
+  afterPersist: (previous, next, stageAtChange) => {
+    const previousMicrophoneDeviceId = previous.microphoneDeviceId;
+    const previousShowFlowBar = previous.showFlowBar;
+    const previousLaunchAtLogin = previous.launchAtLogin;
+    const previousTtsEngine = previous.ttsEngine;
+    const previousSttRuntimeMode = previous.sttRuntimeMode;
+    const previousAiRuntimeMode = previous.aiRuntimeMode;
+    const previousShortcutSignature = buildShortcutSyncSignature(previous);
+    renderSidebarLocalSttToggle();
+    refreshRecordButton();
+    syncActionAvailability();
+    updateMicrophoneSummary();
+    renderNotesList();
+    const nextShortcutSignature = buildShortcutSyncSignature(next);
+    if (previousShortcutSignature !== nextShortcutSignature) {
+      requestGlobalShortcutSync();
+    }
+    if (previousLaunchAtLogin !== next.launchAtLogin) {
+      requestLaunchAtLoginSync(next.launchAtLogin);
+    }
+    if (previousTtsEngine !== next.ttsEngine) {
+      interruptTtsPlaybackForCaptureIntent();
+    }
+    const sttRuntimeModeChanged = previousSttRuntimeMode !== next.sttRuntimeMode;
+    const aiRuntimeModeChanged = previousAiRuntimeMode !== next.aiRuntimeMode;
+    if (sttRuntimeModeChanged || aiRuntimeModeChanged) {
+      if (next.sttRuntimeMode === next.aiRuntimeMode) {
+        setNotice(
+          next.sttRuntimeMode === "local"
+            ? "Offline mode enabled for both STT and AI."
+            : "Online mode enabled for both STT and AI.",
+        );
+      } else {
+        setNotice(
+          `Hybrid mode enabled (STT: ${next.sttRuntimeMode}, AI: ${next.aiRuntimeMode}).`,
+        );
+      }
+    }
+    if (sttRuntimeModeChanged) {
+      requestLocalSttRuntimeSyncForMode(next.sttRuntimeMode, {
+        showLoadOverlay: next.sttRuntimeMode === "local",
+      });
+    }
+    updateTtsSetupGate();
+    publishDockState();
+    void syncFloatingIndicatorWindow();
+    if (
+      stageAtChange === "idle" &&
+      (previousMicrophoneDeviceId !== next.microphoneDeviceId ||
+        (!previousShowFlowBar && next.showFlowBar))
+    ) {
+      void primeCaptureReadiness(next.microphoneDeviceId, next.showFlowBar);
+    }
+  },
+};
 
 function getLocalSttActionBlockReason(): string | null {
   if (pipelineRunning) {
