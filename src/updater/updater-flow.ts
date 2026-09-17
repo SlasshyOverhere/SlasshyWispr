@@ -21,7 +21,7 @@ import type {
   AppUpdateInstallProgressEvent,
   InstallAppUpdateRequest,
 } from "../types";
-import { asErrorMessage } from "../utils";
+import { asErrorMessage, formatBytes } from "../utils";
 import {
   APP_UPDATE_CHECK_INTERVAL_MS,
   isUpdateSnoozed,
@@ -340,17 +340,3 @@ export function stopAutomaticUpdateChecks(): void {
   }
 }
 
-function formatBytes(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) {
-    return "0 B";
-  }
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let size = value;
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-  const precision = unitIndex <= 1 ? 0 : 1;
-  return `${size.toFixed(precision)} ${units[unitIndex]}`;
-}

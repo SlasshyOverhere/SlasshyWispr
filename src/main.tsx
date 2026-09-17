@@ -64,6 +64,8 @@ import {
   buildAgentOperatingCorePrompt,
   escapeHtml,
   expandSnippetsInText,
+  formatBytes,
+  formatLatency,
   normalizeDictionaryEntries,
   normalizeSnippetEntries,
   validateDictionaryEntry,
@@ -4509,21 +4511,6 @@ async function deactivateLocalSttModel(): Promise<void> {
   }
 }
 
-function formatBytes(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) {
-    return "0 B";
-  }
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let size = value;
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-  const precision = unitIndex <= 1 ? 0 : 1;
-  return `${size.toFixed(precision)} ${units[unitIndex]}`;
-}
-
 function applyLocalSttDownloadStatus(status: LocalSttDownloadStatusResponse): void {
   lastLocalSttDownloadStatus = status;
   const rawPercent = Number.isFinite(status.progressPercent) ? status.progressPercent : 0;
@@ -6889,10 +6876,6 @@ async function preWarmMicrophoneStream(deviceId: string): Promise<void> {
     preWarmedStream = null;
     preWarmedStreamDeviceId = null;
   }
-}
-
-function formatLatency(value: number): string {
-  return `${Math.round(value)} ms`;
 }
 
 // ============================================================================
