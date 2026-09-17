@@ -37,17 +37,10 @@ import {
   boolFlag,
   confirmDestructiveAction,
   createId,
-  escapeHtml,
-  normalizeDictionaryEntries,
-  normalizeSnippetEntries,
-  validateDictionaryEntry,
-  validateQuickNote,
-  validateSnippetEntry,
 } from "./utils";
 import { matchHistoryToRecordings } from "./store";
 import { ACHIEVEMENT_DEFS } from "./state/achievements";
 import { loadHistory } from "./state/history";
-import { loadDictionary as loadDictionaryFromState, loadSnippets as loadSnippetsFromState, loadNotes as loadNotesFromState } from "./state/collections";
 import { loadAnalyticsSessions as loadCanonicalAnalyticsSessions } from "./state/usage";
 import {
   loadSettings,
@@ -175,6 +168,20 @@ import {
   logClientEvent as logClientEventService,
   setNotice as setNoticeService,
 } from "./shell/diagnostics";
+import {
+  addDictionaryTerm as addDictionaryTermService,
+  addQuickNote as addQuickNoteService,
+  addSnippetEntry as addSnippetEntryService,
+  getDictionaryTerms as getDictionaryTermsService,
+  getSnippets as getSnippetsService,
+  initCollectionsView,
+  persistDictionaryTerms as persistDictionaryTermsService,
+  persistQuickNotes as persistQuickNotesService,
+  persistSnippets as persistSnippetsService,
+  renderDictionaryList as renderDictionaryListService,
+  renderNotesList as renderNotesListService,
+  renderSnippetsList as renderSnippetsListService,
+} from "./collections/collections-view";
 import {
   copyToClipboard as copyToClipboardService,
   initClipboard,
@@ -305,11 +312,8 @@ import {
   ACHIEVEMENTS_STATE_KEY,
   ACTIVE_PAGE_STORAGE_KEY,
   ANALYTICS_SESSIONS_KEY,
-  DICTIONARY_STORAGE_KEY,
   HOME_HISTORY_STORAGE_KEY,
-  NOTES_STORAGE_KEY,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
-  SNIPPETS_STORAGE_KEY,
   USAGE_STORAGE_KEY,
   DOCK_LAYOUT_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
@@ -626,9 +630,6 @@ let latestSelectionPopupPayload: SelectionPopupPayload | null = null;
 let selectionPopupTokenCounter = 0;
 let dockLayout = loadDockLayout();
 
-let dictionaryTerms = loadDictionaryFromState();
-let snippets = loadSnippetsFromState();
-let quickNotes = loadNotesFromState();
 let usageStats = loadUsageStats();
 let analyticsSessionDetails: AnalyticsSessionDetail[] = loadCanonicalAnalyticsSessions();
 let achievementStates: AchievementState[] = loadAchievementStates();
@@ -699,7 +700,7 @@ initPipelineRender(
     getLastSavedRecordingId: () => lastSavedRecordingId,
     getLastCaptureIntentLabel: () => lastCaptureIntentLabel,
     trackUsage: (transcript) => trackUsageService(transcript),
-    addQuickNote: (text) => addQuickNote(text),
+    addQuickNote: (text) => addQuickNoteService(text),
     getHomeHistory: () => homeHistoryEntries,
     setHomeHistory: (entries) => {
       homeHistoryEntries = entries;
@@ -874,8 +875,8 @@ initPipelineClient(
       lastWarmedLocalSttModel = model;
     },
     ensureLocalOllamaModelSelected: (options) => ensureLocalOllamaModelSelectedService(options),
-    getDictionaryTerms: () => dictionaryTerms,
-    getSnippets: () => snippets,
+    getDictionaryTerms: () => getDictionaryTermsService(),
+    getSnippets: () => getSnippetsService(),
     nextSelectionPopupToken: () => nextSelectionPopupTokenService(),
     dismissSelectionPopup: () => dismissSelectionPopupService(),
     showSelectionAssistantPopup: (payload) => showSelectionAssistantPopupService(payload),
@@ -1029,6 +1030,29 @@ initClipboard({
   isTauri: isTauriEnvironment,
   notify: (message, isError) => setNotice(message, isError),
 });
+
+initCollectionsView(
+  {
+    dictionaryList,
+    dictionaryFormCard,
+    dictionaryCount,
+    dictionarySourceInput,
+    dictionaryTargetInput,
+    dictionaryAddBtnTop,
+    snippetsList,
+    snippetFormContainer,
+    snippetTriggerInput,
+    snippetExpansionInput,
+    snippetsAddBtnTop,
+    notesList,
+  },
+  {
+    isIncognito: () => settings.incognitoMode,
+    notify: (message, isError) => setNotice(message, isError),
+    formatNoteTime: (createdAt) => NOTE_TIME_FORMATTER.format(createdAt),
+  },
+);
+
 initDesktopNotice({
   setNotice: (message, isError) => setNotice(message, isError),
   log: (message) => logClientEvent(message),
@@ -1268,9 +1292,9 @@ renderLocalOllamaModelCatalogService([], settings.localOllamaModel);
 renderLocalSttModelCatalogService([], settings.localSttModel);
 setActiveTtsProfile("piper");
 updateTtsSetupGate();
-persistDictionaryTerms();
-persistSnippets();
-persistQuickNotes();
+persistDictionaryTermsService();
+persistSnippetsService();
+persistQuickNotesService();
 persistUsageStats();
 
 if (systemThemeMediaQuery) {
@@ -1285,9 +1309,9 @@ if (systemThemeMediaQuery) {
 
 setActivePage(activePage);
 setActiveSettingsPane(activeSettingsPane);
-renderDictionaryList();
-renderSnippetsList();
-renderNotesList();
+renderDictionaryListService();
+renderSnippetsListService();
+renderNotesListService();
 initAnalyticsRender(
   {
     words: metricWords,
@@ -1734,7 +1758,7 @@ commandHotkeyInput.addEventListener("blur", () => {
 
 dictionaryForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  addDictionaryTerm();
+  addDictionaryTermService();
 });
 
 dictionaryAddBtnTop.addEventListener("click", () => {
@@ -1758,7 +1782,7 @@ dictionaryFormCloseBtn.addEventListener("click", () => {
 
 snippetForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  addSnippetEntry();
+  addSnippetEntryService();
 });
 
 snippetsAddBtnTop.addEventListener("click", () => {
@@ -2366,7 +2390,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
     refreshRecordButton();
     syncActionAvailability();
     updateMicrophoneSummaryService();
-    renderNotesList();
+    renderNotesListService();
     const nextShortcutSignature = buildShortcutSyncSignature(next);
     if (previousShortcutSignature !== nextShortcutSignature) {
       requestGlobalShortcutSyncService();
@@ -2562,18 +2586,6 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
   }
 
   logClientEvent("[hotkey.global.event] no handler matched the incoming shortcut");
-}
-
-function persistDictionaryTerms(): void {
-  localStorage.setItem(DICTIONARY_STORAGE_KEY, JSON.stringify(dictionaryTerms));
-}
-
-function persistSnippets(): void {
-  localStorage.setItem(SNIPPETS_STORAGE_KEY, JSON.stringify(snippets));
-}
-
-function persistQuickNotes(): void {
-  localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(quickNotes));
 }
 
 function loadUsageStats(): UsageStats {
@@ -2832,261 +2844,6 @@ async function resolveDockStartPosition(dockWidth: number, dockHeight: number): 
     x: clampDockAxis(rawX, bounds.minX, bounds.maxX),
     y: clampDockAxis(rawY, bounds.minY, bounds.maxY),
   };
-}
-
-function renderDictionaryList(): void {
-  const filtered = dictionaryTerms;
-  dictionaryCount.textContent = `${filtered.length} term${filtered.length === 1 ? "" : "s"}`;
-
-  if (filtered.length === 0) {
-    dictionaryList.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
-        </div>
-        <h4>No terms yet</h4>
-        <p>Your dictionary is currently empty. Start by adding a term above to improve transcription accuracy.</p>
-      </div>
-    `;
-    return;
-  }
-
-  dictionaryList.innerHTML = "";
-  const fragment = document.createDocumentFragment();
-  for (const term of filtered) {
-    const card = document.createElement("div");
-    card.className = "dictionary-item-card";
-
-    card.innerHTML = `
-      <div class="dict-item-content">
-        <div class="dict-term spoken">
-          <span class="term-label">Spoken</span>
-          <span class="term-value">${escapeHtml(term.source)}</span>
-        </div>
-        <div class="dict-connector">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-        </div>
-        <div class="dict-term correct">
-          <span class="term-label">Correct</span>
-          <span class="term-value">${escapeHtml(term.target)}</span>
-        </div>
-      </div>
-      <div class="dict-item-actions">
-        <button type="button" class="icon-delete-btn" title="Delete term" data-dictionary-delete="${term.id}">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-        </button>
-      </div>
-    `;
-
-    const deleteBtn = card.querySelector(".icon-delete-btn") as HTMLButtonElement;
-    deleteBtn.addEventListener("click", async () => {
-      if (!await confirmDestructiveAction(`Delete dictionary term "${term.source}"?`)) {
-        return;
-      }
-      dictionaryTerms = dictionaryTerms.filter((entry) => entry.id !== term.id);
-      persistDictionaryTerms();
-      renderDictionaryList();
-    });
-
-    fragment.append(card);
-  }
-  dictionaryList.append(fragment);
-}
-
-function addDictionaryTerm(): void {
-  const source = dictionarySourceInput.value.trim();
-  const target = dictionaryTargetInput.value.trim();
-  const validationError = validateDictionaryEntry(source, target);
-  if (validationError) {
-    setNotice(validationError, true);
-    return;
-  }
-
-  dictionaryTerms = normalizeDictionaryEntries([
-    {
-      id: createId(),
-      source,
-      target,
-      createdAt: Date.now(),
-    },
-    ...dictionaryTerms.filter(
-      (entry) => entry.source.trim().toLocaleLowerCase() !== source.toLocaleLowerCase(),
-    ),
-  ]);
-  persistDictionaryTerms();
-  renderDictionaryList();
-
-  dictionarySourceInput.value = "";
-  dictionaryTargetInput.value = "";
-
-  dictionaryFormCard.classList.add("is-collapsed");
-  dictionaryAddBtnTop.classList.remove("is-active");
-  setNotice(`Dictionary term added: ${source} → ${target}`);
-}
-
-function renderSnippetsList(): void {
-  const filtered = snippets;
-
-  const snippetsCountBadge = document.getElementById("snippetsCountBadge");
-  if (snippetsCountBadge) {
-    snippetsCountBadge.textContent = `${filtered.length} snippet${filtered.length === 1 ? "" : "s"}`;
-  }
-
-  if (filtered.length === 0) {
-    snippetsList.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
-        </div>
-        <h4>No snippets yet</h4>
-        <p>Save time by creating your first text expansion shortcut.</p>
-      </div>
-    `;
-    return;
-  }
-
-  snippetsList.innerHTML = "";
-  const fragment = document.createDocumentFragment();
-  for (const snippet of filtered) {
-    const row = document.createElement("div");
-    row.className = "managed-row snippet-row";
-
-    const mainEl = document.createElement("div");
-    mainEl.className = "managed-row-main";
-    const triggerEl = document.createElement("strong");
-    triggerEl.className = "snippet-trigger";
-    triggerEl.textContent = snippet.trigger;
-    const expansionEl = document.createElement("span");
-    expansionEl.className = "snippet-expansion";
-    expansionEl.textContent = snippet.expansion;
-    mainEl.append(triggerEl, expansionEl);
-
-    const actionsEl = document.createElement("div");
-    actionsEl.className = "managed-row-actions";
-    const deleteBtn = document.createElement("button");
-    deleteBtn.type = "button";
-    deleteBtn.className = "delete-btn";
-    deleteBtn.innerHTML = `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-      <span>Delete</span>
-    `;
-    deleteBtn.dataset.snippetDelete = snippet.id;
-    deleteBtn.addEventListener("click", async () => {
-      if (!await confirmDestructiveAction(`Delete snippet "${snippet.trigger}"?`)) {
-        return;
-      }
-      snippets = snippets.filter((entry) => entry.id !== snippet.id);
-      persistSnippets();
-      renderSnippetsList();
-    });
-    actionsEl.append(deleteBtn);
-
-    row.append(mainEl, actionsEl);
-    fragment.append(row);
-  }
-  snippetsList.append(fragment);
-}
-
-function addSnippetEntry(): void {
-  const trigger = snippetTriggerInput.value.trim();
-  const expansion = snippetExpansionInput.value.trim();
-  const validationError = validateSnippetEntry(trigger, expansion);
-  if (validationError) {
-    setNotice(validationError, true);
-    return;
-  }
-
-  snippets = normalizeSnippetEntries([
-    {
-      id: createId(),
-      trigger,
-      expansion,
-      createdAt: Date.now(),
-    },
-    ...snippets.filter(
-      (entry) => entry.trigger.trim().toLocaleLowerCase() !== trigger.toLocaleLowerCase(),
-    ),
-  ]);
-  persistSnippets();
-  renderSnippetsList();
-  snippetTriggerInput.value = "";
-  snippetExpansionInput.value = "";
-
-  snippetFormContainer.classList.add("is-collapsed");
-  snippetsAddBtnTop.classList.remove("is-active");
-  snippetsAddBtnTop.textContent = "Add new";
-  setNotice(`Snippet added: ${trigger}`);
-}
-
-function addQuickNote(text: string): void {
-  const clean = text.trim();
-  const validationError = validateQuickNote(clean);
-  if (validationError || settings.incognitoMode) {
-    if (validationError && !settings.incognitoMode) {
-      setNotice(validationError, true);
-    }
-    return;
-  }
-
-  quickNotes.unshift({
-    id: createId(),
-    text: clean,
-    createdAt: Date.now(),
-  });
-  quickNotes = quickNotes.slice(0, 50);
-  persistQuickNotes();
-  renderNotesList();
-  if (quickNotes.length >= 50) {
-    setNotice("Quick note saved. The list keeps the 50 most recent notes.");
-  }
-}
-
-function renderNotesList(): void {
-  if (quickNotes.length === 0 || settings.incognitoMode) {
-    notesList.innerHTML = "";
-    return;
-  }
-
-  notesList.innerHTML = "";
-  const fragment = document.createDocumentFragment();
-  for (const note of quickNotes) {
-    const row = document.createElement("article");
-    row.className = "managed-row managed-row-grid managed-row-note";
-    const time = NOTE_TIME_FORMATTER.format(note.createdAt);
-
-    const mainEl = document.createElement("p");
-    mainEl.className = "managed-row-main";
-    const strongEl = document.createElement("strong");
-    strongEl.textContent = "Quick note";
-    const spanEl = document.createElement("span");
-    spanEl.textContent = note.text;
-    mainEl.append(strongEl, spanEl);
-
-    const metaEl = document.createElement("span");
-    metaEl.className = "managed-row-meta";
-    metaEl.textContent = time;
-
-    const actionsEl = document.createElement("div");
-    actionsEl.className = "managed-row-actions";
-    const deleteBtn = document.createElement("button");
-    deleteBtn.type = "button";
-    deleteBtn.className = "inline-link";
-    deleteBtn.dataset.noteDelete = note.id;
-    deleteBtn.textContent = "Delete";
-    deleteBtn.addEventListener("click", async () => {
-      if (!await confirmDestructiveAction("Delete this quick note?")) {
-        return;
-      }
-      quickNotes = quickNotes.filter((entry) => entry.id !== note.id);
-      persistQuickNotes();
-      renderNotesList();
-    });
-    actionsEl.append(deleteBtn);
-
-    row.append(mainEl, metaEl, actionsEl);
-    fragment.append(row);
-  }
-  notesList.append(fragment);
 }
 
 async function refreshAssistantInfo(): Promise<void> {
