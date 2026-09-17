@@ -33,7 +33,6 @@ import {
   loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
   listDictationRecordingIds as ipcListDictationRecordingIds,
   listDictationRecordingsStats as ipcListDictationRecordingsStats,
-  logClientEvent as ipcLogClientEvent,
   openLocalSttModelPath as ipcOpenLocalSttModelPath,
   pasteClipboardText as ipcPasteClipboardText,
   pasteTextViaClipboard as ipcPasteTextViaClipboard,
@@ -115,6 +114,11 @@ import {
   resumeExternalMediaAfterDictation as resumeExternalMediaAfterDictationService,
   setExternalMediaMutedForDictation,
 } from "./shell/media-control";
+import {
+  initDiagnostics,
+  logClientEvent as logClientEventService,
+  setNotice as setNoticeService,
+} from "./shell/diagnostics";
 import { parseJson } from "./state/storage";
 import { countWords, formatSpeakingTime } from "./analytics/analytics-service";
 import {
@@ -670,6 +674,7 @@ settings.pushToTalkHotkey = settings.pushToTalkHotkey.trim() || DEFAULT_HOTKEY;
 settings.commandHotkey = settings.commandHotkey.trim() || DEFAULT_COMMAND_HOTKEY;
 initSettingsState(settings);
 setPersistErrorReporter((message) => setNotice(message, true));
+initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
 const mediaControlDeps = {
   isMutingEnabled: () => settings.muteMusicWhileDictating,
   isTauri: isTauriEnvironment,
@@ -6752,19 +6757,11 @@ function stageLabel(next: Stage): string {
 }
 
 function setNotice(message: string, isError = false): void {
-  noticeText.textContent = message;
-  noticeText.dataset.tone = isError ? "error" : "normal";
+  setNoticeService(message, isError);
 }
 
 function logClientEvent(message: string): void {
-  const line = message.trim();
-  if (!line || !isTauriEnvironment()) {
-    return;
-  }
-
-  void ipcLogClientEvent(line).catch(() => {
-    // Ignore logging failures in UI flow.
-  });
+  logClientEventService(message);
 }
 
 function shouldDisplayDock(): boolean {
