@@ -39,7 +39,7 @@ import {
   createId,
 } from "./utils";
 import { matchHistoryToRecordings } from "./store";
-import { ACHIEVEMENT_DEFS } from "./state/achievements";
+import { newlyUnlockedAchievements } from "./analytics/analytics-service";
 import { loadHistory } from "./state/history";
 import { loadAnalyticsSessions as loadCanonicalAnalyticsSessions } from "./state/usage";
 import {
@@ -2649,18 +2649,9 @@ function persistAchievementStates(): void {
 }
 
 function checkAndUnlockAchievements(stats: UsageStats): void {
-  let newUnlock = false;
-  for (const def of ACHIEVEMENT_DEFS) {
-    const currentVal = def.metric === 'words' ? stats.words : def.metric === 'sessions' ? stats.sessions : stats.speakingSeconds;
-    if (currentVal >= def.threshold) {
-      const existing = achievementStates.find(a => a.id === def.id);
-      if (!existing) {
-        achievementStates.push({ id: def.id, unlockedAt: Date.now() });
-        newUnlock = true;
-      }
-    }
-  }
-  if (newUnlock) {
+  const unlocked = newlyUnlockedAchievements(stats, achievementStates, Date.now());
+  if (unlocked.length > 0) {
+    achievementStates.push(...unlocked);
     persistAchievementStates();
   }
 }
