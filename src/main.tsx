@@ -17,7 +17,6 @@ import {
   listDictationRecordingIds as ipcListDictationRecordingIds,
   saveDictationRecording as ipcSaveDictationRecording,
 } from "./ipc/client";
-import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   LogicalSize,
@@ -219,6 +218,7 @@ import {
 import {
   initLocalSttState,
   isSelectedLocalSttModelLoaded as isSelectedLocalSttModelLoadedService,
+  localSttDownloadActive,
   localSttModelLabel as localSttModelLabelService,
 } from "./stt/local-stt-state";
 import {
@@ -257,6 +257,10 @@ import {
   publishDockState as publishDockStateService,
   syncFloatingIndicatorWindow as syncFloatingIndicatorWindowService,
 } from "./windows/dock";
+import {
+  initializeTrayBackgroundLifecycle as initializeTrayBackgroundLifecycleService,
+  initTrayLifecycle,
+} from "./windows/tray-lifecycle";
 import {
   initDockGeometry,
   resolveDockStartPosition as resolveDockStartPositionService,
@@ -653,7 +657,6 @@ let localOllamaModelCatalog: string[] = [];
 let localSttModelCatalog: string[] = [];
 let latestAssistantInfoDefaults: AssistantInfoResponse | null = null;
 let piperRuntimeReady = false;
-let localSttDownloadActive = false;
 let lastWarmedLocalSttModel = "";
 let localSttRuntimeLoaded = false;
 
@@ -929,6 +932,24 @@ initLocalSttDiagnostics({
   activateSelectedLocalSttModel: () => {
     void activateSelectedLocalSttModelService();
   },
+});
+initTrayLifecycle({
+  isTauri: isTauriEnvironment,
+  isTtsSetupRunning: () => ttsSetupRunning,
+  isLocalSttDownloadActive: () => localSttDownloadActive,
+  stopTtsSetupPolling: () => stopTtsSetupPollingService(),
+  startTtsSetupPolling: () => startTtsSetupPollingService(),
+  pollTtsSetupStatusOnce: () => pollTtsSetupStatusOnceService(),
+  stopLocalSttDownloadStatusPolling: () => stopLocalSttDownloadStatusPollingService(),
+  startLocalSttDownloadStatusPolling: () => startLocalSttDownloadStatusPollingService(),
+  pollLocalSttDownloadStatusOnce: (options) => pollLocalSttDownloadStatusOnceService(options),
+  hideLocalSttLoadOverlay: () => hideLocalSttLoadOverlayService(),
+  closeSelectionAssistantWindow: () => closeSelectionAssistantWindowForTrayService(),
+  syncFloatingIndicatorWindow: () => syncFloatingIndicatorWindowService(),
+  setMainWindowHiddenToTray: (hidden) => {
+    mainWindowHiddenToTray = hidden;
+  },
+  visibilityEvent: MAIN_WINDOW_VISIBILITY_EVENT,
 });
 initDock(
   {
@@ -1356,7 +1377,7 @@ syncActionAvailability();
 initializeUpdaterPanelService();
 void registerUpdateInstallProgressListenerService();
 setupCustomWindowControls();
-void initializeTrayBackgroundLifecycle();
+void initializeTrayBackgroundLifecycleService();
 hotkeyInput.readOnly = true;
 commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
@@ -2823,57 +2844,6 @@ function startBlockedAppShortcutSuppressionMonitor(): void {
   }, 1200);
 
   void refreshBlockedAppShortcutSuppression();
-}
-
-function stopNonEssentialUiPollingForTray(): void {
-  stopTtsSetupPollingService();
-  stopLocalSttDownloadStatusPollingService();
-  hideLocalSttLoadOverlayService();
-}
-
-function resumeNonEssentialUiPollingAfterTray(): void {
-  if (ttsSetupRunning) {
-    startTtsSetupPollingService();
-    void pollTtsSetupStatusOnceService();
-  }
-  if (localSttDownloadActive) {
-    startLocalSttDownloadStatusPollingService();
-    void pollLocalSttDownloadStatusOnceService({ quiet: true });
-  }
-}
-
-async function applyMainWindowTrayVisibility(hidden: boolean): Promise<void> {
-  mainWindowHiddenToTray = hidden;
-  if (!hidden) {
-    resumeNonEssentialUiPollingAfterTray();
-    // Re-sync the dock so it reappears if showDockAlways is on or a session is active
-    void syncFloatingIndicatorWindow();
-    return;
-  }
-
-  stopNonEssentialUiPollingForTray();
-  await closeSelectionAssistantWindowForTrayService();
-  // Keep the floating dock alive when minimizing to tray — only close it
-  // if the user explicitly disabled the dock via showFlowBar setting.
-  // Previously this destroyed the dock window which made it disappear
-  // and it was never re-created until the next recording session.
-}
-
-async function initializeTrayBackgroundLifecycle(): Promise<void> {
-  if (!isTauriEnvironment()) {
-    return;
-  }
-
-  await listen<{ hidden?: boolean }>(MAIN_WINDOW_VISIBILITY_EVENT, (event) => {
-    void applyMainWindowTrayVisibility(Boolean(event.payload?.hidden));
-  });
-
-  try {
-    const visible = await getCurrentWindow().isVisible();
-    await applyMainWindowTrayVisibility(!visible);
-  } catch {
-    mainWindowHiddenToTray = false;
-  }
 }
 
 function setStage(next: Stage, detail: string): void {
