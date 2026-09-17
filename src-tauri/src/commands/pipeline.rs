@@ -369,7 +369,7 @@ pub(crate) async fn run_assistant_pipeline(
     if should_try_backend_selection_capture {
         #[cfg(target_os = "windows")]
         {
-            match super::input::capture_selected_text_windows() {
+            match crate::platform::windows_native::capture_selected_text_windows() {
                 Ok(captured) => {
                     let trimmed = captured.trim();
                     if !trimmed.is_empty() {

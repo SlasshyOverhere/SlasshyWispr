@@ -230,7 +230,7 @@ pub(crate) fn copy_last_transcript_to_clipboard(app: &AppHandle) {
 
     #[cfg(target_os = "windows")]
     {
-        if let Err(error) = super::input::set_clipboard_text_windows(&transcript) {
+        if let Err(error) = crate::platform::windows_native::set_clipboard_text_windows(&transcript) {
             error!(
                 "[tray] failed to copy last transcript to clipboard: {}",
                 single_line(&error)
@@ -270,7 +270,7 @@ pub(crate) fn copy_last_response_to_clipboard(app: &AppHandle) {
 
     #[cfg(target_os = "windows")]
     {
-        if let Err(error) = super::input::set_clipboard_text_windows(&response) {
+        if let Err(error) = crate::platform::windows_native::set_clipboard_text_windows(&response) {
             error!(
                 "[tray] failed to copy last assistant response to clipboard: {}",
                 single_line(&error)

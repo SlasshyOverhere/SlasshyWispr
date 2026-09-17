@@ -11,7 +11,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use tauri::{menu::MenuItem, AppHandle, Manager};
@@ -104,7 +104,6 @@ impl WindowVisibilityState {
 // Selection-edit types moved to pipeline::selection; native Parakeet runtime
 // moved to audio::parakeet; Piper tuning cache moved to pipeline::tts.
 static TRAY_UPDATE_ITEM: OnceLock<MenuItem<tauri::Wry>> = OnceLock::new();
-static SAVED_SYSTEM_AUDIO_VOLUME: Mutex<Option<u32>> = Mutex::new(None);
 
 #[cfg(target_os = "windows")]
 pub(crate) mod win32_native {
