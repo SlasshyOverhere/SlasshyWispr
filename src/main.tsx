@@ -209,6 +209,15 @@ import {
   pickDefaultLocalSttModelFromCatalog as pickDefaultLocalSttModelFromList,
 } from "./stt/provider-inference";
 import {
+  getLocalSttActionBlockReason as getLocalSttActionBlockReasonService,
+  getSelectedLocalSttModel as getSelectedLocalSttModelService,
+  hasShownLocalSttHardwareAdvisor as hasShownLocalSttHardwareAdvisorService,
+  initLocalSttState,
+  isSelectedLocalSttModelLoaded as isSelectedLocalSttModelLoadedService,
+  localSttModelLabel as localSttModelLabelService,
+  markLocalSttHardwareAdvisorShown as markLocalSttHardwareAdvisorShownService,
+} from "./stt/local-stt-state";
+import {
   ensureLocalOllamaModelSelected as ensureLocalOllamaModelSelectedService,
   fetchOllamaModels as fetchOllamaModelsService,
   initOllamaClient,
@@ -279,10 +288,8 @@ import {
   SNIPPETS_STORAGE_KEY,
   USAGE_STORAGE_KEY,
   DOCK_LAYOUT_STORAGE_KEY,
-  LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
-  LOCAL_STT_MODEL_SIZE_LABELS,
   FOREGROUND_BLOCK_CHECK_CACHE_MS,
   BLOCKED_INPUT_NOTICE_COOLDOWN_MS,
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
@@ -912,6 +919,14 @@ initPipelineClient(
     refreshAssistantInfo: () => refreshAssistantInfoSafely(),
   },
 );
+initLocalSttState({
+  readSettings: () => readSettingsFromForm(),
+  getCatalogSelection: () => localSttModelCatalogSelect.value,
+  isPipelineRunning: () => pipelineRunning,
+  getStage: () => stage,
+  renderSidebarToggle: () => renderSidebarLocalSttToggle(),
+  renderSettingsStatus: () => renderLocalSttSettingsStatus(),
+});
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
 initDesktopNotice({
   setNotice: (message, isError) => setNotice(message, isError),
@@ -2530,31 +2545,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
 };
 
 function getLocalSttActionBlockReason(): string | null {
-  if (pipelineRunning) {
-    return "Finish the current pipeline run first.";
-  }
-  if (stage === "recording") {
-    return "Stop recording before changing offline STT setup.";
-  }
-  if (localSttDownloadInFlight || localSttDownloadActive) {
-    return "A local STT download is already running.";
-  }
-  if (localSttDeleteInFlight) {
-    return "A local STT delete is already running.";
-  }
-  if (localSttDeactivateInFlight) {
-    return "Local STT is currently unloading.";
-  }
-  if (localSttWarmupInFlight) {
-    return "Local STT is currently loading.";
-  }
-  if (localSttRuntimeStateInFlight) {
-    return "Local STT status is still refreshing.";
-  }
-  if (localSttHardwareAdvisorOpen) {
-    return "Close the hardware advisor before continuing.";
-  }
-  return null;
+  return getLocalSttActionBlockReasonService();
 }
 
 function reportBlockedLocalSttAction(action: string): boolean {
@@ -3733,33 +3724,21 @@ function renderLocalSttSettingsStatus(): void {
 }
 
 function getSelectedLocalSttModel(): string {
-  const activeSettings = readSettingsFromForm();
-  return activeSettings.localSttModel.trim() || localSttModelCatalogSelect.value.trim();
+  return getSelectedLocalSttModelService();
 }
 
 function isSelectedLocalSttModelLoaded(): boolean {
-  const selectedModel = getSelectedLocalSttModel();
-  if (!selectedModel || !localSttRuntimeLoaded) {
-    return false;
-  }
-  return lastWarmedLocalSttModel.trim() === selectedModel;
+  return isSelectedLocalSttModelLoadedService();
 }
 
 function localSttModelLabel(model: string): string {
-  const normalized = model.trim();
-  if (!normalized) {
-    return "-";
-  }
-  return LOCAL_STT_MODEL_SIZE_LABELS[normalized] || normalized;
+  return localSttModelLabelService(model);
 }
 
 function hasShownLocalSttHardwareAdvisor(): boolean {
-  return localStorage.getItem(LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY) === "1";
+  return hasShownLocalSttHardwareAdvisorService();
 }
 
-function markLocalSttHardwareAdvisorShown(): void {
-  localStorage.setItem(LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY, "1");
-}
 
 function resolveLocalSttHardwareAdvisorChoice(choice: LocalSttHardwareAdvisorChoice): void {
   if (localSttHardwareAdvisorResolver) {
@@ -3785,7 +3764,7 @@ async function suggestLocalSttModelForHardwareIfNeeded(selectedModel: string): P
   try {
     advice = await ipcGetLocalSttHardwareAdvice({ selectedModel });
   } catch (error) {
-    markLocalSttHardwareAdvisorShown();
+    markLocalSttHardwareAdvisorShownService();
     setNotice(
       `Hardware recommendation check failed. Continuing with selected model: ${asErrorMessage(error)}`,
       true,
@@ -3794,7 +3773,7 @@ async function suggestLocalSttModelForHardwareIfNeeded(selectedModel: string): P
   }
 
   const suggestionModel = advice.slasshySuggestionModel?.trim() || selectedModel;
-  markLocalSttHardwareAdvisorShown();
+  markLocalSttHardwareAdvisorShownService();
 
   if (suggestionModel && suggestionModel !== selectedModel) {
     setNotice(
