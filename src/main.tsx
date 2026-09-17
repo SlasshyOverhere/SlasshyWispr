@@ -41,7 +41,6 @@ import {
   pullOllamaModel as ipcPullOllamaModel,
   runAssistantPipeline as ipcRunAssistantPipeline,
   saveDictationRecording as ipcSaveDictationRecording,
-  savePersistedLocalSettings as ipcSavePersistedLocalSettings,
   setClipboardText as ipcSetClipboardText,
   setupAssistantRuntime as ipcSetupAssistantRuntime,
   setupCoquiRuntime as ipcSetupCoquiRuntime,
@@ -66,6 +65,7 @@ import {
 } from "@tauri-apps/plugin-global-shortcut";
 import { open as openExternalUrl } from "@tauri-apps/plugin-shell";
 import {
+  boolFlag,
   buildAgentOperatingCorePrompt,
   captureModeLabel,
   expandSnippetsInText,
@@ -96,6 +96,11 @@ import {
   applyDictationLanguageSettingsToForm as applyDictationLanguageSettingsToFormService,
   applySettingsValidation as applySettingsValidationService,
   applyTheme as applyThemeService,
+  buildShortcutSyncSignature,
+  flushPendingSettings,
+  persistSettings,
+  setPersistErrorReporter,
+  summarizeSettingsForDiagnostics,
   syncHybridRuntimeFieldVisibility as syncHybridRuntimeFieldVisibilityService,
   syncRuntimeModePaneVisibility as syncRuntimeModePaneVisibilityService,
   syncThemeCardSelection as syncThemeCardSelectionService,
@@ -695,9 +700,6 @@ let foregroundBlockMonitorInFlight = false;
 let lastCaptureIntentStartedAt = 0;
 let lastCaptureIntentLabel = "";
 let mainWindowHiddenToTray = false;
-let persistSettingsTimer: number | null = null;
-let pendingSettingsToPersist: PersistedSettings | null = null;
-let lastPersistDiagnosticsSignature = "";
 let notificationPermissionRequested = false;
 const dockChannel = new BroadcastChannel("slasshywispr-dock");
 const selectionPopupChannel = new BroadcastChannel("slasshywispr-selection-popup");
@@ -730,6 +732,7 @@ const systemThemeMediaQuery =
 let settings = loadSettings();
 settings.pushToTalkHotkey = settings.pushToTalkHotkey.trim() || DEFAULT_HOTKEY;
 settings.commandHotkey = settings.commandHotkey.trim() || DEFAULT_COMMAND_HOTKEY;
+setPersistErrorReporter((message) => setNotice(message, true));
 let cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
 applySettingsToForm(settings);
 renderSidebarLocalSttToggle();
@@ -1186,14 +1189,7 @@ window.addEventListener("beforeunload", () => {
     window.clearTimeout(dockHideTimerId);
     dockHideTimerId = null;
   }
-  if (persistSettingsTimer !== null) {
-    window.clearTimeout(persistSettingsTimer);
-    persistSettingsTimer = null;
-  }
-  if (pendingSettingsToPersist) {
-    performPersistSettings(pendingSettingsToPersist);
-    pendingSettingsToPersist = null;
-  }
+  flushPendingSettings();
   if (foregroundBlockMonitorId !== null) {
     window.clearInterval(foregroundBlockMonitorId);
     foregroundBlockMonitorId = null;
@@ -1885,78 +1881,6 @@ function isSettingsOpen(): boolean {
   return !settingsOverlay.hidden && settingsOverlay.classList.contains("is-open");
 }
 
-function persistSettings(next: PersistedSettings): void {
-  pendingSettingsToPersist = next;
-  if (persistSettingsTimer === null) {
-    performPersistSettings(next);
-    pendingSettingsToPersist = null;
-  } else {
-    window.clearTimeout(persistSettingsTimer);
-  }
-
-  persistSettingsTimer = window.setTimeout(() => {
-    persistSettingsTimer = null;
-    if (pendingSettingsToPersist) {
-      performPersistSettings(pendingSettingsToPersist);
-      pendingSettingsToPersist = null;
-    }
-  }, 800);
-}
-
-function performPersistSettings(next: PersistedSettings): void {
-  const nativePayload: PersistedSettings = {
-    ...next,
-    apiKey: next.rememberApiKey ? next.apiKey : "",
-  };
-
-  const localPayload: PersistedSettings = isTauriEnvironment()
-    ? {
-        ...nativePayload,
-        // Keep API keys out of webview localStorage in desktop builds.
-        apiKey: "",
-      }
-    : nativePayload;
-  const serializedLocal = JSON.stringify(localPayload);
-  localStorage.setItem(SETTINGS_STORAGE_KEY, serializedLocal);
-  const diagnosticsSignature = [
-    next.captureMode,
-    next.sttRuntimeMode,
-    next.aiRuntimeMode,
-    boolFlag(next.rememberApiKey),
-    boolFlag(next.apiKey.trim().length > 0),
-    buildShortcutSyncSignature(next),
-  ].join("|");
-  if (diagnosticsSignature !== lastPersistDiagnosticsSignature) {
-    lastPersistDiagnosticsSignature = diagnosticsSignature;
-    logClientEvent(
-      `[settings.persist] tauri=${boolFlag(isTauriEnvironment())} ${summarizeSettingsForDiagnostics(
-        next,
-      )} nativeApiKeyPresent=${boolFlag(nativePayload.apiKey.trim().length > 0)} localApiKeyPresent=${boolFlag(
-        localPayload.apiKey.trim().length > 0,
-      )}`,
-    );
-  }
-
-  if (!isTauriEnvironment()) {
-    return;
-  }
-
-  const serializedNative = JSON.stringify(nativePayload);
-  logClientEvent(
-    `[settings.persist.native] payloadBytes=${serializedNative.length} remember=${boolFlag(
-      nativePayload.rememberApiKey,
-    )} apiKeyPresent=${boolFlag(nativePayload.apiKey.trim().length > 0)}`,
-  );
-  void ipcSavePersistedLocalSettings(serializedNative).catch((error) => {
-    setNotice(
-      `Unable to securely save settings: ${asErrorMessage(error)}. Check keyring access and try again.`,
-      true,
-    );
-    logClientEvent(`[settings.persist.native] failed: ${asErrorMessage(error)}`);
-    console.warn(`[settings] failed to persist local settings: ${asErrorMessage(error)}`);
-  });
-}
-
 async function hydrateSettingsFromNativeStorage(): Promise<void> {
   if (!isTauriEnvironment()) {
     logClientEvent("[settings.hydrate] skipped because app is not running in tauri");
@@ -2608,35 +2532,6 @@ async function syncLocalSttRuntimeForMode(
   }
 }
 
-function buildShortcutSyncSignature(source: PersistedSettings): string {
-  const captureMode = source.captureMode;
-  const push = parseHotkey(source.pushToTalkHotkey)?.label ?? "";
-  const commandEnabled = source.commandMode ? "1" : "0";
-  const command = source.commandMode ? parseHotkey(source.commandHotkey)?.label ?? "" : "";
-  return `${captureMode}|${push}|${commandEnabled}|${command}`;
-}
-
-function boolFlag(value: boolean): "1" | "0" {
-  return value ? "1" : "0";
-}
-
-function summarizeSettingsForDiagnostics(source: PersistedSettings): string {
-  const pushLabel = parseHotkey(source.pushToTalkHotkey)?.label ?? source.pushToTalkHotkey.trim();
-  const commandLabel = source.commandMode
-    ? parseHotkey(source.commandHotkey)?.label ?? source.commandHotkey.trim()
-    : "disabled";
-  const apiKeyPresent = source.apiKey.trim().length > 0;
-  return [
-    `capture=${source.captureMode}`,
-    `stt=${source.sttRuntimeMode}`,
-    `ai=${source.aiRuntimeMode}`,
-    `remember=${boolFlag(source.rememberApiKey)}`,
-    `apiKeyPresent=${boolFlag(apiKeyPresent)}`,
-    `commandMode=${boolFlag(source.commandMode)}`,
-    `push=${pushLabel || "-"}`,
-    `command=${commandLabel || "-"}`,
-  ].join(" ");
-}
 
 function requestGlobalShortcutSync(force = false): void {
   logClientEvent(

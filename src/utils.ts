@@ -170,3 +170,18 @@ export function expandSnippetsInText(text: string, entries: SnippetEntry[]): str
   }
   return expanded;
 }
+
+export function boolFlag(value: boolean): "1" | "0" {
+  return value ? "1" : "0";
+}
+
+export function asErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
