@@ -102,6 +102,7 @@ import {
   syncHybridRuntimeFieldVisibility as syncHybridRuntimeFieldVisibilityService,
   syncRuntimeModePaneVisibility as syncRuntimeModePaneVisibilityService,
   updateRuntimeModeNotice as updateRuntimeModeNoticeService,
+  wireSettingsFormInputs as wireSettingsFormInputsService,
   type SettingsCoreDeps,
 } from "./settings/settings-service";
 import { querySettingsFormRefs } from "./settings/settings-form-refs";
@@ -433,13 +434,7 @@ const piperPathInput = requiredElement<HTMLInputElement>("#piperPathInput");
 const piperQualitySelect = requiredElement<HTMLSelectElement>("#piperQualitySelect");
 const piperEmotionSelect = requiredElement<HTMLSelectElement>("#piperEmotionSelect");
 const piperSpeedInput = requiredElement<HTMLInputElement>("#piperSpeedInput");
-const systemPromptInput = requiredElement<HTMLTextAreaElement>("#systemPromptInput");
-const temperatureInput = requiredElement<HTMLInputElement>("#temperatureInput");
-const maxTokensInput = requiredElement<HTMLInputElement>("#maxTokensInput");
 
-const launchAtLoginToggle = requiredElement<HTMLInputElement>("#launchAtLoginToggle");
-const showFlowBarToggle = requiredElement<HTMLInputElement>("#showFlowBarToggle");
-const showDockAlwaysToggle = requiredElement<HTMLInputElement>("#showDockAlwaysToggle");
 const commandModeToggle = requiredElement<HTMLInputElement>("#commandModeToggle");
 const wakeWordEnabledToggle = requiredElement<HTMLInputElement>("#wakeWordEnabledToggle");
 const assistantNameInput = requiredElement<HTMLInputElement>("#assistantNameInput");
@@ -457,27 +452,18 @@ const contextAwarenessToggle = requiredElement<HTMLInputElement>("#contextAwaren
 const copyToClipboardToggle = requiredElement<HTMLInputElement>("#copyToClipboardToggle");
 const autoPasteDictationToggle = requiredElement<HTMLInputElement>("#autoPasteDictationToggle");
 const incognitoModeToggle = requiredElement<HTMLInputElement>("#incognitoModeToggle");
-const saveRecordingsToggle = requiredElement<HTMLInputElement>("#saveRecordingsToggle");
 const clearRecordingsBtn = requiredElement<HTMLButtonElement>("#clearRecordingsBtn");
 const recordingsStorageHint = requiredElement<HTMLSpanElement>("#recordingsStorageHint");
 const recordingsStorageHintWeb = requiredElement<HTMLParagraphElement>("#recordingsStorageHintWeb");
 const settingsFormRefs = querySettingsFormRefs();
-const dictationSoundEffectsToggle = requiredElement<HTMLInputElement>("#dictationSoundEffectsToggle");
-const muteMusicWhileDictatingToggle = requiredElement<HTMLInputElement>(
-  "#muteMusicWhileDictatingToggle",
-);
 const pushToTalkSoundSelect = requiredElement<HTMLSelectElement>("#pushToTalkSoundSelect");
 const pushToTalkEndSoundSelect = requiredElement<HTMLSelectElement>("#pushToTalkEndSoundSelect");
-const pushToTalkSoundVolumeRange = requiredElement<HTMLInputElement>("#pushToTalkSoundVolumeRange");
 const previewPttSoundBtn = requiredElement<HTMLButtonElement>("#previewPttSoundBtn");
 const previewPttEndSoundBtn = requiredElement<HTMLButtonElement>("#previewPttEndSoundBtn");
-const pttVolumeHint = requiredElement<HTMLSpanElement>("#pttVolumeHint");
-const rawModeToggle = requiredElement<HTMLInputElement>("#rawModeToggle");
 const backtrackToggle = requiredElement<HTMLInputElement>("#backtrackToggle");
 const removeFillersToggle = requiredElement<HTMLInputElement>("#removeFillersToggle");
 const autoPunctuationToggle = requiredElement<HTMLInputElement>("#autoPunctuationToggle");
 const numberedListsToggle = requiredElement<HTMLInputElement>("#numberedListsToggle");
-const noiseSuppressionToggle = requiredElement<HTMLInputElement>("#noiseSuppressionToggle");
 const updateStatusPill = requiredElement<HTMLDivElement>("#updateStatusPill");
 const updateStatusText = requiredElement<HTMLParagraphElement>("#updateStatusText");
 const updateCurrentVersion = requiredElement<HTMLElement>("#updateCurrentVersion");
@@ -1220,81 +1206,29 @@ toggleMicEditorBtn.addEventListener("click", () => {
   toggleMicEditorBtn.textContent = microphoneEditor.hidden ? "Change" : "Done";
 });
 
-apiKeyInput.addEventListener("input", handleSettingsChange);
-apiBaseUrlInput.addEventListener("input", handleSettingsChange);
-sttModelInput.addEventListener("input", handleSettingsChange);
-aiModelInput.addEventListener("input", handleSettingsChange);
-localOllamaBaseUrlInput.addEventListener("input", handleSettingsChange);
-localOllamaModelInput.addEventListener("input", handleSettingsChange);
-localSttModelInput.addEventListener("input", handleSettingsChange);
-rememberApiKeyInput.addEventListener("change", handleSettingsChange);
-piperPathInput.addEventListener("input", handleSettingsChange);
-piperQualitySelect.addEventListener("change", handleSettingsChange);
-piperEmotionSelect.addEventListener("change", handleSettingsChange);
-piperSpeedInput.addEventListener("input", handleSettingsChange);
-ttsEngineSelect.addEventListener("change", handleSettingsChange);
-systemPromptInput.addEventListener("input", handleSettingsChange);
-temperatureInput.addEventListener("input", handleSettingsChange);
-maxTokensInput.addEventListener("input", handleSettingsChange);
-microphoneSelect.addEventListener("change", handleSettingsChange);
-dictationLanguageSelect.addEventListener("change", handleSettingsChange);
-dictationLanguageModeSingleInput.addEventListener("change", handleSettingsChange);
-dictationLanguageModeMultipleInput.addEventListener("change", handleSettingsChange);
-for (const option of dictationLanguageOptionInputs) {
-  option.addEventListener("change", handleSettingsChange);
-}
-styleProfileSelect.addEventListener("change", handleSettingsChange);
-captureModeSingleInput.addEventListener("change", handleSettingsChange);
-captureModePushToTalkInput.addEventListener("change", handleSettingsChange);
-launchAtLoginToggle.addEventListener("change", handleSettingsChange);
-showFlowBarToggle.addEventListener("change", handleSettingsChange);
-commandModeToggle.addEventListener("change", handleSettingsChange);
-  wakeWordEnabledToggle.addEventListener("change", handleSettingsChange);
-  showDockAlwaysToggle.addEventListener("change", handleSettingsChange);
-  assistantNameInput.addEventListener("input", handleSettingsChange);
-sttRuntimeModeOnlineInput.addEventListener("change", handleSettingsChange);
-sttRuntimeModeOfflineInput.addEventListener("change", handleSettingsChange);
-aiRuntimeModeOnlineInput.addEventListener("change", handleSettingsChange);
-aiRuntimeModeOfflineInput.addEventListener("change", handleSettingsChange);
-contextAwarenessToggle.addEventListener("change", handleSettingsChange);
-copyToClipboardToggle.addEventListener("change", handleSettingsChange);
-autoPasteDictationToggle.addEventListener("change", handleSettingsChange);
-incognitoModeToggle.addEventListener("change", handleSettingsChange);
-saveRecordingsToggle.addEventListener("change", handleSettingsChange);
-settingsFormRefs.themeModeSelect.addEventListener("change", handleSettingsChange);
-
-for (const cardInput of settingsFormRefs.themeCardInputs) {
-  cardInput.addEventListener("change", () => {
-    if (!cardInput.checked) {
-      return;
-    }
-    const next = asThemeMode(cardInput.value);
+wireSettingsFormInputsService({
+  refs: settingsFormRefs,
+  onFieldChange: () => {
+    void handleSettingsChange();
+  },
+  onThemeCardChange: (value) => {
+    const next = asThemeMode(value);
     if (settingsFormRefs.themeModeSelect.value !== next) {
       settingsFormRefs.themeModeSelect.value = next;
     }
     void handleSettingsChange();
-  });
-}
-dictationSoundEffectsToggle.addEventListener("change", handleSettingsChange);
-pushToTalkSoundSelect.addEventListener("change", handleSettingsChange);
-pushToTalkEndSoundSelect.addEventListener("change", handleSettingsChange);
-pushToTalkSoundVolumeRange.addEventListener("input", () => {
-  pttVolumeHint.textContent = `${pushToTalkSoundVolumeRange.value}%`;
+  },
+  onVolumePreview: (value) => {
+    settingsFormRefs.pttVolumeHint.textContent = `${value}%`;
+  },
 });
-pushToTalkSoundVolumeRange.addEventListener("change", handleSettingsChange);
+
 previewPttSoundBtn.addEventListener("click", () => {
   playDictationSoundEffect("start", pushToTalkSoundSelect.value);
 });
 previewPttEndSoundBtn.addEventListener("click", () => {
   playDictationSoundEffect("stop", pushToTalkEndSoundSelect.value);
 });
-muteMusicWhileDictatingToggle.addEventListener("change", handleSettingsChange);
-rawModeToggle.addEventListener("change", handleSettingsChange);
-backtrackToggle.addEventListener("change", handleSettingsChange);
-removeFillersToggle.addEventListener("change", handleSettingsChange);
-autoPunctuationToggle.addEventListener("change", handleSettingsChange);
-numberedListsToggle.addEventListener("change", handleSettingsChange);
-noiseSuppressionToggle.addEventListener("change", handleSettingsChange);
 
 providerModelCatalogSelect.addEventListener("change", () => {
   const selected = providerModelCatalogSelect.value.trim();
@@ -6479,8 +6413,8 @@ function playDictationSoundEffect(kind: "start" | "stop" | "error", previewSound
       break;
   }
 
-  const baseVolume = previewSoundId ? 
-    (Number(pushToTalkSoundVolumeRange.value) / 100) * 0.14 : 
+  const baseVolume = previewSoundId ?
+    (Number(settingsFormRefs.pushToTalkSoundVolumeRange.value) / 100) * 0.14 :
     settings.pushToTalkSoundVolume * 0.14;
 
   let offset = 0;
