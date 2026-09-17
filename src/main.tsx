@@ -109,6 +109,7 @@ import {
   markPaneConverted,
   setSettingsSnapshot,
 } from "./settings/settings-state";
+import { APP_UPDATE_AUTO_CHECK_CHANGED_EVENT } from "./updater/updater-client-shim";
 import { parseJson } from "./state/storage";
 import { countWords, formatSpeakingTime } from "./analytics/analytics-service";
 import {
@@ -916,14 +917,17 @@ checkUpdatesBtn.addEventListener("click", () => {
   void handleCheckForUpdates();
 });
 
-autoCheckUpdatesToggle.addEventListener("change", () => {
+markPaneConverted("update-security");
+window.addEventListener(APP_UPDATE_AUTO_CHECK_CHANGED_EVENT, (event) => {
+  const enabled = (event as CustomEvent<boolean>).detail;
+  autoCheckUpdatesToggle.checked = enabled;
   localStorage.setItem(
     APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
-    autoCheckUpdatesToggle.checked ? "1" : "0",
+    enabled ? "1" : "0",
   );
   startAutomaticUpdateChecks();
   setNotice(
-    autoCheckUpdatesToggle.checked
+    enabled
       ? "Automatic update checks enabled."
       : "Automatic update checks disabled.",
   );

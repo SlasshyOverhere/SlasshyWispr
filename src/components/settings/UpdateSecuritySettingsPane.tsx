@@ -1,4 +1,23 @@
+import { useEffect, useState } from 'react';
+import {
+  readAppUpdateAutoCheckEnabled,
+  APP_UPDATE_AUTO_CHECK_CHANGED_EVENT,
+  requestAppUpdateAutoCheckChange,
+} from '../../updater/updater-client-shim';
+
 export function UpdateSecuritySettingsPane() {
+  const [autoCheck, setAutoCheck] = useState(readAppUpdateAutoCheckEnabled);
+
+  useEffect(() => {
+    const sync = () => setAutoCheck(readAppUpdateAutoCheckEnabled());
+    window.addEventListener(APP_UPDATE_AUTO_CHECK_CHANGED_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(APP_UPDATE_AUTO_CHECK_CHANGED_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
   return (
     <section id="settingsPaneUpdateSecurity" className="settings-pane" data-settings-pane="update-security" hidden>
 
@@ -36,7 +55,13 @@ export function UpdateSecuritySettingsPane() {
 
       <label className="s-row" htmlFor="autoCheckUpdatesToggle">
         <span className="s-row-label">Automatic update checks <span className="switch-desc">(every 12 hours)</span></span>
-        <input id="autoCheckUpdatesToggle" className="switch-input" type="checkbox" />
+        <input
+          id="autoCheckUpdatesToggle"
+          className="switch-input"
+          type="checkbox"
+          checked={autoCheck}
+          onChange={(event) => requestAppUpdateAutoCheckChange(event.target.checked)}
+        />
       </label>
 
       <div className="btn-row">
