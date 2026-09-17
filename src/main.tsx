@@ -15,10 +15,7 @@ import {
   launchAtLoginStatus as ipcLaunchAtLoginStatus,
   loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
   listDictationRecordingIds as ipcListDictationRecordingIds,
-  pasteClipboardText as ipcPasteClipboardText,
-  pasteTextViaClipboard as ipcPasteTextViaClipboard,
   saveDictationRecording as ipcSaveDictationRecording,
-  setClipboardText as ipcSetClipboardText,
 } from "./ipc/client";
 import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -176,6 +173,11 @@ import {
   logClientEvent as logClientEventService,
   setNotice as setNoticeService,
 } from "./shell/diagnostics";
+import {
+  copyToClipboard as copyToClipboardService,
+  initClipboard,
+  triggerAutoPaste as triggerAutoPasteService,
+} from "./shell/clipboard";
 import {
   MISSING_API_KEY_MESSAGE,
   initDesktopNotice,
@@ -960,6 +962,10 @@ initLocalSttClient(
   },
 );
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
+initClipboard({
+  isTauri: isTauriEnvironment,
+  notify: (message, isError) => setNotice(message, isError),
+});
 initDesktopNotice({
   setNotice: (message, isError) => setNotice(message, isError),
   log: (message) => logClientEvent(message),
@@ -3196,44 +3202,13 @@ function createId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-async function copyToClipboard(
-  value: string,
-  options: { quiet?: boolean; successMessage?: string; errorMessage?: string } = {},
-): Promise<boolean> {
-  try {
-    if (isTauriEnvironment()) {
-      await ipcSetClipboardText(value);
-    } else {
-      await navigator.clipboard.writeText(value);
-    }
-    if (!options.quiet) {
-      setNotice(options.successMessage ?? "Assistant response copied to clipboard.");
-    }
-    return true;
-  } catch {
-    if (!options.quiet) {
-      setNotice(options.errorMessage ?? "Unable to copy response to clipboard in this environment.", true);
-    }
-    return false;
-  }
+async function copyToClipboard(value: string,
+  options: { quiet?: boolean; successMessage?: string; errorMessage?: string } = {},): Promise<boolean> {
+  return copyToClipboardService(value, options);
 }
 
 async function triggerAutoPaste(text?: string): Promise<boolean> {
-  if (!isTauriEnvironment()) {
-    return false;
-  }
-
-  try {
-    if (typeof text === "string" && text.trim().length > 0) {
-      await ipcPasteTextViaClipboard(text);
-    } else {
-      await ipcPasteClipboardText();
-    }
-    return true;
-  } catch (error) {
-    setNotice(`Auto paste failed: ${asErrorMessage(error)}`, true);
-    return false;
-  }
+  return triggerAutoPasteService(text);
 }
 
 async function confirmDestructiveAction(message: string): Promise<boolean> {
