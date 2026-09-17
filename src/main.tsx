@@ -87,6 +87,7 @@ import {
   resolveSttLanguageConfig,
 } from "./state/settings-store";
 import {
+  applySettingsPatchToForm as applySettingsPatchToFormService,
   applySettingsToForm as applySettingsToFormService,
   buildShortcutSyncSignature,
   flushPendingSettings,
@@ -102,6 +103,12 @@ import {
   type SettingsHandleEffects,
 } from "./settings/settings-service";
 import { querySettingsFormRefs } from "./settings/settings-form-refs";
+import {
+  SETTINGS_PATCH_EVENT,
+  initSettingsState,
+  markPaneConverted,
+  setSettingsSnapshot,
+} from "./settings/settings-state";
 import { parseJson } from "./state/storage";
 import { countWords, formatSpeakingTime } from "./analytics/analytics-service";
 import {
@@ -697,6 +704,7 @@ const systemThemeMediaQuery =
 let settings = loadSettings();
 settings.pushToTalkHotkey = settings.pushToTalkHotkey.trim() || DEFAULT_HOTKEY;
 settings.commandHotkey = settings.commandHotkey.trim() || DEFAULT_COMMAND_HOTKEY;
+initSettingsState(settings);
 setPersistErrorReporter((message) => setNotice(message, true));
 const settingsCoreDeps: SettingsCoreDeps = {
   isCapturingHotkey: () => hotkeyCaptureActive,
@@ -1199,6 +1207,16 @@ toggleHotkeyEditorBtn.addEventListener("click", () => {
 toggleMicEditorBtn.addEventListener("click", () => {
   microphoneEditor.hidden = !microphoneEditor.hidden;
   toggleMicEditorBtn.textContent = microphoneEditor.hidden ? "Change" : "Done";
+});
+
+markPaneConverted("pipeline");
+window.addEventListener(SETTINGS_PATCH_EVENT, (event) => {
+  const patch = (event as CustomEvent<Partial<PersistedSettings>>).detail;
+  if (!patch || typeof patch !== "object") {
+    return;
+  }
+  applySettingsPatchToFormService(settingsFormRefs, patch);
+  void handleSettingsChange();
 });
 
 wireSettingsFormInputsService({
@@ -1826,6 +1844,7 @@ async function hydrateSettingsFromNativeStorage(): Promise<void> {
   });
   if (hydrated) {
     settings = hydrated;
+    setSettingsSnapshot(settings);
   }
 }
 
@@ -1890,6 +1909,7 @@ async function handleSettingsChange(): Promise<void> {
       cachedHotkeyDisplay = formatHotkeyForDisplay(display);
     },
   });
+  setSettingsSnapshot(settings);
 }
 
 const settingsHandleEffects: SettingsHandleEffects = {

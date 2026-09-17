@@ -5,6 +5,7 @@
  */
 import type { PersistedSettings } from "../types";
 import type { SettingsFormRefs } from "./settings-form-refs";
+import { isPaneConverted } from "./settings-state";
 
 export interface SettingsPaneWiring {
   refs: SettingsFormRefs;
@@ -38,9 +39,11 @@ export function wireSettingsFormInputs(wiring: SettingsPaneWiring): void {
   refs.piperEmotionSelect.addEventListener("change", change);
   refs.piperSpeedInput.addEventListener("input", change);
   refs.ttsEngineSelect.addEventListener("change", change);
-  refs.systemPromptInput.addEventListener("input", change);
-  refs.temperatureInput.addEventListener("input", change);
-  refs.maxTokensInput.addEventListener("input", change);
+  if (!isPaneConverted("pipeline")) {
+    refs.systemPromptInput.addEventListener("input", change);
+    refs.temperatureInput.addEventListener("input", change);
+    refs.maxTokensInput.addEventListener("input", change);
+  }
   refs.microphoneSelect.addEventListener("change", change);
   refs.dictationLanguageSelect.addEventListener("change", change);
   refs.dictationLanguageModeSingleInput.addEventListener("change", change);

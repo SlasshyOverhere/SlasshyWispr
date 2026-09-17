@@ -34,6 +34,7 @@ export type {
   SettingsCoreDeps,
 } from "./settings-wiring";
 export {
+  applySettingsPatchToForm,
   readSettingsFromForm,
   updateWakePhrasePreview,
   refreshGeneralDisplayFromSettings,

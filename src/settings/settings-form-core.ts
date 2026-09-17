@@ -238,3 +238,12 @@ export function normalizeHotkeyLabelsInPlace(
     refs.commandHotkeyInput.value = commandParsed.label;
   }
 }
+
+export function applySettingsPatchToForm(
+  refs: SettingsFormRefs,
+  patch: Partial<PersistedSettings>,
+): void {
+  if (patch.systemPrompt !== undefined) refs.systemPromptInput.value = patch.systemPrompt;
+  if (patch.temperature !== undefined) refs.temperatureInput.value = String(patch.temperature);
+  if (patch.maxTokens !== undefined) refs.maxTokensInput.value = String(patch.maxTokens);
+}

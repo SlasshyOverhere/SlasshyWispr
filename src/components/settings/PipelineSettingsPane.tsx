@@ -1,4 +1,8 @@
+import { useSettingsSnapshot, dispatchSettingsPatch } from '../../settings/settings-react-shim';
+
 export function PipelineSettingsPane() {
+  const settings = useSettingsSnapshot();
+
   return (
     <section id="settingsPanePipeline" className="settings-pane" data-settings-pane="pipeline" hidden>
 
@@ -6,17 +10,39 @@ export function PipelineSettingsPane() {
 
       <label className="field" htmlFor="systemPromptInput">
         <span className="field-label">System Prompt</span>
-        <textarea id="systemPromptInput" rows={4} spellCheck="false"></textarea>
+        <textarea
+          id="systemPromptInput"
+          rows={4}
+          spellCheck="false"
+          value={settings.systemPrompt}
+          onChange={(event) => dispatchSettingsPatch({ systemPrompt: event.target.value })}
+        ></textarea>
       </label>
 
       <label className="field" htmlFor="temperatureInput">
-        <span className="field-label">Temperature <strong id="temperatureValue">0.35</strong></span>
-        <input id="temperatureInput" type="range" min="0" max="1.2" step="0.05" />
+        <span className="field-label">Temperature <strong id="temperatureValue">{settings.temperature.toFixed(2)}</strong></span>
+        <input
+          id="temperatureInput"
+          type="range"
+          min="0"
+          max="1.2"
+          step="0.05"
+          value={settings.temperature}
+          onChange={(event) => dispatchSettingsPatch({ temperature: Number(event.target.value) })}
+        />
       </label>
 
       <label className="field" htmlFor="maxTokensInput">
         <span className="field-label">Max Tokens</span>
-        <input id="maxTokensInput" type="number" min="64" max="1024" step="16" />
+        <input
+          id="maxTokensInput"
+          type="number"
+          min="64"
+          max="1024"
+          step="16"
+          value={settings.maxTokens}
+          onChange={(event) => dispatchSettingsPatch({ maxTokens: Number(event.target.value) })}
+        />
       </label>
 
       <h3 className="settings-section-title">Pipeline Status</h3>
