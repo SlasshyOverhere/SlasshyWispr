@@ -215,6 +215,11 @@ import {
   updateTtsSetupGate as updateTtsSetupGateService,
 } from "./shell/navigation";
 import {
+  initStageView,
+  refreshRecordButton as refreshRecordButtonService,
+  setStage as setStageService,
+} from "./shell/stage-view";
+import {
   copyToClipboard as copyToClipboardService,
   initClipboard,
   triggerAutoPaste as triggerAutoPasteService,
@@ -880,7 +885,7 @@ initPipelineClient(
   {
     readSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
     getStage: () => stage,
-    markIdle: (detail) => setStage("idle", detail),
+    markIdle: (detail) => setStageService("idle", detail),
     transition: (event) => {
       transitionRecordingState(event);
     },
@@ -1071,7 +1076,7 @@ initLocalSttClient(
     getCatalog: () => localSttModelCatalog,
     isPipelineRunning: () => pipelineRunning,
     getStage: () => stage,
-    setStage: (next, detail) => setStage(next, detail),
+    setStage: (next, detail) => setStageService(next, detail),
     notify: (message, isError) => setNoticeService(message, isError),
     log: (message) => logClientEventService(message),
     syncAvailability: () => syncActionAvailability(),
@@ -1111,6 +1116,28 @@ initNavigation(
     notifyOverlayVisibilityChanged: () => notifySettingsOverlayVisibilityChanged(),
   },
   { page: loadPersistedMainPageService(), pane: loadPersistedSettingsPaneService() },
+);
+initStageView(
+  { statusPill, statusDetail, recordBtn, notesQuickMicBtn },
+  {
+    getStage: () => stage,
+    setStageState: (next) => {
+      stage = next;
+    },
+    getPipelineRunning: () => pipelineRunning,
+    getCaptureMode: () => settings.captureMode,
+    isMutingEnabled: () => settings.muteMusicWhileDictating,
+    isExternalMediaMuted: () => isExternalMediaMutedForDictation(),
+    getMicrophoneDeviceId: () => settings.microphoneDeviceId,
+    publishDockState: () => publishDockStateService(),
+    syncFloatingIndicatorWindow: () => syncFloatingIndicatorWindowService(),
+    preWarmMicrophoneStream: (deviceId) => {
+      void preWarmMicrophoneStreamService(deviceId);
+    },
+    playSoundEffect: (kind) => playDictationSoundEffectService(soundDeps, kind),
+    pauseExternalMedia: () => pauseExternalMediaForDictationService(mediaControlDeps),
+    resumeExternalMedia: () => resumeExternalMediaAfterDictationService(mediaControlDeps),
+  },
 );
 initAssistantInfo(
   {
@@ -1315,7 +1342,7 @@ initOllamaClient(
     renderOllamaCatalog: (models, selected) => renderLocalOllamaModelCatalogService(models, selected),
     renderStatus: (status) => renderOllamaStatusService(status),
     setNotice: (message, isError) => setNoticeService(message, isError),
-    setStage: (next, detail) => setStage(next, detail),
+    setStage: (next, detail) => setStageService(next, detail),
     syncAvailability: () => syncActionAvailability(),
     openModelsPane: () => setActiveSettingsPaneService("models"),
   },
@@ -1347,7 +1374,7 @@ initTtsClient(
       void handleSettingsChange();
     },
     setNotice: (message, isError) => setNoticeService(message, isError),
-    setStage: (next, detail) => setStage(next, detail),
+    setStage: (next, detail) => setStageService(next, detail),
     getStage: () => stage,
     refreshAssistantInfo: () => refreshAssistantInfoSafely(),
     syncAvailability: () => syncActionAvailability(),
@@ -1443,7 +1470,7 @@ initAnalyticsRender(
   { getStats: () => usageStats },
 );
 updateUsageMetricsService();
-refreshRecordButton();
+refreshRecordButtonService();
 syncActionAvailability();
 initializeUpdaterPanelService();
 void registerUpdateInstallProgressListenerService();
@@ -2059,7 +2086,7 @@ async function bootstrap(): Promise<void> {
   requestGlobalShortcutSyncService(true);
 
   void backfillHistoryRecordingIds();
-  setStage("idle", "Loading assistant metadata...");
+  setStageService("idle", "Loading assistant metadata...");
 
   try {
     const info = await ipcGetAssistantInfo();
@@ -2067,15 +2094,15 @@ async function bootstrap(): Promise<void> {
 
     if (info.piperInstalled && info.voiceInstalled) {
       setNoticeService("Piper runtime is ready.");
-      setStage("idle", "Ready for voice input.");
+      setStageService("idle", "Ready for voice input.");
     } else {
       setNoticeService("Piper runtime incomplete. Open Settings > Models and complete runtime setup.");
-      setStage("idle", "Setup required.");
+      setStageService("idle", "Setup required.");
     }
   } catch (error) {
     const message = asErrorMessage(error);
     setNoticeService(`Failed to load assistant metadata: ${message}`, true);
-    setStage("error", "Metadata load failed.");
+    setStageService("error", "Metadata load failed.");
   }
 
   await refreshMicrophonesService(false);
@@ -2253,7 +2280,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
     const previousAiRuntimeMode = previous.aiRuntimeMode;
     const previousShortcutSignature = buildShortcutSyncSignature(previous);
     renderSidebarLocalSttToggleService();
-    refreshRecordButton();
+    refreshRecordButtonService();
     syncActionAvailability();
     updateMicrophoneSummaryService();
     renderNotesListService();
@@ -2481,45 +2508,6 @@ async function refreshAssistantInfo(): Promise<void> {
 }
 
 
-function setStage(next: Stage, detail: string): void {
-  const previousStage = stage;
-  stage = next;
-  statusPill.dataset.stage = next;
-  statusPill.textContent = stageLabel(next);
-  statusDetail.textContent = detail;
-  refreshRecordButton();
-  publishDockStateService();
-  void syncFloatingIndicatorWindowService();
-
-  if (previousStage !== "idle" && next === "idle") {
-    void preWarmMicrophoneStreamService(settings.microphoneDeviceId);
-  }
-
-  if (previousStage !== "recording" && next === "recording") {
-    playDictationSoundEffectService(soundDeps, "start");
-    if (settings.muteMusicWhileDictating) {
-      pauseExternalMediaForDictationService(mediaControlDeps);
-    }
-    return;
-  }
-
-  if (previousStage === "recording" && next !== "recording") {
-    playDictationSoundEffectService(soundDeps, "stop");
-    if (isExternalMediaMutedForDictation()) {
-      resumeExternalMediaAfterDictationService(mediaControlDeps);
-    }
-    return;
-  }
-
-  if (
-    previousStage !== "error" &&
-    next === "error" &&
-    (pipelineRunning || previousStage === "recording" || previousStage === "speaking")
-  ) {
-    playDictationSoundEffectService(soundDeps, "error");
-  }
-}
-
 // ===== Recording State Machine Integration =====
 // The recordingController wraps the extracted state machine
 // (recording-state-machine.ts) and makes it the authoritative
@@ -2551,7 +2539,7 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
   // Execute the primary side effect: update stage via the existing setStage()
   // which handles DOM updates, sound effects, media control, and mic pre-warming.
   if (result.stage !== previousStage) {
-    setStage(result.stage, result.detail);
+    setStageService(result.stage, result.detail);
   }
 
   // Execute additional actions that setStage() does not handle
@@ -2607,44 +2595,6 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
   }
 
   return result;
-}
-
-function stageLabel(next: Stage): string {
-  if (next === "recording") return "Recording";
-  if (next === "processing") return "Processing";
-  if (next === "speaking") return "Speaking";
-  if (next === "error") return "Error";
-  return "Idle";
-}
-
-function refreshRecordButton(): void {
-  if (stage === "recording") {
-    recordBtn.textContent =
-      settings.captureMode === "push-to-talk" ? "Release to Stop" : "Stop Recording";
-    recordBtn.classList.add("is-recording");
-    recordBtn.disabled = false;
-    notesQuickMicBtn.dataset.stage = "recording";
-    notesQuickMicBtn.disabled = false;
-    document.querySelector(".app-frame")?.classList.add("is-recording");
-    return;
-  }
-
-  if (pipelineRunning) {
-    recordBtn.textContent = "Processing...";
-    recordBtn.classList.remove("is-recording");
-    recordBtn.disabled = true;
-    notesQuickMicBtn.dataset.stage = "processing";
-    notesQuickMicBtn.disabled = true;
-    document.querySelector(".app-frame")?.classList.remove("is-recording");
-    return;
-  }
-
-  recordBtn.textContent = settings.captureMode === "push-to-talk" ? "Hold to Talk" : "Start Recording";
-  recordBtn.classList.remove("is-recording");
-  recordBtn.disabled = false;
-  document.querySelector(".app-frame")?.classList.remove("is-recording");
-  notesQuickMicBtn.dataset.stage = "idle";
-  notesQuickMicBtn.disabled = false;
 }
 
 function syncActionAvailability(): void {
