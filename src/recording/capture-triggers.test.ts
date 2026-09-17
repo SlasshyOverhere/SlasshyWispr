@@ -176,30 +176,27 @@ describe("handleDockMicToggle", () => {
 });
 
 describe("push-to-talk holds", () => {
-  it("dedupes engage for the same source and clears", async () => {
-    wireHarness({ getCaptureMode: () => "push-to-talk" });
-    // Engage delays on pipelineRunning; run with idle stage so it proceeds
-    // to startRecording, which fails fast on missing MediaRecorder APIs in
-    // bun and then removes the hold.
-    await engagePushToTalk("hotkey");
-    await engagePushToTalk("hotkey");
+  it("dedupes a concurrent engage for the same source", async () => {
+    const harness = wireHarness({ getCaptureMode: () => "push-to-talk" });
+    // Fire twice without awaiting: the first engage adds the hold and parks
+    // on the async foreground check; the second must see the hold and bail.
+    const first = engagePushToTalk("hotkey");
+    const second = engagePushToTalk("hotkey");
+    await Promise.all([first, second]);
+    expect(harness.logs.some((line) => line.includes("already active"))).toBe(true);
+    expect(harness.logs.filter((line) => line.includes("hold added")).length).toBe(1);
     clearPushToTalkHolds();
     expect(getPushToTalkHoldCount()).toBe(0);
-    expect(hasPushToTalkHold("hotkey")).toBe(false);
   });
 
-  it("stops recording on release with short-tap cancel", () => {
+  it("ignores release for an unknown source without stopping", () => {
     const harness = wireHarness({
       getCaptureMode: () => "push-to-talk",
       getStage: () => "recording",
-      now: () => 500,
     });
-    // Seed a hold directly: engage would call startRecording; instead use
-    // the release path after a synthetic engage with a stubbed recorder.
-    harness.setStage("recording");
-    void harness;
-    expect(getPushToTalkHoldCount()).toBe(0);
     releasePushToTalk("hotkey");
     expect(getPushToTalkHoldCount()).toBe(0);
+    expect(harness.transitions).toEqual([]);
+    expect(harness.logs.some((line) => line.includes("not active"))).toBe(true);
   });
 });
