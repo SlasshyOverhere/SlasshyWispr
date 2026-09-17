@@ -11,7 +11,7 @@ use serde_json::Value;
 use tauri::AppHandle;
 
 use crate::security;
-use crate::{persisted_settings_path, restore_settings_payload, secure_settings_payload};
+use crate::services::settings_store::{persisted_settings_path, restore_settings_payload, secure_settings_payload};
 #[tauri::command]
 pub(crate) async fn load_persisted_local_settings(app: AppHandle) -> Result<String, String> {
     let settings_path = persisted_settings_path(&app)?;
