@@ -35,6 +35,8 @@ import { open as openExternalUrl } from "@tauri-apps/plugin-shell";
 import {
   asErrorMessage,
   boolFlag,
+  confirmDestructiveAction,
+  createId,
   escapeHtml,
   normalizeDictionaryEntries,
   normalizeSnippetEntries,
@@ -3085,62 +3087,6 @@ function renderNotesList(): void {
     fragment.append(row);
   }
   notesList.append(fragment);
-}
-
-function createId(): string {
-  if ("crypto" in window && typeof window.crypto.randomUUID === "function") {
-    return window.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-async function confirmDestructiveAction(message: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "confirm-overlay";
-    overlay.innerHTML = `
-      <div class="confirm-modal">
-        <div class="confirm-body">
-          <p class="confirm-message">${escapeHtml(message)}</p>
-        </div>
-        <div class="confirm-actions">
-          <button type="button" class="confirm-btn confirm-btn-cancel">Cancel</button>
-          <button type="button" class="confirm-btn confirm-btn-confirm">Delete</button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(overlay);
-
-    const cancelBtn = overlay.querySelector(".confirm-btn-cancel") as HTMLButtonElement;
-    const confirmBtn = overlay.querySelector(".confirm-btn-confirm") as HTMLButtonElement;
-
-    const cleanup = (result: boolean) => {
-      overlay.classList.add("modal-exit");
-      setTimeout(() => {
-        overlay.remove();
-        resolve(result);
-      }, 150);
-    };
-
-    cancelBtn.addEventListener("click", () => cleanup(false));
-    confirmBtn.addEventListener("click", () => cleanup(true));
-
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        document.removeEventListener("keydown", handleEsc);
-        cleanup(false);
-      }
-    };
-    document.addEventListener("keydown", handleEsc);
-
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) {
-        document.removeEventListener("keydown", handleEsc);
-        cleanup(false);
-      }
-    });
-  });
 }
 
 async function refreshAssistantInfo(): Promise<void> {
