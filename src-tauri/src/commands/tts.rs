@@ -429,7 +429,6 @@ async fn fetch_coqui_status(
     let python_path = resolve_coqui_python_path(&app, python_path.as_deref())?;
     let voice_dir = coqui_voices_dir(&app)?;
 
-    let app_for_worker = app.clone();
     let python_for_worker = python_path.clone();
     let voice_dir_for_worker = voice_dir.clone();
     let payload = json!({
@@ -438,7 +437,7 @@ async fn fetch_coqui_status(
     });
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        run_coqui_bridge(&app_for_worker, &python_for_worker, payload)
+        run_coqui_bridge(&python_for_worker, payload)
     })
     .await
     .map_err(|error| format!("Coqui status worker failed: {error}"))??;
@@ -620,7 +619,6 @@ pub(crate) async fn list_coqui_models(
 
     let python_path = resolve_coqui_python_path(&app, request.python_path.as_deref())?;
     let voice_dir = coqui_voices_dir(&app)?;
-    let app_for_worker = app.clone();
     let python_for_worker = python_path.clone();
     let payload = json!({
       "action": "list_models",
@@ -629,7 +627,7 @@ pub(crate) async fn list_coqui_models(
     });
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        run_coqui_bridge(&app_for_worker, &python_for_worker, payload)
+        run_coqui_bridge(&python_for_worker, payload)
     })
     .await
     .map_err(|error| format!("Coqui model listing worker failed: {error}"))??;
@@ -711,7 +709,6 @@ pub(crate) async fn clone_coqui_voice(
         preview_path.to_string_lossy()
     );
 
-    let app_for_worker = app.clone();
     let python_for_worker = python_path.clone();
     let upload_path_for_worker = upload_path.clone();
     let preview_path_for_worker = preview_path.clone();
@@ -730,7 +727,7 @@ pub(crate) async fn clone_coqui_voice(
 
     info!("[coqui.clone] invoking bridge");
     let result = tauri::async_runtime::spawn_blocking(move || {
-        run_coqui_bridge(&app_for_worker, &python_for_worker, payload)
+        run_coqui_bridge(&python_for_worker, payload)
     })
     .await
     .map_err(|error| format!("Coqui clone worker failed: {error}"))??;
@@ -960,7 +957,7 @@ pub(crate) async fn start_tts_runtime_setup(
                   "action": "status",
                   "voiceDir": voice_dir.to_string_lossy().to_string(),
                 });
-                run_coqui_bridge(&app_for_blocking, &python_for_blocking, payload)
+                run_coqui_bridge(&python_for_blocking, payload)
             }
         })
         .await;

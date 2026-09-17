@@ -35,13 +35,13 @@ pub(crate) struct CoquiPipelineRequest {
     pub(crate) split_sentences: Option<bool>,
 }
 
-pub fn run_coqui_bridge(app: &AppHandle, python_path: &str, payload: Value) -> Result<Value, String> {
+pub fn run_coqui_bridge(python_path: &str, payload: Value) -> Result<Value, String> {
     // The Coqui bridge script is no longer bundled (dead stub deleted in
     // Phase 7b); every bridge action short-circuits with the same error the
     // stub always returned. Python-path validation runs first to preserve the
     // original error ordering.
     validate_python_binary_path(python_path)?;
-    let _ = (app, payload);
+    let _ = payload;
     Err("Coqui TTS is disabled. The bridge script is no longer bundled.".to_string())
 }
 
@@ -107,7 +107,6 @@ pub async fn synthesize_with_coqui(
     let output_path = std::env::temp_dir().join(format!("slasshy-coqui-tts-{stamp}.wav"));
     let voice_dir = coqui_voices_dir(app)?;
 
-    let app_for_worker = app.clone();
     let python_for_worker = python_path;
     let output_path_for_worker = output_path.clone();
     let voice_dir_for_worker = voice_dir.clone();
@@ -137,7 +136,7 @@ pub async fn synthesize_with_coqui(
         split_sentences
     );
     tauri::async_runtime::spawn_blocking(move || {
-        run_coqui_bridge(&app_for_worker, &python_for_worker, payload)
+        run_coqui_bridge(&python_for_worker, payload)
     })
     .await
     .map_err(|error| format!("Coqui synthesis worker failed: {error}"))?
