@@ -28,6 +28,7 @@ import {
   coerceInteger,
   coerceNumber,
   formatDictationLanguageLabel,
+  loadSettings,
   normalizeDictationLanguageAllowList,
   normalizeDictationLanguageCode,
 } from "../state/settings-store";
@@ -720,4 +721,59 @@ export function runSettingsHandlePipeline(
   effects.persist(next);
   effects.afterPersist(previous, next, context.stage);
   return next;
+}
+
+export interface SettingsHydrateDeps {
+  isTauri: () => boolean;
+  loadNative: () => Promise<string>;
+  log: (message: string) => void;
+  warn: (message: string) => void;
+  applyAll: (next: PersistedSettings) => void;
+  onChanged: () => void;
+}
+
+export async function hydrateSettingsFromNativeStorage(
+  deps: SettingsHydrateDeps,
+): Promise<PersistedSettings | null> {
+  if (!deps.isTauri()) {
+    deps.log("[settings.hydrate] skipped because app is not running in tauri");
+    return null;
+  }
+
+  deps.log("[settings.hydrate] start");
+  try {
+    const raw = await deps.loadNative();
+    const trimmed = raw.trim();
+    deps.log(`[settings.hydrate] rawBytes=${raw.length} trimmedBytes=${trimmed.length}`);
+    if (!trimmed) {
+      deps.log("[settings.hydrate] empty payload; leaving local settings unchanged");
+      return null;
+    }
+
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      deps.log("[settings.hydrate] payload is not a valid settings object");
+      return null;
+    }
+    const parsedObject = parsed as Partial<PersistedSettings>;
+    const parsedRemember = parsedObject.rememberApiKey === true;
+    const parsedApiKeyPresent =
+      typeof parsedObject.apiKey === "string" && parsedObject.apiKey.trim().length > 0;
+    deps.log(
+      `[settings.hydrate] parsed remember=${boolFlag(parsedRemember)} apiKeyPresent=${boolFlag(
+        parsedApiKeyPresent,
+      )}`,
+    );
+
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(parsed));
+    const hydrated = loadSettings();
+    deps.applyAll(hydrated);
+    deps.log(`[settings.hydrate] applied ${summarizeSettingsForDiagnostics(hydrated)}`);
+    deps.onChanged();
+    return hydrated;
+  } catch (error) {
+    deps.log(`[settings.hydrate] failed: ${asErrorMessage(error)}`);
+    deps.warn(`[settings] failed to hydrate local settings: ${asErrorMessage(error)}`);
+    return null;
+  }
 }

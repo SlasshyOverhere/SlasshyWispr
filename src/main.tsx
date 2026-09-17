@@ -92,6 +92,7 @@ import {
   flushPendingSettings,
   persistSettings,
   readSettingsFromForm as readSettingsFromFormService,
+  hydrateSettingsFromNativeStorage as hydrateSettingsFromNativeStorageService,
   runSettingsHandlePipeline,
   setPersistErrorReporter,
   summarizeSettingsForDiagnostics,
@@ -149,7 +150,6 @@ import {
   SELECTION_POPUP_MIN_HEIGHT,
   SELECTION_POPUP_MAX_HEIGHT,
   SELECTION_POPUP_CHARS_PER_LINE,
-  SETTINGS_STORAGE_KEY,
   DICTIONARY_STORAGE_KEY,
   HOME_HISTORY_STORAGE_KEY,
   NOTES_STORAGE_KEY,
@@ -1811,45 +1811,21 @@ function isSettingsOpen(): boolean {
 }
 
 async function hydrateSettingsFromNativeStorage(): Promise<void> {
-  if (!isTauriEnvironment()) {
-    logClientEvent("[settings.hydrate] skipped because app is not running in tauri");
-    return;
-  }
-
-  logClientEvent("[settings.hydrate] start");
-  try {
-    const raw = await ipcLoadPersistedLocalSettings();
-    const trimmed = raw.trim();
-    logClientEvent(`[settings.hydrate] rawBytes=${raw.length} trimmedBytes=${trimmed.length}`);
-    if (!trimmed) {
-      logClientEvent("[settings.hydrate] empty payload; leaving local settings unchanged");
-      return;
-    }
-
-    const parsed = JSON.parse(trimmed);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      logClientEvent("[settings.hydrate] payload is not a valid settings object");
-      return;
-    }
-    const parsedObject = parsed as Partial<PersistedSettings>;
-    const parsedRemember = parsedObject.rememberApiKey === true;
-    const parsedApiKeyPresent =
-      typeof parsedObject.apiKey === "string" && parsedObject.apiKey.trim().length > 0;
-    logClientEvent(
-      `[settings.hydrate] parsed remember=${boolFlag(parsedRemember)} apiKeyPresent=${boolFlag(
-        parsedApiKeyPresent,
-      )}`,
-    );
-
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(parsed));
-    const hydrated = loadSettings();
+  const hydrated = await hydrateSettingsFromNativeStorageService({
+    isTauri: isTauriEnvironment,
+    loadNative: () => ipcLoadPersistedLocalSettings(),
+    log: (message) => logClientEvent(message),
+    warn: (message) => console.warn(message),
+    applyAll: (next) => {
+      settings = next;
+      applySettingsToForm(next);
+    },
+    onChanged: () => {
+      void handleSettingsChange();
+    },
+  });
+  if (hydrated) {
     settings = hydrated;
-    applySettingsToForm(settings);
-    logClientEvent(`[settings.hydrate] applied ${summarizeSettingsForDiagnostics(hydrated)}`);
-    handleSettingsChange();
-  } catch (error) {
-    logClientEvent(`[settings.hydrate] failed: ${asErrorMessage(error)}`);
-    console.warn(`[settings] failed to hydrate local settings: ${asErrorMessage(error)}`);
   }
 }
 
