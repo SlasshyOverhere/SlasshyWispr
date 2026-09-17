@@ -201,6 +201,20 @@ import {
   initHistoryView,
 } from "./history/history-view";
 import {
+  asMainPage as asMainPageService,
+  asSettingsPane as asSettingsPaneService,
+  closeSettings as closeSettingsService,
+  getActivePage as getActivePageService,
+  getActiveSettingsPane as getActiveSettingsPaneService,
+  initNavigation,
+  isSettingsOpen as isSettingsOpenService,
+  openSettings as openSettingsService,
+  setActivePage as setActivePageService,
+  setActiveSettingsPane as setActiveSettingsPaneService,
+  setActiveTtsProfile as setActiveTtsProfileService,
+  updateTtsSetupGate as updateTtsSetupGateService,
+} from "./shell/navigation";
+import {
   copyToClipboard as copyToClipboardService,
   initClipboard,
   triggerAutoPaste as triggerAutoPasteService,
@@ -341,7 +355,6 @@ import type {
 } from "./recording-state-machine";
 
 import {
-  ACTIVE_PAGE_STORAGE_KEY,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
@@ -352,8 +365,6 @@ import {
 import type {
   Stage,
   MainPage,
-  SettingsPane,
-  TtsProfilePane,
 
   AssistantInfoResponse,
   PersistedSettings,
@@ -443,7 +454,6 @@ function applySidebarCollapsed(collapsed: boolean): void {
   syncSidebarHoverTitles(collapsed);
 }
 
-const ACTIVE_SETTINGS_PANE_STORAGE_KEY = "slasshy-wispr-active-settings-pane-v1";
 
 const settingsOverlay = requiredElement<HTMLDivElement>("#settingsOverlay");
 const toggleSidebarBtn = requiredElement<HTMLButtonElement>("#toggleSidebarBtn");
@@ -654,10 +664,6 @@ let analyticsSessionDetails: AnalyticsSessionDetail[] = loadCanonicalAnalyticsSe
 let achievementStates: AchievementState[] = loadAchievementStatesService();
 let homeHistoryEntries = loadHistory();
 const recentTurns: Array<{ speaker: string; content: string }> = [];
-let activePage: MainPage = loadPersistedMainPageService();
-let activeSettingsPane: SettingsPane = loadPersistedSettingsPaneService();
-let settingsCloseTimer: number | null = null;
-let settingsPaneTransitionTimer: number | null = null;
 let dockRuntimeErrorShown = false;
 let providerModelCatalog: string[] = [];
 let localOllamaModelCatalog: string[] = [];
@@ -703,8 +709,8 @@ initShellPersist({
   setDockLayout: (layout) => {
     dockLayout = layout;
   },
-  parseMainPage: (value) => asMainPage(value),
-  parseSettingsPane: (value) => asSettingsPane(value),
+  parseMainPage: (value) => asMainPageService(value),
+  parseSettingsPane: (value) => asSettingsPaneService(value),
 });
 
 setPersistErrorReporter((message) => setNoticeService(message, true));
@@ -903,8 +909,8 @@ initPipelineClient(
     showSelectionAssistantPopup: (payload) => showSelectionAssistantPopupService(payload),
     triggerAutoPaste: (text) => triggerAutoPasteService(text),
     copyToClipboard: (text) => copyToClipboardService(text),
-    openSettings: (reason) => openSettings(reason),
-    setActiveSettingsPane: (pane, reason) => setActiveSettingsPane(pane, reason),
+    openSettings: (reason) => openSettingsService(reason),
+    setActiveSettingsPane: (pane, reason) => setActiveSettingsPaneService(pane, reason),
     refreshAssistantInfo: () => refreshAssistantInfoSafely(),
   },
 );
@@ -923,8 +929,8 @@ initLocalSttDiagnostics({
     persistSettings(next);
   },
   notify: (message, isError) => setNoticeService(message, isError),
-  openSettings: (reason) => openSettings(reason),
-  setActiveSettingsPane: (pane, reason) => setActiveSettingsPane(pane, reason),
+  openSettings: (reason) => openSettingsService(reason),
+  setActiveSettingsPane: (pane, reason) => setActiveSettingsPaneService(pane, reason),
   openInSystemBrowser: (url) => openInSystemBrowser(url),
   activateSelectedLocalSttModel: () => {
     void activateSelectedLocalSttModelService();
@@ -1066,8 +1072,8 @@ initLocalSttClient(
     notify: (message, isError) => setNoticeService(message, isError),
     log: (message) => logClientEventService(message),
     syncAvailability: () => syncActionAvailability(),
-    openSettings: (reason) => openSettings(reason),
-    setActiveSettingsPane: (pane, reason) => setActiveSettingsPane(pane, reason),
+    openSettings: (reason) => openSettingsService(reason),
+    setActiveSettingsPane: (pane, reason) => setActiveSettingsPaneService(pane, reason),
     refreshAssistantInfo: () => refreshAssistantInfoSafely(),
     renderFetchedCatalog: (models, selected) => renderLocalSttModelCatalogService(models, selected),
     checkModelFileExists: (model) => checkModelFileExistsService(model),
@@ -1075,10 +1081,34 @@ initLocalSttClient(
     checkAvailableMemory: (model) => checkAvailableMemoryService(model),
     showOfflineModeDiagnostic: (issue, details) => showOfflineModeDiagnosticService(issue, details),
     ensureSelectedLocalSttModelForWarmup: () => ensureSelectedLocalSttModelService({ quiet: true }),
-    isSettingsOpen: () => isSettingsOpen(),
+    isSettingsOpen: () => isSettingsOpenService(),
   },
 );
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
+initNavigation(
+  {
+    pageNavButtons,
+    settingsNavButtons,
+    settingsPanels,
+    settingsPaneTitle,
+    settingsMain,
+    settingsOverlay,
+    openSettingsBtn,
+    closeSettingsBtn,
+    ttsBootstrapCard,
+    ttsProfilesArea,
+    ttsSetupStatus,
+    ttsProfilePiperTab,
+    ttsProfilePiperPanel,
+  },
+  {
+    log: (message) => logClientEventService(message),
+    isPiperRuntimeReady: () => piperRuntimeReady,
+    isTtsSetupRunning: () => ttsSetupRunning,
+    notifyOverlayVisibilityChanged: () => notifySettingsOverlayVisibilityChanged(),
+  },
+  { page: loadPersistedMainPageService(), pane: loadPersistedSettingsPaneService() },
+);
 initAssistantInfo(
   {
     settingsVersionText,
@@ -1107,7 +1137,7 @@ initAssistantInfo(
     setPiperRuntimeReady: (ready) => {
       piperRuntimeReady = ready;
     },
-    updateTtsSetupGate: () => updateTtsSetupGate(),
+    updateTtsSetupGate: () => updateTtsSetupGateService(),
   },
 );
 initClipboard({
@@ -1225,8 +1255,8 @@ initUpdaterFlow(
     notify: (message, isError) => setNoticeService(message, isError),
     log: (message) => logClientEventService(message),
     openUpdateSettings: (reason) => {
-      openSettings(reason);
-      setActiveSettingsPane("update-security", reason);
+      openSettingsService(reason);
+      setActiveSettingsPaneService("update-security", reason);
     },
     confirmInstall: (version) =>
       confirmDestructiveAction(
@@ -1284,7 +1314,7 @@ initOllamaClient(
     setNotice: (message, isError) => setNoticeService(message, isError),
     setStage: (next, detail) => setStage(next, detail),
     syncAvailability: () => syncActionAvailability(),
-    openModelsPane: () => setActiveSettingsPane("models"),
+    openModelsPane: () => setActiveSettingsPaneService("models"),
   },
 );
 let ollamaStatusBusy = false;
@@ -1318,7 +1348,7 @@ initTtsClient(
     getStage: () => stage,
     refreshAssistantInfo: () => refreshAssistantInfoSafely(),
     syncAvailability: () => syncActionAvailability(),
-    updateGate: () => updateTtsSetupGate(),
+    updateGate: () => updateTtsSetupGateService(),
     isSetupRunning: () => ttsSetupRunning,
     setSetupRunning: (running) => {
       ttsSetupRunning = running;
@@ -1338,7 +1368,7 @@ const settingsCoreDeps: SettingsCoreDeps = {
     void refreshRecordingsStorageHint();
   },
   isTauri: isTauriEnvironment,
-  showStaleRuntimePane: () => setActiveSettingsPane("models"),
+  showStaleRuntimePane: () => setActiveSettingsPaneService("models"),
 };
 let cachedHotkeyDisplay = formatHotkeyForDisplay(settings.pushToTalkHotkey);
 applySettingsToFormService(settingsFormRefs, settingsCoreDeps, settings);
@@ -1374,8 +1404,8 @@ initModelCatalogs(
 renderProviderModelCatalogService([], settings.aiModelName || settings.sttModelName);
 renderLocalOllamaModelCatalogService([], settings.localOllamaModel);
 renderLocalSttModelCatalogService([], settings.localSttModel);
-setActiveTtsProfile("piper");
-updateTtsSetupGate();
+setActiveTtsProfileService("piper");
+updateTtsSetupGateService();
 persistDictionaryTermsService();
 persistSnippetsService();
 persistQuickNotesService();
@@ -1391,8 +1421,8 @@ if (systemThemeMediaQuery) {
   systemThemeMediaQuery.addEventListener("change", handleSystemThemeChange);
 }
 
-setActivePage(activePage);
-setActiveSettingsPane(activeSettingsPane);
+setActivePageService(getActivePageService());
+setActiveSettingsPaneService(getActiveSettingsPaneService());
 renderDictionaryListService();
 renderSnippetsListService();
 renderNotesListService();
@@ -1424,30 +1454,10 @@ startBlockedAppShortcutSuppressionMonitorService();
 applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
 
 
-for (const navButton of pageNavButtons) {
-  navButton.addEventListener("click", () => {
-    const page = asMainPage(navButton.dataset.pageNav);
-    if (!page) return;
-    setActivePage(page);
-  });
-}
-
-for (const navButton of settingsNavButtons) {
-  navButton.addEventListener("click", () => {
-    const pane = asSettingsPane(navButton.dataset.settingsPaneNav);
-    if (!pane) return;
-    setActiveSettingsPane(pane);
-  });
-}
-
 toggleSidebarBtn.addEventListener("click", () => {
   const collapsed = !document.body.classList.contains("sidebar-collapsed");
   applySidebarCollapsed(collapsed);
   localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, collapsed ? "1" : "0");
-});
-
-openSettingsBtn.addEventListener("click", () => {
-  openSettings("user-click-settings-button");
 });
 
 checkUpdatesBtn.addEventListener("click", () => {
@@ -1493,16 +1503,6 @@ window.addEventListener("beforeunload", () => {
   stopAutomaticUpdateChecks();
 });
 
-closeSettingsBtn.addEventListener("click", () => {
-  closeSettings();
-});
-
-settingsOverlay.addEventListener("click", (event) => {
-  if (event.target === settingsOverlay) {
-    closeSettings();
-  }
-});
-
 
 
 
@@ -1522,7 +1522,7 @@ document.addEventListener("keydown", (event) => {
   }
 
   if (event.key === "Escape" && !settingsOverlay.hidden) {
-    closeSettings();
+    closeSettingsService();
     return;
   }
 
@@ -1538,7 +1538,7 @@ document.addEventListener("keydown", (event) => {
       const page = pages[pageIndex];
       if (page) {
         event.preventDefault();
-        setActivePage(page);
+        setActivePageService(page);
         return;
       }
     }
@@ -1934,7 +1934,7 @@ applyModelToSttBtn.addEventListener("click", () => {
    input. rAF ensures the React tree has time to mount the History
    section before the input exists in the DOM. */
 window.addEventListener("slasshy:focus-history-search", () => {
-  setActivePage("history");
+  setActivePageService("history");
   requestAnimationFrame(() => {
     const input = document.getElementById("historySearchInput");
     if (input instanceof HTMLInputElement) {
@@ -1946,7 +1946,7 @@ window.addEventListener("slasshy:focus-history-search", () => {
 
 /* Home rail — Open analytics card-link. */
 window.addEventListener("slasshy:focus-analytics", () => {
-  setActivePage("analytics");
+  setActivePageService("analytics");
 });
 
 /* Home rail — Edit (Settings) card-link. The settings modal is
@@ -2001,7 +2001,7 @@ initHistoryView(
       persistAchievementStatesService();
     },
     renderMetrics: () => updateUsageMetricsService(),
-    setActivePage: (page) => setActivePage(page),
+    setActivePage: (page) => setActivePageService(page),
   },
 );
 
@@ -2113,160 +2113,6 @@ async function bootstrap(): Promise<void> {
   logClientEventService("[bootstrap] completed");
 }
 
-function asMainPage(value: string | undefined): MainPage | null {
-  if (value === "home" || value === "history" || value === "dictionary" || value === "snippets" || value === "notes" || value === "analytics") {
-    return value;
-  }
-
-  return null;
-}
-
-function asSettingsPane(value: string | undefined): SettingsPane | null {
-  if (value === "online" || value === "offline" || value === "hybrid") {
-    return "models";
-  }
-  if (
-    value === "general" ||
-    value === "models" ||
-    value === "update-security" ||
-    value === "pipeline"
-  ) {
-    return value;
-  }
-
-  return null;
-}
-
-function setActivePage(next: MainPage): void {
-  activePage = next;
-  localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, next);
-
-  // Let React control nav button and panel classes via the store event below.
-  // Vanilla JS only updates aria-current for accessibility.
-  for (const navButton of pageNavButtons) {
-    const current = navButton.dataset.pageNav === next;
-    navButton.setAttribute("aria-current", current ? "page" : "false");
-  }
-
-  // Notify React to re-render with the new active page.
-  // React is the single source of truth for page content (history, etc.).
-  // Do NOT call renderHomeHistory()/renderFullHistory() here — that causes
-  // innerHTML writes on React-controlled DOM nodes, leading to blank screens.
-  window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
-}
-
-function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void {
-  logClientEventService(
-    `[ui.settings.pane] next=${next} reason=${reason}`,
-  );
-  const previousPane = activeSettingsPane;
-  activeSettingsPane = next;
-  localStorage.setItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY, next);
-
-  const titleMap: Record<SettingsPane, string> = {
-    general: "General",
-    models: "Models",
-    "update-security": "Update and Security",
-    pipeline: "Pipeline",
-  };
-
-  settingsPaneTitle.textContent = titleMap[next];
-
-  for (const navButton of settingsNavButtons) {
-    const current = navButton.dataset.settingsPaneNav === next;
-    navButton.classList.toggle("is-active", current);
-    navButton.setAttribute("aria-current", current ? "page" : "false");
-  }
-
-  if (settingsPaneTransitionTimer !== null) {
-    window.clearTimeout(settingsPaneTransitionTimer);
-    settingsPaneTransitionTimer = null;
-  }
-
-  settingsMain.classList.remove("is-pane-switching", "is-switching-forward", "is-switching-backward");
-  for (const panel of settingsPanels) {
-    panel.classList.remove("is-transitioning-in", "is-transitioning-forward", "is-transitioning-backward");
-  }
-
-  const previousIndex = settingsPanels.findIndex((panel) => panel.dataset.settingsPane === previousPane);
-  const nextIndex = settingsPanels.findIndex((panel) => panel.dataset.settingsPane === next);
-  const shouldAnimate = previousPane !== next && previousIndex >= 0 && nextIndex >= 0;
-
-  for (const panel of settingsPanels) {
-    const current = panel.dataset.settingsPane === next;
-    panel.classList.toggle("is-active", current);
-    panel.hidden = !current;
-    if (current && shouldAnimate) {
-      const directionClass = nextIndex > previousIndex ? "is-transitioning-forward" : "is-transitioning-backward";
-      panel.classList.add("is-transitioning-in", directionClass);
-    }
-  }
-
-  if (shouldAnimate) {
-    const switchDirectionClass = nextIndex > previousIndex ? "is-switching-forward" : "is-switching-backward";
-    settingsMain.classList.add("is-pane-switching", switchDirectionClass);
-    settingsPaneTransitionTimer = window.setTimeout(() => {
-      settingsMain.classList.remove("is-pane-switching", "is-switching-forward", "is-switching-backward");
-      for (const panel of settingsPanels) {
-        panel.classList.remove("is-transitioning-in", "is-transitioning-forward", "is-transitioning-backward");
-      }
-      settingsPaneTransitionTimer = null;
-    }, 180);
-  }
-}
-
-function setActiveTtsProfile(_next: TtsProfilePane): void {
-  ttsProfilePiperTab.classList.toggle("is-active", true);
-  ttsProfilePiperTab.setAttribute("aria-selected", "true");
-  ttsProfilePiperPanel.hidden = false;
-}
-
-function updateTtsSetupGate(): void {
-  const piperReady = piperRuntimeReady;
-  const showBootstrap = !piperReady || ttsSetupRunning;
-  ttsBootstrapCard.hidden = !showBootstrap;
-  ttsProfilesArea.hidden = !piperReady;
-
-  if (piperReady && !ttsSetupRunning && !ttsSetupStatus.textContent?.trim()) {
-    ttsSetupStatus.textContent = "Piper is ready.";
-  }
-}
-
-function openSettings(reason = "unspecified"): void {
-  logClientEventService(`[ui.settings.open] reason=${reason}`);
-  if (settingsCloseTimer !== null) {
-    window.clearTimeout(settingsCloseTimer);
-    settingsCloseTimer = null;
-  }
-  settingsOverlay.hidden = false;
-  settingsOverlay.classList.remove("is-closing");
-  void settingsOverlay.offsetWidth;
-  settingsOverlay.classList.add("is-open");
-  notifySettingsOverlayVisibilityChanged();
-}
-
-function closeSettings(): void {
-  const activeElement = document.activeElement;
-  if (activeElement instanceof HTMLElement && settingsOverlay.contains(activeElement)) {
-    activeElement.blur();
-  }
-  settingsOverlay.classList.remove("is-open");
-  settingsOverlay.classList.add("is-closing");
-  if (settingsCloseTimer !== null) {
-    window.clearTimeout(settingsCloseTimer);
-  }
-  settingsCloseTimer = window.setTimeout(() => {
-    settingsOverlay.hidden = true;
-    settingsOverlay.classList.remove("is-closing");
-    settingsCloseTimer = null;
-  }, 180);
-  notifySettingsOverlayVisibilityChanged();
-}
-
-function isSettingsOpen(): boolean {
-  return !settingsOverlay.hidden && settingsOverlay.classList.contains("is-open");
-}
-
 async function hydrateSettingsFromNativeStorage(): Promise<void> {
   const hydrated = await hydrateSettingsFromNativeStorageService({
     isTauri: isTauriEnvironment,
@@ -2360,7 +2206,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
     );
   },
   syncDerivedFormState: (_refs, next, catalogs, assistantInfo) => {
-    setActiveTtsProfile("piper");
+    setActiveTtsProfileService("piper");
     if (catalogs.providerModels.includes(next.aiModelName)) {
       providerModelCatalogSelect.value = next.aiModelName;
     } else if (catalogs.providerModels.includes(next.sttModelName)) {
@@ -2438,7 +2284,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
         showLoadOverlay: next.sttRuntimeMode === "local",
       });
     }
-    updateTtsSetupGate();
+    updateTtsSetupGateService();
     publishDockStateService();
     void syncFloatingIndicatorWindowService();
     if (
