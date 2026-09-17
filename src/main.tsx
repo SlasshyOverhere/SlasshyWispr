@@ -225,6 +225,13 @@ import {
   warmupActiveLocalSttModel as warmupActiveLocalSttModelService,
 } from "./stt/local-stt-client";
 import {
+  closeSelectionAssistantWindowForTray as closeSelectionAssistantWindowForTrayService,
+  dismissSelectionPopup as dismissSelectionPopupService,
+  initSelectionPopup,
+  nextSelectionPopupToken as nextSelectionPopupTokenService,
+  showSelectionAssistantPopup as showSelectionAssistantPopupService,
+} from "./windows/selection-popup";
+import {
   checkAvailableMemory as checkAvailableMemoryService,
   checkModelFileExists as checkModelFileExistsService,
   checkPythonDependencies as checkPythonDependenciesService,
@@ -290,11 +297,6 @@ import {
   ACHIEVEMENTS_STATE_KEY,
   ACTIVE_PAGE_STORAGE_KEY,
   ANALYTICS_SESSIONS_KEY,
-  SELECTION_POPUP_WIDTH,
-  SELECTION_POPUP_MIN_WIDTH,
-  SELECTION_POPUP_MIN_HEIGHT,
-  SELECTION_POPUP_MAX_HEIGHT,
-  SELECTION_POPUP_CHARS_PER_LINE,
   DICTIONARY_STORAGE_KEY,
   HOME_HISTORY_STORAGE_KEY,
   NOTES_STORAGE_KEY,
@@ -866,25 +868,9 @@ initPipelineClient(
     ensureLocalOllamaModelSelected: (options) => ensureLocalOllamaModelSelected(options),
     getDictionaryTerms: () => dictionaryTerms,
     getSnippets: () => snippets,
-    nextSelectionPopupToken: () => nextSelectionPopupToken(),
-    dismissSelectionPopup: async () => {
-      latestSelectionPopupPayload = null;
-      if (selectionAssistantWindow) {
-        try {
-          await selectionAssistantWindow.hide();
-        } catch (hideError) {
-          logClientEvent(`selection.popup hide failed: ${asErrorMessage(hideError)}`);
-          try {
-            await selectionAssistantWindow.close();
-          } catch (closeError) {
-            logClientEvent(`selection.popup close fallback failed: ${asErrorMessage(closeError)}`);
-          } finally {
-            selectionAssistantWindow = null;
-          }
-        }
-      }
-    },
-    showSelectionAssistantPopup: (payload) => showSelectionAssistantPopup(payload),
+    nextSelectionPopupToken: () => nextSelectionPopupTokenService(),
+    dismissSelectionPopup: () => dismissSelectionPopupService(),
+    showSelectionAssistantPopup: (payload) => showSelectionAssistantPopupService(payload),
     triggerAutoPaste: (text) => triggerAutoPaste(text),
     copyToClipboard: (text) => copyToClipboard(text),
     openSettings: (reason) => openSettings(reason),
@@ -914,6 +900,33 @@ initLocalSttDiagnostics({
     void activateSelectedLocalSttModelService();
   },
 });
+initSelectionPopup(
+  {
+    isTauri: isTauriEnvironment,
+    notify: (message, isError) => setNotice(message, isError),
+    log: (message) => logClientEvent(message),
+    copyResult: (text) => {
+      void copyToClipboardService(text, {
+        successMessage: "Selection result copied to clipboard.",
+        errorMessage: "Unable to copy selection result.",
+      });
+    },
+    replaceSelection: (text) => triggerAutoPasteService(text),
+    getWindow: () => selectionAssistantWindow,
+    setWindow: (win) => {
+      selectionAssistantWindow = win;
+    },
+    getLatestPayload: () => latestSelectionPopupPayload,
+    setLatestPayload: (payload) => {
+      latestSelectionPopupPayload = payload;
+    },
+    nextToken: () => {
+      selectionPopupTokenCounter += 1;
+      return selectionPopupTokenCounter;
+    },
+  },
+  selectionPopupChannel,
+);
 initLocalSttClient(
   {
     sidebarToggleBtn: sidebarToggleLocalSttBtn,
@@ -1288,70 +1301,6 @@ dockChannel.onmessage = (event: MessageEvent<unknown>) => {
       await win.unminimize();
       await win.setFocus();
     })();
-  }
-};
-
-selectionPopupChannel.onmessage = (event: MessageEvent<unknown>) => {
-  const payload = event.data as { kind?: string; action?: string } | null;
-  if (!payload || payload.kind !== "action") {
-    return;
-  }
-
-  if (payload.action === "request-state") {
-    if (latestSelectionPopupPayload) {
-      selectionPopupChannel.postMessage({
-        kind: "payload",
-        payload: latestSelectionPopupPayload,
-      });
-    } else {
-      selectionPopupChannel.postMessage({
-        kind: "clear",
-      });
-    }
-    return;
-  }
-
-  if (payload.action === "copy-result") {
-    if (latestSelectionPopupPayload) {
-      void copyToClipboard(latestSelectionPopupPayload.text, {
-        successMessage: "Selection result copied to clipboard.",
-        errorMessage: "Unable to copy selection result.",
-      });
-    }
-    return;
-  }
-
-  if (payload.action === "replace-selection") {
-    if (latestSelectionPopupPayload) {
-      void (async () => {
-        if (selectionAssistantWindow) {
-          try {
-            await selectionAssistantWindow.hide();
-          } catch {
-            // Ignore hide failures and still attempt replacement.
-          }
-          await new Promise<void>((resolve) => {
-            window.setTimeout(resolve, 140);
-          });
-        }
-
-        const replaced = await triggerAutoPaste(latestSelectionPopupPayload.text);
-        if (replaced) {
-          setNotice("Selected text replaced from popup.");
-        } else {
-          setNotice("Unable to replace selection automatically from popup.", true);
-        }
-      })();
-    }
-    return;
-  }
-
-  if (payload.action === "close-popup") {
-    if (selectionAssistantWindow) {
-      void selectionAssistantWindow.hide().catch(() => {
-        // Ignore hide errors.
-      });
-    }
   }
 };
 
@@ -3463,26 +3412,6 @@ function startBlockedAppShortcutSuppressionMonitor(): void {
   void refreshBlockedAppShortcutSuppression();
 }
 
-async function closeSelectionAssistantWindowForTray(): Promise<void> {
-  latestSelectionPopupPayload = null;
-  if (!selectionAssistantWindow) {
-    return;
-  }
-
-  try {
-    await selectionAssistantWindow.close();
-  } catch (error) {
-    logClientEvent(`[tray.background] selection popup close failed: ${asErrorMessage(error)}`);
-    try {
-      await selectionAssistantWindow.hide();
-    } catch {
-      // Ignore best-effort cleanup failures while entering tray mode.
-    }
-  } finally {
-    selectionAssistantWindow = null;
-  }
-}
-
 function stopNonEssentialUiPollingForTray(): void {
   stopTtsSetupPollingService();
   stopLocalSttDownloadStatusPollingService();
@@ -3510,7 +3439,7 @@ async function applyMainWindowTrayVisibility(hidden: boolean): Promise<void> {
   }
 
   stopNonEssentialUiPollingForTray();
-  await closeSelectionAssistantWindowForTray();
+  await closeSelectionAssistantWindowForTrayService();
   // Keep the floating dock alive when minimizing to tray — only close it
   // if the user explicitly disabled the dock via showFlowBar setting.
   // Previously this destroyed the dock window which made it disappear
@@ -3751,149 +3680,6 @@ function refreshRecordButton(): void {
   document.querySelector(".app-frame")?.classList.remove("is-recording");
   notesQuickMicBtn.dataset.stage = "idle";
   notesQuickMicBtn.disabled = false;
-}
-
-function selectionAssistantUrl(): string {
-  if (window.location.origin.startsWith("http")) {
-    return `${window.location.origin}/selection-assistant.html`;
-  }
-  return "selection-assistant.html";
-}
-
-function clampSelectionPopupHeight(height: number): number {
-  return Math.min(SELECTION_POPUP_MAX_HEIGHT, Math.max(SELECTION_POPUP_MIN_HEIGHT, Math.round(height)));
-}
-
-function estimateSelectionPopupHeight(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return SELECTION_POPUP_MIN_HEIGHT;
-  }
-
-  const lines = trimmed.split(/\r?\n/);
-  let wrappedLines = 0;
-  for (const line of lines) {
-    const lineLength = line.trim().length > 0 ? line.length : 1;
-    wrappedLines += Math.max(1, Math.ceil(lineLength / SELECTION_POPUP_CHARS_PER_LINE));
-  }
-
-  const contentHeight = wrappedLines * 24;
-  const chromeHeight = 84;
-  return clampSelectionPopupHeight(contentHeight + chromeHeight);
-}
-
-async function applySelectionPopupSize(win: WebviewWindow, payload: SelectionPopupPayload): Promise<void> {
-  const nextHeight = estimateSelectionPopupHeight(payload.text);
-  await win.setSize(new LogicalSize(SELECTION_POPUP_WIDTH, nextHeight));
-}
-
-function nextSelectionPopupToken(): number {
-  selectionPopupTokenCounter += 1;
-  return selectionPopupTokenCounter;
-}
-
-async function ensureSelectionAssistantWindow(): Promise<WebviewWindow> {
-  if (selectionAssistantWindow) {
-    return selectionAssistantWindow;
-  }
-
-  const existing = await WebviewWindow.getByLabel("selection_assistant");
-  if (existing) {
-    try {
-      await existing.close();
-    } catch {
-      // Ignore close errors and continue with a fresh window.
-    }
-  }
-
-  const width = SELECTION_POPUP_WIDTH;
-  const height = 260;
-  const x = Math.max(32, Math.round((window.screen.availWidth - width) / 2));
-  const y = Math.max(32, Math.round((window.screen.availHeight - height) / 2));
-
-  const created = new WebviewWindow("selection_assistant", {
-    title: "SlasshyWispr Selection Assistant",
-    url: selectionAssistantUrl(),
-    width,
-    height,
-    x,
-    y,
-    minWidth: SELECTION_POPUP_MIN_WIDTH,
-    minHeight: SELECTION_POPUP_MIN_HEIGHT,
-    resizable: false,
-    decorations: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: false,
-    visible: false,
-    focus: true,
-  });
-
-  created.once("tauri://destroyed", () => {
-    selectionAssistantWindow = null;
-  });
-
-  const creationReady = new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const finishResolve = (): void => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    };
-    const finishReject = (reason: unknown): void => {
-      if (settled) return;
-      settled = true;
-      reject(new Error(asErrorMessage(reason)));
-    };
-    created.once("tauri://created", () => {
-      finishResolve();
-    });
-    created.once("tauri://error", (event) => {
-      const payload = (event as { payload?: unknown }).payload ?? "unknown error";
-      finishReject(payload);
-    });
-    window.setTimeout(() => {
-      finishResolve();
-    }, 900);
-  });
-
-  await creationReady;
-  selectionAssistantWindow = created;
-  return created;
-}
-
-async function showSelectionAssistantPopup(payload: SelectionPopupPayload): Promise<boolean> {
-  latestSelectionPopupPayload = payload;
-
-  if (!isTauriEnvironment()) {
-    return false;
-  }
-
-  try {
-    const win = await ensureSelectionAssistantWindow();
-    try {
-      await applySelectionPopupSize(win, payload);
-    } catch (error) {
-      logClientEvent(`selection.popup size update failed: ${asErrorMessage(error)}`);
-    }
-    await win.show();
-    await win.setFocus();
-    selectionPopupChannel.postMessage({
-      kind: "payload",
-      payload,
-    });
-    window.setTimeout(() => {
-      selectionPopupChannel.postMessage({
-        kind: "payload",
-        payload,
-      });
-    }, 120);
-    setNotice("Selection assistant popup opened.");
-    return true;
-  } catch (error) {
-    setNotice(`Unable to open selection popup: ${asErrorMessage(error)}`, true);
-    return false;
-  }
 }
 
 function voiceIndicatorUrl(): string {
