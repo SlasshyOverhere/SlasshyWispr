@@ -761,7 +761,7 @@ initCaptureMonitors(
 initCommandMode({
   isTauri: isTauriEnvironment,
   captureSelectedText: () => ipcCaptureSelectedText(),
-  setNotice: (message, isError) => setNotice(message, isError),
+  setNotice: (message, isError) => setNoticeService(message, isError),
   log: (message) => logClientEventService(message),
   publishDockState: () => publishDockStateService(),
 });
@@ -769,7 +769,7 @@ initCaptureTriggers({
   getStage: () => stage,
   isPipelineRunning: () => pipelineRunning,
   getCaptureMode: () => settings.captureMode,
-  setNotice: (message, isError) => setNotice(message, isError),
+  setNotice: (message, isError) => setNoticeService(message, isError),
   log: (message) => logClientEventService(message),
   shouldBlockFromForegroundApp: () => shouldBlockAssistantInputFromForegroundAppService(),
   interruptPlayback: () => interruptTtsPlaybackService(),
@@ -1132,7 +1132,7 @@ initCollectionsView(
 );
 
 initDesktopNotice({
-  setNotice: (message, isError) => setNotice(message, isError),
+  setNotice: (message, isError) => setNoticeService(message, isError),
   log: (message) => logClientEventService(message),
   transition: (event) => {
     transitionRecordingState(event);
@@ -1161,7 +1161,7 @@ const soundDeps = {
 const mediaControlDeps = {
   isMutingEnabled: () => settings.muteMusicWhileDictating,
   isTauri: isTauriEnvironment,
-  notify: (message: string, isError?: boolean) => setNotice(message, isError),
+  notify: (message: string, isError?: boolean) => setNoticeService(message, isError),
 };
 initRecordings(
   {
@@ -1457,7 +1457,7 @@ window.addEventListener(APP_UPDATE_AUTO_CHECK_CHANGED_EVENT, (event) => {
     enabled ? "1" : "0",
   );
   startAutomaticUpdateChecksService();
-  setNotice(
+  setNoticeService(
     enabled
       ? "Automatic update checks enabled."
       : "Automatic update checks disabled.",
@@ -1472,14 +1472,14 @@ skipUpdateVersionBtn.addEventListener("click", () => {
   const latestVersion = getCachedUpdateResult()?.latestVersion;
   if (latestVersion) {
     localStorage.setItem(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY, latestVersion);
-    setNotice(`Version ${latestVersion} will be skipped. You won't be notified about this version again.`);
+    setNoticeService(`Version ${latestVersion} will be skipped. You won't be notified about this version again.`);
     syncUpdaterButtonsService();
   }
 });
 
 snoozeUpdateBtn.addEventListener("click", () => {
   snoozeUpdateFor24Hours();
-  setNotice("Update notifications snoozed for 24 hours.");
+  setNoticeService("Update notifications snoozed for 24 hours.");
   syncUpdaterButtonsService();
 });
 
@@ -1559,7 +1559,7 @@ document.addEventListener("keydown", (event) => {
   const commandHotkey = parseHotkey(settings.commandHotkey);
   if (settings.commandMode && commandHotkey && matchesHotkey(event, commandHotkey)) {
     const commandShortcutToken = normalizeShortcutToken(toGlobalShortcutString(commandHotkey));
-    logClientEvent(
+    logClientEventService(
       `[hotkey.local.command] keydown shortcut=${commandShortcutToken} repeat=${boolFlag(
         event.repeat,
       )}`,
@@ -1571,17 +1571,17 @@ document.addEventListener("keydown", (event) => {
       return;
     }
     if (event.repeat) {
-      logClientEvent("[hotkey.local.command] ignored repeated keydown");
+      logClientEventService("[hotkey.local.command] ignored repeated keydown");
       return;
     }
     event.preventDefault();
     void (async () => {
       if (await shouldBlockAssistantInputFromForegroundAppService()) {
-        logClientEvent("[hotkey.local.command] blocked by foreground app policy");
+        logClientEventService("[hotkey.local.command] blocked by foreground app policy");
         return;
       }
       toggleCommandModeArmed();
-      logClientEvent(`[hotkey.local.command] toggled commandModeArmed=${boolFlag(isCommandModeArmed())}`);
+      logClientEventService(`[hotkey.local.command] toggled commandModeArmed=${boolFlag(isCommandModeArmed())}`);
     })();
     return;
   }
@@ -1591,7 +1591,7 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   const pushShortcutToken = normalizeShortcutToken(toGlobalShortcutString(parsed));
-  logClientEvent(
+  logClientEventService(
     `[hotkey.local.push] keydown shortcut=${pushShortcutToken} capture=${settings.captureMode} repeat=${boolFlag(
       event.repeat,
     )}`,
@@ -1605,7 +1605,7 @@ document.addEventListener("keydown", (event) => {
 
   if (settings.captureMode === "push-to-talk") {
     if (event.repeat) {
-      logClientEvent("[hotkey.local.push] ignored repeated keydown in push-to-talk mode");
+      logClientEventService("[hotkey.local.push] ignored repeated keydown in push-to-talk mode");
       return;
     }
 
@@ -1615,7 +1615,7 @@ document.addEventListener("keydown", (event) => {
   }
 
   if (event.repeat) {
-    logClientEvent("[hotkey.local.push] ignored repeated keydown in single-tap mode");
+    logClientEventService("[hotkey.local.push] ignored repeated keydown in single-tap mode");
     return;
   }
 
@@ -1642,7 +1642,7 @@ document.addEventListener("keyup", (event) => {
     return;
   }
   const pushShortcutToken = normalizeShortcutToken(toGlobalShortcutString(parsed));
-  logClientEvent(
+  logClientEventService(
     `[hotkey.local.push] keyup shortcut=${pushShortcutToken} capture=${settings.captureMode}`,
   );
   if (shouldBypassLocalShortcutHandlingService(pushShortcutToken)) {
@@ -1665,12 +1665,12 @@ window.addEventListener("blur", () => {
     return;
   }
 
-  logClientEvent(
+  logClientEventService(
     `[record.ptt.blur] clearing holds=${getPushToTalkHoldCount()} stage=${stage}`,
   );
   clearPushToTalkHoldsService();
   if (stage === "recording") {
-    logClientEvent("[record.ptt.blur] window blurred during recording -> stopRecording()");
+    logClientEventService("[record.ptt.blur] window blurred during recording -> stopRecording()");
     stopRecordingService();
   }
 });
@@ -1878,7 +1878,7 @@ snippetsAddBtnTop.addEventListener("click", () => {
 
 notesQuickMicBtn.addEventListener("click", () => {
   if (settings.captureMode === "push-to-talk") {
-    setNotice("Hold the note button while speaking in push-to-talk mode.");
+    setNoticeService("Hold the note button while speaking in push-to-talk mode.");
     return;
   }
 
@@ -1902,23 +1902,23 @@ refreshMicsBtn.addEventListener("click", () => {
 applyModelToAiBtn.addEventListener("click", () => {
   const selected = providerModelCatalogSelect.value.trim();
   if (!selected) {
-    setNotice("Select a model from catalog first.", true);
+    setNoticeService("Select a model from catalog first.", true);
     return;
   }
   settingsFormRefs.aiModelInput.value = selected;
   handleSettingsChange();
-  setNotice(`AI model set to "${selected}".`);
+  setNoticeService(`AI model set to "${selected}".`);
 });
 
 applyModelToSttBtn.addEventListener("click", () => {
   const selected = providerModelCatalogSelect.value.trim();
   if (!selected) {
-    setNotice("Select a model from catalog first.", true);
+    setNoticeService("Select a model from catalog first.", true);
     return;
   }
   settingsFormRefs.sttModelInput.value = selected;
   handleSettingsChange();
-  setNotice(`STT model set to "${selected}".`);
+  setNoticeService(`STT model set to "${selected}".`);
 });
 
 clearHistoryBtn.addEventListener("click", async () => {
@@ -2057,7 +2057,7 @@ clearStatsBtn.addEventListener("click", async () => {
   persistAchievementStatesService();
   updateUsageMetricsService();
   window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
-  setNotice("Statistics have been reset.");
+  setNoticeService("Statistics have been reset.");
 });
 
 function clearAllHistory(): void {
@@ -2066,7 +2066,7 @@ function clearAllHistory(): void {
   // Notify React to re-render with cleared history.
   window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
   recentTurns.length = 0;
-  setNotice("History cleared.");
+  setNoticeService("History cleared.");
 }
 
 navigator.mediaDevices?.addEventListener?.("devicechange", () => {
@@ -2104,9 +2104,9 @@ initUsageTracker({
   },
 });
 async function bootstrap(): Promise<void> {
-  logClientEvent("[bootstrap] start");
+  logClientEventService("[bootstrap] start");
   await hydrateSettingsFromNativeStorage();
-  logClientEvent(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
+  logClientEventService(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
 
   // Register global hotkeys immediately — user should be able to press the
   // hotkey as soon as settings are loaded, without waiting for the rest of
@@ -2121,15 +2121,15 @@ async function bootstrap(): Promise<void> {
     renderAssistantInfoService(info);
 
     if (info.piperInstalled && info.voiceInstalled) {
-      setNotice("Piper runtime is ready.");
+      setNoticeService("Piper runtime is ready.");
       setStage("idle", "Ready for voice input.");
     } else {
-      setNotice("Piper runtime incomplete. Open Settings > Models and complete runtime setup.");
+      setNoticeService("Piper runtime incomplete. Open Settings > Models and complete runtime setup.");
       setStage("idle", "Setup required.");
     }
   } catch (error) {
     const message = asErrorMessage(error);
-    setNotice(`Failed to load assistant metadata: ${message}`, true);
+    setNoticeService(`Failed to load assistant metadata: ${message}`, true);
     setStage("error", "Metadata load failed.");
   }
 
@@ -2145,7 +2145,7 @@ async function bootstrap(): Promise<void> {
   try {
     await syncLocalSttRuntimeForModeService(settings.sttRuntimeMode);
   } catch (error) {
-    setNotice(`Unable to initialize local STT runtime: ${asErrorMessage(error)}`, true);
+    setNoticeService(`Unable to initialize local STT runtime: ${asErrorMessage(error)}`, true);
   }
   try {
     await pollTtsSetupStatusOnceService();
@@ -2168,7 +2168,7 @@ async function bootstrap(): Promise<void> {
       window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
     }
   }
-  logClientEvent("[bootstrap] completed");
+  logClientEventService("[bootstrap] completed");
 }
 
 function asMainPage(value: string | undefined): MainPage | null {
@@ -2214,7 +2214,7 @@ function setActivePage(next: MainPage): void {
 }
 
 function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void {
-  logClientEvent(
+  logClientEventService(
     `[ui.settings.pane] next=${next} reason=${reason}`,
   );
   const previousPane = activeSettingsPane;
@@ -2291,7 +2291,7 @@ function updateTtsSetupGate(): void {
 }
 
 function openSettings(reason = "unspecified"): void {
-  logClientEvent(`[ui.settings.open] reason=${reason}`);
+  logClientEventService(`[ui.settings.open] reason=${reason}`);
   if (settingsCloseTimer !== null) {
     window.clearTimeout(settingsCloseTimer);
     settingsCloseTimer = null;
@@ -2380,10 +2380,10 @@ async function backfillHistoryRecordingIds(): Promise<void> {
     if (patched > 0) {
       persistHomeHistoryService();
       window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
-      logClientEvent(`[recordings.backfill] attached=${patched} of ${matches.length}`);
+      logClientEventService(`[recordings.backfill] attached=${patched} of ${matches.length}`);
     }
   } catch (error) {
-    logClientEvent(`[recordings.backfill] failed: ${asErrorMessage(error)}`);
+    logClientEventService(`[recordings.backfill] failed: ${asErrorMessage(error)}`);
   }
 }
 
@@ -2411,7 +2411,7 @@ async function handleSettingsChange(): Promise<void> {
 
 const settingsHandleEffects: SettingsHandleEffects = {
   notifyChange: (previous, next) => {
-    logClientEvent(
+    logClientEventService(
       `[settings.change] from="${summarizeSettingsForDiagnostics(
         previous,
       )}" to="${summarizeSettingsForDiagnostics(next)}"`,
@@ -2480,13 +2480,13 @@ const settingsHandleEffects: SettingsHandleEffects = {
     const aiRuntimeModeChanged = previousAiRuntimeMode !== next.aiRuntimeMode;
     if (sttRuntimeModeChanged || aiRuntimeModeChanged) {
       if (next.sttRuntimeMode === next.aiRuntimeMode) {
-        setNotice(
+        setNoticeService(
           next.sttRuntimeMode === "local"
             ? "Offline mode enabled for both STT and AI."
             : "Online mode enabled for both STT and AI.",
         );
       } else {
-        setNotice(
+        setNoticeService(
           `Hybrid mode enabled (STT: ${next.sttRuntimeMode}, AI: ${next.aiRuntimeMode}).`,
         );
       }
@@ -2516,7 +2516,7 @@ function isTauriEnvironment(): boolean {
 
 function openInSystemBrowser(url: string): void {
   void openExternalUrl(url).catch((error: unknown) => {
-    setNotice(`Failed to open link: ${asErrorMessage(error)}`, true);
+    setNoticeService(`Failed to open link: ${asErrorMessage(error)}`, true);
   });
 }
 
@@ -2531,13 +2531,13 @@ function setupCustomWindowControls(): void {
 
   windowMinimizeBtn.addEventListener("click", () => {
     void appWindow.minimize().catch((error) => {
-      setNotice(`Minimize failed: ${asErrorMessage(error)}`, true);
+      setNoticeService(`Minimize failed: ${asErrorMessage(error)}`, true);
     });
   });
 
   windowCloseBtn.addEventListener("click", () => {
     void appWindow.close().catch((error) => {
-      setNotice(`Close failed: ${asErrorMessage(error)}`, true);
+      setNoticeService(`Close failed: ${asErrorMessage(error)}`, true);
     });
   });
 }
@@ -2552,7 +2552,7 @@ function requestLaunchAtLoginSync(enabled: boolean): void {
     if (syncNonce !== launchAtLoginSyncNonce) {
       return;
     }
-    setNotice(`Launch-at-login update failed: ${asErrorMessage(error)}`, true);
+    setNoticeService(`Launch-at-login update failed: ${asErrorMessage(error)}`, true);
   });
 }
 
@@ -2564,31 +2564,31 @@ async function reconcileLaunchAtLoginWithOs(): Promise<void> {
     const status = await ipcLaunchAtLoginStatus();
     const wanted = settings.launchAtLogin;
     if (wanted && (!status.enabled || !status.path_matches)) {
-      logClientEvent(
+      logClientEventService(
         `[startup] launch-at-login registry stale — reapplying wanted=${wanted} stored=${
           status.stored_value ?? "<missing>"
         }`,
       );
       requestLaunchAtLoginSync(true);
     } else if (!wanted && status.enabled) {
-      logClientEvent(
+      logClientEventService(
         `[startup] launch-at-login registry still enabled despite preference=false; cleaning up`,
       );
       requestLaunchAtLoginSync(false);
     }
   } catch (error) {
-    logClientEvent(`[startup] launch-at-login reconcile skipped: ${asErrorMessage(error)}`);
+    logClientEventService(`[startup] launch-at-login reconcile skipped: ${asErrorMessage(error)}`);
   }
 }
 
 function handleGlobalShortcutEvent(event: ShortcutEvent): void {
-  logClientEvent(
+  logClientEventService(
     `[hotkey.global.event] shortcut=${event.shortcut || "-"} state=${String(
       (event as { state?: unknown }).state ?? "",
     )}`,
   );
   if (isAnyHotkeyCaptureActive()) {
-    logClientEvent("[hotkey.global.event] ignored because hotkey capture UI is active");
+    logClientEventService("[hotkey.global.event] ignored because hotkey capture UI is active");
     return;
   }
 
@@ -2598,13 +2598,13 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
   const pressed = rawState === "pressed";
   const released = rawState === "released";
   if (!pressed && !released) {
-    logClientEvent(`[hotkey.global.event] ignored because state="${rawState}" is unsupported`);
+    logClientEventService(`[hotkey.global.event] ignored because state="${rawState}" is unsupported`);
     return;
   }
 
   const shortcut = normalizeShortcutToken(event.shortcut);
   const { push: pushShortcut, command: commandShortcut } = getNormalizedRegisteredShortcuts();
-  logClientEvent(
+  logClientEventService(
     `[hotkey.global.event] normalized shortcut=${shortcut || "-"} push=${
       pushShortcut || "-"
     } command=${commandShortcut || "-"} capture=${settings.captureMode}`,
@@ -2613,12 +2613,12 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
   if (pushShortcut && shortcut === pushShortcut) {
     if (pressed) {
       markGlobalShortcutHandledService(shortcut, "pressed");
-      logClientEvent(
+      logClientEventService(
         `[hotkey.global.push] pressed capture=${settings.captureMode} holdCount=${getPushToTalkHoldCount()}`,
       );
       const activeSettings = readSettingsFromFormService(settingsFormRefs, settingsCoreDeps);
       if (missingApiKeyForOnlineRuntime(activeSettings)) {
-        logClientEvent(
+        logClientEventService(
           "[hotkey.global.push] blocked before reveal because API key is missing for online runtime",
         );
         showMissingApiKeyNotice("global-hotkey");
@@ -2626,7 +2626,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
       }
       if (settings.captureMode === "push-to-talk") {
         if (hasPushToTalkHold("hotkey")) {
-          logClientEvent("[hotkey.global.push] ignored repeated press because hold is already active");
+          logClientEventService("[hotkey.global.push] ignored repeated press because hold is already active");
           return;
         }
         void engagePushToTalkService("hotkey");
@@ -2636,7 +2636,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
     }
     if (released && (settings.captureMode === "push-to-talk" || hasPushToTalkHold("hotkey"))) {
       markGlobalShortcutHandledService(shortcut, "released");
-      logClientEvent("[hotkey.global.push] released -> release push-to-talk hold");
+      logClientEventService("[hotkey.global.push] released -> release push-to-talk hold");
       releasePushToTalkService("hotkey");
     }
     return;
@@ -2648,19 +2648,19 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
     pressed
   ) {
     markGlobalShortcutHandledService(shortcut, "pressed");
-    logClientEvent("[hotkey.global.command] pressed -> toggling command mode");
+    logClientEventService("[hotkey.global.command] pressed -> toggling command mode");
     void (async () => {
       if (await shouldBlockAssistantInputFromForegroundAppService()) {
-        logClientEvent("[hotkey.global.command] blocked by foreground app policy");
+        logClientEventService("[hotkey.global.command] blocked by foreground app policy");
         return;
       }
       toggleCommandModeArmed();
-      logClientEvent(`[hotkey.global.command] toggled commandModeArmed=${boolFlag(isCommandModeArmed())}`);
+      logClientEventService(`[hotkey.global.command] toggled commandModeArmed=${boolFlag(isCommandModeArmed())}`);
     })();
     return;
   }
 
-  logClientEvent("[hotkey.global.event] no handler matched the incoming shortcut");
+  logClientEventService("[hotkey.global.event] no handler matched the incoming shortcut");
 }
 
 function checkAndUnlockAchievements(stats: UsageStats): void {
@@ -2780,7 +2780,7 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
         resetCommandMode();
         break;
       case "set-notice":
-        setNotice(action.message, action.isError);
+        setNoticeService(action.message, action.isError);
         break;
       case "release-recorder":
         releaseMicrophoneService();
@@ -2828,14 +2828,6 @@ function stageLabel(next: Stage): string {
   if (next === "speaking") return "Speaking";
   if (next === "error") return "Error";
   return "Idle";
-}
-
-function setNotice(message: string, isError = false): void {
-  setNoticeService(message, isError);
-}
-
-function logClientEvent(message: string): void {
-  logClientEventService(message);
 }
 
 function refreshRecordButton(): void {
@@ -3066,7 +3058,7 @@ async function refreshAssistantInfoSafely(): Promise<void> {
   try {
     await refreshAssistantInfo();
   } catch (error) {
-    setNotice(`Unable to refresh runtime status: ${asErrorMessage(error)}`, true);
+    setNoticeService(`Unable to refresh runtime status: ${asErrorMessage(error)}`, true);
   }
 }
 
