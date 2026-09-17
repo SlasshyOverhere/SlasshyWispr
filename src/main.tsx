@@ -9,9 +9,7 @@ import "./style.css";
 import "./settings.css";
 import {
   captureSelectedText as ipcCaptureSelectedText,
-  configureLaunchAtLogin as ipcConfigureLaunchAtLogin,
   getAssistantInfo as ipcGetAssistantInfo,
-  launchAtLoginStatus as ipcLaunchAtLoginStatus,
   loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
   listDictationRecordingIds as ipcListDictationRecordingIds,
   saveDictationRecording as ipcSaveDictationRecording,
@@ -28,7 +26,6 @@ import {
   unregisterAll as unregisterAllGlobalShortcuts,
   type ShortcutEvent,
 } from "@tauri-apps/plugin-global-shortcut";
-import { open as openExternalUrl } from "@tauri-apps/plugin-shell";
 import {
   asErrorMessage,
   boolFlag,
@@ -224,6 +221,14 @@ import {
   applyPersistedSidebarCollapsed as applyPersistedSidebarCollapsedService,
   initSidebar,
 } from "./shell/sidebar";
+import {
+  isTauriEnvironment,
+  openInSystemBrowser,
+  setupCustomWindowControls,
+  requestLaunchAtLoginSync,
+  reconcileLaunchAtLoginWithOs,
+  initTauriShell,
+} from "./shell/tauri-shell";
 import {
   initStageView,
   refreshRecordButton as refreshRecordButtonService,
@@ -659,7 +664,6 @@ let lastWarmedLocalSttModel = "";
 let localSttRuntimeLoaded = false;
 
 let ttsSetupRunning = false;
-let launchAtLoginSyncNonce = 0;
 let lastCaptureIntentStartedAt = 0;
 let lastCaptureIntentLabel = "";
 let mainWindowHiddenToTray = false;
@@ -1097,6 +1101,16 @@ initNavigation(
   },
   { page: loadPersistedMainPageService(), pane: loadPersistedSettingsPaneService() },
 );
+initTauriShell(
+  { windowMinimizeBtn, windowCloseBtn },
+  {
+    isTauri: isTauriEnvironment,
+    getLaunchAtLogin: () => settings.launchAtLogin,
+    notify: (message, isError) => setNoticeService(message, isError),
+    log: (message) => logClientEventService(message),
+  },
+);
+
 initSidebar(
   { toggleButton: toggleSidebarBtn, labeledButtons: sidebarLabeledButtons },
   {
@@ -2388,76 +2402,10 @@ const settingsHandleEffects: SettingsHandleEffects = {
 };
 
 
-function isTauriEnvironment(): boolean {
-  return "__TAURI_INTERNALS__" in window || "__TAURI__" in window;
-}
 
-function openInSystemBrowser(url: string): void {
-  void openExternalUrl(url).catch((error: unknown) => {
-    setNoticeService(`Failed to open link: ${asErrorMessage(error)}`, true);
-  });
-}
 
-function setupCustomWindowControls(): void {
-  if (!isTauriEnvironment()) {
-    windowMinimizeBtn.disabled = true;
-    windowCloseBtn.disabled = true;
-    return;
-  }
 
-  const appWindow = getCurrentWindow();
 
-  windowMinimizeBtn.addEventListener("click", () => {
-    void appWindow.minimize().catch((error) => {
-      setNoticeService(`Minimize failed: ${asErrorMessage(error)}`, true);
-    });
-  });
-
-  windowCloseBtn.addEventListener("click", () => {
-    void appWindow.close().catch((error) => {
-      setNoticeService(`Close failed: ${asErrorMessage(error)}`, true);
-    });
-  });
-}
-
-function requestLaunchAtLoginSync(enabled: boolean): void {
-  if (!isTauriEnvironment()) {
-    return;
-  }
-
-  const syncNonce = ++launchAtLoginSyncNonce;
-  void ipcConfigureLaunchAtLogin(enabled).catch((error) => {
-    if (syncNonce !== launchAtLoginSyncNonce) {
-      return;
-    }
-    setNoticeService(`Launch-at-login update failed: ${asErrorMessage(error)}`, true);
-  });
-}
-
-async function reconcileLaunchAtLoginWithOs(): Promise<void> {
-  if (!isTauriEnvironment()) {
-    return;
-  }
-  try {
-    const status = await ipcLaunchAtLoginStatus();
-    const wanted = settings.launchAtLogin;
-    if (wanted && (!status.enabled || !status.path_matches)) {
-      logClientEventService(
-        `[startup] launch-at-login registry stale — reapplying wanted=${wanted} stored=${
-          status.stored_value ?? "<missing>"
-        }`,
-      );
-      requestLaunchAtLoginSync(true);
-    } else if (!wanted && status.enabled) {
-      logClientEventService(
-        `[startup] launch-at-login registry still enabled despite preference=false; cleaning up`,
-      );
-      requestLaunchAtLoginSync(false);
-    }
-  } catch (error) {
-    logClientEventService(`[startup] launch-at-login reconcile skipped: ${asErrorMessage(error)}`);
-  }
-}
 
 function handleGlobalShortcutEvent(event: ShortcutEvent): void {
   logClientEventService(
