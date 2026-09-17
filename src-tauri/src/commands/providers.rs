@@ -330,3 +330,57 @@ pub(crate) async fn install_ollama(
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::super::ipc_types::{OllamaPullResponse, OllamaStatusResponse, ProviderModelsResponse};
+
+    #[test]
+    fn extract_model_ids_supports_all_catalog_envelopes() {
+        use serde_json::json;
+        use super::extract_model_ids_from_payload;
+
+        let openai = json!({ "data": [{ "id": "gpt-4o-mini" }, { "id": "gpt-4o-mini" }] });
+        assert_eq!(extract_model_ids_from_payload(&openai), vec!["gpt-4o-mini".to_string()]);
+
+        let ollama = json!({ "models": [{ "name": "llama3.1:8b" }] });
+        assert_eq!(extract_model_ids_from_payload(&ollama), vec!["llama3.1:8b".to_string()]);
+
+        let bare = json!(["a", "b"]);
+        assert_eq!(extract_model_ids_from_payload(&bare), vec!["a".to_string(), "b".to_string()]);
+
+        let empty = json!({});
+        assert!(extract_model_ids_from_payload(&empty).is_empty());
+    }
+
+    #[test]
+    fn provider_response_shapes_serialize_camel_case() {
+        let models = ProviderModelsResponse {
+            base_url: "http://127.0.0.1:11434".to_string(),
+            models: vec!["llama3.1:8b".to_string()],
+        };
+        let models_json = serde_json::to_value(&models).expect("models serialize");
+        assert_eq!(models_json["baseUrl"], "http://127.0.0.1:11434");
+        assert!(models_json.get("base_url").is_none());
+
+        let pull = OllamaPullResponse {
+            base_url: "http://127.0.0.1:11434".to_string(),
+            model: "llama3.1:8b".to_string(),
+            ok: true,
+            status: "completed".to_string(),
+        };
+        let pull_json = serde_json::to_value(&pull).expect("pull serialize");
+        assert_eq!(pull_json["baseUrl"], "http://127.0.0.1:11434");
+        assert!(pull_json.get("base_url").is_none());
+
+        let status = OllamaStatusResponse {
+            installed: true,
+            running: true,
+            version: "0.1.0".to_string(),
+            details: "ready".to_string(),
+        };
+        let status_json = serde_json::to_value(&status).expect("status serialize");
+        assert_eq!(status_json["installed"], true);
+        assert!(status_json.get("is_installed").is_none());
+    }
+}
