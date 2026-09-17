@@ -13,7 +13,6 @@ import {
   deactivateLocalSttModel as ipcDeactivateLocalSttModel,
   deleteLocalSttModel as ipcDeleteLocalSttModel,
   downloadLocalSttModel as ipcDownloadLocalSttModel,
-  ensureVoiceModel as ipcEnsureVoiceModel,
   fetchLocalSttModels as ipcFetchLocalSttModels,
   getAssistantInfo as ipcGetAssistantInfo,
   getForegroundInputBlockStatus as ipcGetForegroundInputBlockStatus,
@@ -21,7 +20,6 @@ import {
   getLocalSttHardwareAdvice as ipcGetLocalSttHardwareAdvice,
   getLocalSttModelStatus as ipcGetLocalSttModelStatus,
   getLocalSttRuntimeState as ipcGetLocalSttRuntimeState,
-  getTtsRuntimeSetupStatus as ipcGetTtsRuntimeSetupStatus,
   launchAtLoginStatus as ipcLaunchAtLoginStatus,
   loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
   listDictationRecordingIds as ipcListDictationRecordingIds,
@@ -31,10 +29,7 @@ import {
   runAssistantPipeline as ipcRunAssistantPipeline,
   saveDictationRecording as ipcSaveDictationRecording,
   setClipboardText as ipcSetClipboardText,
-  setupAssistantRuntime as ipcSetupAssistantRuntime,
   setupCoquiRuntime as ipcSetupCoquiRuntime,
-  startTtsRuntimeSetup as ipcStartTtsRuntimeSetup,
-  validatePiper as ipcValidatePiper,
   warmupLocalSttModel as ipcWarmupLocalSttModel,
 } from "./ipc/client";
 import { listen } from "@tauri-apps/api/event";
@@ -136,6 +131,12 @@ import {
   renderLocalSttModelCatalog as renderLocalSttModelCatalogService,
   renderProviderModelCatalog as renderProviderModelCatalogService,
 } from "./shell/model-catalogs";
+import {
+  initTtsClient,
+  pollTtsSetupStatusOnce as pollTtsSetupStatusOnceService,
+  startTtsSetupPolling as startTtsSetupPollingService,
+  stopTtsSetupPolling as stopTtsSetupPollingService,
+} from "./tts/tts-client";
 import {
   initRecordings,
   refreshRecordingsStorageHint as refreshRecordingsStorageHintService,
@@ -267,7 +268,6 @@ import type {
   LocalSttModelStatusResponse,
   LocalSttHardwareAdviceResponse,
   LocalSttWarmupResponse,
-  TtsSetupStatusResponse,
   AssistantPipelineResponse,
   PersistedSettings,
   HotkeySpec,
@@ -639,9 +639,7 @@ function syncLocalSttDownloadOverlayVisibility(): void {
 }
 let localSttHardwareAdvisorOpen = false;
 let localSttHardwareAdvisorResolver: ((choice: LocalSttHardwareAdvisorChoice) => void) | null = null;
-let ttsSetupPollingId: number | null = null;
 let ttsSetupRunning = false;
-let ttsSetupPollInFlight = false;
 let launchAtLoginSyncNonce = 0;
 let foregroundBlockStatusCache: ForegroundInputBlockStatus = {
   blocked: false,
@@ -878,6 +876,46 @@ async function fetchOllamaModels(
 async function ensureLocalOllamaModelSelected(options: { quiet?: boolean } = {}): Promise<string> {
   return ensureLocalOllamaModelSelectedService(options);
 }
+initTtsClient(
+  {
+    setupLogs: ttsSetupLogs,
+    setupAllBtn: setupAllTtsBtn,
+    setupStatus: ttsSetupStatus,
+    setupRuntimeBtn,
+    validatePiperBtn,
+    downloadVoiceBtn,
+    piperStatusValue,
+    piperPathValue,
+    voiceStatusValue,
+    voicePathValue,
+  },
+  {
+    isBusy: () => pipelineRunning || stage === "recording",
+    readSettings: () => readSettingsFromForm(),
+    getPiperPathInput: () => settingsFormRefs.piperPathInput.value,
+    setPiperPathInput: (value) => {
+      settingsFormRefs.piperPathInput.value = value;
+    },
+    commitSettings: () => {
+      void handleSettingsChange();
+    },
+    setNotice: (message, isError) => setNotice(message, isError),
+    setStage: (next, detail) => setStage(next, detail),
+    getStage: () => stage,
+    refreshAssistantInfo: () => refreshAssistantInfoSafely(),
+    syncAvailability: () => syncActionAvailability(),
+    updateGate: () => updateTtsSetupGate(),
+    isSetupRunning: () => ttsSetupRunning,
+    setSetupRunning: (running) => {
+      ttsSetupRunning = running;
+    },
+    isPollInFlight: () => ttsSetupPollInFlight,
+    setPollInFlight: (inFlight) => {
+      ttsSetupPollInFlight = inFlight;
+    },
+  },
+);
+let ttsSetupPollInFlight = false;
 const settingsCoreDeps: SettingsCoreDeps = {
   isCapturingHotkey: () => isHotkeyCaptureActive(),
   isCapturingCommandHotkey: () => isCommandHotkeyCaptureActive(),
@@ -1387,7 +1425,7 @@ window.addEventListener("focus", () => {
 });
 
 window.addEventListener("beforeunload", () => {
-  stopTtsSetupPolling();
+  stopTtsSetupPollingService();
   stopLocalSttDownloadStatusPolling();
   if (dockHideTimerId !== null) {
     window.clearTimeout(dockHideTimerId);
@@ -1621,21 +1659,7 @@ refreshMicsBtn.addEventListener("click", () => {
   void refreshMicrophones(true);
 });
 
-setupRuntimeBtn.addEventListener("click", () => {
-  void handleAutoSetupRuntime();
-});
 
-validatePiperBtn.addEventListener("click", () => {
-  void handleValidatePiper();
-});
-
-downloadVoiceBtn.addEventListener("click", () => {
-  void handleDownloadVoice();
-});
-
-setupAllTtsBtn.addEventListener("click", () => {
-  void handleSetupAllTts();
-});
 
 
 
@@ -1906,7 +1930,7 @@ async function bootstrap(): Promise<void> {
     setNotice(`Unable to initialize local STT runtime: ${asErrorMessage(error)}`, true);
   }
   try {
-    await pollTtsSetupStatusOnce();
+    await pollTtsSetupStatusOnceService();
   } catch {
     // Ignore bootstrap poll failures and continue normal app startup.
   }
@@ -3378,181 +3402,6 @@ async function refreshAssistantInfo(): Promise<void> {
     handleSettingsChange();
   }
 
-}
-
-async function handleAutoSetupRuntime(): Promise<void> {
-  if (pipelineRunning || stage === "recording") {
-    return;
-  }
-
-  setStage("processing", "Downloading Piper runtime and voice model...");
-
-  try {
-    const result = await ipcSetupAssistantRuntime();
-    settingsFormRefs.piperPathInput.value = result.piperPath;
-    handleSettingsChange();
-
-    piperStatusValue.textContent = "Installed";
-    piperPathValue.textContent = result.piperPath;
-    voiceStatusValue.textContent = "Installed";
-    voicePathValue.textContent = result.voiceModelPath;
-
-    setNotice("Runtime setup completed.");
-    setStage("idle", "Runtime ready.");
-  } catch (error) {
-    setNotice(`Auto setup failed: ${asErrorMessage(error)}`, true);
-    setStage("error", "Auto setup failed.");
-  }
-
-  await refreshAssistantInfoSafely();
-  syncActionAvailability();
-}
-
-async function handleValidatePiper(): Promise<void> {
-  if (pipelineRunning || stage === "recording") {
-    return;
-  }
-
-  const piperPath = settingsFormRefs.piperPathInput.value.trim();
-  setStage("processing", "Validating Piper executable...");
-
-  try {
-    const result = await ipcValidatePiper({ piperPath: piperPath || null });
-
-    if (result.ok) {
-      setNotice(`Piper is reachable: ${result.details || "help output received."}`);
-      setStage("idle", "Piper validated.");
-    } else {
-      setNotice(`Piper check did not return success: ${result.details}`, true);
-      setStage("error", "Piper validation failed.");
-    }
-  } catch (error) {
-    setNotice(`Piper validation failed: ${asErrorMessage(error)}`, true);
-    setStage("error", "Piper validation failed.");
-  }
-
-  await refreshAssistantInfoSafely();
-  syncActionAvailability();
-}
-
-async function handleDownloadVoice(): Promise<void> {
-  if (pipelineRunning || stage === "recording") {
-    return;
-  }
-
-  setStage("processing", "Downloading voice model...");
-
-  try {
-    const result = await ipcEnsureVoiceModel();
-    voiceStatusValue.textContent = "Installed";
-    voicePathValue.textContent = result.modelPath;
-    setNotice(`Voice model ready: ${result.modelPath}`);
-    setStage("idle", "Voice model installed.");
-  } catch (error) {
-    setNotice(`Voice download failed: ${asErrorMessage(error)}`, true);
-    setStage("error", "Voice download failed.");
-  }
-
-  await refreshAssistantInfoSafely();
-  syncActionAvailability();
-}
-
-function renderTtsSetupLogs(logs: string[]): void {
-  if (logs.length === 0) {
-    ttsSetupLogs.innerHTML = '<p class="setup-log-item">No setup logs yet.</p>';
-    return;
-  }
-
-  ttsSetupLogs.innerHTML = logs
-    .slice(-200)
-    .map((line) => `<p class="setup-log-item">${escapeHtml(line)}</p>`)
-    .join("");
-  ttsSetupLogs.scrollTop = ttsSetupLogs.scrollHeight;
-}
-
-function applyTtsSetupStatus(status: TtsSetupStatusResponse): void {
-  ttsSetupRunning = status.running;
-  setupAllTtsBtn.disabled = status.running || pipelineRunning || stage === "recording";
-  ttsSetupStatus.textContent = status.stage || (status.running ? "Setting up..." : "Waiting for setup.");
-  renderTtsSetupLogs(status.logs);
-  updateTtsSetupGate();
-
-  if (!status.running && status.completed) {
-    if (status.success) {
-      setNotice("Piper runtime is ready.");
-      if (stage !== "recording") {
-        setStage("idle", "TTS setup complete.");
-      }
-    } else {
-      setNotice("TTS setup failed. Review logs in Settings > Models.", true);
-      setStage("error", "TTS setup failed.");
-    }
-  }
-}
-
-function stopTtsSetupPolling(): void {
-  if (ttsSetupPollingId !== null) {
-    window.clearInterval(ttsSetupPollingId);
-    ttsSetupPollingId = null;
-  }
-}
-
-async function pollTtsSetupStatusOnce(): Promise<void> {
-  if (ttsSetupPollInFlight) {
-    return;
-  }
-  ttsSetupPollInFlight = true;
-
-  try {
-    const status = await ipcGetTtsRuntimeSetupStatus();
-    applyTtsSetupStatus(status);
-    if (!status.running) {
-      stopTtsSetupPolling();
-      await refreshAssistantInfoSafely();
-      syncActionAvailability();
-    }
-  } catch (error) {
-    stopTtsSetupPolling();
-    ttsSetupRunning = false;
-    updateTtsSetupGate();
-    setNotice(`Unable to poll TTS setup status: ${asErrorMessage(error)}`, true);
-    syncActionAvailability();
-  } finally {
-    ttsSetupPollInFlight = false;
-  }
-}
-
-function startTtsSetupPolling(): void {
-  if (ttsSetupPollingId !== null) {
-    return;
-  }
-  ttsSetupPollingId = window.setInterval(() => {
-    void pollTtsSetupStatusOnce();
-  }, 850);
-}
-
-async function handleSetupAllTts(): Promise<void> {
-  if (pipelineRunning || stage === "recording") {
-    return;
-  }
-
-  setStage("processing", "Setting up Piper runtime...");
-  setupAllTtsBtn.disabled = true;
-  ttsSetupStatus.textContent = "Starting setup...";
-  syncActionAvailability();
-
-  try {
-    const status = await ipcStartTtsRuntimeSetup({ pythonPath: null, useGpu: false });
-    applyTtsSetupStatus(status);
-    startTtsSetupPolling();
-    await pollTtsSetupStatusOnce();
-  } catch (error) {
-    ttsSetupRunning = false;
-    updateTtsSetupGate();
-    setNotice(`Setup failed to start: ${asErrorMessage(error)}`, true);
-    setStage("error", "Setup failed to start.");
-    syncActionAvailability();
-  }
 }
 
 async function fetchLocalSttModels(
@@ -5371,15 +5220,15 @@ async function closeSelectionAssistantWindowForTray(): Promise<void> {
 }
 
 function stopNonEssentialUiPollingForTray(): void {
-  stopTtsSetupPolling();
+  stopTtsSetupPollingService();
   stopLocalSttDownloadStatusPolling();
   hideLocalSttLoadOverlay();
 }
 
 function resumeNonEssentialUiPollingAfterTray(): void {
   if (ttsSetupRunning) {
-    startTtsSetupPolling();
-    void pollTtsSetupStatusOnce();
+    startTtsSetupPollingService();
+    void pollTtsSetupStatusOnceService();
   }
   if (localSttDownloadActive) {
     startLocalSttDownloadStatusPolling();
