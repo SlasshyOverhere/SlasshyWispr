@@ -24,11 +24,9 @@ import {
 } from "@tauri-apps/api/window";
 import {
   unregisterAll as unregisterAllGlobalShortcuts,
-  type ShortcutEvent,
 } from "@tauri-apps/plugin-global-shortcut";
 import {
   asErrorMessage,
-  boolFlag,
   confirmDestructiveAction,
   createId,
 } from "./utils";
@@ -328,7 +326,6 @@ import {
   renderOllamaStatus as renderOllamaStatusService,
 } from "./stt/ollama-client";
 import {
-  normalizeShortcutToken,
   formatHotkeyForDisplay,
 } from "./hotkeys/hotkey-service";
 import {
@@ -353,6 +350,10 @@ import {
   initLocalShortcuts,
   wireHotkeyInputButtons,
 } from "./hotkeys/local-shortcuts";
+import {
+  handleGlobalShortcutEvent as handleGlobalShortcutEventService,
+  initGlobalShortcutDispatch,
+} from "./hotkeys/global-shortcut-dispatch";
 import {
   missingApiKeyForOnlineRuntime,
 } from "./recording/audio-utils";
@@ -456,7 +457,6 @@ function requiredElement<T extends Element>(selector: string): T {
 }
 
 
-
 const settingsOverlay = requiredElement<HTMLDivElement>("#settingsOverlay");
 const toggleSidebarBtn = requiredElement<HTMLButtonElement>("#toggleSidebarBtn");
 const openSettingsBtn = requiredElement<HTMLButtonElement>("#openSettingsBtn");
@@ -526,7 +526,6 @@ const snippetTriggerInput = requiredElement<HTMLInputElement>("#snippetTriggerIn
 const snippetExpansionInput = requiredElement<HTMLInputElement>("#snippetExpansionInput");
 const snippetAddBtn = requiredElement<HTMLButtonElement>("#snippetAddBtn");
 const snippetsAddBtnTop = requiredElement<HTMLButtonElement>("#snippetsAddBtnTop");
-
 
 
 const notesList = requiredElement<HTMLDivElement>("#notesList");
@@ -1544,7 +1543,6 @@ startBlockedAppShortcutSuppressionMonitorService();
 applyPersistedSidebarCollapsedService();
 
 
-
 checkUpdatesBtn.addEventListener("click", () => {
   void handleCheckForUpdatesService();
 });
@@ -1587,9 +1585,6 @@ snoozeUpdateBtn.addEventListener("click", () => {
 window.addEventListener("beforeunload", () => {
   stopAutomaticUpdateChecks();
 });
-
-
-
 
 
 window.addEventListener("focus", () => {
@@ -1664,8 +1659,37 @@ initHotkeySync({
   notify: (message, isError) => setNoticeService(message, isError),
   log: (message) => logClientEventService(message),
   publishDockState: () => publishDockStateService(),
-  onShortcutEvent: (event) => handleGlobalShortcutEvent(event),
+  onShortcutEvent: (event) => handleGlobalShortcutEventService(event),
 });
+initGlobalShortcutDispatch({
+  getSettings: () => settings,
+  isCaptureActive: () => isAnyHotkeyCaptureActive(),
+  getNormalizedShortcuts: () => getNormalizedRegisteredShortcuts(),
+  markHandled: (shortcut, state) => markGlobalShortcutHandledService(shortcut, state),
+  readActiveSettings: () => readSettingsFromFormService(settingsFormRefs, settingsCoreDeps),
+  isApiKeyMissingForOnlineRuntime: (activeSettings) =>
+    missingApiKeyForOnlineRuntime(activeSettings),
+  showApiKeyMissingNotice: () =>
+    showDesktopNotice(MISSING_API_KEY_MESSAGE, {
+      failureReason: "Missing API key for online runtime.",
+      logSource: "global-hotkey",
+    }),
+  hasPushToTalkHold: (source) => hasPushToTalkHold(source),
+  getPushToTalkHoldCount: () => getPushToTalkHoldCount(),
+  engagePushToTalk: (source) => {
+    void engagePushToTalkService(source);
+  },
+  handleRecordToggle: () => {
+    void handleRecordToggleService();
+  },
+  releasePushToTalk: (source) => releasePushToTalkService(source),
+  shouldBlockAssistantInputFromForegroundApp: () =>
+    shouldBlockAssistantInputFromForegroundAppService(),
+  toggleCommandModeArmed: () => toggleCommandModeArmed(),
+  isCommandModeArmed: () => isCommandModeArmed(),
+  log: (message) => logClientEventService(message),
+});
+
 initLocalShortcuts(
   { toggleSidebarBtn, sidebarToggleLocalSttBtn, openSettingsBtn },
   {
@@ -1779,7 +1803,6 @@ dictionaryFormCloseBtn.addEventListener("click", () => {
 });
 
 
-
 snippetForm.addEventListener("submit", (event) => {
   event.preventDefault();
   addSnippetEntryService();
@@ -1800,7 +1823,6 @@ snippetsAddBtnTop.addEventListener("click", () => {
 });
 
 
-
 notesQuickMicBtn.addEventListener("click", () => {
   if (settings.captureMode === "push-to-talk") {
     setNoticeService("Hold the note button while speaking in push-to-talk mode.");
@@ -1816,12 +1838,6 @@ bindPushToTalkKeyboardHoldService(notesQuickMicBtn, "notes-button");
 refreshMicsBtn.addEventListener("click", () => {
   void refreshMicrophonesService(true);
 });
-
-
-
-
-
-
 
 
 applyModelToAiBtn.addEventListener("click", () => {
@@ -1845,8 +1861,6 @@ applyModelToSttBtn.addEventListener("click", () => {
   handleSettingsChange();
   setNoticeService(`STT model set to "${selected}".`);
 });
-
-
 
 
 /* Home tab search-button → switch to History and focus the search
@@ -1923,11 +1937,6 @@ initHistoryView(
     setActivePage: (page) => setActivePageService(page),
   },
 );
-
-
-
-
-
 
 
 navigator.mediaDevices?.addEventListener?.("devicechange", () => {
@@ -2221,100 +2230,6 @@ const settingsHandleEffects: SettingsHandleEffects = {
     }
   },
 };
-
-
-
-
-
-
-
-function handleGlobalShortcutEvent(event: ShortcutEvent): void {
-  logClientEventService(
-    `[hotkey.global.event] shortcut=${event.shortcut || "-"} state=${String(
-      (event as { state?: unknown }).state ?? "",
-    )}`,
-  );
-  if (isAnyHotkeyCaptureActive()) {
-    logClientEventService("[hotkey.global.event] ignored because hotkey capture UI is active");
-    return;
-  }
-
-  const rawState = String((event as { state?: unknown }).state ?? "")
-    .trim()
-    .toLowerCase();
-  const pressed = rawState === "pressed";
-  const released = rawState === "released";
-  if (!pressed && !released) {
-    logClientEventService(`[hotkey.global.event] ignored because state="${rawState}" is unsupported`);
-    return;
-  }
-
-  const shortcut = normalizeShortcutToken(event.shortcut);
-  const { push: pushShortcut, command: commandShortcut } = getNormalizedRegisteredShortcuts();
-  logClientEventService(
-    `[hotkey.global.event] normalized shortcut=${shortcut || "-"} push=${
-      pushShortcut || "-"
-    } command=${commandShortcut || "-"} capture=${settings.captureMode}`,
-  );
-
-  if (pushShortcut && shortcut === pushShortcut) {
-    if (pressed) {
-      markGlobalShortcutHandledService(shortcut, "pressed");
-      logClientEventService(
-        `[hotkey.global.push] pressed capture=${settings.captureMode} holdCount=${getPushToTalkHoldCount()}`,
-      );
-      const activeSettings = readSettingsFromFormService(settingsFormRefs, settingsCoreDeps);
-      if (missingApiKeyForOnlineRuntime(activeSettings)) {
-        logClientEventService(
-          "[hotkey.global.push] blocked before reveal because API key is missing for online runtime",
-        );
-        showDesktopNotice(MISSING_API_KEY_MESSAGE, {
-          failureReason: "Missing API key for online runtime.",
-          logSource: "global-hotkey",
-        });
-        return;
-      }
-      if (settings.captureMode === "push-to-talk") {
-        if (hasPushToTalkHold("hotkey")) {
-          logClientEventService("[hotkey.global.push] ignored repeated press because hold is already active");
-          return;
-        }
-        void engagePushToTalkService("hotkey");
-      } else {
-        void handleRecordToggleService();
-      }
-    }
-    if (released && (settings.captureMode === "push-to-talk" || hasPushToTalkHold("hotkey"))) {
-      markGlobalShortcutHandledService(shortcut, "released");
-      logClientEventService("[hotkey.global.push] released -> release push-to-talk hold");
-      releasePushToTalkService("hotkey");
-    }
-    return;
-  }
-
-  if (
-    commandShortcut &&
-    shortcut === commandShortcut &&
-    pressed
-  ) {
-    markGlobalShortcutHandledService(shortcut, "pressed");
-    logClientEventService("[hotkey.global.command] pressed -> toggling command mode");
-    void (async () => {
-      if (await shouldBlockAssistantInputFromForegroundAppService()) {
-        logClientEventService("[hotkey.global.command] blocked by foreground app policy");
-        return;
-      }
-      toggleCommandModeArmed();
-      logClientEventService(`[hotkey.global.command] toggled commandModeArmed=${boolFlag(isCommandModeArmed())}`);
-    })();
-    return;
-  }
-
-  logClientEventService("[hotkey.global.event] no handler matched the incoming shortcut");
-}
-
-
-
 
 
 // ===== Recording State Machine Integration =====
