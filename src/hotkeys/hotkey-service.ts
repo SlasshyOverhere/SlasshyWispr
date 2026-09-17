@@ -408,3 +408,13 @@ export function isTypingElement(target: EventTarget | null): boolean {
   const tag = target.tagName.toLowerCase();
   return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
 }
+
+export function isHotkeyReleaseEvent(event: KeyboardEvent, hotkey: HotkeySpec): boolean {
+  const key = normalizeEventKey(event.key);
+  if (key === hotkey.key) return true;
+  if (hotkey.ctrl && key === "control") return true;
+  if (hotkey.shift && key === "shift") return true;
+  if (hotkey.alt && key === "alt") return true;
+  if (hotkey.meta && key === "meta") return true;
+  return false;
+}

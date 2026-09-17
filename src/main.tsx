@@ -293,7 +293,7 @@ import {
   formatHotkeyForDisplay,
   parseHotkey,
   matchesHotkey,
-  normalizeEventKey,
+  isHotkeyReleaseEvent as isHotkeyReleaseEventService,
   isTypingElement,
 } from "./hotkeys/hotkey-service";
 import {
@@ -353,7 +353,6 @@ import type {
 
   AssistantInfoResponse,
   PersistedSettings,
-  HotkeySpec,
   UsageStats,
   AnalyticsSessionDetail,
   AchievementState,
@@ -1638,7 +1637,7 @@ document.addEventListener("keyup", (event) => {
   }
 
   const parsed = parseHotkey(settings.pushToTalkHotkey);
-  if (!parsed || !isHotkeyReleaseEvent(event, parsed)) {
+  if (!parsed || !isHotkeyReleaseEventService(event, parsed)) {
     return;
   }
   const pushShortcutToken = normalizeShortcutToken(toGlobalShortcutString(parsed));
@@ -3023,16 +3022,6 @@ function bindPushToTalkKeyboardHold(button: HTMLButtonElement, source: HoldSourc
     keyboardHoldActive = false;
     releasePushToTalkService(source);
   });
-}
-
-function isHotkeyReleaseEvent(event: KeyboardEvent, hotkey: HotkeySpec): boolean {
-  const key = normalizeEventKey(event.key);
-  if (key === hotkey.key) return true;
-  if (hotkey.ctrl && key === "control") return true;
-  if (hotkey.shift && key === "shift") return true;
-  if (hotkey.alt && key === "alt") return true;
-  if (hotkey.meta && key === "meta") return true;
-  return false;
 }
 
 // ============================================================================
