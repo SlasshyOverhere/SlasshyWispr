@@ -139,6 +139,15 @@ import {
   releasePushToTalk as releasePushToTalkService,
 } from "./recording/capture-triggers";
 import {
+  captureSelectedTextForRewrite as captureSelectedTextService,
+  getCommandSelectionSnapshot,
+  initCommandMode,
+  isCommandModeArmed,
+  primeSelectionSnapshotForCommandMode,
+  resetCommandMode,
+  toggleCommandModeArmed,
+} from "./recording/command-mode";
+import {
   beginRecordingTicker as beginRecordingTickerService,
   initCaptureMonitors,
   releaseMicrophone as releaseMicrophoneService,
@@ -612,8 +621,6 @@ let usageStats = loadUsageStats();
 let analyticsSessionDetails: AnalyticsSessionDetail[] = loadCanonicalAnalyticsSessions();
 let achievementStates: AchievementState[] = loadAchievementStates();
 let homeHistoryEntries = loadHistory();
-let commandModeArmed = false;
-let commandSelectionSnapshot: string | null = null;
 const recentTurns: Array<{ speaker: string; content: string }> = [];
 let activePage: MainPage = loadPersistedMainPage();
 let activeSettingsPane: SettingsPane = loadPersistedSettingsPane();
@@ -752,6 +759,13 @@ initCaptureMonitors(
     },
   },
 );
+initCommandMode({
+  isTauri: isTauriEnvironment,
+  captureSelectedText: () => ipcCaptureSelectedText(),
+  setNotice: (message, isError) => setNotice(message, isError),
+  log: (message) => logClientEvent(message),
+  publishDockState: () => publishDockState(),
+});
 initCaptureTriggers({
   getStage: () => stage,
   isPipelineRunning: () => pipelineRunning,
@@ -775,7 +789,7 @@ initRecordingController(
     getStage: () => stage,
     isPipelineRunning: () => pipelineRunning,
     getHoldCount: () => getPushToTalkHoldCount(),
-    getCommandModeArmed: () => commandModeArmed,
+    getCommandModeArmed: () => isCommandModeArmed(),
     getCaptureMode: () => settings.captureMode,
     readSettings: () => readSettingsFromForm(),
     readLiveSettings: () => settings,
@@ -1490,7 +1504,7 @@ document.addEventListener("keydown", (event) => {
         return;
       }
       toggleCommandModeArmed();
-      logClientEvent(`[hotkey.local.command] toggled commandModeArmed=${boolFlag(commandModeArmed)}`);
+      logClientEvent(`[hotkey.local.command] toggled commandModeArmed=${boolFlag(isCommandModeArmed())}`);
     })();
     return;
   }
@@ -2844,7 +2858,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
         return;
       }
       toggleCommandModeArmed();
-      logClientEvent(`[hotkey.global.command] toggled commandModeArmed=${boolFlag(commandModeArmed)}`);
+      logClientEvent(`[hotkey.global.command] toggled commandModeArmed=${boolFlag(isCommandModeArmed())}`);
     })();
     return;
   }
@@ -3471,46 +3485,6 @@ async function confirmDestructiveAction(message: string): Promise<boolean> {
       }
     });
   });
-}
-
-async function captureSelectedTextForRewrite(options: { silent?: boolean } = {}): Promise<string> {
-  if (!isTauriEnvironment()) {
-    return "";
-  }
-
-  try {
-    const selected = await ipcCaptureSelectedText();
-    return String(selected ?? "");
-  } catch (error) {
-    if (!options.silent) {
-      setNotice(`Unable to capture selected text: ${asErrorMessage(error)}`, true);
-    }
-    return "";
-  }
-}
-
-async function primeSelectionSnapshotForCommandMode(): Promise<void> {
-  const selected = (await captureSelectedTextForRewrite({ silent: true })).trim();
-  commandSelectionSnapshot = selected || null;
-  if (commandSelectionSnapshot) {
-    logClientEvent(`selection.prime chars=${commandSelectionSnapshot.length}`);
-  }
-}
-
-function setCommandModeArmed(next: boolean): void {
-  commandModeArmed = next;
-  if (commandModeArmed) {
-    setNotice("Command mode armed for the next dictation.");
-    void primeSelectionSnapshotForCommandMode();
-  } else {
-    commandSelectionSnapshot = null;
-    setNotice("Command mode disabled for the next dictation.");
-  }
-  publishDockState();
-}
-
-function toggleCommandModeArmed(): void {
-  setCommandModeArmed(!commandModeArmed);
 }
 
 async function refreshAssistantInfo(): Promise<void> {
@@ -4454,16 +4428,16 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
         performance.now() - base64EncodeStartedAt,
       )} bytes=${pipelineAudioBlob.size} mime=${pipelineAudioMimeType || "unknown"}`,
     );
-    const systemPrompt = buildEffectiveSystemPrompt(activeSettings, commandModeArmed);
+    const systemPrompt = buildEffectiveSystemPrompt(activeSettings, isCommandModeArmed());
     const pipelineTtsEngine: TtsEngine = "piper";
     let selectedTextForRewrite: string | null = null;
-    if (commandModeArmed) {
-      const primedSelected = (commandSelectionSnapshot ?? "").trim();
-      const selected = primedSelected || (await captureSelectedTextForRewrite({ silent: true })).trim();
+    if (isCommandModeArmed()) {
+      const primedSelected = (getCommandSelectionSnapshot() ?? "").trim();
+      const selected = primedSelected || (await captureSelectedTextService({ silent: true })).trim();
       if (selected) {
         selectedTextForRewrite = selected;
       } else {
-        const explicitSelected = (await captureSelectedTextForRewrite()).trim();
+        const explicitSelected = (await captureSelectedTextService()).trim();
         if (explicitSelected) {
           selectedTextForRewrite = explicitSelected;
         } else {
@@ -4472,7 +4446,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       }
     }
     logClientEvent(
-      `pipeline.selection commandMode=${commandModeArmed} selectedChars=${selectedTextForRewrite ? selectedTextForRewrite.length : 0}`,
+      `pipeline.selection commandMode=${isCommandModeArmed()} selectedChars=${selectedTextForRewrite ? selectedTextForRewrite.length : 0}`,
     );
 
     let resolvedLocalOllamaModel = activeSettings.localOllamaModel.trim();
@@ -4580,7 +4554,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
         autoNumberedLists: activeSettings.numberedLists,
         noiseSuppression: activeSettings.noiseSuppression,
         rawPcmBase64: rawPcmBase64,
-        commandMode: commandModeArmed,
+        commandMode: isCommandModeArmed(),
         wakeWordEnabled: activeSettings.wakeWordEnabled,
         assistantName: activeSettings.assistantName || DEFAULT_ASSISTANT_NAME,
         selectedText: selectedTextForRewrite,
@@ -4666,9 +4640,7 @@ async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void
       await copyToClipboard(resolvedResponse.assistantResponse);
     }
 
-    commandModeArmed = false;
-    commandSelectionSnapshot = null;
-    publishDockState();
+    resetCommandMode();
 
     if (stage !== "recording") {
       if (resolvedResponse.mode === "dictation") {
@@ -5033,9 +5005,7 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
         clearPushToTalkHolds();
         break;
       case "reset-command-mode":
-        commandModeArmed = false;
-        commandSelectionSnapshot = null;
-        publishDockState();
+        resetCommandMode();
         break;
       case "set-notice":
         setNotice(action.message, action.isError);
@@ -5133,7 +5103,7 @@ function publishDockState(): void {
       captureMode: settings.captureMode,
       hotkey: cachedHotkeyDisplay,
       showFlowBar: settings.showFlowBar,
-      commandModeArmed,
+      commandModeArmed: isCommandModeArmed(),
       globalShortcutsActive: isGlobalShortcutsActive(),
     });
   } catch {
