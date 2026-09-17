@@ -50,7 +50,6 @@ import { open as openExternalUrl } from "@tauri-apps/plugin-shell";
 import {
   asErrorMessage,
   boolFlag,
-  buildAgentOperatingCorePrompt,
   escapeHtml,
   expandSnippetsInText,
   formatBytes,
@@ -111,6 +110,10 @@ import {
   stopAutomaticUpdateChecks,
   syncUpdaterButtons as syncUpdaterButtonsService,
 } from "./updater/updater-flow";
+import {
+  buildEffectiveSystemPrompt,
+  initPipelinePrompt,
+} from "./pipeline/pipeline-prompt";
 import {
   isExternalMediaMutedForDictation,
   pauseExternalMediaForDictation as pauseExternalMediaForDictationService,
@@ -211,6 +214,7 @@ import {
   pickBestRecorderMimeType,
   blobToBase64,
   formatTimer,
+  missingApiKeyForOnlineRuntime,
 } from "./recording/audio-utils";
 import {
   processEvent,
@@ -254,7 +258,6 @@ import {
 
 import type {
   Stage,
-  StyleProfile,
   MainPage,
   SettingsPane,
   TtsEngine,
@@ -681,6 +684,7 @@ settings.pushToTalkHotkey = settings.pushToTalkHotkey.trim() || DEFAULT_HOTKEY;
 settings.commandHotkey = settings.commandHotkey.trim() || DEFAULT_COMMAND_HOTKEY;
 initSettingsState(settings);
 setPersistErrorReporter((message) => setNotice(message, true));
+initPipelinePrompt({ getRecentTurns: () => recentTurns });
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
 initMicrophones(
   { select: microphoneSelect, summary: microphoneSummary },
@@ -3218,49 +3222,6 @@ function createId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function buildEffectiveSystemPrompt(activeSettings: PersistedSettings, commandMode: boolean): string {
-  const agentName = activeSettings.assistantName.trim() || DEFAULT_ASSISTANT_NAME;
-  const parts = [buildAgentOperatingCorePrompt(agentName)];
-  const customPrompt = activeSettings.systemPrompt.trim();
-  if (customPrompt) {
-    parts.push(`Custom user instructions:\n${customPrompt}`);
-  }
-  parts.push(styleProfileInstruction(activeSettings.styleProfile));
-
-  if (activeSettings.contextAwareness && recentTurns.length > 0) {
-    const contextLines = recentTurns
-      .slice(0, 6)
-      .reverse()
-      .map((turn) => `${turn.speaker}: ${turn.content}`)
-      .join("\n");
-    parts.push(`Recent context:\n${contextLines}`);
-  }
-
-  if (commandMode) {
-    parts.push(
-      "Command mode is armed for this turn. Prioritize direct action on user intent instead of conversational filler.",
-    );
-  }
-
-  return parts.filter(Boolean).join("\n\n");
-}
-
-function styleProfileInstruction(style: StyleProfile): string {
-  if (style === "professional") {
-    return "Style: professional and polished.";
-  }
-  if (style === "casual") {
-    return "Style: casual and conversational.";
-  }
-  if (style === "concise") {
-    return "Style: concise and high-signal.";
-  }
-  if (style === "developer") {
-    return "Style: developer-focused with precise technical terminology.";
-  }
-  return "Style: adapt tone based on the request context.";
-}
-
 async function copyToClipboard(
   value: string,
   options: { quiet?: boolean; successMessage?: string; errorMessage?: string } = {},
@@ -4212,13 +4173,6 @@ async function openLocalSttModelPath(): Promise<void> {
       setNotice(`Unable to open model folder: ${message}`, true);
     }
   }
-}
-
-function missingApiKeyForOnlineRuntime(activeSettings: PersistedSettings): boolean {
-  const anyOnlineRuntime =
-    activeSettings.sttRuntimeMode === "online" || activeSettings.aiRuntimeMode === "online";
-  const apiKeyPresent = activeSettings.apiKey.trim().length > 0;
-  return anyOnlineRuntime && !apiKeyPresent;
 }
 
 function showMissingApiKeyNotice(source: string): void {
