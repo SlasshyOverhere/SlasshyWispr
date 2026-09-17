@@ -74,6 +74,7 @@ import {
   SETTINGS_PATCH_EVENT,
   initSettingsState,
   markPaneConverted,
+  getSettingsSnapshot,
   setSettingsSnapshot,
 } from "./settings/settings-state";
 import { APP_UPDATE_AUTO_CHECK_CHANGED_EVENT } from "./updater/updater-client-shim";
@@ -327,23 +328,10 @@ import {
   renderOllamaStatus as renderOllamaStatusService,
 } from "./stt/ollama-client";
 import {
-  toGlobalShortcutString,
   normalizeShortcutToken,
   formatHotkeyForDisplay,
-  parseHotkey,
-  matchesHotkey,
-  isHotkeyReleaseEvent as isHotkeyReleaseEventService,
-  isTypingElement,
 } from "./hotkeys/hotkey-service";
 import {
-  beginCommandHotkeyCapture,
-  beginHotkeyCapture,
-  cancelCommandHotkeyCapture,
-  cancelHotkeyCapture,
-  handleCommandHotkeyCaptureKeydown,
-  handleCommandHotkeyCaptureKeyup,
-  handleHotkeyCaptureKeydown,
-  handleHotkeyCaptureKeyup,
   initHotkeyCapture,
   isAnyHotkeyCaptureActive,
   isCommandHotkeyCaptureActive,
@@ -361,6 +349,10 @@ import {
   shouldIgnoreLocalShortcutFromRecentGlobal as shouldIgnoreLocalShortcutFromRecentGlobalService,
   syncGlobalShortcuts as syncGlobalShortcutsService,
 } from "./hotkeys/hotkey-sync";
+import {
+  initLocalShortcuts,
+  wireHotkeyInputButtons,
+} from "./hotkeys/local-shortcuts";
 import {
   missingApiKeyForOnlineRuntime,
 } from "./recording/audio-utils";
@@ -384,7 +376,6 @@ import {
 
 import type {
   Stage,
-  MainPage,
 
   AssistantInfoResponse,
   PersistedSettings,
@@ -1601,180 +1592,6 @@ window.addEventListener("beforeunload", () => {
 
 
 
-document.addEventListener("keydown", (event) => {
-  if (isHotkeyCaptureActive()) {
-    handleHotkeyCaptureKeydown(event);
-    return;
-  }
-  if (isCommandHotkeyCaptureActive()) {
-    handleCommandHotkeyCaptureKeydown(event);
-    return;
-  }
-
-  if (event.key === "Escape" && handleLocalSttAdvisorEscape()) {
-    return;
-  }
-
-  if (event.key === "Escape" && !settingsOverlay.hidden) {
-    closeSettingsService();
-    return;
-  }
-
-  if (isTypingElement(event.target)) {
-    return;
-  }
-
-  if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
-    const digit = event.key;
-    if (digit >= "1" && digit <= "6") {
-      const pageIndex = parseInt(digit, 10) - 1;
-      const pages: MainPage[] = ["home", "history", "dictionary", "snippets", "notes", "analytics"];
-      const page = pages[pageIndex];
-      if (page) {
-        event.preventDefault();
-        setActivePageService(page);
-        return;
-      }
-    }
-
-    if (event.key === "b" || event.key === "B") {
-      event.preventDefault();
-      toggleSidebarBtn.click();
-      return;
-    }
-
-    if (event.key === "d" || event.key === "D") {
-      event.preventDefault();
-      sidebarToggleLocalSttBtn.click();
-      return;
-    }
-
-    if (event.key === "s" || event.key === "S") {
-      event.preventDefault();
-      openSettingsBtn.click();
-      return;
-    }
-  }
-
-  const commandHotkey = parseHotkey(settings.commandHotkey);
-  if (settings.commandMode && commandHotkey && matchesHotkey(event, commandHotkey)) {
-    const commandShortcutToken = normalizeShortcutToken(toGlobalShortcutString(commandHotkey));
-    logClientEventService(
-      `[hotkey.local.command] keydown shortcut=${commandShortcutToken} repeat=${boolFlag(
-        event.repeat,
-      )}`,
-    );
-    if (shouldBypassLocalShortcutHandlingService(commandShortcutToken)) {
-      return;
-    }
-    if (shouldIgnoreLocalShortcutFromRecentGlobalService(commandShortcutToken, "pressed")) {
-      return;
-    }
-    if (event.repeat) {
-      logClientEventService("[hotkey.local.command] ignored repeated keydown");
-      return;
-    }
-    event.preventDefault();
-    void (async () => {
-      if (await shouldBlockAssistantInputFromForegroundAppService()) {
-        logClientEventService("[hotkey.local.command] blocked by foreground app policy");
-        return;
-      }
-      toggleCommandModeArmed();
-      logClientEventService(`[hotkey.local.command] toggled commandModeArmed=${boolFlag(isCommandModeArmed())}`);
-    })();
-    return;
-  }
-
-  const parsed = parseHotkey(settings.pushToTalkHotkey);
-  if (!parsed || !matchesHotkey(event, parsed)) {
-    return;
-  }
-  const pushShortcutToken = normalizeShortcutToken(toGlobalShortcutString(parsed));
-  logClientEventService(
-    `[hotkey.local.push] keydown shortcut=${pushShortcutToken} capture=${settings.captureMode} repeat=${boolFlag(
-      event.repeat,
-    )}`,
-  );
-  if (shouldBypassLocalShortcutHandlingService(pushShortcutToken)) {
-    return;
-  }
-  if (shouldIgnoreLocalShortcutFromRecentGlobalService(pushShortcutToken, "pressed")) {
-    return;
-  }
-
-  if (settings.captureMode === "push-to-talk") {
-    if (event.repeat) {
-      logClientEventService("[hotkey.local.push] ignored repeated keydown in push-to-talk mode");
-      return;
-    }
-
-    event.preventDefault();
-    void engagePushToTalkService("hotkey");
-    return;
-  }
-
-  if (event.repeat) {
-    logClientEventService("[hotkey.local.push] ignored repeated keydown in single-tap mode");
-    return;
-  }
-
-  event.preventDefault();
-  void handleRecordToggleService();
-});
-
-document.addEventListener("keyup", (event) => {
-  if (isHotkeyCaptureActive()) {
-    handleHotkeyCaptureKeyup(event);
-    return;
-  }
-  if (isCommandHotkeyCaptureActive()) {
-    handleCommandHotkeyCaptureKeyup(event);
-    return;
-  }
-
-  if (!hasPushToTalkHold("hotkey")) {
-    return;
-  }
-
-  const parsed = parseHotkey(settings.pushToTalkHotkey);
-  if (!parsed || !isHotkeyReleaseEventService(event, parsed)) {
-    return;
-  }
-  const pushShortcutToken = normalizeShortcutToken(toGlobalShortcutString(parsed));
-  logClientEventService(
-    `[hotkey.local.push] keyup shortcut=${pushShortcutToken} capture=${settings.captureMode}`,
-  );
-  if (shouldBypassLocalShortcutHandlingService(pushShortcutToken)) {
-    return;
-  }
-  if (shouldIgnoreLocalShortcutFromRecentGlobalService(pushShortcutToken, "released")) {
-    return;
-  }
-
-  event.preventDefault();
-  releasePushToTalkService("hotkey");
-});
-
-window.addEventListener("blur", () => {
-  if (settings.captureMode !== "push-to-talk") {
-    return;
-  }
-
-  if (getPushToTalkHoldCount() === 0) {
-    return;
-  }
-
-  logClientEventService(
-    `[record.ptt.blur] clearing holds=${getPushToTalkHoldCount()} stage=${stage}`,
-  );
-  clearPushToTalkHoldsService();
-  if (stage === "recording") {
-    logClientEventService("[record.ptt.blur] window blurred during recording -> stopRecording()");
-    stopRecordingService();
-  }
-});
-
 window.addEventListener("focus", () => {
   if (!isGlobalShortcutsActive() && !isAnyHotkeyCaptureActive()) {
     requestGlobalShortcutSyncService();
@@ -1849,6 +1666,42 @@ initHotkeySync({
   publishDockState: () => publishDockStateService(),
   onShortcutEvent: (event) => handleGlobalShortcutEvent(event),
 });
+initLocalShortcuts(
+  { toggleSidebarBtn, sidebarToggleLocalSttBtn, openSettingsBtn },
+  {
+    getSettings: () => settings,
+    getStage: () => stage,
+    isSettingsOverlayOpen: () => !settingsOverlay.hidden,
+    closeSettings: () => closeSettingsService(),
+    setActivePage: (page) => setActivePageService(page),
+    handleLocalSttAdvisorEscape: () => handleLocalSttAdvisorEscape(),
+    engagePushToTalk: (source) => {
+      void engagePushToTalkService(source);
+    },
+    handleRecordToggle: () => {
+      void handleRecordToggleService();
+    },
+    releasePushToTalk: (source) => releasePushToTalkService(source),
+    hasPushToTalkHold: (source) => hasPushToTalkHold(source),
+    getPushToTalkHoldCount: () => getPushToTalkHoldCount(),
+    clearPushToTalkHolds: () => clearPushToTalkHoldsService(),
+    stopRecording: () => stopRecordingService(),
+    shouldBlockAssistantInputFromForegroundApp: () =>
+      shouldBlockAssistantInputFromForegroundAppService(),
+    toggleCommandModeArmed: () => toggleCommandModeArmed(),
+    isCommandModeArmed: () => isCommandModeArmed(),
+    notify: (message, isError) => setNoticeService(message, isError),
+    log: (message) => logClientEventService(message),
+    syncGuards: {
+      shouldBypassLocalShortcutHandling: (token) =>
+        shouldBypassLocalShortcutHandlingService(token),
+      shouldIgnoreLocalShortcutFromRecentGlobal: (token, state) =>
+        shouldIgnoreLocalShortcutFromRecentGlobalService(token, state),
+    },
+  },
+);
+wireHotkeyInputButtons({ hotkeyInput, commandHotkeyInput });
+
 wireSettingsFormInputsService({
   refs: settingsFormRefs,
   onFieldChange: () => {
@@ -1901,34 +1754,6 @@ localSttModelCatalogSelect.addEventListener("change", () => {
   markCatalogSelectionChanged();
   handleSettingsChange();
   void refreshSelectedLocalSttModelAvailabilityService({ quiet: true });
-});
-
-hotkeyInput.addEventListener("focus", () => {
-  beginHotkeyCapture();
-});
-
-hotkeyInput.addEventListener("click", () => {
-  beginHotkeyCapture();
-});
-
-hotkeyInput.addEventListener("blur", () => {
-  if (isHotkeyCaptureActive()) {
-    cancelHotkeyCapture();
-  }
-});
-
-commandHotkeyInput.addEventListener("focus", () => {
-  beginCommandHotkeyCapture();
-});
-
-commandHotkeyInput.addEventListener("click", () => {
-  beginCommandHotkeyCapture();
-});
-
-commandHotkeyInput.addEventListener("blur", () => {
-  if (isCommandHotkeyCaptureActive()) {
-    cancelCommandHotkeyCapture();
-  }
 });
 
 dictionaryForm.addEventListener("submit", (event) => {
@@ -2235,10 +2060,6 @@ async function hydrateSettingsFromNativeStorage(): Promise<void> {
     settings = hydrated;
     setSettingsSnapshot(settings);
   }
-}
-
-export function getSettingsSnapshot(): PersistedSettings {
-  return settings;
 }
 
 async function backfillHistoryRecordingIds(): Promise<void> {
