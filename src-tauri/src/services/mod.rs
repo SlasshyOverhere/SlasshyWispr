@@ -5,7 +5,9 @@
 pub mod coqui_setup;
 pub mod hardware;
 pub mod pipeline_service;
+pub mod providers;
 pub mod settings_store;
+pub mod startup;
 pub mod transcribe;
 
 pub(crate) use hardware::build_local_stt_hardware_advice;

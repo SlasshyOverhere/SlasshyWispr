@@ -33,8 +33,10 @@ use crate::updater::{
 };
 use crate::platform::windows_native::schedule_app_relaunch_after_installer;
 use super::windows::{emit_update_install_progress, show_main_window};
+use crate::services::providers::update_github_token;
+use crate::services::startup::read_launch_at_login_preference;
 use crate::{
-    configure_launch_at_login, read_launch_at_login_preference, update_github_token,
+    configure_launch_at_login,
     TRAY_UPDATE_ITEM, TRAY_ID,
 };
 

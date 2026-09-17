@@ -21,7 +21,7 @@ use crate::pipeline::routing::{
 };
 use crate::services::transcribe::apply_optional_bearer_auth;
 use crate::services::pipeline_service::discover_installed_piper_path;
-use crate::{
+use crate::services::providers::{
     is_ollama_service_running, ollama_installer_path,
     query_ollama_version, run_ollama_installer_windows,
 };
