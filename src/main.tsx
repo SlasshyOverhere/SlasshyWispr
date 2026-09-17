@@ -15,24 +15,19 @@ import {
   downloadLocalSttModel as ipcDownloadLocalSttModel,
   ensureVoiceModel as ipcEnsureVoiceModel,
   fetchLocalSttModels as ipcFetchLocalSttModels,
-  fetchOllamaModels as ipcFetchOllamaModels,
-  fetchProviderModels as ipcFetchProviderModels,
   getAssistantInfo as ipcGetAssistantInfo,
   getForegroundInputBlockStatus as ipcGetForegroundInputBlockStatus,
   getLocalSttDownloadStatus as ipcGetLocalSttDownloadStatus,
   getLocalSttHardwareAdvice as ipcGetLocalSttHardwareAdvice,
   getLocalSttModelStatus as ipcGetLocalSttModelStatus,
   getLocalSttRuntimeState as ipcGetLocalSttRuntimeState,
-  getOllamaStatus as ipcGetOllamaStatus,
   getTtsRuntimeSetupStatus as ipcGetTtsRuntimeSetupStatus,
-  installOllama as ipcInstallOllama,
   launchAtLoginStatus as ipcLaunchAtLoginStatus,
   loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
   listDictationRecordingIds as ipcListDictationRecordingIds,
   openLocalSttModelPath as ipcOpenLocalSttModelPath,
   pasteClipboardText as ipcPasteClipboardText,
   pasteTextViaClipboard as ipcPasteTextViaClipboard,
-  pullOllamaModel as ipcPullOllamaModel,
   runAssistantPipeline as ipcRunAssistantPipeline,
   saveDictationRecording as ipcSaveDictationRecording,
   setClipboardText as ipcSetClipboardText,
@@ -152,15 +147,18 @@ import {
 } from "./shell/diagnostics";
 import { parseJson } from "./state/storage";
 import { countWords, formatSpeakingTime } from "./analytics/analytics-service";
-import {
-  looksLikeEmbeddingOnlyOllamaModel,
-  pickDefaultLocalOllamaModelFromCatalog as pickDefaultLocalOllamaModelFromList,
-} from "./stt/ollama-pick";
 import { buildSelectionPopupPayload } from "./windows/selection-intent";
 import {
   inferLocalSttProviderFromModel,
   pickDefaultLocalSttModelFromCatalog as pickDefaultLocalSttModelFromList,
 } from "./stt/provider-inference";
+import {
+  ensureLocalOllamaModelSelected as ensureLocalOllamaModelSelectedService,
+  fetchOllamaModels as fetchOllamaModelsService,
+  initOllamaClient,
+  refreshOllamaStatus as refreshOllamaStatusService,
+  renderOllamaStatus as renderOllamaStatusService,
+} from "./stt/ollama-client";
 import {
   toGlobalShortcutString,
   normalizeShortcutToken,
@@ -257,7 +255,6 @@ import type {
 
   LocalSttHardwareAdvisorChoice,
   AssistantInfoResponse,
-  OllamaStatusResponse,
   LocalSttDownloadStatusResponse,
   LocalSttModelStatusResponse,
   LocalSttHardwareAdviceResponse,
@@ -602,9 +599,6 @@ let localOllamaModelCatalog: string[] = [];
 let localSttModelCatalog: string[] = [];
 let latestAssistantInfoDefaults: AssistantInfoResponse | null = null;
 let piperRuntimeReady = false;
-let ollamaStatusInFlight = false;
-let ollamaInstallInFlight = false;
-let ollamaPullInFlight = false;
 let localSttDownloadInFlight = false;
 let localSttDeleteInFlight = false;
 let localSttDeactivateInFlight = false;
@@ -812,6 +806,69 @@ async function registerUpdateInstallProgressListener(): Promise<void> {
 }
 function startAutomaticUpdateChecks(): void {
   startAutomaticUpdateChecksService();
+}
+initOllamaClient(
+  {
+    statusNotice: ollamaStatusNotice,
+    providerCatalogSelect: providerModelCatalogSelect,
+    localOllamaCatalogSelect: localOllamaModelCatalogSelect,
+    fetchProviderModelsBtn,
+    checkOllamaStatusBtn,
+    installOllamaBtn,
+    fetchOllamaModelsBtn,
+    useOllamaModelBtn,
+    pullOllamaModelBtn,
+    applyModelToAiBtn,
+    applyModelToSttBtn,
+  },
+  {
+    readSettings: () => readSettingsFromForm(),
+    commitSettings: () => {
+      void handleSettingsChange();
+    },
+    isBusy: () => pipelineRunning || stage === "recording",
+    isInstallBusy: () => ollamaInstallBusy || pipelineRunning || stage === "recording",
+    isPullBusy: () => pipelineRunning || stage === "recording" || ollamaPullBusy,
+    setStatusBusy: (busy) => {
+      ollamaStatusBusy = busy;
+    },
+    setInstallBusy: (busy) => {
+      ollamaInstallBusy = busy;
+    },
+    setPullBusy: (busy) => {
+      ollamaPullBusy = busy;
+    },
+    getCatalog: () => localOllamaModelCatalog,
+    setCatalogInput: (value) => {
+      settingsFormRefs.localOllamaModelInput.value = value;
+    },
+    getCatalogInput: () => settingsFormRefs.localOllamaModelInput.value,
+    getCatalogSelection: () => localOllamaModelCatalogSelect.value,
+    setCatalogSelection: (value) => {
+      localOllamaModelCatalogSelect.value = value;
+    },
+    renderProviderCatalog: (models, selected) => renderProviderModelCatalog(models, selected),
+    renderOllamaCatalog: (models, selected) => renderLocalOllamaModelCatalog(models, selected),
+    renderStatus: (status) => renderOllamaStatusService(status),
+    setNotice: (message, isError) => setNotice(message, isError),
+    setStage: (next, detail) => setStage(next, detail),
+    syncAvailability: () => syncActionAvailability(),
+    openModelsPane: () => setActiveSettingsPane("models"),
+  },
+);
+let ollamaStatusBusy = false;
+let ollamaInstallBusy = false;
+let ollamaPullBusy = false;
+async function refreshOllamaStatus(options: { quiet?: boolean } = {}): Promise<void> {
+  await refreshOllamaStatusService(options);
+}
+async function fetchOllamaModels(
+  options: { quiet?: boolean; autoSelect?: boolean } = {},
+): Promise<void> {
+  await fetchOllamaModelsService(options);
+}
+async function ensureLocalOllamaModelSelected(options: { quiet?: boolean } = {}): Promise<string> {
+  return ensureLocalOllamaModelSelectedService(options);
 }
 const settingsCoreDeps: SettingsCoreDeps = {
   isCapturingHotkey: () => isHotkeyCaptureActive(),
@@ -1559,36 +1616,7 @@ setupAllTtsBtn.addEventListener("click", () => {
   void handleSetupAllTts();
 });
 
-fetchProviderModelsBtn.addEventListener("click", () => {
-  void fetchProviderModels();
-});
 
-checkOllamaStatusBtn.addEventListener("click", () => {
-  void refreshOllamaStatus();
-});
-
-installOllamaBtn.addEventListener("click", () => {
-  void installOllama();
-});
-
-fetchOllamaModelsBtn.addEventListener("click", () => {
-  void fetchOllamaModels();
-});
-
-useOllamaModelBtn.addEventListener("click", () => {
-  const selected = localOllamaModelCatalogSelect.value.trim();
-  if (!selected) {
-    setNotice("Select an Ollama model from catalog first.", true);
-    return;
-  }
-  settingsFormRefs.localOllamaModelInput.value = selected;
-  handleSettingsChange();
-  setNotice(`Local Ollama model set to "${selected}".`);
-});
-
-pullOllamaModelBtn.addEventListener("click", () => {
-  void pullOllamaModel();
-});
 
 downloadLocalSttModelBtn.addEventListener("click", () => {
   void downloadLocalSttModel();
@@ -3548,249 +3576,6 @@ async function handleSetupAllTts(): Promise<void> {
     updateTtsSetupGate();
     setNotice(`Setup failed to start: ${asErrorMessage(error)}`, true);
     setStage("error", "Setup failed to start.");
-    syncActionAvailability();
-  }
-}
-
-async function fetchProviderModels(): Promise<void> {
-  if (pipelineRunning || stage === "recording") {
-    return;
-  }
-  let activeSettings = readSettingsFromForm();
-  const anyOnlineRuntime =
-    activeSettings.sttRuntimeMode === "online" || activeSettings.aiRuntimeMode === "online";
-  if (!anyOnlineRuntime) {
-    setNotice("Enable online STT or online AI mode to fetch provider models.", true);
-    return;
-  }
-  if (!activeSettings.apiKey) {
-    setNotice("API key is required to fetch model catalog.", true);
-    setActiveSettingsPane("models");
-    return;
-  }
-
-  setStage("processing", "Loading provider model catalog...");
-  try {
-    const response = await ipcFetchProviderModels({
-      apiKey: activeSettings.apiKey,
-      apiBaseUrl: activeSettings.apiBaseUrl || null,
-    });
-    renderProviderModelCatalog(response.models, activeSettings.aiModelName || activeSettings.sttModelName);
-    setNotice(`Loaded ${response.models.length} provider models.`);
-    setStage("idle", "Provider model list loaded.");
-  } catch (error) {
-    setNotice(`Unable to load provider model catalog: ${asErrorMessage(error)}`, true);
-    setStage("idle", "Provider model list unavailable.");
-  } finally {
-    syncActionAvailability();
-  }
-}
-
-function renderOllamaStatus(status: OllamaStatusResponse): void {
-  const versionSuffix = status.version ? ` (${status.version})` : "";
-  if (status.installed && status.running) {
-    ollamaStatusNotice.textContent = `Ollama is ready${versionSuffix}. ${status.details || ""}`.trim();
-    return;
-  }
-  if (status.installed) {
-    ollamaStatusNotice.textContent =
-      `Ollama is installed${versionSuffix} but the local service is not reachable. ` +
-      (status.details || "Start Ollama to enable local AI models.");
-    return;
-  }
-  ollamaStatusNotice.textContent = status.details || "Ollama is not installed.";
-}
-
-async function refreshOllamaStatus(options: { quiet?: boolean } = {}): Promise<void> {
-  if (ollamaStatusInFlight || ollamaInstallInFlight) {
-    return;
-  }
-  if (pipelineRunning || stage === "recording") {
-    return;
-  }
-
-  const quiet = options.quiet === true;
-  const activeSettings = readSettingsFromForm();
-  ollamaStatusInFlight = true;
-  syncActionAvailability();
-  if (!quiet) {
-    setStage("processing", "Checking Ollama status...");
-  }
-
-  try {
-    const status = await ipcGetOllamaStatus({
-      baseUrl: activeSettings.localOllamaBaseUrl || null,
-    });
-    renderOllamaStatus(status);
-    if (!quiet) {
-      setNotice(status.details || "Ollama status updated.");
-      setStage("idle", "Ollama status checked.");
-    }
-  } catch (error) {
-    const message = asErrorMessage(error);
-    ollamaStatusNotice.textContent = `Unable to determine Ollama status: ${message}`;
-    if (!quiet) {
-      setNotice(`Unable to determine Ollama status: ${message}`, true);
-      setStage("idle", "Ollama status unavailable.");
-    }
-  } finally {
-    ollamaStatusInFlight = false;
-    syncActionAvailability();
-  }
-}
-
-async function installOllama(): Promise<void> {
-  if (ollamaInstallInFlight || pipelineRunning || stage === "recording") {
-    return;
-  }
-
-  ollamaInstallInFlight = true;
-  syncActionAvailability();
-  setStage("processing", "Installing Ollama...");
-
-  try {
-    const status = await ipcInstallOllama();
-    renderOllamaStatus(status);
-    if (status.running) {
-      setNotice("Ollama installation completed and service is reachable.");
-      setStage("idle", "Ollama installed.");
-      await fetchOllamaModels();
-    } else if (status.installed) {
-      setNotice(
-        "Ollama installer finished. Start Ollama once to bring up the local service endpoint.",
-      );
-      setStage("idle", "Ollama install finished.");
-    } else {
-      setNotice(status.details || "Ollama install did not complete yet.", true);
-      setStage("idle", "Ollama install needs attention.");
-    }
-  } catch (error) {
-    setNotice(`Unable to install Ollama from app: ${asErrorMessage(error)}`, true);
-    setStage("idle", "Ollama install failed.");
-  } finally {
-    ollamaInstallInFlight = false;
-    syncActionAvailability();
-  }
-}
-
-async function fetchOllamaModels(
-  options: { quiet?: boolean; autoSelect?: boolean } = {},
-): Promise<void> {
-  if (pipelineRunning || stage === "recording") {
-    return;
-  }
-  const quiet = options.quiet === true;
-  const autoSelect = options.autoSelect === true;
-  const activeSettings = readSettingsFromForm();
-  if (!quiet) {
-    setStage("processing", "Loading Ollama model catalog...");
-  }
-  try {
-    const response = await ipcFetchOllamaModels({
-      baseUrl: activeSettings.localOllamaBaseUrl || null,
-    });
-    renderLocalOllamaModelCatalog(response.models, activeSettings.localOllamaModel);
-    if (
-      autoSelect &&
-      !activeSettings.localOllamaModel.trim() &&
-      response.models.length > 0
-    ) {
-      const fallback = pickDefaultLocalOllamaModelFromList(localOllamaModelCatalog);
-      if (fallback) {
-        localOllamaModelInput.value = fallback;
-        if (localOllamaModelCatalog.includes(fallback)) {
-          localOllamaModelCatalogSelect.value = fallback;
-        }
-        handleSettingsChange();
-        if (!quiet) {
-          setNotice(`Auto-selected local Ollama model "${fallback}".`);
-        }
-      }
-    } else if (!quiet) {
-      setNotice(`Loaded ${response.models.length} Ollama models.`);
-    }
-    if (!quiet) {
-      setStage("idle", "Ollama model list loaded.");
-    }
-  } catch (error) {
-    if (!quiet) {
-      setNotice(`Unable to load Ollama model catalog: ${asErrorMessage(error)}`, true);
-      setStage("idle", "Ollama model list unavailable.");
-    }
-  } finally {
-    syncActionAvailability();
-  }
-}
-
-async function ensureLocalOllamaModelSelected(options: { quiet?: boolean } = {}): Promise<string> {
-  const quiet = options.quiet === true;
-  const activeSettings = readSettingsFromForm();
-  let selected = activeSettings.localOllamaModel.trim() || localOllamaModelCatalogSelect.value.trim();
-  if (selected && !looksLikeEmbeddingOnlyOllamaModel(selected)) {
-    return selected;
-  }
-
-  await fetchOllamaModels({ quiet: true, autoSelect: true });
-  const refreshed = readSettingsFromForm();
-  selected = refreshed.localOllamaModel.trim() || localOllamaModelCatalogSelect.value.trim();
-  if (selected && looksLikeEmbeddingOnlyOllamaModel(selected)) {
-    const fallback = pickDefaultLocalOllamaModelFromList(localOllamaModelCatalog);
-    if (fallback && fallback !== selected) {
-      localOllamaModelInput.value = fallback;
-      if (localOllamaModelCatalog.includes(fallback)) {
-        localOllamaModelCatalogSelect.value = fallback;
-      }
-      handleSettingsChange();
-      selected = fallback;
-    }
-  }
-  if (selected && looksLikeEmbeddingOnlyOllamaModel(selected) && !quiet) {
-    setNotice(
-      `Selected Ollama model "${selected}" appears embedding-only. Choose a chat model (for example llama, qwen, mistral, gemma).`,
-      true,
-    );
-    setActiveSettingsPane("models");
-  }
-  if (!selected && !quiet) {
-    setNotice(
-      "No local Ollama model is selected. Open Settings > Models and pull/download a model.",
-      true,
-    );
-    setActiveSettingsPane("models");
-  }
-  return selected;
-}
-
-async function pullOllamaModel(): Promise<void> {
-  if (pipelineRunning || stage === "recording" || ollamaPullInFlight) {
-    return;
-  }
-  const activeSettings = readSettingsFromForm();
-  const model = activeSettings.localOllamaModel.trim() || localOllamaModelCatalogSelect.value.trim();
-  if (!model) {
-    setNotice("Enter or select an Ollama model to pull/download.", true);
-    setActiveSettingsPane("models");
-    return;
-  }
-
-  setStage("processing", `Pulling Ollama model "${model}"...`);
-  ollamaPullInFlight = true;
-  syncActionAvailability();
-
-  try {
-    const response = await ipcPullOllamaModel({
-      baseUrl: activeSettings.localOllamaBaseUrl || null,
-      model,
-    });
-    localOllamaModelInput.value = response.model;
-    handleSettingsChange();
-    setNotice(`Ollama pull complete: ${response.status || response.model}.`);
-    await fetchOllamaModels();
-  } catch (error) {
-    setNotice(`Unable to pull Ollama model: ${asErrorMessage(error)}`, true);
-    setStage("idle", "Ollama pull failed.");
-  } finally {
-    ollamaPullInFlight = false;
     syncActionAvailability();
   }
 }
@@ -6248,9 +6033,9 @@ function syncActionAvailability(): void {
     pipelineRunning ||
     stage === "recording" ||
     ttsSetupRunning ||
-    ollamaStatusInFlight ||
-    ollamaInstallInFlight ||
-    ollamaPullInFlight ||
+    ollamaStatusBusy ||
+    ollamaInstallBusy ||
+    ollamaPullBusy ||
     localSttHardwareAdvisorOpen;
   const localSttBusy =
     busy ||
