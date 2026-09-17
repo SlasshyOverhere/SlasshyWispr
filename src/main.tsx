@@ -130,6 +130,14 @@ import {
   releasePreWarmedStream as releasePreWarmedStreamService,
 } from "./recording/mic-stream";
 import {
+  beginRecordingTicker as beginRecordingTickerService,
+  initCaptureMonitors,
+  releaseMicrophone as releaseMicrophoneService,
+  startAmplitudeMonitoring as startAmplitudeMonitoringService,
+  stopAmplitudeMonitoring as stopAmplitudeMonitoringService,
+  stopRecordingTicker as stopRecordingTickerService,
+} from "./recording/capture-monitors";
+import {
   isExternalMediaMutedForDictation,
   pauseExternalMediaForDictation as pauseExternalMediaForDictationService,
   resumeExternalMediaAfterDictation as resumeExternalMediaAfterDictationService,
@@ -226,7 +234,6 @@ import {
   resolvePreferredOnlineSttBitrate,
   pickBestRecorderMimeType,
   blobToBase64,
-  formatTimer,
   missingApiKeyForOnlineRuntime,
 } from "./recording/audio-utils";
 import {
@@ -576,17 +583,10 @@ let mediaStream: MediaStream | null = null;
 let recorderMimeType = "audio/webm";
 let recordedChunks: Blob[] = [];
 let recordingStartedAt = 0;
-let recordingTickerId: number | null = null;
 let lastSavedRecordingId: string | null = null;
 let skipPipelineAfterRecorderStop = false;
 let skipPipelineAfterRecorderStopNotice = "";
-let audioContext: AudioContext | null = null;
-let analyserNode: AnalyserNode | null = null;
-let amplitudeSourceNode: MediaStreamAudioSourceNode | null = null;
-let amplitudeBuffer: Float32Array<ArrayBuffer> | null = null;
-let amplitudeFrameId: number | null = null;
 let dockAmplitude = 0;
-let lastDockAmplitudePublishAt = 0;
 let dockHideTimerId: number | null = null;
 const pushToTalkHoldSources = new Set<HoldSource>();
 const pushToTalkHoldStartedAt = new Map<HoldSource, number>();
@@ -728,6 +728,22 @@ initMicStream({
   notify: (message, isError) => setNotice(message, isError),
   log: (message) => logClientEvent(message),
 });
+initCaptureMonitors(
+  { recordTimer },
+  {
+    getAmplitude: () => dockAmplitude,
+    setAmplitude: (level) => {
+      dockAmplitude = level;
+    },
+    publishDockState: () => publishDockState(),
+    now: () => Date.now(),
+    getRecordingStartedAt: () => recordingStartedAt,
+    getMediaStream: () => mediaStream,
+    setMediaStream: (stream) => {
+      mediaStream = stream;
+    },
+  },
+);
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
 initMicrophones(
   { select: microphoneSelect, summary: microphoneSummary },
@@ -5975,123 +5991,23 @@ function isHotkeyReleaseEvent(event: KeyboardEvent, hotkey: HotkeySpec): boolean
 }
 
 function startAmplitudeMonitoring(stream: MediaStream): void {
-  stopAmplitudeMonitoring(false);
-
-  const AudioCtor = window.AudioContext;
-  if (!AudioCtor) {
-    return;
-  }
-
-  if (!audioContext) {
-    audioContext = new AudioCtor();
-  }
-
-  if (audioContext.state === "suspended") {
-    void audioContext.resume().catch(() => {
-      // Ignore resume failures to keep dictation flow resilient.
-    });
-  }
-
-  analyserNode = audioContext.createAnalyser();
-  analyserNode.fftSize = 1024;
-  analyserNode.smoothingTimeConstant = 0.75;
-  amplitudeSourceNode = audioContext.createMediaStreamSource(stream);
-  amplitudeSourceNode.connect(analyserNode);
-  amplitudeBuffer = new Float32Array(analyserNode.fftSize) as Float32Array<ArrayBuffer>;
-  dockAmplitude = 0;
-  lastDockAmplitudePublishAt = 0;
-  publishDockState();
-
-  const tick = (now: number): void => {
-    if (!analyserNode || !amplitudeBuffer) {
-      return;
-    }
-
-    // Throttle visualization updates to ~30fps (33ms) to reduce IPC/CPU overhead
-    // for this peripheral background visualizer.
-    if (now - lastDockAmplitudePublishAt < 33) {
-      amplitudeFrameId = window.requestAnimationFrame(tick);
-      return;
-    }
-
-    analyserNode.getFloatTimeDomainData(amplitudeBuffer);
-
-    let sumSquares = 0;
-    for (let index = 0; index < amplitudeBuffer.length; index += 1) {
-      const sample = amplitudeBuffer[index];
-      sumSquares += sample * sample;
-    }
-
-    const rms = Math.sqrt(sumSquares / amplitudeBuffer.length);
-    const normalized = Math.min(1, Math.max(0, (rms - 0.008) * 11.5));
-    // Adjusted smoothing factor for lower update rate (0.72^2 ≈ 0.52) to maintain visual decay.
-    dockAmplitude = dockAmplitude * 0.52 + normalized * 0.48;
-
-    publishDockState();
-    lastDockAmplitudePublishAt = now;
-
-    amplitudeFrameId = window.requestAnimationFrame(tick);
-  };
-
-  amplitudeFrameId = window.requestAnimationFrame(tick);
+  startAmplitudeMonitoringService(stream);
 }
 
 function stopAmplitudeMonitoring(resetLevel = true): void {
-  if (amplitudeFrameId !== null) {
-    window.cancelAnimationFrame(amplitudeFrameId);
-    amplitudeFrameId = null;
-  }
-
-  if (amplitudeSourceNode) {
-    try {
-      amplitudeSourceNode.disconnect();
-    } catch {
-      // Ignore disconnect failures.
-    }
-    amplitudeSourceNode = null;
-  }
-
-  if (analyserNode) {
-    try {
-      analyserNode.disconnect();
-    } catch {
-      // Ignore disconnect failures.
-    }
-    analyserNode = null;
-  }
-
-  amplitudeBuffer = null;
-
-  if (resetLevel && dockAmplitude !== 0) {
-    dockAmplitude = 0;
-    publishDockState();
-  }
+  stopAmplitudeMonitoringService(resetLevel);
 }
 
 function beginRecordingTicker(): void {
-  stopRecordingTicker();
-  recordTimer.textContent = "00.0s";
-
-  recordingTickerId = window.setInterval(() => {
-    const elapsedMs = Date.now() - recordingStartedAt;
-    recordTimer.textContent = formatTimer(elapsedMs);
-  }, 100);
+  beginRecordingTickerService();
 }
 
 function stopRecordingTicker(): void {
-  if (recordingTickerId !== null) {
-    window.clearInterval(recordingTickerId);
-    recordingTickerId = null;
-  }
+  stopRecordingTickerService();
 }
 
 function releaseMicrophone(): void {
-  stopAmplitudeMonitoring();
-  if (!mediaStream) return;
-  for (const track of mediaStream.getTracks()) {
-    track.stop();
-  }
-  mediaStream = null;
+  releaseMicrophoneService();
 }
 
 async function releasePreWarmedStream(): Promise<void> {
