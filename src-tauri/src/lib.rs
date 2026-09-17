@@ -761,7 +761,7 @@ fn start_local_stt_boot_warmup(app: AppHandle) {
         };
 
         let provider = infer_local_stt_provider_from_model(&model);
-        let (repo_id, model_dir) = match resolve_local_stt_repo_and_dir(&app, &provider, &model) {
+        let (repo_id, model_dir) = match services::transcribe::resolve_local_stt_repo_and_dir(&app, &provider, &model) {
             Ok(result) => result,
             Err(error) => {
                 warn!(
@@ -1518,96 +1518,6 @@ fn run_ollama_installer_windows(installer_path: &Path) -> Result<(), String> {
 
     Ok(())
 }
-
-fn stt_root_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let root = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| format!("Failed to resolve app data directory: {error}"))?
-        .join("stt");
-    fs::create_dir_all(&root)
-        .map_err(|error| format!("Failed to create STT root directory: {error}"))?;
-    Ok(root)
-}
-
-fn stt_models_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let models_dir = stt_root_dir(app)?.join("models");
-    fs::create_dir_all(&models_dir)
-        .map_err(|error| format!("Failed to create STT models directory: {error}"))?;
-    Ok(models_dir)
-}
-
-fn resolve_local_stt_repo_and_dir(
-    app: &AppHandle,
-    provider: &str,
-    model: &str,
-) -> Result<(String, PathBuf), String> {
-    let models_dir = stt_models_dir(app)?;
-    let repo_id = resolve_huggingface_repo_id(provider, model);
-    let target_dir = models_dir.join(sanitize_model_cache_dir_name(&repo_id));
-    if target_dir.exists() {
-        return Ok((repo_id, target_dir));
-    }
-
-    if let Some(legacy_repo_id) = legacy_huggingface_repo_id_for_model(provider, model) {
-        let legacy_dir = models_dir.join(sanitize_model_cache_dir_name(&legacy_repo_id));
-        if legacy_dir.exists() {
-            return Ok((legacy_repo_id, legacy_dir));
-        }
-    }
-
-    Ok((repo_id, target_dir))
-}
-
-fn stt_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let runtime_dir = stt_root_dir(app)?.join("runtime");
-    fs::create_dir_all(&runtime_dir)
-        .map_err(|error| format!("Failed to create STT runtime directory: {error}"))?;
-    Ok(runtime_dir)
-}
-
-fn stt_cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let cache_dir = stt_root_dir(app)?.join("cache");
-    fs::create_dir_all(&cache_dir)
-        .map_err(|error| format!("Failed to create STT cache directory: {error}"))?;
-    Ok(cache_dir)
-}
-
-fn stt_venv_python_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let runtime_dir = stt_runtime_dir(app)?;
-    #[cfg(target_os = "windows")]
-    {
-        Ok(runtime_dir.join("venv").join("Scripts").join("python.exe"))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        Ok(runtime_dir.join("venv").join("bin").join("python"))
-    }
-}
-
-fn ensure_local_stt_bridge_script(app: &AppHandle) -> Result<PathBuf, String> {
-    let runtime_dir = stt_runtime_dir(app)?;
-    let script_path = runtime_dir.join("local_stt_bridge.py");
-    let should_write = fs::read_to_string(&script_path)
-        .map(|existing| existing != LOCAL_STT_BRIDGE_SCRIPT)
-        .unwrap_or(true);
-    if should_write {
-        fs::write(&script_path, LOCAL_STT_BRIDGE_SCRIPT)
-            .map_err(|error| format!("Failed to write local STT bridge script: {error}"))?;
-        stop_all_local_stt_bridge_daemons();
-    }
-    Ok(script_path)
-}
-
-
-
-
-
-
-
-
-
-
 
 fn update_github_token() -> Option<String> {
     non_empty_env_var(UPDATE_GITHUB_TOKEN_ENV)
