@@ -406,10 +406,11 @@ pub(crate) async fn validate_piper(
     })
 }
 
-#[tauri::command]
-pub(crate) async fn get_coqui_status(
+/// Shared Coqui status fetcher behind both `get_coqui_status` and
+/// `validate_coqui` (Phase 6: no command-to-command calls).
+async fn fetch_coqui_status(
     app: AppHandle,
-    request: CoquiStatusRequest,
+    python_path: Option<String>,
 ) -> Result<CoquiStatusResponse, String> {
     if zero_python_mode_enabled() {
         let voice_dir = coqui_voices_dir(&app)?;
@@ -425,7 +426,7 @@ pub(crate) async fn get_coqui_status(
         });
     }
 
-    let python_path = resolve_coqui_python_path(&app, request.python_path.as_deref())?;
+    let python_path = resolve_coqui_python_path(&app, python_path.as_deref())?;
     let voice_dir = coqui_voices_dir(&app)?;
 
     let app_for_worker = app.clone();
@@ -501,6 +502,14 @@ pub(crate) async fn get_coqui_status(
 }
 
 #[tauri::command]
+pub(crate) async fn get_coqui_status(
+    app: AppHandle,
+    request: CoquiStatusRequest,
+) -> Result<CoquiStatusResponse, String> {
+    fetch_coqui_status(app, request.python_path).await
+}
+
+#[tauri::command]
 pub(crate) async fn setup_coqui_runtime(
     app: AppHandle,
     request: CoquiSetupRequest,
@@ -548,13 +557,7 @@ pub(crate) async fn validate_coqui(
         });
     }
 
-    let status = get_coqui_status(
-        app,
-        CoquiStatusRequest {
-            python_path: request.python_path,
-        },
-    )
-    .await?;
+    let status = fetch_coqui_status(app, request.python_path).await?;
 
     if status.available {
         let version = if status.tts_version.trim().is_empty() {

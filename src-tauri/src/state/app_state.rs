@@ -101,12 +101,6 @@ impl AppState {
         Ok(slot.as_ref().map(|item| item.rewrite_text.clone()))
     }
 
-    pub(crate) fn take_pending_selection_rewrite(&self) -> Result<Option<String>, String> {
-        let mut slot = self.lock_pending_selection_rewrite()?;
-        Self::cleanup_expired_pending_selection_rewrite(&mut slot);
-        Ok(slot.take().map(|item| item.rewrite_text))
-    }
-
     fn cleanup_expired_recent_selection_context(slot: &mut Option<RecentSelectionContext>) -> bool {
         let expired = slot
             .as_ref()
