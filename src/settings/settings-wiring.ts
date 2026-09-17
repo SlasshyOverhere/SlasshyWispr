@@ -26,18 +26,24 @@ export interface SettingsCoreDeps {
 export function wireSettingsFormInputs(wiring: SettingsPaneWiring): void {
   const { refs } = wiring;
   const change = wiring.onFieldChange;
-  refs.apiKeyInput.addEventListener("input", change);
-  refs.apiBaseUrlInput.addEventListener("input", change);
-  refs.sttModelInput.addEventListener("input", change);
-  refs.aiModelInput.addEventListener("input", change);
-  refs.localOllamaBaseUrlInput.addEventListener("input", change);
-  refs.localOllamaModelInput.addEventListener("input", change);
+  if (!isPaneConverted("models")) {
+    refs.apiKeyInput.addEventListener("input", change);
+    refs.apiBaseUrlInput.addEventListener("input", change);
+    refs.sttModelInput.addEventListener("input", change);
+    refs.aiModelInput.addEventListener("input", change);
+    refs.localOllamaBaseUrlInput.addEventListener("input", change);
+    refs.localOllamaModelInput.addEventListener("input", change);
+    refs.piperPathInput.addEventListener("input", change);
+    refs.piperQualitySelect.addEventListener("change", change);
+    refs.piperEmotionSelect.addEventListener("change", change);
+    refs.piperSpeedInput.addEventListener("input", change);
+    refs.rememberApiKeyInput.addEventListener("change", change);
+    refs.sttRuntimeModeOnlineInput.addEventListener("change", change);
+    refs.sttRuntimeModeOfflineInput.addEventListener("change", change);
+    refs.aiRuntimeModeOnlineInput.addEventListener("change", change);
+    refs.aiRuntimeModeOfflineInput.addEventListener("change", change);
+  }
   refs.localSttModelInput.addEventListener("input", change);
-  refs.rememberApiKeyInput.addEventListener("change", change);
-  refs.piperPathInput.addEventListener("input", change);
-  refs.piperQualitySelect.addEventListener("change", change);
-  refs.piperEmotionSelect.addEventListener("change", change);
-  refs.piperSpeedInput.addEventListener("input", change);
   refs.ttsEngineSelect.addEventListener("change", change);
   if (!isPaneConverted("pipeline")) {
     refs.systemPromptInput.addEventListener("input", change);

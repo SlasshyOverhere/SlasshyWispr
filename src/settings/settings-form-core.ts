@@ -246,6 +246,25 @@ export function applySettingsPatchToForm(
   if (patch.systemPrompt !== undefined) refs.systemPromptInput.value = patch.systemPrompt;
   if (patch.temperature !== undefined) refs.temperatureInput.value = String(patch.temperature);
   if (patch.maxTokens !== undefined) refs.maxTokensInput.value = String(patch.maxTokens);
+  if (patch.apiKey !== undefined) refs.apiKeyInput.value = patch.apiKey;
+  if (patch.apiBaseUrl !== undefined) refs.apiBaseUrlInput.value = patch.apiBaseUrl;
+  if (patch.sttModelName !== undefined) refs.sttModelInput.value = patch.sttModelName;
+  if (patch.aiModelName !== undefined) refs.aiModelInput.value = patch.aiModelName;
+  if (patch.rememberApiKey !== undefined) refs.rememberApiKeyInput.checked = patch.rememberApiKey;
+  if (patch.sttRuntimeMode !== undefined) {
+    refs.sttRuntimeModeOnlineInput.checked = patch.sttRuntimeMode !== "local";
+    refs.sttRuntimeModeOfflineInput.checked = patch.sttRuntimeMode === "local";
+  }
+  if (patch.aiRuntimeMode !== undefined) {
+    refs.aiRuntimeModeOnlineInput.checked = patch.aiRuntimeMode !== "local";
+    refs.aiRuntimeModeOfflineInput.checked = patch.aiRuntimeMode === "local";
+  }
+  if (patch.localOllamaBaseUrl !== undefined) refs.localOllamaBaseUrlInput.value = patch.localOllamaBaseUrl;
+  if (patch.localOllamaModel !== undefined) refs.localOllamaModelInput.value = patch.localOllamaModel;
+  if (patch.piperPath !== undefined) refs.piperPathInput.value = patch.piperPath;
+  if (patch.piperQuality !== undefined) refs.piperQualitySelect.value = patch.piperQuality;
+  if (patch.piperEmotion !== undefined) refs.piperEmotionSelect.value = patch.piperEmotion;
+  if (patch.piperSpeed !== undefined) refs.piperSpeedInput.value = patch.piperSpeed.toFixed(2);
   if (patch.captureMode !== undefined) {
     refs.captureModeSingleInput.checked = patch.captureMode === "single-tap";
     refs.captureModePushToTalkInput.checked = patch.captureMode === "push-to-talk";

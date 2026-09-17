@@ -402,33 +402,18 @@ const snippetsAddBtnTop = requiredElement<HTMLButtonElement>("#snippetsAddBtnTop
 const notesList = requiredElement<HTMLDivElement>("#notesList");
 const settingsVersionText = requiredElement<HTMLParagraphElement>("#settingsVersionText");
 
-const apiKeyInput = requiredElement<HTMLInputElement>("#apiKeyInput");
-const apiBaseUrlInput = requiredElement<HTMLInputElement>("#apiBaseUrlInput");
-const sttModelInput = requiredElement<HTMLInputElement>("#sttModelInput");
-const aiModelInput = requiredElement<HTMLInputElement>("#aiModelInput");
 const providerModelCatalogSelect = requiredElement<HTMLSelectElement>("#providerModelCatalogSelect");
-const localOllamaBaseUrlInput = requiredElement<HTMLInputElement>("#localOllamaBaseUrlInput");
 const localOllamaModelInput = requiredElement<HTMLInputElement>("#localOllamaModelInput");
 const localOllamaModelCatalogSelect = requiredElement<HTMLSelectElement>(
   "#localOllamaModelCatalogSelect",
 );
 const localSttModelInput = requiredElement<HTMLInputElement>("#localSttModelInput");
 const localSttModelCatalogSelect = requiredElement<HTMLSelectElement>("#localSttModelCatalogSelect");
-const rememberApiKeyInput = requiredElement<HTMLInputElement>("#rememberApiKeyInput");
 const microphoneSelect = requiredElement<HTMLSelectElement>("#microphoneSelect");
 const microphoneSummary = requiredElement<HTMLElement>("#microphoneSummary");
 const hotkeyInput = requiredElement<HTMLInputElement>("#hotkeyInput");
 const commandHotkeyInput = requiredElement<HTMLInputElement>("#commandHotkeyInput");
 const ttsEngineSelect = requiredElement<HTMLSelectElement>("#ttsEngineSelect");
-const piperPathInput = requiredElement<HTMLInputElement>("#piperPathInput");
-const piperQualitySelect = requiredElement<HTMLSelectElement>("#piperQualitySelect");
-const piperEmotionSelect = requiredElement<HTMLSelectElement>("#piperEmotionSelect");
-const piperSpeedInput = requiredElement<HTMLInputElement>("#piperSpeedInput");
-
-const sttRuntimeModeOnlineInput = requiredElement<HTMLInputElement>("#sttRuntimeModeOnline");
-const sttRuntimeModeOfflineInput = requiredElement<HTMLInputElement>("#sttRuntimeModeOffline");
-const aiRuntimeModeOnlineInput = requiredElement<HTMLInputElement>("#aiRuntimeModeOnline");
-const aiRuntimeModeOfflineInput = requiredElement<HTMLInputElement>("#aiRuntimeModeOffline");
 const ollamaStatusNotice = requiredElement<HTMLParagraphElement>("#ollamaStatusNotice");
 const localSttStatusBadge = requiredElement<HTMLSpanElement>("#localSttStatusBadge");
 const localSttStatusDetail = requiredElement<HTMLParagraphElement>("#localSttStatusDetail");
@@ -1191,6 +1176,7 @@ toggleMicEditorBtn.addEventListener("click", () => {
 
 markPaneConverted("pipeline");
 markPaneConverted("general");
+markPaneConverted("models");
 window.addEventListener(SETTINGS_PATCH_EVENT, (event) => {
   const patch = (event as CustomEvent<Partial<PersistedSettings>>).detail;
   if (!patch || typeof patch !== "object") {
@@ -1229,7 +1215,7 @@ providerModelCatalogSelect.addEventListener("change", () => {
   if (!selected) {
     return;
   }
-  aiModelInput.value = selected;
+  settingsFormRefs.aiModelInput.value = selected;
   handleSettingsChange();
 });
 
@@ -1238,7 +1224,7 @@ localOllamaModelCatalogSelect.addEventListener("change", () => {
   if (!selected) {
     return;
   }
-  localOllamaModelInput.value = selected;
+  settingsFormRefs.localOllamaModelInput.value = selected;
   handleSettingsChange();
 });
 
@@ -1384,7 +1370,7 @@ useOllamaModelBtn.addEventListener("click", () => {
     setNotice("Select an Ollama model from catalog first.", true);
     return;
   }
-  localOllamaModelInput.value = selected;
+  settingsFormRefs.localOllamaModelInput.value = selected;
   handleSettingsChange();
   setNotice(`Local Ollama model set to "${selected}".`);
 });
@@ -1411,7 +1397,7 @@ applyModelToAiBtn.addEventListener("click", () => {
     setNotice("Select a model from catalog first.", true);
     return;
   }
-  aiModelInput.value = selected;
+  settingsFormRefs.aiModelInput.value = selected;
   handleSettingsChange();
   setNotice(`AI model set to "${selected}".`);
 });
@@ -1422,7 +1408,7 @@ applyModelToSttBtn.addEventListener("click", () => {
     setNotice("Select a model from catalog first.", true);
     return;
   }
-  sttModelInput.value = selected;
+  settingsFormRefs.sttModelInput.value = selected;
   handleSettingsChange();
   setNotice(`STT model set to "${selected}".`);
 });
@@ -4093,8 +4079,8 @@ async function refreshAssistantInfo(): Promise<void> {
   renderLocalOllamaModelCatalog(localOllamaModelCatalog, settings.localOllamaModel);
   renderLocalSttModelCatalog(localSttModelCatalog, settings.localSttModel);
 
-  if (!piperPathInput.value.trim() && info.piperPath) {
-    piperPathInput.value = info.piperPath;
+  if (!settingsFormRefs.piperPathInput.value.trim() && info.piperPath) {
+    settingsFormRefs.piperPathInput.value = info.piperPath;
     handleSettingsChange();
   }
 
@@ -4109,7 +4095,7 @@ async function handleAutoSetupRuntime(): Promise<void> {
 
   try {
     const result = await ipcSetupAssistantRuntime();
-    piperPathInput.value = result.piperPath;
+    settingsFormRefs.piperPathInput.value = result.piperPath;
     handleSettingsChange();
 
     piperStatusValue.textContent = "Installed";
@@ -4133,7 +4119,7 @@ async function handleValidatePiper(): Promise<void> {
     return;
   }
 
-  const piperPath = piperPathInput.value.trim();
+  const piperPath = settingsFormRefs.piperPathInput.value.trim();
   setStage("processing", "Validating Piper executable...");
 
   try {
@@ -4288,8 +4274,8 @@ function renderProviderModelCatalog(models: string[], selectedModel = ""): void 
   const normalized = next.sort();
   const fallbackModel =
     selectedModel.trim() ||
-    aiModelInput.value.trim() ||
-    sttModelInput.value.trim() ||
+    settingsFormRefs.aiModelInput.value.trim() ||
+    settingsFormRefs.sttModelInput.value.trim() ||
     settings.aiModelName.trim() ||
     settings.sttModelName.trim();
   const finalModels =
@@ -6286,10 +6272,10 @@ function renderAssistantInfo(info: AssistantInfoResponse): void {
   baseUrlValue.textContent = configuredBaseUrl || info.baseUrl || "Not set";
   sttModelValue.textContent = configuredSttModel || info.sttModel || "Not set";
   aiModelValue.textContent = configuredAiModel || info.aiModel || "Not set";
-  apiBaseUrlInput.placeholder = info.baseUrl || "Enter provider URL (example: https://api.example.com/v1)";
-  sttModelInput.placeholder = info.sttModel || "Enter STT model id";
-  aiModelInput.placeholder = info.aiModel || "Enter AI model id";
-  localOllamaBaseUrlInput.placeholder = DEFAULT_LOCAL_OLLAMA_BASE_URL;
+  settingsFormRefs.apiBaseUrlInput.placeholder = info.baseUrl || "Enter provider URL (example: https://api.example.com/v1)";
+  settingsFormRefs.sttModelInput.placeholder = info.sttModel || "Enter STT model id";
+  settingsFormRefs.aiModelInput.placeholder = info.aiModel || "Enter AI model id";
+  settingsFormRefs.localOllamaBaseUrlInput.placeholder = DEFAULT_LOCAL_OLLAMA_BASE_URL;
   updateRuntimeModeNoticeService(settingsFormRefs, settings.sttRuntimeMode, settings.aiRuntimeMode);
   piperStatusValue.textContent = info.piperInstalled ? "Installed" : "Missing";
   piperPathValue.textContent = info.piperPath || "-";
@@ -7294,10 +7280,10 @@ function syncActionAvailability(): void {
   downloadLocalSttModelBtn.disabled = localSttBusy;
   deleteLocalSttModelBtn.disabled = localSttBusy;
   openLocalSttModelPathBtn.disabled = localSttBusy;
-  sttRuntimeModeOnlineInput.disabled = pipelineRunning || stage === "recording" || ttsSetupRunning;
-  sttRuntimeModeOfflineInput.disabled = pipelineRunning || stage === "recording" || ttsSetupRunning;
-  aiRuntimeModeOnlineInput.disabled = busy;
-  aiRuntimeModeOfflineInput.disabled = busy;
+  settingsFormRefs.sttRuntimeModeOnlineInput.disabled = pipelineRunning || stage === "recording" || ttsSetupRunning;
+  settingsFormRefs.sttRuntimeModeOfflineInput.disabled = pipelineRunning || stage === "recording" || ttsSetupRunning;
+  settingsFormRefs.aiRuntimeModeOnlineInput.disabled = busy;
+  settingsFormRefs.aiRuntimeModeOfflineInput.disabled = busy;
   microphoneSelect.disabled = busy;
   settingsFormRefs.dictationLanguageSelect.disabled = busy;
   settingsFormRefs.dictationLanguageModeSingleInput.disabled = busy;
@@ -7306,22 +7292,22 @@ function syncActionAvailability(): void {
     option.disabled = busy;
   }
   settingsFormRefs.styleProfileSelect.disabled = busy;
-  apiKeyInput.disabled = busy;
-  rememberApiKeyInput.disabled = busy;
-  apiBaseUrlInput.disabled = busy;
-  sttModelInput.disabled = busy;
-  aiModelInput.disabled = busy;
+  settingsFormRefs.apiKeyInput.disabled = busy;
+  settingsFormRefs.rememberApiKeyInput.disabled = busy;
+  settingsFormRefs.apiBaseUrlInput.disabled = busy;
+  settingsFormRefs.sttModelInput.disabled =busy;
+  settingsFormRefs.aiModelInput.disabled =busy;
   providerModelCatalogSelect.disabled = busy;
-  localOllamaBaseUrlInput.disabled = busy;
-  localOllamaModelInput.disabled = busy;
+  settingsFormRefs.localOllamaBaseUrlInput.disabled = busy;
+  settingsFormRefs.localOllamaModelInput.disabled = busy;
   localOllamaModelCatalogSelect.disabled = busy;
   localSttModelInput.disabled = localSttBusy;
   localSttModelCatalogSelect.disabled = localSttBusy;
   ttsEngineSelect.disabled = busy;
-  piperPathInput.disabled = busy;
-  piperQualitySelect.disabled = busy;
-  piperEmotionSelect.disabled = busy;
-  piperSpeedInput.disabled = busy;
+  settingsFormRefs.piperPathInput.disabled = busy;
+  settingsFormRefs.piperQualitySelect.disabled = busy;
+  settingsFormRefs.piperEmotionSelect.disabled = busy;
+  settingsFormRefs.piperSpeedInput.disabled = busy;
   hotkeyInput.disabled = busy;
   commandHotkeyInput.disabled = busy;
   settingsFormRefs.captureModeSingleInput.disabled = busy;
@@ -7353,11 +7339,11 @@ function syncActionAvailability(): void {
   fetchProviderModelsBtn.disabled = fetchProviderModelsBtn.disabled || allRuntimeLocal;
   applyModelToAiBtn.disabled = applyModelToAiBtn.disabled || allRuntimeLocal;
   applyModelToSttBtn.disabled = applyModelToSttBtn.disabled || allRuntimeLocal;
-  apiKeyInput.disabled = apiKeyInput.disabled || allRuntimeLocal;
-  rememberApiKeyInput.disabled = rememberApiKeyInput.disabled || allRuntimeLocal;
-  apiBaseUrlInput.disabled = apiBaseUrlInput.disabled || allRuntimeLocal;
-  sttModelInput.disabled = sttModelInput.disabled || allRuntimeLocal;
-  aiModelInput.disabled = aiModelInput.disabled || allRuntimeLocal;
+  settingsFormRefs.apiKeyInput.disabled = settingsFormRefs.apiKeyInput.disabled || allRuntimeLocal;
+  settingsFormRefs.rememberApiKeyInput.disabled = settingsFormRefs.rememberApiKeyInput.disabled || allRuntimeLocal;
+  settingsFormRefs.apiBaseUrlInput.disabled = settingsFormRefs.apiBaseUrlInput.disabled || allRuntimeLocal;
+  settingsFormRefs.sttModelInput.disabled = settingsFormRefs.sttModelInput.disabled || allRuntimeLocal;
+  settingsFormRefs.aiModelInput.disabled = settingsFormRefs.aiModelInput.disabled || allRuntimeLocal;
   providerModelCatalogSelect.disabled = providerModelCatalogSelect.disabled || allRuntimeLocal;
 }
 
