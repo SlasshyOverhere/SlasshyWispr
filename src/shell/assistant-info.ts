@@ -8,6 +8,7 @@
  */
 import { DEFAULT_LOCAL_OLLAMA_BASE_URL } from "../constants";
 import type { AssistantInfoResponse, RuntimeMode } from "../types";
+import { asErrorMessage } from "../utils";
 import { updateRuntimeModeNotice as updateRuntimeModeNoticeService } from "../settings/settings-service";
 import type { SettingsFormRefs } from "../settings/settings-form-refs";
 
@@ -21,6 +22,63 @@ export interface AssistantInfoElements {
   piperPathValue: HTMLElement;
   voiceStatusValue: HTMLElement;
   voicePathValue: HTMLElement;
+}
+
+export interface AssistantStatusDeps {
+  fetchInfo: () => Promise<AssistantInfoResponse>;
+  notify: (message: string, isError?: boolean) => void;
+  renderProviderCatalog: (models: string[], selected: string) => void;
+  renderLocalOllamaCatalog: (models: string[], selected: string) => void;
+  renderLocalSttCatalog: (models: string[], selected: string) => void;
+  getProviderCatalog: () => string[];
+  getLocalOllamaCatalog: () => string[];
+  getLocalSttCatalog: () => string[];
+  getSettings: () => {
+    aiModelName: string;
+    sttModelName: string;
+    localOllamaModel: string;
+    localSttModel: string;
+  };
+  getPiperPathInput: () => HTMLInputElement;
+  onSettingsChanged: () => void;
+}
+
+let statusDeps!: AssistantStatusDeps;
+
+export function initAssistantStatus(deps: AssistantStatusDeps): void {
+  statusDeps = deps;
+}
+
+export async function refreshAssistantInfo(): Promise<void> {
+  const info = await statusDeps.fetchInfo();
+  renderAssistantInfo(info);
+  const settings = statusDeps.getSettings();
+  statusDeps.renderProviderCatalog(
+    statusDeps.getProviderCatalog(),
+    settings.aiModelName || settings.sttModelName,
+  );
+  statusDeps.renderLocalOllamaCatalog(
+    statusDeps.getLocalOllamaCatalog(),
+    settings.localOllamaModel,
+  );
+  statusDeps.renderLocalSttCatalog(
+    statusDeps.getLocalSttCatalog(),
+    settings.localSttModel,
+  );
+
+  const piperPathInput = statusDeps.getPiperPathInput();
+  if (!piperPathInput.value.trim() && info.piperPath) {
+    piperPathInput.value = info.piperPath;
+    statusDeps.onSettingsChanged();
+  }
+}
+
+export async function refreshAssistantInfoSafely(): Promise<void> {
+  try {
+    await refreshAssistantInfo();
+  } catch (error) {
+    statusDeps.notify(`Unable to refresh runtime status: ${asErrorMessage(error)}`, true);
+  }
 }
 
 export interface AssistantInfoDeps {

@@ -6,7 +6,13 @@
  * runtime-ready flag plus gate callback. Runs against stub elements.
  */
 import { describe, it, expect, beforeEach } from "bun:test";
-import { initAssistantInfo, renderAssistantInfo } from "./assistant-info";
+import {
+  initAssistantInfo,
+  initAssistantStatus,
+  refreshAssistantInfo,
+  refreshAssistantInfoSafely,
+  renderAssistantInfo,
+} from "./assistant-info";
 import type { AssistantInfoResponse } from "../types";
 
 function fakeParagraph(): HTMLParagraphElement {
@@ -118,5 +124,72 @@ describe("renderAssistantInfo", () => {
     expect(harness.elements.aiModelValue.textContent).toBe("llama3");
     expect(harness.elements.piperStatusValue.textContent).toBe("Missing");
     expect(harness.isReady()).toBe(false);
+  });
+});
+
+describe("refreshAssistantInfo", () => {
+  function wireStatus(options: {
+    info?: AssistantInfoResponse;
+    fetchError?: unknown;
+    piperPathValue?: string;
+  } = {}) {
+    wireHarness();
+    const renders: { provider: string[]; ollama: string[]; stt: string[] } = {
+      provider: [],
+      ollama: [],
+      stt: [],
+    };
+    const notices: string[] = [];
+    let settingsChanged = 0;
+    const piperPathInput = { value: options.piperPathValue ?? "" } as HTMLInputElement;
+    const info = options.info ?? fakeResponse();
+    initAssistantStatus({
+      fetchInfo: async () => {
+        if (options.fetchError !== undefined) throw options.fetchError;
+        return info;
+      },
+      notify: (message) => {
+        notices.push(message);
+      },
+      renderProviderCatalog: (models) => {
+        renders.provider = models;
+      },
+      renderLocalOllamaCatalog: (models) => {
+        renders.ollama = models;
+      },
+      renderLocalSttCatalog: (models) => {
+        renders.stt = models;
+      },
+      getProviderCatalog: () => ["gpt-4o"],
+      getLocalOllamaCatalog: () => ["llama3"],
+      getLocalSttCatalog: () => ["parakeet"],
+      getSettings: () => ({
+        aiModelName: "gpt-4o",
+        sttModelName: "whisper-1",
+        localOllamaModel: "llama3",
+        localSttModel: "parakeet",
+      }),
+      getPiperPathInput: () => piperPathInput,
+      onSettingsChanged: () => {
+        settingsChanged += 1;
+      },
+    });
+    return { renders, notices, piperPathInput, settingsChanged: () => settingsChanged };
+  }
+
+  it("renders info plus catalogs and backfills an empty piper path", async () => {
+    const harness = wireStatus();
+    await refreshAssistantInfo();
+    expect(harness.renders.provider).toEqual(["gpt-4o"]);
+    expect(harness.renders.ollama).toEqual(["llama3"]);
+    expect(harness.renders.stt).toEqual(["parakeet"]);
+    expect(harness.piperPathInput.value).toBe("/usr/bin/piper");
+    expect(harness.settingsChanged()).toBe(1);
+  });
+
+  it("notifies instead of throwing on fetch failure", async () => {
+    const harness = wireStatus({ fetchError: new Error("offline") });
+    await refreshAssistantInfoSafely();
+    expect(harness.notices).toEqual(["Unable to refresh runtime status: offline"]);
   });
 });

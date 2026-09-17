@@ -195,6 +195,8 @@ import {
 } from "./collections/collections-view";
 import {
   initAssistantInfo,
+  initAssistantStatus,
+  refreshAssistantInfoSafely as refreshAssistantInfoSafelyService,
   renderAssistantInfo as renderAssistantInfoService,
 } from "./shell/assistant-info";
 import {
@@ -381,7 +383,6 @@ import type {
 
   AssistantInfoResponse,
   PersistedSettings,
-  UsageStats,
   AnalyticsSessionDetail,
   AchievementState,
   HomeHistoryEntry,
@@ -898,7 +899,7 @@ initPipelineClient(
     copyToClipboard: (text) => copyToClipboardService(text),
     openSettings: (reason) => openSettingsService(reason),
     setActiveSettingsPane: (pane, reason) => setActiveSettingsPaneService(pane, reason),
-    refreshAssistantInfo: () => refreshAssistantInfoSafely(),
+    refreshAssistantInfo: () => refreshAssistantInfoSafelyService(),
   },
 );
 initLocalSttState({
@@ -1061,7 +1062,7 @@ initLocalSttClient(
     syncAvailability: () => syncActionAvailabilityService(),
     openSettings: (reason) => openSettingsService(reason),
     setActiveSettingsPane: (pane, reason) => setActiveSettingsPaneService(pane, reason),
-    refreshAssistantInfo: () => refreshAssistantInfoSafely(),
+    refreshAssistantInfo: () => refreshAssistantInfoSafelyService(),
     renderFetchedCatalog: (models, selected) => renderLocalSttModelCatalogService(models, selected),
     checkModelFileExists: (model) => checkModelFileExistsService(model),
     checkPythonDependencies: (model) => checkPythonDependenciesService(model),
@@ -1208,6 +1209,22 @@ initAssistantInfo(
     updateTtsSetupGate: () => updateTtsSetupGateService(),
   },
 );
+initAssistantStatus({
+  fetchInfo: () => ipcGetAssistantInfo(),
+  notify: (message, isError) => setNoticeService(message, isError),
+  renderProviderCatalog: (models, selected) => renderProviderModelCatalogService(models, selected),
+  renderLocalOllamaCatalog: (models, selected) => renderLocalOllamaModelCatalogService(models, selected),
+  renderLocalSttCatalog: (models, selected) => renderLocalSttModelCatalogService(models, selected),
+  getProviderCatalog: () => providerModelCatalog,
+  getLocalOllamaCatalog: () => localOllamaModelCatalog,
+  getLocalSttCatalog: () => localSttModelCatalog,
+  getSettings: () => settings,
+  getPiperPathInput: () => settingsFormRefs.piperPathInput,
+  onSettingsChanged: () => {
+    void handleSettingsChange();
+  },
+});
+
 initClipboard({
   isTauri: isTauriEnvironment,
   notify: (message, isError) => setNoticeService(message, isError),
@@ -1414,7 +1431,7 @@ initTtsClient(
     setNotice: (message, isError) => setNoticeService(message, isError),
     setStage: (next, detail) => setStageService(next, detail),
     getStage: () => stage,
-    refreshAssistantInfo: () => refreshAssistantInfoSafely(),
+    refreshAssistantInfo: () => refreshAssistantInfoSafelyService(),
     syncAvailability: () => syncActionAvailabilityService(),
     updateGate: () => updateTtsSetupGateService(),
     isSetupRunning: () => ttsSetupRunning,
@@ -2164,12 +2181,22 @@ async function bootstrap(): Promise<void> {
     const totalSessions = usageStats.sessions + usageStats.prevSessions;
     const totalSeconds = usageStats.speakingSeconds + usageStats.prevSpeakingSeconds;
     if (totalWords > 0 || totalSessions > 0 || totalSeconds > 0) {
-      checkAndUnlockAchievements({
-        ...usageStats,
-        words: totalWords,
-        sessions: totalSessions,
-        speakingSeconds: totalSeconds,
-      });
+      {
+        const unlocked = newlyUnlockedAchievements(
+          {
+            ...usageStats,
+            words: totalWords,
+            sessions: totalSessions,
+            speakingSeconds: totalSeconds,
+          },
+          achievementStates,
+          Date.now(),
+        );
+        if (unlocked.length > 0) {
+          achievementStates.push(...unlocked);
+          persistAchievementStatesService();
+        }
+      }
       window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
     }
   }
@@ -2517,28 +2544,8 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
   logClientEventService("[hotkey.global.event] no handler matched the incoming shortcut");
 }
 
-function checkAndUnlockAchievements(stats: UsageStats): void {
-  const unlocked = newlyUnlockedAchievements(stats, achievementStates, Date.now());
-  if (unlocked.length > 0) {
-    achievementStates.push(...unlocked);
-    persistAchievementStatesService();
-  }
-}
 
 
-async function refreshAssistantInfo(): Promise<void> {
-  const info = await ipcGetAssistantInfo();
-  renderAssistantInfoService(info);
-  renderProviderModelCatalogService(providerModelCatalog, settings.aiModelName || settings.sttModelName);
-  renderLocalOllamaModelCatalogService(localOllamaModelCatalog, settings.localOllamaModel);
-  renderLocalSttModelCatalogService(localSttModelCatalog, settings.localSttModel);
-
-  if (!settingsFormRefs.piperPathInput.value.trim() && info.piperPath) {
-    settingsFormRefs.piperPathInput.value = info.piperPath;
-    handleSettingsChange();
-  }
-
-}
 
 
 // ===== Recording State Machine Integration =====
@@ -2649,12 +2656,5 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
 /**
  * Returns diagnostic data for specific offline mode issues
  */
-async function refreshAssistantInfoSafely(): Promise<void> {
-  try {
-    await refreshAssistantInfo();
-  } catch (error) {
-    setNoticeService(`Unable to refresh runtime status: ${asErrorMessage(error)}`, true);
-  }
-}
 
 void bootstrap();
