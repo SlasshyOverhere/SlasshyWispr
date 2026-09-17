@@ -118,6 +118,11 @@ import {
   renderPipelineResponse as renderPipelineResponseService,
 } from "./pipeline/pipeline-render";
 import {
+  initPlayback,
+  interruptTtsPlaybackForCaptureIntent as interruptTtsPlaybackService,
+  playGeneratedAudio as playGeneratedAudioService,
+} from "./recording/playback";
+import {
   isExternalMediaMutedForDictation,
   pauseExternalMediaForDictation as pauseExternalMediaForDictationService,
   resumeExternalMediaAfterDictation as resumeExternalMediaAfterDictationService,
@@ -705,6 +710,17 @@ initPipelineRender(
     getRecentTurns: () => recentTurns,
   },
 );
+initPlayback(assistantAudio, {
+  getActivePlayback: () => activeTtsPlayback,
+  setActivePlayback: (playback) => {
+    activeTtsPlayback = playback;
+  },
+  getStage: () => stage,
+  transition: (event) => {
+    transitionRecordingState(event);
+  },
+  syncAvailability: () => syncActionAvailability(),
+});
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
 initMicrophones(
   { select: microphoneSelect, summary: microphoneSummary },
@@ -4290,30 +4306,7 @@ async function handleDockMicToggle(): Promise<void> {
 }
 
 function interruptTtsPlaybackForCaptureIntent(): boolean {
-  const activePlayback = activeTtsPlayback;
-  if (!activePlayback && stage !== "speaking") {
-    return false;
-  }
-
-  if (activePlayback) {
-    activePlayback.interrupted = true;
-  }
-
-  assistantAudio.pause();
-  assistantAudio.currentTime = 0;
-  assistantAudio.removeAttribute("src");
-  assistantAudio.load();
-
-  if (activePlayback) {
-    activePlayback.finish(false);
-  }
-
-  if (stage === "speaking") {
-    transitionRecordingState({ type: "interrupt-playback" });
-    syncActionAvailability();
-  }
-
-  return true;
+  return interruptTtsPlaybackService();
 }
 
 async function startRecording(): Promise<void> {
@@ -4874,57 +4867,8 @@ function renderPipelineResponse(response: AssistantPipelineResponse): void {
   renderPipelineResponseService(response);
 }
 
-async function playGeneratedAudio(audioBase64: string, _engine: TtsEngine): Promise<boolean> {
-  transitionRecordingState({ type: "tts-playback-started" });
-
-  let playback!: ActiveTtsPlayback;
-  let settled = false;
-  let completionResolve: ((completed: boolean) => void) | null = null;
-
-  const completion = new Promise<boolean>((resolve) => {
-    completionResolve = resolve;
-  });
-
-  const finishPlayback = (completed: boolean): void => {
-    if (settled) {
-      return;
-    }
-    settled = true;
-    assistantAudio.removeEventListener("ended", onPlaybackDone);
-    assistantAudio.removeEventListener("error", onPlaybackDone);
-    if (activeTtsPlayback === playback) {
-      activeTtsPlayback = null;
-    }
-    completionResolve?.(completed);
-  };
-
-  const onPlaybackDone = (): void => {
-    finishPlayback(!playback.interrupted);
-  };
-
-  playback = {
-    interrupted: false,
-    finish: finishPlayback,
-  };
-
-  activeTtsPlayback = playback;
-  assistantAudio.addEventListener("ended", onPlaybackDone);
-  assistantAudio.addEventListener("error", onPlaybackDone);
-
-  assistantAudio.src = `data:audio/wav;base64,${audioBase64}`;
-  assistantAudio.currentTime = 0;
-  try {
-    await assistantAudio.play();
-  } catch (error) {
-    if (playback.interrupted) {
-      finishPlayback(false);
-      return false;
-    }
-    finishPlayback(false);
-    throw error;
-  }
-
-  return completion;
+async function playGeneratedAudio(audioBase64: string, engine: TtsEngine): Promise<boolean> {
+  return playGeneratedAudioService(audioBase64, engine);
 }
 
 function renderAssistantInfo(info: AssistantInfoResponse): void {
