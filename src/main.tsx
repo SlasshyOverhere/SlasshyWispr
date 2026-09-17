@@ -1484,10 +1484,10 @@ document.addEventListener("keydown", (event) => {
         event.repeat,
       )}`,
     );
-    if (shouldBypassLocalShortcutHandling(commandShortcutToken)) {
+    if (shouldBypassLocalShortcutHandlingService(commandShortcutToken)) {
       return;
     }
-    if (shouldIgnoreLocalShortcutFromRecentGlobal(commandShortcutToken, "pressed")) {
+    if (shouldIgnoreLocalShortcutFromRecentGlobalService(commandShortcutToken, "pressed")) {
       return;
     }
     if (event.repeat) {
@@ -1516,10 +1516,10 @@ document.addEventListener("keydown", (event) => {
       event.repeat,
     )}`,
   );
-  if (shouldBypassLocalShortcutHandling(pushShortcutToken)) {
+  if (shouldBypassLocalShortcutHandlingService(pushShortcutToken)) {
     return;
   }
-  if (shouldIgnoreLocalShortcutFromRecentGlobal(pushShortcutToken, "pressed")) {
+  if (shouldIgnoreLocalShortcutFromRecentGlobalService(pushShortcutToken, "pressed")) {
     return;
   }
 
@@ -1565,10 +1565,10 @@ document.addEventListener("keyup", (event) => {
   logClientEvent(
     `[hotkey.local.push] keyup shortcut=${pushShortcutToken} capture=${settings.captureMode}`,
   );
-  if (shouldBypassLocalShortcutHandling(pushShortcutToken)) {
+  if (shouldBypassLocalShortcutHandlingService(pushShortcutToken)) {
     return;
   }
-  if (shouldIgnoreLocalShortcutFromRecentGlobal(pushShortcutToken, "released")) {
+  if (shouldIgnoreLocalShortcutFromRecentGlobalService(pushShortcutToken, "released")) {
     return;
   }
 
@@ -1597,7 +1597,7 @@ window.addEventListener("blur", () => {
 
 window.addEventListener("focus", () => {
   if (!isGlobalShortcutsActive() && !isAnyHotkeyCaptureActive()) {
-    requestGlobalShortcutSync();
+    requestGlobalShortcutSyncService();
   }
 });
 
@@ -1672,24 +1672,6 @@ initHotkeySync({
   publishDockState: () => publishDockState(),
   onShortcutEvent: (event) => handleGlobalShortcutEvent(event),
 });
-function requestGlobalShortcutSync(force = false): void {
-  requestGlobalShortcutSyncService(force);
-}
-async function syncGlobalShortcuts(force = false): Promise<void> {
-  await syncGlobalShortcutsService(force);
-}
-function markGlobalShortcutHandled(shortcutToken: string, state: "pressed" | "released"): void {
-  markGlobalShortcutHandledService(shortcutToken, state);
-}
-function shouldBypassLocalShortcutHandling(shortcutToken: string): boolean {
-  return shouldBypassLocalShortcutHandlingService(shortcutToken);
-}
-function shouldIgnoreLocalShortcutFromRecentGlobal(
-  shortcutToken: string,
-  state: "pressed" | "released",
-): boolean {
-  return shouldIgnoreLocalShortcutFromRecentGlobalService(shortcutToken, state);
-}
 wireSettingsFormInputsService({
   refs: settingsFormRefs,
   onFieldChange: () => {
@@ -2055,7 +2037,7 @@ async function bootstrap(): Promise<void> {
   // Register global hotkeys immediately — user should be able to press the
   // hotkey as soon as settings are loaded, without waiting for the rest of
   // the heavy bootstrap chain (Ollama, STT, TTS, model lists, etc.).
-  requestGlobalShortcutSync(true);
+  requestGlobalShortcutSyncService(true);
 
   void backfillHistoryRecordingIds();
   setStage("idle", "Loading assistant metadata...");
@@ -2412,7 +2394,7 @@ const settingsHandleEffects: SettingsHandleEffects = {
     renderNotesList();
     const nextShortcutSignature = buildShortcutSyncSignature(next);
     if (previousShortcutSignature !== nextShortcutSignature) {
-      requestGlobalShortcutSync();
+      requestGlobalShortcutSyncService();
     }
     if (previousLaunchAtLogin !== next.launchAtLogin) {
       requestLaunchAtLoginSync(next.launchAtLogin);
@@ -2556,7 +2538,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
 
   if (pushShortcut && shortcut === pushShortcut) {
     if (pressed) {
-      markGlobalShortcutHandled(shortcut, "pressed");
+      markGlobalShortcutHandledService(shortcut, "pressed");
       logClientEvent(
         `[hotkey.global.push] pressed capture=${settings.captureMode} holdCount=${getPushToTalkHoldCount()}`,
       );
@@ -2579,7 +2561,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
       }
     }
     if (released && (settings.captureMode === "push-to-talk" || hasPushToTalkHold("hotkey"))) {
-      markGlobalShortcutHandled(shortcut, "released");
+      markGlobalShortcutHandledService(shortcut, "released");
       logClientEvent("[hotkey.global.push] released -> release push-to-talk hold");
       releasePushToTalk("hotkey");
     }
@@ -2591,7 +2573,7 @@ function handleGlobalShortcutEvent(event: ShortcutEvent): void {
     shortcut === commandShortcut &&
     pressed
   ) {
-    markGlobalShortcutHandled(shortcut, "pressed");
+    markGlobalShortcutHandledService(shortcut, "pressed");
     logClientEvent("[hotkey.global.command] pressed -> toggling command mode");
     void (async () => {
       if (await shouldBlockAssistantInputFromForegroundApp()) {
@@ -3365,11 +3347,11 @@ async function refreshBlockedAppShortcutSuppression(): Promise<void> {
     setShortcutSuppressionActive(shouldSuppress);
     if (shouldSuppress) {
       clearPushToTalkHolds();
-      await syncGlobalShortcuts(true);
+      await syncGlobalShortcutsService(true);
       return;
     }
 
-    requestGlobalShortcutSync(true);
+    requestGlobalShortcutSyncService(true);
   } finally {
     foregroundBlockMonitorInFlight = false;
   }
