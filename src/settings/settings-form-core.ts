@@ -246,4 +246,51 @@ export function applySettingsPatchToForm(
   if (patch.systemPrompt !== undefined) refs.systemPromptInput.value = patch.systemPrompt;
   if (patch.temperature !== undefined) refs.temperatureInput.value = String(patch.temperature);
   if (patch.maxTokens !== undefined) refs.maxTokensInput.value = String(patch.maxTokens);
+  if (patch.captureMode !== undefined) {
+    refs.captureModeSingleInput.checked = patch.captureMode === "single-tap";
+    refs.captureModePushToTalkInput.checked = patch.captureMode === "push-to-talk";
+  }
+  if (patch.themeMode !== undefined) {
+    refs.themeModeSelect.value = patch.themeMode;
+    for (const input of refs.themeCardInputs) {
+      input.checked = input.value === patch.themeMode;
+    }
+  }
+  if (patch.dictationLanguage !== undefined) refs.dictationLanguageSelect.value = patch.dictationLanguage;
+  if (patch.dictationLanguageMode !== undefined) {
+    refs.dictationLanguageModeSingleInput.checked = patch.dictationLanguageMode === "single";
+    refs.dictationLanguageModeMultipleInput.checked = patch.dictationLanguageMode === "multiple";
+  }
+  if (patch.dictationLanguageAllowList !== undefined) {
+    for (const option of refs.dictationLanguageOptionInputs) {
+      option.checked = patch.dictationLanguageAllowList.includes(option.value);
+    }
+  }
+  if (patch.styleProfile !== undefined) refs.styleProfileSelect.value = patch.styleProfile;
+  if (patch.rawMode !== undefined) refs.rawModeToggle.checked = patch.rawMode;
+  if (patch.backtrackCorrection !== undefined) refs.backtrackToggle.checked = patch.backtrackCorrection;
+  if (patch.removeFillers !== undefined) refs.removeFillersToggle.checked = patch.removeFillers;
+  if (patch.autoPunctuation !== undefined) refs.autoPunctuationToggle.checked = patch.autoPunctuation;
+  if (patch.numberedLists !== undefined) refs.numberedListsToggle.checked = patch.numberedLists;
+  if (patch.noiseSuppression !== undefined) refs.noiseSuppressionToggle.checked = patch.noiseSuppression;
+  if (patch.commandMode !== undefined) refs.commandModeToggle.checked = patch.commandMode;
+  if (patch.wakeWordEnabled !== undefined) refs.wakeWordEnabledToggle.checked = patch.wakeWordEnabled;
+  if (patch.assistantName !== undefined) refs.assistantNameInput.value = patch.assistantName;
+  if (patch.contextAwareness !== undefined) refs.contextAwarenessToggle.checked = patch.contextAwareness;
+  if (patch.copyToClipboard !== undefined) refs.copyToClipboardToggle.checked = patch.copyToClipboard;
+  if (patch.autoPasteDictation !== undefined) refs.autoPasteDictationToggle.checked = patch.autoPasteDictation;
+  if (patch.launchAtLogin !== undefined) refs.launchAtLoginToggle.checked = patch.launchAtLogin;
+  if (patch.showFlowBar !== undefined) refs.showFlowBarToggle.checked = patch.showFlowBar;
+  if (patch.showDockAlways !== undefined) refs.showDockAlwaysToggle.checked = patch.showDockAlways;
+  if (patch.incognitoMode !== undefined) refs.incognitoModeToggle.checked = patch.incognitoMode;
+  if (patch.saveRecordings !== undefined) refs.saveRecordingsToggle.checked = patch.saveRecordings;
+  if (patch.dictationSoundEffects !== undefined) refs.dictationSoundEffectsToggle.checked = patch.dictationSoundEffects;
+  if (patch.pushToTalkSound !== undefined) refs.pushToTalkSoundSelect.value = patch.pushToTalkSound;
+  if (patch.pushToTalkEndSound !== undefined) refs.pushToTalkEndSoundSelect.value = patch.pushToTalkEndSound;
+  if (patch.pushToTalkSoundVolume !== undefined) {
+    refs.pushToTalkSoundVolumeRange.value = String(Math.round(patch.pushToTalkSoundVolume * 100));
+  }
+  if (patch.muteMusicWhileDictating !== undefined) {
+    refs.muteMusicWhileDictatingToggle.checked = patch.muteMusicWhileDictating;
+  }
 }

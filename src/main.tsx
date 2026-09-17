@@ -415,32 +415,16 @@ const localOllamaModelCatalogSelect = requiredElement<HTMLSelectElement>(
 const localSttModelInput = requiredElement<HTMLInputElement>("#localSttModelInput");
 const localSttModelCatalogSelect = requiredElement<HTMLSelectElement>("#localSttModelCatalogSelect");
 const rememberApiKeyInput = requiredElement<HTMLInputElement>("#rememberApiKeyInput");
-const captureModeSingleInput = requiredElement<HTMLInputElement>("#captureModeSingle");
-const captureModePushToTalkInput = requiredElement<HTMLInputElement>("#captureModePushToTalk");
 const microphoneSelect = requiredElement<HTMLSelectElement>("#microphoneSelect");
 const microphoneSummary = requiredElement<HTMLElement>("#microphoneSummary");
 const hotkeyInput = requiredElement<HTMLInputElement>("#hotkeyInput");
 const commandHotkeyInput = requiredElement<HTMLInputElement>("#commandHotkeyInput");
-const dictationLanguageSelect = requiredElement<HTMLSelectElement>("#dictationLanguageSelect");
-const dictationLanguageModeSingleInput = requiredElement<HTMLInputElement>(
-  "#dictationLanguageModeSingle",
-);
-const dictationLanguageModeMultipleInput = requiredElement<HTMLInputElement>(
-  "#dictationLanguageModeMultiple",
-);
-const dictationLanguageOptionInputs = Array.from(
-  document.querySelectorAll<HTMLInputElement>("[data-dictation-lang-option]"),
-);
-const styleProfileSelect = requiredElement<HTMLSelectElement>("#styleProfileSelect");
 const ttsEngineSelect = requiredElement<HTMLSelectElement>("#ttsEngineSelect");
 const piperPathInput = requiredElement<HTMLInputElement>("#piperPathInput");
 const piperQualitySelect = requiredElement<HTMLSelectElement>("#piperQualitySelect");
 const piperEmotionSelect = requiredElement<HTMLSelectElement>("#piperEmotionSelect");
 const piperSpeedInput = requiredElement<HTMLInputElement>("#piperSpeedInput");
 
-const commandModeToggle = requiredElement<HTMLInputElement>("#commandModeToggle");
-const wakeWordEnabledToggle = requiredElement<HTMLInputElement>("#wakeWordEnabledToggle");
-const assistantNameInput = requiredElement<HTMLInputElement>("#assistantNameInput");
 const sttRuntimeModeOnlineInput = requiredElement<HTMLInputElement>("#sttRuntimeModeOnline");
 const sttRuntimeModeOfflineInput = requiredElement<HTMLInputElement>("#sttRuntimeModeOffline");
 const aiRuntimeModeOnlineInput = requiredElement<HTMLInputElement>("#aiRuntimeModeOnline");
@@ -451,10 +435,6 @@ const localSttStatusDetail = requiredElement<HTMLParagraphElement>("#localSttSta
 const localSttDownloadNotice = requiredElement<HTMLParagraphElement>("#localSttDownloadNotice");
 const localSttDownloadProgressBar = requiredElement<HTMLSpanElement>("#localSttDownloadProgressBar");
 const localSttDownloadProgressText = requiredElement<HTMLParagraphElement>("#localSttDownloadProgressText");
-const contextAwarenessToggle = requiredElement<HTMLInputElement>("#contextAwarenessToggle");
-const copyToClipboardToggle = requiredElement<HTMLInputElement>("#copyToClipboardToggle");
-const autoPasteDictationToggle = requiredElement<HTMLInputElement>("#autoPasteDictationToggle");
-const incognitoModeToggle = requiredElement<HTMLInputElement>("#incognitoModeToggle");
 const clearRecordingsBtn = requiredElement<HTMLButtonElement>("#clearRecordingsBtn");
 const recordingsStorageHint = requiredElement<HTMLSpanElement>("#recordingsStorageHint");
 const recordingsStorageHintWeb = requiredElement<HTMLParagraphElement>("#recordingsStorageHintWeb");
@@ -463,10 +443,6 @@ const pushToTalkSoundSelect = requiredElement<HTMLSelectElement>("#pushToTalkSou
 const pushToTalkEndSoundSelect = requiredElement<HTMLSelectElement>("#pushToTalkEndSoundSelect");
 const previewPttSoundBtn = requiredElement<HTMLButtonElement>("#previewPttSoundBtn");
 const previewPttEndSoundBtn = requiredElement<HTMLButtonElement>("#previewPttEndSoundBtn");
-const backtrackToggle = requiredElement<HTMLInputElement>("#backtrackToggle");
-const removeFillersToggle = requiredElement<HTMLInputElement>("#removeFillersToggle");
-const autoPunctuationToggle = requiredElement<HTMLInputElement>("#autoPunctuationToggle");
-const numberedListsToggle = requiredElement<HTMLInputElement>("#numberedListsToggle");
 const updateStatusPill = requiredElement<HTMLDivElement>("#updateStatusPill");
 const updateStatusText = requiredElement<HTMLParagraphElement>("#updateStatusText");
 const updateCurrentVersion = requiredElement<HTMLElement>("#updateCurrentVersion");
@@ -1214,6 +1190,7 @@ toggleMicEditorBtn.addEventListener("click", () => {
 });
 
 markPaneConverted("pipeline");
+markPaneConverted("general");
 window.addEventListener(SETTINGS_PATCH_EVENT, (event) => {
   const patch = (event as CustomEvent<Partial<PersistedSettings>>).detail;
   if (!patch || typeof patch !== "object") {
@@ -7322,13 +7299,13 @@ function syncActionAvailability(): void {
   aiRuntimeModeOnlineInput.disabled = busy;
   aiRuntimeModeOfflineInput.disabled = busy;
   microphoneSelect.disabled = busy;
-  dictationLanguageSelect.disabled = busy;
-  dictationLanguageModeSingleInput.disabled = busy;
-  dictationLanguageModeMultipleInput.disabled = busy;
-  for (const option of dictationLanguageOptionInputs) {
+  settingsFormRefs.dictationLanguageSelect.disabled = busy;
+  settingsFormRefs.dictationLanguageModeSingleInput.disabled = busy;
+  settingsFormRefs.dictationLanguageModeMultipleInput.disabled = busy;
+  for (const option of settingsFormRefs.dictationLanguageOptionInputs) {
     option.disabled = busy;
   }
-  styleProfileSelect.disabled = busy;
+  settingsFormRefs.styleProfileSelect.disabled = busy;
   apiKeyInput.disabled = busy;
   rememberApiKeyInput.disabled = busy;
   apiBaseUrlInput.disabled = busy;
@@ -7347,23 +7324,23 @@ function syncActionAvailability(): void {
   piperSpeedInput.disabled = busy;
   hotkeyInput.disabled = busy;
   commandHotkeyInput.disabled = busy;
-  captureModeSingleInput.disabled = busy;
-  captureModePushToTalkInput.disabled = busy;
-  commandModeToggle.disabled = busy;
-  wakeWordEnabledToggle.disabled = busy;
-  assistantNameInput.disabled = busy;
-  autoPasteDictationToggle.disabled = busy;
-  contextAwarenessToggle.disabled = busy;
-  copyToClipboardToggle.disabled = busy;
-  incognitoModeToggle.disabled = busy;
+  settingsFormRefs.captureModeSingleInput.disabled = busy;
+  settingsFormRefs.captureModePushToTalkInput.disabled = busy;
+  settingsFormRefs.commandModeToggle.disabled = busy;
+  settingsFormRefs.wakeWordEnabledToggle.disabled = busy;
+  settingsFormRefs.assistantNameInput.disabled = busy;
+  settingsFormRefs.autoPasteDictationToggle.disabled = busy;
+  settingsFormRefs.contextAwarenessToggle.disabled = busy;
+  settingsFormRefs.copyToClipboardToggle.disabled = busy;
+  settingsFormRefs.incognitoModeToggle.disabled = busy;
   settingsFormRefs.themeModeSelect.disabled = busy;
   for (const cardInput of settingsFormRefs.themeCardInputs) {
     cardInput.disabled = busy;
   }
-  backtrackToggle.disabled = busy;
-  removeFillersToggle.disabled = busy;
-  autoPunctuationToggle.disabled = busy;
-  numberedListsToggle.disabled = busy;
+  settingsFormRefs.backtrackToggle.disabled = busy;
+  settingsFormRefs.removeFillersToggle.disabled = busy;
+  settingsFormRefs.autoPunctuationToggle.disabled = busy;
+  settingsFormRefs.numberedListsToggle.disabled = busy;
   toggleMicEditorBtn.disabled = busy;
   toggleHotkeyEditorBtn.disabled = busy;
   dictionaryAddBtn.disabled = busy;
