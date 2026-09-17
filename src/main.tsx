@@ -61,6 +61,7 @@ import {
 } from "@tauri-apps/plugin-global-shortcut";
 import { open as openExternalUrl } from "@tauri-apps/plugin-shell";
 import {
+  asErrorMessage,
   boolFlag,
   buildAgentOperatingCorePrompt,
   escapeHtml,
@@ -7144,17 +7145,6 @@ async function preWarmMicrophoneStream(deviceId: string): Promise<void> {
 
 function formatLatency(value: number): string {
   return `${Math.round(value)} ms`;
-}
-
-function asErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
 }
 
 // ============================================================================
