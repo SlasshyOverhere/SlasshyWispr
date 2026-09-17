@@ -35,7 +35,7 @@ use crate::services::transcribe::{
     stt_models_dir, warmup_local_stt_hf_model_blocking, warmup_local_stt_parakeet_model_blocking,
 };
 use crate::services::hardware::build_local_stt_hardware_advice;
-use crate::ProviderModelsResponse;
+use super::ipc_types::ProviderModelsResponse;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

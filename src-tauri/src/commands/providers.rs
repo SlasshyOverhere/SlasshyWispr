@@ -26,7 +26,7 @@ use crate::services::providers::{
     query_ollama_version, run_ollama_installer_windows,
 };
 use crate::state::AppState;
-use crate::{
+use super::ipc_types::{
     AssistantInfoResponse, OllamaModelsRequest, OllamaPullRequest, OllamaPullResponse,
     OllamaStatusRequest, OllamaStatusResponse, ProviderModelsRequest, ProviderModelsResponse,
 };

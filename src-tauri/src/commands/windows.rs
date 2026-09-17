@@ -18,7 +18,8 @@ use crate::constants::{
 };
 use crate::pipeline::log::single_line;
 use crate::state::AppState;
-use crate::{APP_EVENT_UPDATE_AVAILABLE, TRAY_UPDATE_ITEM, WindowRect};
+use crate::constants::APP_EVENT_UPDATE_AVAILABLE;
+use crate::state::{TRAY_UPDATE_ITEM, WindowRect};
 
 pub(crate) fn emit_main_window_visibility(app: &AppHandle, hidden: bool) {
     let payload = json!({ "hidden": hidden });

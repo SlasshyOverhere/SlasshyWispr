@@ -13,7 +13,7 @@ use crate::constants::{
 use crate::pipeline::stt_download::progress::{
     calculate_local_stt_progress_percent, now_unix_ms, LocalSttDownloadStatusResponse,
 };
-use crate::WindowVisibilityState;
+use super::window::WindowVisibilityState;
 
 pub(crate) struct AppState {
     pub(crate) http: Client,

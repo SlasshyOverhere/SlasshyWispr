@@ -24,6 +24,7 @@ use crate::constants::{
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::process::apply_no_window;
 use crate::state::AppState;
+
 use crate::updater::{
     exe_installer_supports_silent_mode, is_newer_version, is_safe_update_url,
     normalize_release_version, resolve_installer_file_name, resolve_update_repository,
@@ -35,10 +36,9 @@ use crate::platform::windows_native::schedule_app_relaunch_after_installer;
 use super::windows::{emit_update_install_progress, show_main_window};
 use crate::services::providers::update_github_token;
 use crate::services::startup::read_launch_at_login_preference;
-use crate::{
-    configure_launch_at_login,
-    TRAY_UPDATE_ITEM, TRAY_ID,
-};
+use crate::constants::TRAY_ID;
+use crate::state::TRAY_UPDATE_ITEM;
+use crate::commands::input::configure_launch_at_login;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

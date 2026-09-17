@@ -20,8 +20,7 @@ pub mod security;
 pub mod state;
 pub mod updater;
 use commands::{
-    AssistantPipelineRequest, AssistantPipelineResponse, DictionaryEntryRequest,
-    SnippetEntryRequest, StartupLocalSttWarmupTarget, TtsSetupState, capture_selected_text,
+    TtsSetupState, capture_selected_text,
     check_for_app_update,
     clear_dictation_recordings, clone_coqui_voice, configure_launch_at_login,
     control_media_playback, deactivate_local_stt_model, delete_local_stt_model,
@@ -39,57 +38,16 @@ use commands::{
     toggle_main_window_visibility, validate_coqui, validate_piper, warmup_local_stt_model,
 };
 use state::AppState;
-use audio::vad;
 
-use pipeline::fs::*;
-use pipeline::input::*;
-use pipeline::log::*;
-use pipeline::process::*;
-use pipeline::refinement::{self, RefinementConfig, RefinementDictionaryEntry, RefinementSnippetEntry};
-use pipeline::selection::*;
-use pipeline::stt::*;
-use pipeline::stt_download::*;
-#[allow(unused_imports)]
+#[cfg(test)]
 use pipeline::response::normalize_assistant_response_text;
-use constants::*;
-use pipeline::routing::*;
-use pipeline::tts::*;
-use pipeline::daemon::*;
-use pipeline::wake::*;
+#[cfg(test)]
+use pipeline::selection::{
+    is_affirmative_selection_confirmation, is_negative_selection_confirmation,
+    is_rewrite_suspicious, parse_selection_edit_decision, SelectionEditAction,
+};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WindowRect {
-    pub position_x: i32,
-    pub position_y: i32,
-    pub width: u32,
-    pub height: u32,
-}
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WindowVisibilityState {
-    pub hidden: bool,
-    pub last_rect: Option<WindowRect>,
-    /// Tracks the minimize/restore transition. Set to true when the window
-    /// enters the minimized state; cleared on the first Resized event after
-    /// the user restores. Used to apply the saved rect on restore.
-    pub was_minimized: bool,
-}
-
-impl WindowVisibilityState {
-    pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string(self)
-    }
-
-    pub fn from_json(value: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(value)
-    }
-}
-
-// Selection-edit types moved to pipeline::selection; native Parakeet runtime
-// moved to audio::parakeet; Piper tuning cache moved to pipeline::tts.
-static TRAY_UPDATE_ITEM: OnceLock<MenuItem<tauri::Wry>> = OnceLock::new();
 
 #[cfg(target_os = "windows")]
 pub(crate) mod win32_native {
@@ -118,72 +76,6 @@ pub(crate) mod win32_native {
 
 
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AssistantInfoResponse {
-    app_version: String,
-    base_url: &'static str,
-    stt_model: &'static str,
-    ai_model: &'static str,
-    piper_installed: bool,
-    piper_path: String,
-    voice_installed: bool,
-    voice_model_path: String,
-    voice_config_path: String,
-    coqui_installed: bool,
-    coqui_python_path: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProviderModelsRequest {
-    api_key: String,
-    api_base_url: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OllamaModelsRequest {
-    base_url: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OllamaPullRequest {
-    base_url: Option<String>,
-    model: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct OllamaPullResponse {
-    base_url: String,
-    model: String,
-    ok: bool,
-    status: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OllamaStatusRequest {
-    base_url: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct OllamaStatusResponse {
-    installed: bool,
-    running: bool,
-    version: String,
-    details: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ProviderModelsResponse {
-    base_url: String,
-    models: Vec<String>,
-}
 
 
 
@@ -217,6 +109,19 @@ struct ProviderModelsResponse {
 mod tests {
     // validates_safe_update_urls moved to updater::tests
     use super::*;
+    use crate::pipeline::log::{clip_text, single_line};
+    use crate::pipeline::selection::{
+        is_affirmative_selection_confirmation, is_negative_selection_confirmation,
+        is_rewrite_suspicious, looks_like_incomplete_draft_output,
+        parse_selection_edit_decision, seems_like_draft_generation_instruction,
+        seems_like_selection_edit_instruction, SelectionEditAction,
+    };
+    use crate::pipeline::stt::looks_like_repetitive_transcript_noise;
+    use crate::commands::pipeline::{
+        AssistantPipelineRequest, AssistantPipelineResponse, DictionaryEntryRequest,
+        SnippetEntryRequest,
+    };
+    use crate::pipeline::tts::PiperPipelineRequest;
 
 
     // TTS normalize tests live in pipeline::tts::normalize::tests.
@@ -781,7 +686,7 @@ pub fn run() {
     let app_state = AppState::new().expect("failed to initialize app state");
     let tts_setup_state = TtsSetupState::default();
     let start_in_tray =
-        std::env::args().any(|arg| arg.eq_ignore_ascii_case(STARTUP_ARG_START_IN_TRAY));
+        std::env::args().any(|arg| arg.eq_ignore_ascii_case(crate::constants::STARTUP_ARG_START_IN_TRAY));
 
     let mut builder = tauri::Builder::default();
     // window-state plugin — needs to be added before .manage()
@@ -795,7 +700,7 @@ pub fn run() {
             );
             if args
                 .iter()
-                .any(|a| a.eq_ignore_ascii_case(STARTUP_ARG_START_IN_TRAY))
+                .any(|a| a.eq_ignore_ascii_case(crate::constants::STARTUP_ARG_START_IN_TRAY))
             {
                 info!("[app.single-instance] --start-in-tray passed; respecting hidden state");
                 return;
@@ -823,10 +728,10 @@ pub fn run() {
 
             let app_handle = app.handle().clone();
             commands::windows::build_tray_icon(&app_handle)?;
-            ensure_local_stt_daemon_idle_sweeper();
+            crate::pipeline::daemon::ensure_local_stt_daemon_idle_sweeper();
             services::startup::start_local_stt_boot_warmup(app_handle.clone());
 
-            if let Some(main_window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+            if let Some(main_window) = app.get_webview_window(crate::constants::MAIN_WINDOW_LABEL) {
                 let app_handle_for_close = app_handle.clone();
                 let app_handle_for_resize = app_handle.clone();
                 let main_window_for_resize = main_window.clone();
@@ -916,7 +821,7 @@ pub fn run() {
                                 let _ = fs::remove_file(&path);
                                 info!(
                                     "[updater] cleaned stale installer: {}",
-                                    clip_text(&path.to_string_lossy(), 200)
+                                    crate::pipeline::log::clip_text(&path.to_string_lossy(), 200)
                                 );
                             }
                         }

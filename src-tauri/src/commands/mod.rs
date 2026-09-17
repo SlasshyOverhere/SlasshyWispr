@@ -4,6 +4,7 @@
 //! services happens in Phase 7. Re-exports keep generate_handler! paths short.
 
 pub mod input;
+pub mod ipc_types;
 pub mod local_stt;
 pub mod pipeline;
 pub mod providers;
@@ -15,7 +16,7 @@ pub mod updater;
 
 pub(crate) use recordings::{
     clear_dictation_recordings, get_dictation_recording, list_dictation_recording_ids,
-    list_dictation_recordings_stats, save_dictation_recording, StartupLocalSttWarmupTarget,
+    list_dictation_recordings_stats, save_dictation_recording,
 };
 pub(crate) use providers::{
     fetch_ollama_models, fetch_provider_models, get_assistant_info, get_ollama_status,
@@ -42,8 +43,5 @@ pub(crate) use tts::{
     list_coqui_models, list_coqui_voices, preview_coqui_voice, setup_assistant_runtime,
     setup_coqui_runtime, start_tts_runtime_setup, validate_coqui, validate_piper, TtsSetupState,
 };
-pub(crate) use pipeline::{
-    run_assistant_pipeline, AssistantPipelineRequest, AssistantPipelineResponse,
-    DictionaryEntryRequest, SnippetEntryRequest,
-};
+pub(crate) use pipeline::run_assistant_pipeline;
 pub(crate) use windows::toggle_main_window_visibility;
