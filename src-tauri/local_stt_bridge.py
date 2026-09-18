@@ -46,8 +46,8 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return default
 
 
-PARAKEET_FORCE_CPU = _env_flag("SLASSHY_STT_PARAKEET_FORCE_CPU", False)
-PARAKEET_CPU_INT8 = _env_flag("SLASSHY_STT_PARAKEET_CPU_INT8", True)
+PARAKEET_FORCE_CPU = _env_flag("SLASSHYWISPR_STT_PARAKEET_FORCE_CPU", False)
+PARAKEET_CPU_INT8 = _env_flag("SLASSHYWISPR_STT_PARAKEET_CPU_INT8", True)
 
 
 def _compact_memory(force_cuda_empty_cache: bool = False) -> None:
@@ -352,7 +352,7 @@ def _load_parakeet_model(model_path: Path) -> tuple[Any, bool, str, str]:
     cached = MODEL_CACHE.get(resolved)
     if cached is not None:
         device = "cuda" if str(getattr(cached, "device", "cpu")).startswith("cuda") else "cpu"
-        precision = str(getattr(cached, "_slasshy_precision", "fp32"))
+        precision = str(getattr(cached, "_slasshywispr_precision", "fp32"))
         return cached, True, device, precision
 
     nemo_asr = _load_nemo_module()
@@ -381,7 +381,7 @@ def _load_parakeet_model(model_path: Path) -> tuple[Any, bool, str, str]:
     else:
         model, precision = _try_quantize_parakeet_cpu_int8(model)
     try:
-        setattr(model, "_slasshy_precision", precision)
+        setattr(model, "_slasshywispr_precision", precision)
     except Exception:
         pass
 

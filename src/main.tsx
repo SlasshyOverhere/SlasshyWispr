@@ -661,7 +661,7 @@ let lastCaptureIntentLabel = "";
 let mainWindowHiddenToTray = false;
 const dockChannel = new BroadcastChannel("slasshywispr-dock");
 const selectionPopupChannel = new BroadcastChannel("slasshywispr-selection-popup");
-const MAIN_WINDOW_VISIBILITY_EVENT = "slasshy://main-window-visibility";
+const MAIN_WINDOW_VISIBILITY_EVENT = "slasshywispr://main-window-visibility";
 import {
   snoozeUpdateFor24Hours,
 } from "./updater/updater-client";
@@ -712,7 +712,7 @@ initPipelineRender(
     },
     persistHomeHistory: () => persistHomeHistoryService(),
     notifyStoreUpdated: () => {
-      window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+      window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
     },
     getRecentTurns: () => recentTurns,
   },
@@ -1301,7 +1301,7 @@ initRecordings(
     notify: (message, isError) => setNoticeService(message, isError),
     log: (message) => logClientEventService(message),
     notifyStoreUpdated: () => {
-      window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+      window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
     },
   },
 );
@@ -1527,7 +1527,7 @@ initSettingsChange({
   },
   persist: (next) => persistSettings(next),
   notifyStoreUpdated: () => {
-    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+    window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
   },
   readSettingsFromForm: (refs, coreDeps) => readSettingsFromFormService(refs, coreDeps),
   applySettingsToForm: (refs, coreDeps, next) => applySettingsToFormService(refs, coreDeps, next),
@@ -1946,7 +1946,7 @@ applyModelToSttBtn.addEventListener("click", () => {
 /* Home tab search-button → switch to History and focus the search
    input. rAF ensures the React tree has time to mount the History
    section before the input exists in the DOM. */
-window.addEventListener("slasshy:focus-history-search", () => {
+window.addEventListener("slasshywispr:focus-history-search", () => {
   setActivePageService("history");
   requestAnimationFrame(() => {
     const input = document.getElementById("historySearchInput");
@@ -1958,14 +1958,14 @@ window.addEventListener("slasshy:focus-history-search", () => {
 });
 
 /* Home rail — Open analytics card-link. */
-window.addEventListener("slasshy:focus-analytics", () => {
+window.addEventListener("slasshywispr:focus-analytics", () => {
   setActivePageService("analytics");
 });
 
 /* Home rail — Edit (Settings) card-link. The settings modal is
    mounted at all times; we open it via the global openSettings
    button that already exists in the sidebar. */
-window.addEventListener("slasshy:focus-settings", () => {
+window.addEventListener("slasshywispr:focus-settings", () => {
   const btn = document.getElementById("openSettingsBtn");
   if (btn instanceof HTMLButtonElement) {
     btn.click();
@@ -2000,7 +2000,7 @@ initHistoryView(
     },
     persistHomeHistory: () => persistHomeHistoryService(),
     notifyStoreUpdated: () => {
-      window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+      window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
     },
     clearRecentTurns: () => {
       recentTurns.length = 0;
@@ -2050,7 +2050,7 @@ initUsageTracker({
   persistAchievements: () => persistAchievementStatesService(),
   renderMetrics: () => updateUsageMetricsService(),
   notifyStoreUpdated: () => {
-    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+    window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
   },
 });
 async function bootstrap(): Promise<void> {
@@ -2139,7 +2139,7 @@ async function backfillHistoryRecordingIds(): Promise<void> {
     });
     if (patched > 0) {
       persistHomeHistoryService();
-      window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+      window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
       logClientEventService(`[recordings.backfill] attached=${patched} of ${matches.length}`);
     }
   } catch (error) {

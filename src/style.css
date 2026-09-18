@@ -1849,34 +1849,95 @@ svg:not([width]):not([height]) {
   overflow-y: auto !important;
 }
 
+/* History toolbar — one quiet control strip: segmented range, date
+   picker, search. Single baseline, no divider lines. */
 .history-filters {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--border-line);
-  margin-bottom: var(--space-4);
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
   flex-wrap: wrap;
 }
 
-.filter-btn {
-  padding: 6px 12px;
-  border: 0;
-  background: transparent;
-  color: var(--ink-secondary);
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: color var(--transition-fast), background-color var(--transition-fast);
-  border-radius: 6px;
+.hist-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-recess);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 3px;
 }
 
-.filter-btn:hover { color: var(--ink-secondary); }
+.hist-seg .filter-btn {
+  border-radius: 999px;
+}
+
+.filter-btn {
+  padding: 6px 13px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.filter-btn:hover { color: var(--ink-primary); }
 
 .filter-btn.active {
   color: var(--ink-primary);
   background: var(--bg-active);
+}
+
+.hist-seg .filter-btn.active {
+  background: var(--bg-card);
+  box-shadow: 0 0 0 1px var(--border-line) inset;
+}
+
+.history-filters .search-input-wrapper {
+  margin-left: auto;
+  max-width: 240px;
+  flex: 1 1 180px;
+}
+
+/* History header — count sits inline in the subtitle; Clear is a
+   quiet text action, not a filled button competing with the title. */
+.hist-header {
+  align-items: end;
+  border-bottom: 0;
+  padding-bottom: 0;
+  margin-bottom: var(--space-4);
+}
+
+.hist-count {
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-clear-btn {
+  background: transparent;
+  border: 0;
+  color: var(--ink-faint);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--transition-fast);
+}
+
+.history-clear-btn:hover { color: oklch(72% 0.14 25); }
+
+.hist-empty svg {
+  color: var(--ink-faint);
+  margin-bottom: var(--space-1);
 }
 
 .date-filter {
@@ -2220,20 +2281,18 @@ svg:not([width]):not([height]) {
   background: var(--bg-hover);
 }
 
+/* Ledger rows — every entry identical: one quiet line of meta,
+   one line of text, ruler-separated. No hero, no dimming; the newest
+   entry earns position, not decoration. */
 .conversation-entry {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto auto;
-  align-items: center;
+  grid-template-columns: 60px minmax(0, 1fr) auto;
   column-gap: var(--space-4);
-  row-gap: var(--space-1);
-  padding: 11px var(--space-4);
+  align-items: start;
+  padding: 13px var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
   transition: background-color var(--transition-fast);
   position: relative;
-}
-
-.conversation-entry:hover {
-  background: oklch(24% 0.011 250);
 }
 
 .conversation-entry:last-child { border-bottom: 0; }
@@ -2250,53 +2309,10 @@ svg:not([width]):not([height]) {
   background: oklch(100% 0 0 / 0.025);
 }
 
-/* Hero row — the most recent entry. Slightly larger metrics and
-   visible actions; no leading colored stripe. Home page uses its
-   own .home-row layout instead, so this only applies in History. */
-.conversation-entry.is-hero {
-  padding-top: 18px;
-  padding-bottom: 18px;
-}
-
-.conversation-entry.is-hero::before {
-  /* Strip removed: status info already lives in the pulsing dot on the
-     home CTA + the warm tint on is-fresh rows. */
-  display: none;
-}
-
-/* Archive rows — condensed, dimmer, smaller metrics. The history
-   recedes so the hero can speak. */
-.conversation-entry.is-archive {
-  opacity: 0.78;
-  padding-top: 11px;
-  padding-bottom: 11px;
-}
-
-.conversation-entry.is-archive:hover {
-  opacity: 1;
-}
-
-.conversation-entry.is-archive .entry-content {
-  font-size: 18px;
-  line-height: 1.45;
-  color: var(--ink-secondary);
-  font-weight: 450;
-}
-
-.conversation-entry.is-archive .entry-time {
-  color: var(--ink-faint);
-  font-size: 11.5px;
-  padding-top: 3px;
-}
-
-/* Fresh row — captured in the last 60 seconds. Live dot, slightly
+/* Fresh row — captured in the last 30 seconds. Live dot, slightly
    brighter text, the time stamp says "just now" instead of an hour. */
 .conversation-entry.is-fresh {
   background: oklch(74% 0.18 55 / 0.04);
-}
-
-.conversation-entry.is-fresh.is-hero {
-  background: oklch(74% 0.18 55 / 0.06);
 }
 
 .entry-fresh-dot {
@@ -2351,10 +2367,6 @@ svg:not([width]):not([height]) {
   display: none;
 }
 
-.conversation-entry.is-assistant {
-  /* inherit 4-column grid: timestamp | content | metrics | actions */
-}
-
 .conversation-entry .entry-speaker {
   display: none;
 }
@@ -2367,16 +2379,18 @@ svg:not([width]):not([height]) {
   letter-spacing: 0.02em;
   font-feature-settings: "tnum" 1, "ss01" 1;
   grid-column: 1;
-  align-self: center;
+  grid-row: 1 / span 2;
+  align-self: start;
+  padding-top: 3px;
   white-space: nowrap;
 }
 
 .entry-content-wrap {
   min-width: 0;
-  align-self: center;
+  align-self: start;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .entry-content {
@@ -2426,16 +2440,25 @@ svg:not([width]):not([height]) {
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: oklch(65% 0.18 25);
-  margin: 4px 0 0;
+  margin: 2px 0 0;
   letter-spacing: 0.04em;
 }
 
-/* Metrics: a single quiet line. No separators, no WPM hero treatment,
-   one tier down from the content. Compact mono so rows scan quietly. */
+.entry-playing-hint {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--accent-live);
+  margin: 2px 0 0;
+  letter-spacing: 0.04em;
+}
+
+/* Meta line — one quiet collapsed token: "97 wpm · 1.9s spoken ·
+   0.4s". Numbers in secondary ink, units faint. Lives under the
+   text, never beside it, so rows scan as text first. */
 .entry-metrics {
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: 0;
   font-family: var(--font-mono);
   font-size: 10.5px;
   font-weight: 500;
@@ -2443,13 +2466,8 @@ svg:not([width]):not([height]) {
   font-feature-settings: "tnum" 1, "ss01" 1;
   letter-spacing: 0.02em;
   white-space: nowrap;
-  align-self: center;
-  justify-self: end;
 }
 
-.entry-metrics-spacer {
-  display: block;
-}
 
 .entry-metrics .metric {
   display: inline-flex;
@@ -2457,8 +2475,15 @@ svg:not([width]):not([height]) {
   gap: 3px;
   color: var(--ink-faint);
   font-weight: 500;
-  font-size: 11px;
+  font-size: 10.5px;
   letter-spacing: 0.02em;
+}
+
+.entry-metrics .metric + .metric::before {
+  content: "·";
+  color: var(--border-strong);
+  margin: 0 7px;
+  font-weight: 400;
 }
 
 .entry-metrics .metric-num {
@@ -2472,77 +2497,28 @@ svg:not([width]):not([height]) {
   letter-spacing: 0.04em;
 }
 
-/* Hero metrics — slightly larger than archive rows but staying quiet.
-   No orange-bold weight: we keep visual confidence on Home's right
-   rail, not here. */
-.entry-metrics-hero {
-  gap: 12px;
-}
-
-.entry-metrics-hero .metric {
-  font-size: 11px;
-}
-
-.entry-metrics-hero .metric-num {
-  color: var(--ink-secondary);
-  font-weight: 500;
-  font-size: 12px;
-  letter-spacing: 0.01em;
-}
-
-.entry-metrics-hero .metric-unit {
-  color: var(--ink-faint);
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-}
-
-.entry-metrics-hero .metric-icon {
+.entry-metrics .metric-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent-live);
+  color: var(--ink-faint);
   margin-right: 3px;
   position: relative;
   top: 0;
-  transition: color var(--transition-fast);
 }
 
-.entry-metrics-hero .metric-icon svg { width: 11px; height: 11px; }
+.entry-metrics .metric-icon svg { width: 10px; height: 10px; }
 
-/* Archive metrics — collapsed ledger token. "117 · 4.6s · 1.2s"
-   meaning is obvious from the hero row above. */
-.entry-metrics-archive {
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--ink-faint);
-  padding-top: 2px;
-}
-
-.entry-metrics-archive .metric {
-  font-size: 11px;
-  color: var(--ink-faint);
-  font-weight: 500;
-  gap: 0;
-}
-
-.entry-metrics-archive .metric + .metric::before {
-  content: "·";
-  color: var(--border-strong);
-  margin-right: 6px;
-  font-weight: 400;
-}
-
-/* Action column: three uniform icon buttons, always present, dimmed by
-   default and brightened on hover/focus. Same size, same stroke weight,
-   same color baseline. */
+/* Action column: copy + overflow pair, revealed on row hover.
+   No per-row play button — playback lives in the overflow menu. */
 .entry-actions {
   display: inline-flex;
   align-items: center;
   gap: 2px;
+  grid-column: 3;
+  grid-row: 1;
   justify-self: end;
   align-self: start;
-  padding-top: 2px;
 }
 
 .entry-icon-btn {
@@ -2559,7 +2535,6 @@ svg:not([width]):not([height]) {
   transition: color var(--transition-fast), background-color var(--transition-fast);
   padding: 0;
   flex: 0 0 auto;
-  opacity: 0.65;
 }
 
 .entry-icon-btn svg {
@@ -2568,9 +2543,15 @@ svg:not([width]):not([height]) {
   stroke-width: 1.6;
 }
 
-.conversation-entry:hover .entry-icon-btn,
-.conversation-entry:focus-within .entry-icon-btn {
-  opacity: 1;
+@media (hover: hover) {
+  .entry-actions {
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+  }
+  .conversation-entry:hover .entry-actions,
+  .conversation-entry:focus-within .entry-actions {
+    opacity: 1;
+  }
 }
 
 .entry-icon-btn:hover {
@@ -2579,19 +2560,7 @@ svg:not([width]):not([height]) {
 }
 
 .entry-icon-btn:active {
-  transform: scale(0.92);
-}
-
-.entry-icon-play.is-playing {
-  color: var(--accent-quiet-ink);
-  background: var(--accent-live);
-  opacity: 1;
-  animation: pulse-live 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse-live {
-  0%, 100% { box-shadow: 0 0 0 0 var(--accent-live-edge); }
-  50%      { box-shadow: 0 0 0 5px transparent; }
+  transform: scale(0.96);
 }
 
 .entry-icon-copied {
@@ -2734,20 +2703,6 @@ svg:not([width]):not([height]) {
   height: 1px;
   background: var(--border-subtle);
   margin: 4px 6px;
-}
-
-/* Stagger fade-in for rows on initial mount. Reduced-motion users get an
-   instant reveal. */
-@media (prefers-reduced-motion: no-preference) {
-  .conversation-entry {
-    animation: row-enter 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
-    animation-delay: calc(var(--row-index, 0) * 28ms);
-  }
-}
-
-@keyframes row-enter {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Dictionary & Snippets */

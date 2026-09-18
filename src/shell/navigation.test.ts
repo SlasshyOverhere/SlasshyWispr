@@ -121,7 +121,7 @@ describe("setActivePage", () => {
     const listener = () => {
       seen.push("updated");
     };
-    window.addEventListener("slasshy:store-updated", listener);
+    window.addEventListener("slasshywispr:store-updated", listener);
     try {
       const harness = wireHarness();
       setActivePage("history");
@@ -130,7 +130,7 @@ describe("setActivePage", () => {
       expect(harness.elements.pageNavButtons[0].dataset).toBeDefined();
       expect(seen).toEqual(["updated"]);
     } finally {
-      window.removeEventListener("slasshy:store-updated", listener);
+      window.removeEventListener("slasshywispr:store-updated", listener);
     }
   });
 });

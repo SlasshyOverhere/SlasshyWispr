@@ -108,8 +108,8 @@ fn spawn_local_stt_bridge_daemon(
             ("HF_HOME", cache_dir.to_string_lossy().into_owned()),
             ("TRANSFORMERS_CACHE", cache_dir.to_string_lossy().into_owned()),
             ("NEMO_CACHE_DIR", cache_dir.to_string_lossy().into_owned()),
-            ("SLASSHY_STT_PARAKEET_CPU_INT8", parakeet_cpu_int8.to_string()),
-            ("SLASSHY_STT_PARAKEET_FORCE_CPU", parakeet_force_cpu.to_string()),
+            ("SLASSHYWISPR_STT_PARAKEET_CPU_INT8", parakeet_cpu_int8.to_string()),
+            ("SLASSHYWISPR_STT_PARAKEET_FORCE_CPU", parakeet_force_cpu.to_string()),
             ("PYTHONUNBUFFERED", "1".to_string()),
         ],
     )?;

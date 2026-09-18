@@ -27,8 +27,8 @@ export function useHistoryFilter(): HistoryFilter {
       const detail = (e as CustomEvent<HistoryFilter>).detail;
       if (detail) setHf(detail);
     };
-    window.addEventListener("slasshy:history-filter", handler);
-    return () => window.removeEventListener("slasshy:history-filter", handler);
+    window.addEventListener("slasshywispr:history-filter", handler);
+    return () => window.removeEventListener("slasshywispr:history-filter", handler);
   }, []);
   return hf;
 }
@@ -87,10 +87,10 @@ export function useUserHotkeyTokens(): string[] {
       );
     };
     read();
-    window.addEventListener("slasshy:store-updated", read);
+    window.addEventListener("slasshywispr:store-updated", read);
     window.addEventListener("storage", read);
     return () => {
-      window.removeEventListener("slasshy:store-updated", read);
+      window.removeEventListener("slasshywispr:store-updated", read);
       window.removeEventListener("storage", read);
     };
   }, []);

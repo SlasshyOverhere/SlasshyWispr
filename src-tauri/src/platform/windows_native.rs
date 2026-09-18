@@ -219,7 +219,7 @@ pub(crate) fn capture_selected_text_windows() -> Result<String, String> {
         .duration_since(UNIX_EPOCH)
         .map_err(|error| format!("Failed to compute marker timestamp: {error}"))?
         .as_millis();
-    let marker = format!("SLASSHY_SEL_MARKER_{marker_stamp}");
+    let marker = format!("SLASSHYWISPR_SEL_MARKER_{marker_stamp}");
 
     // Save clipboard state
     let prev = native_get_clipboard_text().ok();

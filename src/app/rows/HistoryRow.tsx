@@ -7,7 +7,7 @@ import type { HomeHistoryEntry } from '../../types';
 /* Moved verbatim from App.tsx (Phase 3). Owns its own copy/play/delete
    menu plus recording playback via typed IPC. */
 
-export function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; rowIndex?: number }) {
+export function HistoryRow({ entry }: { entry: HomeHistoryEntry }) {
   const [copied, setCopied] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [playError, setPlayError] = useState<string | null>(null);
@@ -28,7 +28,6 @@ export function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; r
   const h12 = ((hh + 11) % 12) + 1;
   const isFresh = Date.now() - entry.timestamp < 30_000;
   const time = isFresh ? "just now" : `${h12}:${mm} ${ampm}`;
-  const isHero = rowIndex === 0;
   const isAssistant = entry.tone === "assistant";
   const hasMetrics = Boolean(entry.wpm || entry.pipelineMs || entry.spokenSeconds);
   const hasRecording = Boolean(entry.recordingId);
@@ -195,9 +194,8 @@ export function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; r
 
   return (
     <div
-      className={`conversation-entry ${isAssistant ? 'is-assistant' : 'is-user'} ${isHero ? 'is-hero' : 'is-archive'} ${isFresh ? 'is-fresh' : ''}`}
+      className={`conversation-entry ${isAssistant ? 'is-assistant' : 'is-user'} ${isFresh ? 'is-fresh' : ''}`}
       data-recording-id={entry.recordingId ?? ""}
-      style={{ "--row-index": rowIndex } as React.CSSProperties}
     >
       <span className="entry-time">
         {isFresh ? <span className="entry-fresh-dot" aria-hidden="true" /> : null}
@@ -217,22 +215,8 @@ export function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; r
             {expanded ? 'Show less' : 'Show more'}
           </button>
         ) : null}
-        {playError ? (
-          <p className="entry-play-error">{playError}</p>
-        ) : null}
-      </div>
-      {hasMetrics ? (
-        !isHero ? (
-          // Archive rows: collapsed ledger token. Numbers only,
-          // separated by a thin middle dot. Meaning is obvious from
-          // the hero row above; this is a glanceable summary.
-          <div className="entry-metrics entry-metrics-archive" aria-label="dictation metrics">
-            {entry.wpm ? <span className="metric" title="Words per minute">{entry.wpm}</span> : null}
-            {entry.spokenSeconds ? <span className="metric" title="Time spoken">{entry.spokenSeconds.toFixed(0)}s</span> : null}
-            {entry.pipelineMs ? <span className="metric" title="Time to process the transcription">{(entry.pipelineMs / 1000).toFixed(1)}s</span> : null}
-          </div>
-        ) : (
-          <div className="entry-metrics entry-metrics-hero" aria-label="dictation metrics">
+        {hasMetrics ? (
+          <div className="entry-metrics" aria-label="dictation metrics">
             {entry.wpm ? (
               <span className="metric" title="Words per minute">
                 <span className="metric-num">{entry.wpm}</span>
@@ -257,30 +241,15 @@ export function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; r
               </span>
             ) : null}
           </div>
-        )
-      ) : <span className="entry-metrics-spacer" aria-hidden="true" />}
-      <div className="entry-actions">
-        {hasRecording ? (
-          <button
-            type="button"
-            className={`entry-icon-btn entry-icon-play ${playing ? 'is-playing' : ''}`}
-            onClick={handlePlay}
-            aria-label={playing ? "Stop recording" : "Play recording"}
-            title={playing ? "Stop" : "Play recording"}
-            data-recording-id={entry.recordingId}
-          >
-            {playing ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <rect x="6" y="5" width="4" height="14" rx="1"></rect>
-                <rect x="14" y="5" width="4" height="14" rx="1"></rect>
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <polygon points="8 5 19 12 8 19 8 5"></polygon>
-              </svg>
-            )}
-          </button>
         ) : null}
+        {playError ? (
+          <p className="entry-play-error">{playError}</p>
+        ) : null}
+        {playing ? (
+          <p className="entry-playing-hint">Playing — pause from the menu.</p>
+        ) : null}
+      </div>
+      <div className="entry-actions">
         {copied ? (
           <span className="entry-icon-btn entry-icon-copied" title="Copied">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -329,6 +298,34 @@ export function HistoryRow({ entry, rowIndex = 0 }: { entry: HomeHistoryEntry; r
                 aria-label="Entry actions"
                 style={{ top: `${menuPos.top}px`, right: `${menuPos.right}px` }}
               >
+                {hasRecording ? (
+                  <>
+                    <button
+                      type="button"
+                      className="entry-menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void handlePlay();
+                      }}
+                    >
+                      <span className="entry-menu-item-main">
+                        {playing ? (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <rect x="6" y="5" width="4" height="14" rx="1"></rect>
+                            <rect x="14" y="5" width="4" height="14" rx="1"></rect>
+                          </svg>
+                        ) : (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <polygon points="8 5 19 12 8 19 8 5"></polygon>
+                          </svg>
+                        )}
+                        {playing ? "Stop recording" : "Play recording"}
+                      </span>
+                    </button>
+                    <div className="entry-menu-sep" role="separator" />
+                  </>
+                ) : null}
                 <button
                   type="button"
                   className="entry-menu-item"

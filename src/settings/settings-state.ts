@@ -4,7 +4,7 @@
  * Owns the committed settings snapshot that React panes render from.
  * main.tsx initializes it at boot and commits after every change;
  * converted (controlled) panes read it via useSettingsSnapshot and send
- * patches back through the slasshy:settings-patch window event, which
+ * patches back through the slasshywispr:settings-patch window event, which
  * main.tsx handles through the submit pipeline. Unconverted panes keep
  * using the DOM until their turn.
  */
@@ -15,7 +15,7 @@ let current: PersistedSettings | null = null;
 const listeners = new Set<() => void>();
 const convertedPanes = new Set<string>();
 
-export const SETTINGS_PATCH_EVENT = "slasshy:settings-patch";
+export const SETTINGS_PATCH_EVENT = "slasshywispr:settings-patch";
 
 export function initSettingsState(initial: PersistedSettings): void {
   current = initial;

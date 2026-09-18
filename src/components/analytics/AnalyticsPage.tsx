@@ -254,8 +254,8 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
       }
       setLocalAchievements(parseJson<AchievementState[]>(ACHIEVEMENTS_KEY, initialAchievements));
     };
-    window.addEventListener('slasshy:store-updated', handler);
-    return () => window.removeEventListener('slasshy:store-updated', handler);
+    window.addEventListener('slasshywispr:store-updated', handler);
+    return () => window.removeEventListener('slasshywispr:store-updated', handler);
   }, [initialUsage, initialSessions, initialAchievements]);
 
   const filteredSessions = useMemo(() => {

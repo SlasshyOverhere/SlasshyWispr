@@ -19,7 +19,7 @@ import {
 
 // ponytail: key lives in main.tsx today; move to constants.ts when the
 // settings-pane owner consolidates (Phase 4 follow-up), then import it.
-const ACTIVE_SETTINGS_PANE_STORAGE_KEY = "slasshy-wispr-active-settings-pane-v1";
+const ACTIVE_SETTINGS_PANE_STORAGE_KEY = "slasshywispr-active-settings-pane-v1";
 import type { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type {
   AchievementState,
@@ -126,7 +126,7 @@ export function persistHomeHistory(): void {
 
 export function renderFullHistory(filter: "all" | "day" | "week" | "month" = "all", specificDate?: string): void {
   // React owns #fullHistoryLog. Dispatch filter event for React to apply.
-  window.dispatchEvent(new CustomEvent("slasshy:history-filter", { detail: { filter, specificDate } }));
+  window.dispatchEvent(new CustomEvent("slasshywispr:history-filter", { detail: { filter, specificDate } }));
 }
 
 export function loadDockLayout(): DockLayout | null {

@@ -405,7 +405,7 @@ pub(crate) fn build_local_stt_hardware_advice(
         gpu_name,
         gpu_vram_gb,
         performance_tier: tier.to_string(),
-        slasshy_suggestion_model: suggested_model.to_string(),
+        slasshywispr_suggestion_model: suggested_model.to_string(),
         suggested_models,
         caution_models,
         selected_model_warning,

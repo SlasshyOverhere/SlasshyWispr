@@ -1,6 +1,6 @@
 # SlasshyWispr
 
-Desktop voice dictation & AI assistant. Tauri v2 (Rust) + React 19 + Vite 8 + Tailwind CSS 4.
+Desktop voice dictation. Tauri v2 (Rust) + React 19 + Vite 8 + Tailwind CSS 4.
 
 ## Commands
 
@@ -41,6 +41,6 @@ Single test: `bun test src/utils.test.ts` — works on any `src/**/*.test.ts` fi
 ## Notable conventions
 
 - Security tests in `src/security.test.ts` and `src/utils-enhanced.test.ts` test inline helper functions, not imports from production code — these are standalone validation tests.
-- Settings are persisted to `localStorage` under keys like `slasshy-desktop-assistant-settings-v4` (see `src/constants.ts`).
+- Settings are persisted to `localStorage` under keys like `slasshywispr-settings-v4` (see `src/constants.ts`).
 - Rust backend stores API keys in the OS keyring (`keyring` crate) with DPAPI fallback on Windows.
 - `noUnusedLocals` and `noUnusedParameters` are enforced by tsconfig.

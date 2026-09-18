@@ -240,7 +240,7 @@ export function App() {
                         type="button"
                         onClick={() => {
                           window.dispatchEvent(
-                            new CustomEvent("slasshy:focus-analytics")
+                            new CustomEvent("slasshywispr:focus-analytics")
                           );
                         }}
                       >
@@ -295,7 +295,7 @@ export function App() {
                              move the active page since main.tsx owns
                              that transition. */
                           window.dispatchEvent(
-                            new CustomEvent("slasshy:focus-history-search")
+                            new CustomEvent("slasshywispr:focus-history-search")
                           );
                         }}
                       >
@@ -331,18 +331,20 @@ export function App() {
 
             <section className={`flow-page ${state.activePage === 'history' ? 'is-active' : ''}`} data-page="history">
               <div className="flow-page-inner">
-                <header className="page-header-row">
+                <header className="page-header-row hist-header">
                   <div>
                     <h1>History</h1>
-                    <p className="page-subtitle">A full log of your transcriptions and AI interactions.</p>
+                    <p className="page-subtitle">Every transcription in one place. <span className="hist-count">{state.history.length} {state.history.length === 1 ? "entry" : "entries"}</span></p>
                   </div>
-                  <button id="clearHistoryBtnFull" className="dark-action" type="button">Clear all</button>
+                  <button id="clearHistoryBtnFull" className="history-clear-btn" type="button">Clear all</button>
                 </header>
                 <div className="history-filters">
-                  <button className="filter-btn active" data-filter="all">All</button>
-                  <button className="filter-btn" data-filter="day">Today</button>
-                  <button className="filter-btn" data-filter="week">This Week</button>
-                  <button className="filter-btn" data-filter="month">This Month</button>
+                  <div className="hist-seg" role="group" aria-label="Time range">
+                    <button className="filter-btn active" data-filter="all">All</button>
+                    <button className="filter-btn" data-filter="day">Today</button>
+                    <button className="filter-btn" data-filter="week">This Week</button>
+                    <button className="filter-btn" data-filter="month">This Month</button>
+                  </div>
                   <button id="datePickerBtn" className="filter-btn date-picker-btn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                     <span>Select Date</span>
@@ -362,7 +364,7 @@ export function App() {
                     </div>
                     <div id="datePickerDays" className="date-picker-days"></div>
                   </div>
-                  <div className="search-input-wrapper" style={{ marginLeft: 'auto', maxWidth: '220px' }}>
+                  <div className="search-input-wrapper">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     <input id="historySearchInput" type="text" placeholder="Search history..." autoComplete="off" />
                   </div>
@@ -373,12 +375,14 @@ export function App() {
                     ) : (() => {
                       const filtered = hf(state.history);
                       return filtered.length === 0 ? (
-                        <div className="empty-hint">
-                           <h4>No history yet</h4>
+                        <div className="empty-hint hist-empty">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                          <h4>{state.history.length === 0 ? "No history yet" : "Nothing matches"}</h4>
+                          <p>{state.history.length === 0 ? "Dictate anywhere and every word lands here, searchable by date." : "Try a different date range or search term."}</p>
                         </div>
                       ) : (
                         filtered.map((entry, i) => (
-                          <HistoryRow key={`full-${entry.timestamp}-${i}`} entry={entry} rowIndex={i} />
+                          <HistoryRow key={`full-${entry.timestamp}-${i}`} entry={entry} />
                         ))
                       );
                     })()}

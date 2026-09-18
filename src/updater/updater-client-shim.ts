@@ -8,7 +8,7 @@
  */
 export { readAppUpdateAutoCheckEnabled } from "./updater-client";
 
-export const APP_UPDATE_AUTO_CHECK_CHANGED_EVENT = "slasshy:update-auto-check-changed";
+export const APP_UPDATE_AUTO_CHECK_CHANGED_EVENT = "slasshywispr:update-auto-check-changed";
 
 export function requestAppUpdateAutoCheckChange(enabled: boolean): void {
   window.dispatchEvent(

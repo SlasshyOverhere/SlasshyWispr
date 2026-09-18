@@ -159,19 +159,19 @@ describe("removeHistoryEntry", () => {
     // Should not throw
   });
 
-  it("dispatches slasshy:store-updated event", () => {
+  it("dispatches slasshywispr:store-updated event", () => {
     let eventFired = false;
     const handler = () => {
       eventFired = true;
     };
-    window.addEventListener("slasshy:store-updated", handler);
+    window.addEventListener("slasshywispr:store-updated", handler);
 
     const entries = [makeEntry({ timestamp: 1000 })];
     localStorage.setItem(HOME_HISTORY_STORAGE_KEY, JSON.stringify(entries));
     removeHistoryEntry(1000);
 
     expect(eventFired).toBe(true);
-    window.removeEventListener("slasshy:store-updated", handler);
+    window.removeEventListener("slasshywispr:store-updated", handler);
   });
 });
 
@@ -316,7 +316,7 @@ describe("uiStore integration", () => {
       notified = true;
     });
 
-    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+    window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
     expect(notified).toBe(true);
     unsub();
   });
@@ -327,11 +327,11 @@ describe("uiStore integration", () => {
       callCount++;
     });
 
-    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+    window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
     expect(callCount).toBe(1);
 
     unsub();
-    window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+    window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
     expect(callCount).toBe(1); // Should not increase
   });
 });

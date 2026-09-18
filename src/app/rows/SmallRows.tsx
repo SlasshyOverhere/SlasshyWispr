@@ -47,7 +47,7 @@ export function NoteRow({ note }: { note: QuickNoteEntry }) {
       const notes = JSON.parse(raw) as QuickNoteEntry[];
       const filtered = notes.filter(n => n.id !== note.id);
       localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(filtered));
-      window.dispatchEvent(new CustomEvent('slasshy:store-updated'));
+      window.dispatchEvent(new CustomEvent('slasshywispr:store-updated'));
     } catch { /* ignore */ }
   };
 

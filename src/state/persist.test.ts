@@ -167,12 +167,12 @@ describe("pages, panes, and dock layout", () => {
     const listener = (event: Event) => {
       seen.push((event as CustomEvent).detail);
     };
-    window.addEventListener("slasshy:history-filter", listener);
+    window.addEventListener("slasshywispr:history-filter", listener);
     try {
       renderFullHistory("week", "2026-01-01");
       expect(seen).toEqual([{ filter: "week", specificDate: "2026-01-01" }]);
     } finally {
-      window.removeEventListener("slasshy:history-filter", listener);
+      window.removeEventListener("slasshywispr:history-filter", listener);
     }
   });
 });

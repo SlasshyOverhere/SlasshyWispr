@@ -140,7 +140,7 @@ pub async fn synthesize_with_piper(
             .map_err(|error| format!("Failed to compute timestamp: {error}"))?
             .as_millis();
 
-        let output_path = std::env::temp_dir().join(format!("slasshy-tts-{stamp}.wav"));
+        let output_path = std::env::temp_dir().join(format!("slasshywispr-tts-{stamp}.wav"));
 
         let run_once = |with_tuning: bool| -> Result<std::process::Output, String> {
             let mut command = Command::new(&piper_path);

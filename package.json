@@ -1,8 +1,8 @@
 {
-  "name": "slasshy-desktop-assistant",
+  "name": "slasshywispr",
   "private": true,
   "version": "1.0.10",
-  "description": "Desktop voice dictation and AI assistant with online, offline, and hybrid model routing.",
+  "description": "Desktop voice dictation with online, offline, and hybrid model routing.",
   "type": "module",
   "scripts": {
     "dev": "vite",

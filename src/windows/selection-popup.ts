@@ -167,7 +167,7 @@ export async function ensureSelectionAssistantWindow(): Promise<WebviewWindow> {
   const y = Math.max(32, Math.round((window.screen.availHeight - height) / 2));
 
   const created = new WebviewWindow("selection_assistant", {
-    title: "SlasshyWispr Selection Assistant",
+    title: "SlasshyWispr",
     url: selectionAssistantUrl(),
     width,
     height,
@@ -243,7 +243,7 @@ export async function showSelectionAssistantPopup(payload: SelectionPopupPayload
         payload,
       });
     }, 120);
-    popupDeps.notify("Selection assistant popup opened.");
+    popupDeps.notify("SlasshyWispr popup opened.");
     return true;
   } catch (error) {
     popupDeps.notify(`Unable to open selection popup: ${asErrorMessage(error)}`, true);

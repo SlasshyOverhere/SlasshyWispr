@@ -12,7 +12,7 @@
 import { ACTIVE_PAGE_STORAGE_KEY } from "../constants";
 import type { MainPage, SettingsPane, TtsProfilePane } from "../types";
 
-export const ACTIVE_SETTINGS_PANE_STORAGE_KEY = "slasshy-wispr-active-settings-pane-v1";
+export const ACTIVE_SETTINGS_PANE_STORAGE_KEY = "slasshywispr-active-settings-pane-v1";
 
 export interface NavigationElements {
   pageNavButtons: HTMLButtonElement[];
@@ -133,7 +133,7 @@ export function setActivePage(next: MainPage): void {
   // React is the single source of truth for page content (history, etc.).
   // Do NOT call renderHomeHistory()/renderFullHistory() here — that causes
   // innerHTML writes on React-controlled DOM nodes, leading to blank screens.
-  window.dispatchEvent(new CustomEvent("slasshy:store-updated"));
+  window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
 }
 
 export function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void {

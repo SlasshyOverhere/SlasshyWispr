@@ -145,7 +145,7 @@ pub(crate) struct LocalSttHardwareAdviceResponse {
     pub gpu_name: String,
     pub gpu_vram_gb: f64,
     pub performance_tier: String,
-    pub slasshy_suggestion_model: String,
+    pub slasshywispr_suggestion_model: String,
     pub suggested_models: Vec<String>,
     pub caution_models: Vec<String>,
     pub selected_model_warning: String,
@@ -905,7 +905,7 @@ pub(crate) async fn get_local_stt_hardware_advice(
             advice.gpu_name.as_str()
         },
         advice.gpu_vram_gb,
-        advice.slasshy_suggestion_model
+        advice.slasshywispr_suggestion_model
     );
 
     Ok(advice)

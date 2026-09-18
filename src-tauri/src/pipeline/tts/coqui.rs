@@ -116,7 +116,7 @@ async fn synthesize_with_coqui_resolved(
         .duration_since(UNIX_EPOCH)
         .map_err(|error| format!("Failed to compute timestamp: {error}"))?
         .as_millis();
-    let output_path = std::env::temp_dir().join(format!("slasshy-coqui-tts-{stamp}.wav"));
+    let output_path = std::env::temp_dir().join(format!("slasshywispr-coqui-tts-{stamp}.wav"));
     let voice_dir = voice_dir.to_path_buf();
 
     let python_for_worker = python_path;

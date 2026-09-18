@@ -128,7 +128,7 @@ function createUIStore() {
   };
 
   window.addEventListener('storage', notify);
-  window.addEventListener('slasshy:store-updated', notify);
+  window.addEventListener('slasshywispr:store-updated', notify);
 
   return {
     getState(): UIState {
@@ -161,7 +161,7 @@ export function removeHistoryEntry(timestamp: number): void {
     if (!Array.isArray(entries)) return;
     const filtered = entries.filter((e) => e && e.timestamp !== timestamp);
     localStorage.setItem(HOME_HISTORY_STORAGE_KEY, JSON.stringify(filtered));
-    window.dispatchEvent(new CustomEvent('slasshy:store-updated'));
+    window.dispatchEvent(new CustomEvent('slasshywispr:store-updated'));
   } catch {
     /* swallow — UI keeps the entry on screen; next store sync will retry */
   }

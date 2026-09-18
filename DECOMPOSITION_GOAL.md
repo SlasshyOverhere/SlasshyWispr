@@ -27,7 +27,7 @@ Two primary god files exist on opposite sides of the IPC boundary:
 
 Secondary targets:
 
-- `src/App.tsx` — ~1,521 LOC. Six `flow-page` sections (home, history, dictionary, snippets, notes, analytics) plus row components (`HomeEntryCard`, `HistoryRow`, `DictionaryRow`, `SnippetRow`, `NoteRow`), hooks, and filtering. Only 2 raw `invoke()` calls; otherwise reads `localStorage` + `slasshy:store-updated` events.
+- `src/App.tsx` — ~1,521 LOC. Six `flow-page` sections (home, history, dictionary, snippets, notes, analytics) plus row components (`HomeEntryCard`, `HistoryRow`, `DictionaryRow`, `SnippetRow`, `NoteRow`), hooks, and filtering. Only 2 raw `invoke()` calls; otherwise reads `localStorage` + `slasshywispr:store-updated` events.
 - `src-tauri/src/pipeline/tts.rs` — ~1,095 LOC. Mixes pure Piper normalization (spacing, digits→words, math symbols), provisioning/validation (network + FS), synthesis (subprocess + bridge worker), voice management folded into provisioning, and 11 `AppHandle`-threaded path getters used only for `app_data_dir()`. Contains a dead stub (`ensure_coqui_bridge_script` always errors).
 - `src-tauri/src/pipeline/daemon.rs` — ~948 LOC. ~150 lines of spawn/send/restart transport duplicated verbatim between the Coqui path (stay-alive, no sweeper) and the local-STT path (two-tier idle reaper: 90s trim → 15min kill, background sweeper, stats). Zero Tauri imports; takes plain paths. Correct boundary, duplicated mechanics.
 

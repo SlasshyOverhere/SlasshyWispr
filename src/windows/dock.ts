@@ -142,7 +142,7 @@ export async function ensureVoiceIndicatorWindow(): Promise<WebviewWindow> {
   const dockPosition = await dockDeps.resolveStartPosition(dockWidth, dockHeight);
 
   const created = new WebviewWindow("voice_indicator", {
-    title: "SlasshyWispr Voice Indicator",
+    title: "SlasshyWispr",
     url: voiceIndicatorUrl(),
     width: dockWidth,
     height: dockHeight,

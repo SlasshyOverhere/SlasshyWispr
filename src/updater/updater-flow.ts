@@ -67,7 +67,7 @@ let updateAutoCheckTimerId: number | null = null;
 let updateAutoCheckTimeoutId: number | null = null;
 let updateInstallProgressUnlisten: (() => void) | null = null;
 
-const UPDATE_INSTALL_PROGRESS_EVENT = "slasshy://update-install-progress";
+const UPDATE_INSTALL_PROGRESS_EVENT = "slasshywispr://update-install-progress";
 
 export function initUpdaterFlow(elements: UpdaterButtonElements, deps: UpdaterFlowDeps): void {
   flowButtons = elements;

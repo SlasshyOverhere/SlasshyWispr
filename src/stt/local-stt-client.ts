@@ -599,7 +599,7 @@ export async function suggestLocalSttModelForHardwareIfNeeded(selectedModel: str
     return selectedModel;
   }
 
-  const suggestionModel = advice.slasshySuggestionModel?.trim() || selectedModel;
+  const suggestionModel = advice.slasshywisprSuggestionModel?.trim() || selectedModel;
   markLocalSttHardwareAdvisorShown();
 
   if (suggestionModel && suggestionModel !== selectedModel) {
