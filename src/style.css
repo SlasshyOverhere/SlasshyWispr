@@ -438,8 +438,9 @@ body.sidebar-collapsed .flow-shell {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  height: 44px;
+  padding: var(--space-6) var(--space-4);
+  min-height: 44px;
+  margin-bottom: var(--space-4);
   position: relative;
   z-index: 1;
 }
@@ -483,7 +484,7 @@ body.sidebar-collapsed .brand-strip {
 }
 
 .brand-word {
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.015em;
   color: var(--ink-primary);
@@ -491,14 +492,15 @@ body.sidebar-collapsed .brand-strip {
   align-items: baseline;
   gap: 6px;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .brand-tagline {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  color: var(--ink-faint);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink-muted);
   text-transform: lowercase;
 }
 
@@ -518,7 +520,7 @@ body.sidebar-collapsed .brand-row strong {
 .nav-secondary {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   position: relative;
   z-index: 1;
 }
@@ -527,13 +529,10 @@ body.sidebar-collapsed .brand-row strong {
   flex: 1;
 }
 
-.nav-divider {
-  height: 1px;
-  background: var(--border-line);
-  margin: var(--space-3) var(--space-3);
-  flex-shrink: 0;
-  position: relative;
-  z-index: 1;
+.nav-secondary {
+  margin-top: auto;
+  border-top: 1px solid var(--border-line);
+  padding-top: var(--space-4);
 }
 
 .nav-section-kicker {
@@ -551,7 +550,7 @@ body.sidebar-collapsed .brand-row strong {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 9px 12px;
+  padding: 12px;
   border: 0;
   background: transparent;
   color: var(--ink-secondary);
@@ -565,6 +564,7 @@ body.sidebar-collapsed .brand-row strong {
   text-decoration: none;
   position: relative;
   width: 100%;
+  white-space: nowrap;
 }
 
 .nav-item:hover,
@@ -582,13 +582,22 @@ body.sidebar-collapsed .brand-row strong {
 .nav-item.is-active {
   background: var(--bg-active);
   color: var(--ink-primary);
-  font-weight: 600;
+  font-weight: 500;
 }
 
-/* Active state is the pill fill alone — no leading bar. While
-   recording the pill tints warm so the state stays visible. */
 .nav-item.is-active::before {
-  display: none;
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: oklch(70% 0.12 250);
+}
+
+:root[data-theme="mono"] .nav-item.is-active::before {
+  background: var(--ink-primary);
 }
 
 .app-frame.is-recording .nav-item.is-active {
@@ -603,14 +612,20 @@ body.sidebar-collapsed .brand-row strong {
 
 .nav-glyph,
 .secondary-glyph {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   color: inherit;
   opacity: 0.85;
+}
+
+.nav-glyph svg,
+.secondary-glyph svg {
+  width: 16px;
+  height: 16px;
 }
 
 .nav-item.is-active .nav-glyph {
@@ -635,9 +650,26 @@ body.sidebar-collapsed #toggleSidebarBtn svg {
 }
 
 /* Hotkey hints hidden inline: they live in hover tooltips (title attr
-   synced by sidebar.ts). Keeps nav rows quiet like Linear/Slack. */
-.nav-keyhint {
+   synced by sidebar.ts). Keeps nav rows quiet like Linear/Slack.
+   Exception: secondary actions show a muted kbd badge. */
+.nav-main .nav-keyhint {
   display: none;
+}
+
+.nav-secondary .nav-keyhint {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  background: var(--bg-active);
+  border: 1px solid var(--border-line);
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
 /* Phase 2.4: Content Area */

@@ -137,8 +137,6 @@ export function App() {
               </button>
             </nav>
 
-            <div className="nav-divider"></div>
-
             <nav className="nav-secondary" aria-label="Secondary navigation">
               <button id="sidebarToggleLocalSttBtn" className="secondary-link secondary-link-local-stt" data-label="Load local STT model" data-hotkey="Alt+D" aria-label="Load local STT model (Alt+D)" data-stt-state="ready" type="button" hidden>
                 <span id="sidebarToggleLocalSttGlyph" className="secondary-glyph">
