@@ -30,7 +30,16 @@ use crate::pipeline::routing::normalize_api_key_secret;
 
 const KEYRING_SERVICE: &str = "SlasshyWispr";
 const KEYRING_USER: &str = "api_key";
-const KEYRING_SERVICE_ALIASES: [&str; 1] = ["online.slasshy.slasshywispr"];
+// ponytail: legacy service names kept as read fallback so existing installs
+// keep their saved API key; new writes go to KEYRING_SERVICE only.
+// Drop these once old installs are extinct in the wild.
+const KEYRING_SERVICE_ALIASES: [&str; 5] = [
+    "SlasshyWispr Desktop Assistant",
+    "Slasshy Desktop Assistant",
+    "online.slasshy.slasshywispr",
+    "online.slasshy.desktop.assistant",
+    "slasshy-desktop-assistant",
+];
 const KEYRING_USER_ALIASES: [&str; 3] = ["apiKey", "apikey", "default"];
 const SETTINGS_API_KEY_ENCRYPTED_FIELD: &str = "apiKeyEncrypted";
 const SETTINGS_API_KEY_FINGERPRINT_FIELD: &str = "apiKeyFingerprint";
