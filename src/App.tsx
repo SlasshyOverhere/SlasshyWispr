@@ -9,7 +9,6 @@ import {
   useUIState,
   useHistoryFilter,
   useHistorySearch,
-  useUserHotkeyTokens,
   useLastSevenDaysWords,
   filterHistory,
 } from './app/hooks';
@@ -22,7 +21,6 @@ export function App() {
   const state = useUIState();
   const historyFilter = useHistoryFilter();
   const historySearch = useHistorySearch();
-  const hotkeyTokens = useUserHotkeyTokens();
   const pace = useLastSevenDaysWords(state.analyticsSessions);
 
   /* Copy handler for Home entry cards. Promise-safe with a timeout
@@ -168,9 +166,103 @@ export function App() {
           <main className="flow-content">
             <section className={`flow-page ${state.activePage === 'home' ? 'is-active' : ''}`} data-page="home">
               <div className="flow-page-inner home-page">
-                {/* Left column: date-grouped entry list. */}
                 <div className="home-main">
-                  {/* List region: date-banded card stack. */}
+                  {/* Stats row: three metric cards + trends. Hidden spans
+                      are the existing main.tsx/analytics-render write
+                      targets — do not rename their ids. */}
+                  <section className="home-metrics" aria-label="Lifetime stats">
+                    <div className="home-metric-head">
+                      <span className="home-metric-kicker">Your numbers</span>
+                      <span className="home-metric-head-r">
+                        <button
+                          id="viewFullHistoryBtn"
+                          className="home-card-link"
+                          type="button"
+                        >
+                          Detail
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <polyline points="9 18 15 12 9 6"></polyline>
+                          </svg>
+                        </button>
+                        <button
+                          id="clearStatsBtn"
+                          className="home-card-reset"
+                          type="button"
+                        >
+                          Reset stats
+                        </button>
+                      </span>
+                    </div>
+                    <div className="home-metric-grid">
+                      <div className="home-metric-card">
+                        <span className="home-metric-num" id="metricWords">
+                          {((state.usage?.words ?? 0) + (state.usage?.prevWords ?? 0)).toLocaleString()}
+                        </span>
+                        <span className="home-metric-label">Words</span>
+                        <span className="home-trend stat-trend-neutral" id="wordsTrend"><span>--</span></span>
+                      </div>
+                      <div className="home-metric-card">
+                        <span className="home-metric-num" id="metricWpm">
+                          {state.usage ? Math.round(((state.usage.words + state.usage.prevWords) / Math.max(1, state.usage.speakingSeconds + state.usage.prevSpeakingSeconds)) * 60) : 0}
+                        </span>
+                        <span className="home-metric-label">Avg WPM</span>
+                        <span className="home-trend stat-trend-neutral" id="wpmTrend"><span>--</span></span>
+                      </div>
+                      <div className="home-metric-card">
+                        <span className="home-metric-num" id="metricSessions">
+                          {(state.usage?.sessions ?? 0).toLocaleString()}
+                        </span>
+                        <span className="home-metric-label">Sessions</span>
+                        <span className="home-trend stat-trend-neutral" id="sessionsTrend"><span>--</span></span>
+                      </div>
+                    </div>
+                    <span id="metricSpeakingTime" hidden>{state.usage ? Math.floor(((state.usage?.speakingSeconds ?? 0) + (state.usage?.prevSpeakingSeconds ?? 0)) / 60) : 0}</span>
+                    <span id="statsTitle" hidden>Stats</span>
+                    <span id="timeTrend" hidden>--</span>
+                  </section>
+
+                  {/* Pace sparkline card — last 7 days + analytics link. */}
+                  <section className="home-card home-pace" aria-label="Weekly pace">
+                    <div className="home-card-head">
+                      <h3 className="home-card-title">Pace</h3>
+                      <span className="home-card-meta">
+                        Last 7 days · from {pace.oldest}
+                      </span>
+                    </div>
+                    <PaceSparkline points={pace.points} />
+                    <div className="home-pace-footnote">
+                      <span>
+                        <strong>{state.usage?.words ?? 0}</strong> words today
+                      </span>
+                      <button
+                        id="openAnalyticsBtn"
+                        className="home-card-link"
+                        type="button"
+                        onClick={() => {
+                          window.dispatchEvent(
+                            new CustomEvent("slasshy:focus-analytics")
+                          );
+                        }}
+                      >
+                        Open analytics
+                        <svg
+                          width="11"
+                          height="11"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                      </button>
+                    </div>
+                  </section>
+
+                  {/* Activity feed. */}
                   <div className="home-list-head">
                     <span className="home-list-head-l">
                       <span className="home-list-head-icon" aria-hidden="true">
@@ -179,7 +271,7 @@ export function App() {
                           <circle cx="12" cy="12" r="9" />
                         </svg>
                       </span>
-                      <span style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--ink-muted)', letterSpacing: '0.04em' }}>Where you last left off</span>
+                      <span style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--ink-muted)', letterSpacing: '0.04em' }}>Recent activity</span>
                     </span>
                     <span className="home-list-head-r">
                       <button
@@ -224,7 +316,6 @@ export function App() {
                           <span className="home-empty-title">Speak first. Edit second.</span>
                           <span className="home-empty-sub">
                             Start talking — your words land here, grouped by the day you said them.
-                            Press <kbd className="empty-hint-kbd">⌥ Space</kbd> to begin.
                           </span>
                         </div>
                       ) : (
@@ -235,156 +326,6 @@ export function App() {
                     </div>
                   </section>
                 </div>
-
-                {/* Right column: stats summary card + voice-profile card. */}
-                <aside className="home-rail" aria-label="Lifetime stats">
-                  <div className="home-card" id="statsHero">
-                    <div className="home-card-head">
-                      <h3 className="home-card-title">Your numbers</h3>
-                      <button
-                        id="viewFullHistoryBtn"
-                        className="home-card-link"
-                        type="button"
-                      >
-                        Detail
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <polyline points="9 18 15 12 9 6"></polyline>
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="home-stat-figures">
-                      <div className="home-stat-figure">
-                        <span className="home-stat-figure-num" id="metricWords">
-                          {((state.usage?.words ?? 0) + (state.usage?.prevWords ?? 0)).toLocaleString()}
-                        </span>
-                        <span className="home-stat-figure-label">total words</span>
-                      </div>
-                      <div className="home-stat-figure">
-                        <span className="home-stat-figure-num" id="metricWpm">
-                          {state.usage ? Math.round(((state.usage.words + state.usage.prevWords) / Math.max(1, state.usage.speakingSeconds + state.usage.prevSpeakingSeconds)) * 60) : 0}
-                        </span>
-                        <span className="home-stat-figure-label">wpm</span>
-                      </div>
-                      <div className="home-stat-figure">
-                        <span className="home-stat-figure-num" id="metricSessions">
-                          {state.usage?.sessions ?? 0}
-                        </span>
-                        <span className="home-stat-figure-label">sessions</span>
-                      </div>
-                    </div>
-                    {/* Hidden. main.tsx writes to these by id at runtime. */}
-                    <span id="metricSpeakingTime" hidden>{state.usage ? Math.floor(((state.usage?.speakingSeconds ?? 0) + (state.usage?.prevSpeakingSeconds ?? 0)) / 60) : 0}</span>
-                    <span id="statsTitle" hidden>Stats</span>
-                    <span id="wordsTrend" hidden>--</span>
-                    <span id="timeTrend" hidden>--</span>
-                    <span id="sessionsTrend" hidden>--</span>
-                    <span id="wpmTrend" hidden>--</span>
-                    {/* Footer reset link — kept low so it doesn't compete
-                        with the figure rows above. */}
-                    <button
-                      id="clearStatsBtn"
-                      className="home-card-reset"
-                      type="button"
-                    >
-                      Reset stats
-                    </button>
-                  </div>
-
-                  {/* Pace sparkline — last 7 calendar days of words
-                      spoken. Fills the previously-empty vertical space
-                      with something productive. */}
-                  <div className="home-card">
-                    <div className="home-card-head">
-                      <h3 className="home-card-title">Pace</h3>
-                      <span className="home-card-meta">
-                        Last 7 days · from {pace.oldest}
-                      </span>
-                    </div>
-                    <PaceSparkline points={pace.points} />
-                    <div className="home-pace-footnote">
-                      <span>
-                        <strong>{state.usage?.words ?? 0}</strong> words today
-                      </span>
-                      <button
-                        id="openAnalyticsBtn"
-                        className="home-card-link"
-                        type="button"
-                        onClick={() => {
-                          window.dispatchEvent(
-                            new CustomEvent("slasshy:focus-analytics")
-                          );
-                        }}
-                      >
-                        Open analytics
-                        <svg
-                          width="11"
-                          height="11"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <polyline points="9 18 15 12 9 6"></polyline>
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Quick start — echo the user's configured hotkey
-                      back to them so the muscle memory is obvious. */}
-                  <div className="home-card">
-                    <div className="home-card-head">
-                      <h3 className="home-card-title">Quick start</h3>
-                      <button
-                        id="openSettingsFromHomeBtn"
-                        className="home-card-link"
-                        type="button"
-                        onClick={() => {
-                          window.dispatchEvent(
-                            new CustomEvent("slasshy:focus-settings")
-                          );
-                        }}
-                      >
-                        Edit
-                        <svg
-                          width="11"
-                          height="11"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <polyline points="9 18 15 12 9 6"></polyline>
-                        </svg>
-                      </button>
-                    </div>
-                    <p className="home-quickstart-copy">
-                      Capture speech anywhere on this device. The same combo toggles start and stop.
-                    </p>
-                    <div className="home-quickstart-combo">
-                      {(() => {
-                        if (hotkeyTokens.length === 0) {
-                          return (
-                            <span className="home-quickstart-set">
-                              No hotkey set
-                            </span>
-                          );
-                        }
-                        return hotkeyTokens.map((token, i) => (
-                          <span key={`hk-${i}`} className="home-quickstart-key">
-                            {token}
-                          </span>
-                        ));
-                      })()}
-                    </div>
-                  </div>
-                </aside>
               </div>
             </section>
 

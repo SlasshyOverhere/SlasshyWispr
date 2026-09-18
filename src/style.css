@@ -719,37 +719,107 @@ body.sidebar-collapsed #toggleSidebarBtn svg {
 
 /* Phase 3: All Pages */
 
-/* Home Page — Wispr-flow archetype.
-   Two-column grid: left = greeting + date-grouped card list;
-   right = summary card + voice-profile progress card.
-   Each entry is its own white card with time / body / icon actions. */
+/* Home Page — single dense feed: status bar, metric cards, pace,
+   then the date-grouped activity list. Sidebar stays; right rail and
+   Quick start card removed. */
 
 .home-page {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
-  gap: var(--space-6);
   min-height: 100%;
   width: 100%;
-  max-width: 1080px;
+  max-width: 880px;
   margin: 0 auto;
   padding-bottom: var(--space-8);
 }
 
-@media (max-width: 880px) {
-  .home-page {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .home-rail {
-    order: -1;
-  }
-}
-
-/* ── Left column: greeting + list region ───────────────────────────*/
+/* ── Feed column: metrics + pace + list ────────────────────────────*/
 .home-main {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-8);
   min-width: 0;
+}
+
+/* Metrics — three cards in a row, trend chip top-right. */
+.home-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.home-metric-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.home-metric-kicker {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.home-metric-head-r {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.home-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.home-metric-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-5);
+  background: var(--bg-card);
+  border: 1px solid var(--border-line);
+  border-radius: var(--radius-card);
+  min-width: 0;
+}
+
+.home-metric-num {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--ink-primary);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.home-metric-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.home-trend {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.home-trend.stat-trend-up { color: oklch(74% 0.16 145); }
+.home-trend.stat-trend-down { color: oklch(72% 0.14 25); }
+.home-trend.stat-trend-neutral { color: var(--ink-faint); }
+
+@media (max-width: 640px) {
+  .home-metric-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* Greeting row — large title with orange keyboard tokens. */
@@ -809,13 +879,16 @@ body.sidebar-collapsed #toggleSidebarBtn svg {
   max-width: 56ch;
 }
 
-/* List region: search pin in top-right, then date-banded card stacks. */
+/* List region: search pin in top-right, then date-banded card stacks.
+   Pulls the log up so the header-to-list gap stays a breath (8px)
+   instead of inheriting the loose section gap. */
 .home-list-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding-top: var(--space-3);
   border-top: 1px solid var(--border-line);
+  margin-bottom: calc(var(--space-2) - var(--space-8));
 }
 
 .home-list-head-l {
@@ -874,20 +947,21 @@ body.sidebar-collapsed #toggleSidebarBtn svg {
   background: var(--bg-hover);
 }
 
-/* Date band — the user's voice anchors. Mono caps, quiet, with a
-   trailing hairline. Bumped color for dark theme so the date reads as
-   an anchor against the deep navy surface. */
+/* Date band — sticky section header with a breath of room. */
 .home-date-band {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg-void);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-secondary);
+  color: var(--ink-muted);
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: var(--space-4) 0 var(--space-2);
+  padding: var(--space-3) 0 var(--space-2);
 }
 
 .home-date-band-count {
@@ -898,37 +972,35 @@ body.sidebar-collapsed #toggleSidebarBtn svg {
   color: var(--ink-faint);
 }
 
-/* Card list — each entry is a card on the page surface. */
+/* Card list — generous rows with room between cards. */
 .home-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
   list-style: none;
   padding: 0;
   margin: 0;
 }
 
-/* Entry card. In dark theme we raise the surface a touch over the
-   --bg-card default and warm the border so cards read as elevated,
-   not sunk. light theme keeps the soft white from before. */
+/* Entry card — dense activity row: text left, timestamp + actions
+   right, vertically centered. Hover uses a warm border. */
 .home-entry {
-  display: grid;
-  grid-template-columns: 60px minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
-  padding: 12px var(--space-4);
-  background: oklch(20% 0.011 250);
-  border: 1px solid oklch(30% 0.010 250);
-  border-radius: 10px;
-  box-shadow: 0 1px 0 oklch(0% 0 0 / 0.04) inset;
-  transition: border-color var(--transition-fast),
-              background-color var(--transition-fast),
-              transform var(--transition-fast);
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-5) var(--space-6);
+  background: var(--bg-card);
+  border: 1px solid var(--border-line);
+  border-radius: var(--radius-card);
+  transition: background-color 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .home-entry:hover {
-  border-color: oklch(45% 0.012 250);
-  background: oklch(24% 0.011 250);
+  background: var(--bg-hover);
+  border-color: oklch(72% 0.12 250 / 0.45);
 }
 
 /* Fresh row signature: soft amber tint + subtle warm border. Tonal,
@@ -942,63 +1014,60 @@ body.sidebar-collapsed #toggleSidebarBtn svg {
   border-color: oklch(74% 0.18 55 / 0.45);
 }
 
-.home-entry-time {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--ink-faint);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-  text-align: right;
-}
-
-.home-entry-main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
 .home-entry-body {
-  font-size: 15px;
+  flex: 1;
+  min-width: 0;
+  max-width: 42rem;
+  font-size: 16px;
   font-weight: 450;
   color: var(--ink-primary);
-  line-height: 1.45;
+  line-height: 1.5;
   letter-spacing: -0.005em;
   display: -webkit-box;
-  -webkit-line-clamp: 1;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
+  margin: 0;
 }
 
-.home-entry-meta {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+.home-entry-side {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+.home-entry-time {
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.04em;
-  color: var(--ink-faint);
+  color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .home-entry-actions {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 2px;
-  opacity: 0;
-  transition: opacity var(--transition-fast);
 }
 
-.home-entry:hover .home-entry-actions,
-.home-entry:focus-within .home-entry-actions { opacity: 1; }
+@media (hover: hover) {
+  .home-entry-actions {
+    opacity: 0;
+    transition: opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .home-entry:hover .home-entry-actions,
+  .home-entry:focus-within .home-entry-actions { opacity: 1; }
+}
 
 .home-entry-action {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--ink-faint);
   display: grid;
   place-items: center;
@@ -1015,66 +1084,35 @@ body.sidebar-collapsed #toggleSidebarBtn svg {
   color: oklch(70% 0.16 145);
 }
 
-/* Per-entry popover (anchored via createPortal from HomeEntryCard).
-   Sits above other rail entries thanks to z-index: 1000 in JS. */
-.home-entry-menu {
-  display: flex;
-  flex-direction: column;
-  min-width: 180px;
-  padding: 4px;
-  background: oklch(28% 0.012 250);
-  border: 1px solid oklch(40% 0.012 250);
-  border-radius: 8px;
-  box-shadow: 0 12px 32px -12px oklch(0% 0 0 / 0.7),
-              0 0 0 1px oklch(0% 0 0 / 0.20) inset;
+.home-entry-action.is-playing {
+  color: var(--accent-live);
 }
 
-.home-entry-menu-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 8px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--ink-secondary);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color var(--transition-fast),
-              color var(--transition-fast);
+.home-entry-delete.is-confirming {
+  color: oklch(72% 0.14 25);
+  background: oklch(60% 0.18 25 / 0.15);
 }
 
-.home-entry-menu-item:hover {
-  background: var(--bg-hover);
-  color: var(--ink-primary);
+.home-entry-error {
+  flex-basis: 100%;
+  margin: 0;
 }
 
-.home-entry-menu-item-main {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
+/* Dead popover styles kept neutral — HomeEntryCard renders inline
+   copy/play/delete buttons now, no portal menu. Remove in next pass. */
+.home-entry-menu,
+.home-entry-menu-item,
+.home-entry-menu-item-main,
+.home-entry-menu-item-danger { display: none; }
 
-.home-entry-menu-item-danger { color: var(--ink-secondary); }
+/* ── Dead right-rail styles — Home is a single feed now, rail and
+   Quick start card removed. Kept neutral until removal in next pass. */
+.home-rail { display: none; }
 
-.home-entry-menu-item-danger:hover,
-.home-entry-menu-item-danger.is-confirming {
-  background: oklch(60% 0.20 25 / 0.18);
-  color: oklch(95% 0.10 25);
-}
+/* Pace card keeps .home-card (used by the pace section on Home).
+   Right rail is gone; pace is a full-width feed section. */
+.home-pace { margin: 0; }
 
-/* ── Right rail: stats card + voice-profile card ───────────────────*/
-.home-rail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
-/* Rail cards raise slightly above the page surface (which is darker
-   than entry cards, deliberately) so the right column reads as a
-   distinct panel. light theme keeps the soft-white variant. */
 .home-card {
   background: oklch(24% 0.012 250);
   border: 1px solid oklch(34% 0.010 250);
@@ -1173,44 +1211,12 @@ body.sidebar-collapsed #toggleSidebarBtn svg {
   margin-right: 4px;
 }
 
-/* Quick start copy + combo. The combo is a chip row reading the
-   user's configured hotkey so they see exactly what to press. */
-.home-quickstart-copy {
-  font-size: 13px;
-  color: var(--ink-muted);
-  line-height: 1.5;
-  margin: 0;
-}
-
-.home-quickstart-combo {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.home-quickstart-key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: var(--bg-recess);
-  border: 1px solid var(--border-line);
-  border-bottom-width: 2px;
-  color: var(--ink-secondary);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  line-height: 1;
-}
-
-.home-quickstart-set {
-  font-size: 12.5px;
-  color: var(--ink-faint);
-  font-style: italic;
-}
+/* Dead Quick start styles — card removed from Home. Kept neutral
+   until removal in next pass. */
+.home-quickstart-copy,
+.home-quickstart-combo,
+.home-quickstart-key,
+.home-quickstart-set { display: none; }
 
 /* Quiet reset link — sits at the bottom of a rail card, doesn't
    compete with the figure rows. */

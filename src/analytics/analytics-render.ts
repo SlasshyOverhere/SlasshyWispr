@@ -40,15 +40,13 @@ export function updateUsageMetrics(): void {
   const totalWords = usageStats.words + usageStats.prevWords;
   const totalSeconds = usageStats.speakingSeconds + usageStats.prevSpeakingSeconds;
   const totalSessions = usageStats.sessions + usageStats.prevSessions;
-  metricElements.words.textContent = `${totalWords} words`;
+  metricElements.words.textContent = totalWords.toLocaleString();
   metricElements.speakingTime.textContent = formatSpeakingTime(totalSeconds);
-  metricElements.sessions.textContent = `${totalSessions}`;
+  metricElements.sessions.textContent = totalSessions.toLocaleString();
   const lifetimeWpm = totalSeconds > 0 ? Math.round((totalWords / totalSeconds) * 60) : 0;
-  metricElements.wpm.textContent = `${lifetimeWpm} `;
-  const unit = document.createElement("span");
-  unit.className = "stat-unit";
-  unit.textContent = "wpm";
-  metricElements.wpm.append(unit);
+  /* Number only — the card label already says "Avg WPM". (The old
+     .stat-unit append is display:none legacy.) */
+  metricElements.wpm.textContent = `${lifetimeWpm}`;
 
   updateTrendIndicator(metricElements.wordsTrend, usageStats.words, usageStats.prevWords);
   updateTrendIndicator(metricElements.timeTrend, usageStats.speakingSeconds, usageStats.prevSpeakingSeconds);
@@ -60,8 +58,13 @@ export function updateTrendIndicator(element: HTMLElement, current: number, prev
   const span = element.querySelector("span");
   if (!span) return;
 
+  /* Preserve host classes (e.g. home-trend) — only swap the stat-trend
+     modifier so restyled hosts keep their own styling. */
+  element.classList.remove("stat-trend-up", "stat-trend-down", "stat-trend-neutral");
+  element.classList.add("stat-trend");
+
   if (previous === 0 || current === 0) {
-    element.className = "stat-trend stat-trend-neutral";
+    element.classList.add("stat-trend-neutral");
     span.textContent = "--";
     return;
   }
@@ -69,13 +72,13 @@ export function updateTrendIndicator(element: HTMLElement, current: number, prev
   const percentChange = ((current - previous) / previous) * 100;
 
   if (percentChange > 0) {
-    element.className = "stat-trend stat-trend-up";
+    element.classList.add("stat-trend-up");
     span.textContent = `+${Math.round(percentChange)}%`;
   } else if (percentChange < 0) {
-    element.className = "stat-trend stat-trend-down";
+    element.classList.add("stat-trend-down");
     span.textContent = `${Math.round(percentChange)}%`;
   } else {
-    element.className = "stat-trend stat-trend-neutral";
+    element.classList.add("stat-trend-neutral");
     span.textContent = "0%";
   }
 }

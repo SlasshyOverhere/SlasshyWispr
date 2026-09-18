@@ -1,26 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useRef, useState } from 'react';
+import { getDictationRecording } from '../../ipc/client';
 import { removeHistoryEntry } from '../../store';
 import type { HomeHistoryEntry } from '../../types';
 
-/* Compute the popover anchor coordinates from the more button's rect
-   so the menu opens to the bottom-right of the trigger. Pure function
-   — returns a style object safe to spread inline. */
-export function menuAnchorStyle(anchor: HTMLElement | null): React.CSSProperties {
-  if (!anchor) return { visibility: "hidden" };
-  const r = anchor.getBoundingClientRect();
-  return {
-    position: "fixed",
-    top: r.bottom + 6,
-    right: window.innerWidth - r.right,
-    zIndex: 1000,
-  };
-}
-
-/* Rich list row: time + body + metadata line + hover-revealed copy /
-   more actions. Word count derived from content; recording play lives
-   on the History page (HistoryRow). The more (···) popover confirms
-   then removes via removeHistoryEntry(timestamp). */
+/* Dense activity row: transcription left, timestamp + hover actions
+   right. Copy always available; Play only when a recordingId exists;
+   Delete is two-step (first click arms, second removes via
+   removeHistoryEntry(timestamp)). Playback uses a detached Audio
+   object so the row stays light — no <audio> element in the DOM. */
 export function HomeEntryCard({
   entry,
   time,
@@ -32,49 +19,12 @@ export function HomeEntryCard({
   isFresh: boolean;
   onCopy: (setCopied: (v: boolean) => void) => void;
 }) {
-  const wordCount = entry.content.trim() ? entry.content.trim().split(/\s+/).length : 0;
   const [copied, setCopied] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const moreBtnRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  const icon = (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="9" y="9" width="13" height="13" rx="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  );
-
-  /* Close the popover on outside click / Esc. Anchor math mirrors the
-     HistoryRow pattern but portals into document.body so the stack
-     context doesn't clip the menu. */
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDocClick = (e: MouseEvent) => {
-      const tgt = e.target as Node | null;
-      if (
-        tgt &&
-        !menuRef.current?.contains(tgt) &&
-        !moreBtnRef.current?.contains(tgt)
-      ) {
-        setMenuOpen(false);
-        setConfirmingDelete(false);
-      }
-    };
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMenuOpen(false);
-        setConfirmingDelete(false);
-      }
-    };
-    document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("keydown", onEsc);
-    return () => {
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onEsc);
-    };
-  }, [menuOpen]);
+  const [playing, setPlaying] = useState(false);
+  const [playError, setPlayError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const hasRecording = Boolean(entry.recordingId);
 
   const handleDelete = () => {
     if (!confirmingDelete) {
@@ -83,8 +33,38 @@ export function HomeEntryCard({
       return;
     }
     removeHistoryEntry(entry.timestamp);
-    setMenuOpen(false);
-    setConfirmingDelete(false);
+  };
+
+  const handlePlay = async () => {
+    if (!entry.recordingId) {
+      return;
+    }
+    setPlayError(null);
+    const isTauri =
+      typeof (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
+      "undefined";
+    if (!isTauri) {
+      setPlayError("Playback is only available in the desktop app.");
+      return;
+    }
+    try {
+      const el = audioRef.current ?? new Audio();
+      audioRef.current = el;
+      if (playing) {
+        el.pause();
+        el.currentTime = 0;
+        setPlaying(false);
+        return;
+      }
+      const dataUrl = await getDictationRecording(entry.recordingId);
+      el.src = dataUrl;
+      el.onended = () => setPlaying(false);
+      await el.play();
+      setPlaying(true);
+    } catch (err) {
+      setPlaying(false);
+      setPlayError(`Unable to play: ${(err as Error).message}`);
+    }
   };
 
   return (
@@ -92,88 +72,75 @@ export function HomeEntryCard({
       className={`home-entry ${isFresh ? "is-fresh" : ""}`}
       tabIndex={0}
     >
-      <span className="home-entry-time">{time}</span>
-      <span className="home-entry-main">
-        <span className="home-entry-body" title={entry.content}>{entry.content}</span>
-        <span className="home-entry-meta">{wordCount} {wordCount === 1 ? "word" : "words"}</span>
-      </span>
-      <span className="home-entry-actions">
-        {copied ? (
-          <span className={`home-entry-action is-copied`} title="Copied" aria-label="Copied">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </span>
-        ) : (
+      <p className="home-entry-body" title={entry.content}>{entry.content}</p>
+      <div className="home-entry-side">
+        <span className="home-entry-time">{time}</span>
+        <span className="home-entry-actions">
+          {copied ? (
+            <span className="home-entry-action is-copied" title="Copied" aria-label="Copied">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="home-entry-action"
+              onClick={() => onCopy(setCopied)}
+              aria-label={`Copy: ${entry.content.slice(0, 48)}`}
+              title="Copy"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            </button>
+          )}
+          {hasRecording ? (
+            <button
+              type="button"
+              className={`home-entry-action ${playing ? "is-playing" : ""}`}
+              onClick={() => void handlePlay()}
+              aria-label={playing ? "Stop recording" : "Play recording"}
+              title={playing ? "Stop" : "Play recording"}
+            >
+              {playing ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <rect x="6" y="5" width="4" height="14" rx="1"></rect>
+                  <rect x="14" y="5" width="4" height="14" rx="1"></rect>
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <polygon points="8 5 19 12 8 19 8 5"></polygon>
+                </svg>
+              )}
+            </button>
+          ) : null}
           <button
             type="button"
-            className="home-entry-action"
-            onClick={() => onCopy(setCopied)}
-            aria-label={`Copy: ${entry.content.slice(0, 48)}`}
-            title="Copy"
+            className={`home-entry-action home-entry-delete ${confirmingDelete ? "is-confirming" : ""}`}
+            aria-label={confirmingDelete ? "Click again to confirm delete" : "Delete entry"}
+            title={confirmingDelete ? "Click again to confirm" : "Delete"}
+            onClick={handleDelete}
           >
-            {icon}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+              <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+            </svg>
           </button>
-        )}
-        <button
-          ref={moreBtnRef}
-          type="button"
-          className={`home-entry-action ${menuOpen ? "is-open" : ""}`}
-          aria-label="More actions"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          title="More"
-          onClick={() => {
-            setMenuOpen((v) => !v);
-            setConfirmingDelete(false);
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <circle cx="5" cy="12" r="1.6" />
-            <circle cx="12" cy="12" r="1.6" />
-            <circle cx="19" cy="12" r="1.6" />
-          </svg>
-        </button>
-        {menuOpen
-          ? createPortal(
-              <div
-                ref={menuRef}
-                className="home-entry-menu"
-                role="menu"
-                aria-label="Entry actions"
-                style={menuAnchorStyle(moreBtnRef.current)}
-              >
-                <button
-                  type="button"
-                  className={`home-entry-menu-item home-entry-menu-item-danger ${
-                    confirmingDelete ? "is-confirming" : ""
-                  }`}
-                  role="menuitem"
-                  onClick={handleDelete}
-                >
-                  <span className="home-entry-menu-item-main">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6" />
-                      <path d="M10 11v6" />
-                      <path d="M14 11v6" />
-                      <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
-                    </svg>
-                    {confirmingDelete ? "Click again to confirm" : "Delete entry"}
-                  </span>
-                </button>
-              </div>,
-              document.body
-            )
-          : null}
-      </span>
+        </span>
+      </div>
+      {playError ? <p className="entry-play-error home-entry-error">{playError}</p> : null}
     </article>
   );
 }
 
-/* Build the date-grouped list of card entries for Home. Splits by
-   calendar day and emits a date band per group; entries are inline
-   single-line cards with copy + more-row actions. */
+/* Build the date-grouped list of entries for Home. Splits by
+   calendar day and emits a date band per group; entries are dense
+   activity rows with copy + play + delete actions. */
 export function buildHomeList(
   history: HomeHistoryEntry[],
   onCopy: (entry: HomeHistoryEntry, setter: (v: boolean) => void) => void
