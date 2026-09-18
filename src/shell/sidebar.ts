@@ -45,23 +45,15 @@ export function applySidebarCollapsed(collapsed: boolean): void {
   syncSidebarHoverTitles(collapsed);
 }
 
-export function syncSidebarHoverTitles(collapsed: boolean): void {
+export function syncSidebarHoverTitles(_collapsed: boolean): void {
   for (const target of sidebarElements.labeledButtons) {
-    let label = target.dataset.label?.trim();
+    const label = target.dataset.label?.trim();
     if (!label) {
       continue;
     }
 
     const hotkey = target.dataset.hotkey?.trim();
-    if (collapsed && hotkey) {
-      label = `${label} (${hotkey})`;
-    }
-
-    if (collapsed) {
-      target.setAttribute("title", label);
-      continue;
-    }
-
-    target.removeAttribute("title");
+    // ponytail: keyhints hidden via CSS; hotkey lives in tooltip in both states.
+    target.setAttribute("title", hotkey ? `${label} (${hotkey})` : label);
   }
 }

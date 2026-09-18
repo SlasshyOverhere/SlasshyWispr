@@ -17,11 +17,10 @@ export function menuAnchorStyle(anchor: HTMLElement | null): React.CSSProperties
   };
 }
 
-/* Lightweight card row: time + body + hover-revealed actions. Single
-   line. No multi-line clamp; long entries just truncate. The more
-   (···) button opens a small popover anchored to the button with a
-   "Delete entry" option — first click confirms; second click removes
-   via removeHistoryEntry(timestamp). */
+/* Rich list row: time + body + metadata line + hover-revealed copy /
+   more actions. Word count derived from content; recording play lives
+   on the History page (HistoryRow). The more (···) popover confirms
+   then removes via removeHistoryEntry(timestamp). */
 export function HomeEntryCard({
   entry,
   time,
@@ -33,6 +32,7 @@ export function HomeEntryCard({
   isFresh: boolean;
   onCopy: (setCopied: (v: boolean) => void) => void;
 }) {
+  const wordCount = entry.content.trim() ? entry.content.trim().split(/\s+/).length : 0;
   const [copied, setCopied] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -93,7 +93,10 @@ export function HomeEntryCard({
       tabIndex={0}
     >
       <span className="home-entry-time">{time}</span>
-      <span className="home-entry-body" title={entry.content}>{entry.content}</span>
+      <span className="home-entry-main">
+        <span className="home-entry-body" title={entry.content}>{entry.content}</span>
+        <span className="home-entry-meta">{wordCount} {wordCount === 1 ? "word" : "words"}</span>
+      </span>
       <span className="home-entry-actions">
         {copied ? (
           <span className={`home-entry-action is-copied`} title="Copied" aria-label="Copied">

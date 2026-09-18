@@ -124,14 +124,14 @@ describe("applySidebarCollapsed", () => {
     expect(attrsOf(harness.labeledButtons[0]).get("title")).toBe("Library (Ctrl+L)");
   });
 
-  it("expands and removes hover titles", () => {
+  it("expands and keeps hover titles", () => {
     const harness = wireHarness();
     applySidebarCollapsed(true);
     applySidebarCollapsed(false);
     expect(isCollapsed()).toBe(false);
     expect(harness.toggleButton.getAttribute("aria-pressed")).toBe("false");
     expect(harness.toggleButton.getAttribute("aria-label")).toBe("Collapse sidebar");
-    expect(attrsOf(harness.labeledButtons[0]).get("title")).toBe(undefined);
+    expect(attrsOf(harness.labeledButtons[0]).get("title")).toBe("Library (Ctrl+L)");
   });
 });
 
