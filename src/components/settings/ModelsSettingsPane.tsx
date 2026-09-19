@@ -1,6 +1,8 @@
 import { DEFAULT_LOCAL_OLLAMA_BASE_URL } from '../../constants';
+import { dispatchSettingsPatch, useSettingsSnapshot } from '../../settings/settings-react-shim';
 
 export function ModelsSettingsPane() {
+  const settings = useSettingsSnapshot();
   return (
     <section id="settingsPaneModels" className="settings-pane" data-settings-pane="models" hidden>
 
@@ -10,8 +12,8 @@ export function ModelsSettingsPane() {
         <div className="runtime-card-header">
           <span className="runtime-card-title">Speech-to-Text</span>
           <div className="pills">
-            <label className="pill"><input id="sttRuntimeModeOnline" name="sttRuntimeModeProfile" type="radio" value="online" />Online</label>
-            <label className="pill"><input id="sttRuntimeModeOffline" name="sttRuntimeModeProfile" type="radio" value="offline" />Offline</label>
+            <label className="pill"><input id="sttRuntimeModeOnline" name="sttRuntimeModeProfile" type="radio" value="online" checked={settings.sttRuntimeMode !== "local"} onChange={() => dispatchSettingsPatch({ sttRuntimeMode: "online" })} />Online</label>
+            <label className="pill"><input id="sttRuntimeModeOffline" name="sttRuntimeModeProfile" type="radio" value="offline" checked={settings.sttRuntimeMode === "local"} onChange={() => dispatchSettingsPatch({ sttRuntimeMode: "local" })} />Offline</label>
           </div>
         </div>
       </div>
@@ -20,8 +22,8 @@ export function ModelsSettingsPane() {
         <div className="runtime-card-header">
           <span className="runtime-card-title">AI Model</span>
           <div className="pills">
-            <label className="pill"><input id="aiRuntimeModeOnline" name="aiRuntimeModeProfile" type="radio" value="online" />Online</label>
-            <label className="pill"><input id="aiRuntimeModeOffline" name="aiRuntimeModeProfile" type="radio" value="offline" />Offline</label>
+            <label className="pill"><input id="aiRuntimeModeOnline" name="aiRuntimeModeProfile" type="radio" value="online" checked={settings.aiRuntimeMode !== "local"} onChange={() => dispatchSettingsPatch({ aiRuntimeMode: "online" })} />Online</label>
+            <label className="pill"><input id="aiRuntimeModeOffline" name="aiRuntimeModeProfile" type="radio" value="offline" checked={settings.aiRuntimeMode === "local"} onChange={() => dispatchSettingsPatch({ aiRuntimeMode: "local" })} />Offline</label>
           </div>
         </div>
       </div>
@@ -34,26 +36,26 @@ export function ModelsSettingsPane() {
         <div className="compact-grid">
           <label className="field" data-online-field="base-url">
             <span className="field-label">API Base URL</span>
-            <input id="apiBaseUrlInput" type="text" placeholder="Use default provider URL" autoComplete="off" />
+            <input id="apiBaseUrlInput" type="text" placeholder="Use default provider URL" autoComplete="off" value={settings.apiBaseUrl} onChange={(event) => dispatchSettingsPatch({ apiBaseUrl: event.target.value })} />
           </label>
           <label className="field" data-online-field="stt-model">
             <span className="field-label">STT Model</span>
-            <input id="sttModelInput" type="text" placeholder="Use default STT model" autoComplete="off" />
+            <input id="sttModelInput" type="text" placeholder="Use default STT model" autoComplete="off" value={settings.sttModelName} onChange={(event) => dispatchSettingsPatch({ sttModelName: event.target.value })} />
           </label>
         </div>
 
         <label className="field">
           <span className="field-label">API Key</span>
-          <input id="apiKeyInput" type="password" placeholder="Paste your API key" autoComplete="off" />
+          <input id="apiKeyInput" type="password" placeholder="Paste your API key" autoComplete="off" value={settings.apiKey} onChange={(event) => dispatchSettingsPatch({ apiKey: event.target.value })} />
         </label>
         <label className="checkbox-field">
-          <input id="rememberApiKeyInput" type="checkbox" />
+          <input id="rememberApiKeyInput" type="checkbox" checked={settings.rememberApiKey} onChange={(event) => dispatchSettingsPatch({ rememberApiKey: event.target.checked })} />
           <span>Remember API key locally on this machine</span>
         </label>
 
         <label className="field" data-online-field="ai-model">
           <span className="field-label">AI Model</span>
-          <input id="aiModelInput" type="text" placeholder="Use default AI model" autoComplete="off" />
+          <input id="aiModelInput" type="text" placeholder="Use default AI model" autoComplete="off" value={settings.aiModelName} onChange={(event) => dispatchSettingsPatch({ aiModelName: event.target.value })} />
         </label>
 
         <label className="field">
@@ -91,11 +93,11 @@ export function ModelsSettingsPane() {
         <div className="compact-grid">
           <label className="field">
             <span className="field-label">Base URL</span>
-            <input id="localOllamaBaseUrlInput" type="text" placeholder={DEFAULT_LOCAL_OLLAMA_BASE_URL} autoComplete="off" />
+            <input id="localOllamaBaseUrlInput" type="text" placeholder={DEFAULT_LOCAL_OLLAMA_BASE_URL} autoComplete="off" value={settings.localOllamaBaseUrl} onChange={(event) => dispatchSettingsPatch({ localOllamaBaseUrl: event.target.value })} />
           </label>
           <label className="field">
             <span className="field-label">Model</span>
-            <input id="localOllamaModelInput" type="text" placeholder="llama3.1:8b, qwen2.5:7b, etc." autoComplete="off" />
+            <input id="localOllamaModelInput" type="text" placeholder="llama3.1:8b, qwen2.5:7b, etc." autoComplete="off" value={settings.localOllamaModel} onChange={(event) => dispatchSettingsPatch({ localOllamaModel: event.target.value })} />
           </label>
         </div>
         <label className="field">
@@ -217,12 +219,12 @@ export function ModelsSettingsPane() {
         <div id="ttsProfilePiperPanel">
           <label className="field">
             <span className="field-label">Executable Path <span className="switch-desc">(optional override)</span></span>
-            <input id="piperPathInput" type="text" placeholder="Auto-filled after runtime setup" autoComplete="off" />
+            <input id="piperPathInput" type="text" placeholder="Auto-filled after runtime setup" autoComplete="off" value={settings.piperPath} onChange={(event) => dispatchSettingsPatch({ piperPath: event.target.value })} />
           </label>
           <div className="compact-grid">
             <label className="field">
               <span className="field-label">Voice Quality</span>
-              <select id="piperQualitySelect">
+              <select id="piperQualitySelect" value={settings.piperQuality} onChange={(event) => dispatchSettingsPatch({ piperQuality: event.target.value as typeof settings.piperQuality })}>
                 <option value="fast">Fast</option>
                 <option value="balanced">Balanced</option>
                 <option value="high">High quality</option>
@@ -230,7 +232,7 @@ export function ModelsSettingsPane() {
             </label>
             <label className="field">
               <span className="field-label">Emotion Style</span>
-              <select id="piperEmotionSelect">
+              <select id="piperEmotionSelect" value={settings.piperEmotion} onChange={(event) => dispatchSettingsPatch({ piperEmotion: event.target.value as typeof settings.piperEmotion })}>
                 <option value="neutral">Neutral</option>
                 <option value="calm">Calm</option>
                 <option value="happy">Happy</option>
@@ -241,8 +243,8 @@ export function ModelsSettingsPane() {
             </label>
           </div>
           <label className="field">
-            <span className="field-label">Speed <strong id="piperSpeedValue">1.00x</strong></span>
-            <input id="piperSpeedInput" type="range" min="0.5" max="2" step="0.05" />
+            <span className="field-label">Speed <strong id="piperSpeedValue">{settings.piperSpeed.toFixed(2)}x</strong></span>
+            <input id="piperSpeedInput" type="range" min="0.5" max="2" step="0.05" value={settings.piperSpeed} onChange={(event) => dispatchSettingsPatch({ piperSpeed: Number(event.target.value) })} />
           </label>
           <p className="field-hint">Emotion/quality for Piper are expressive presets, not true voice cloning.</p>
           <div className="btn-row">

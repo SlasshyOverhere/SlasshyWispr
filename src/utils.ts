@@ -170,3 +170,102 @@ export function expandSnippetsInText(text: string, entries: SnippetEntry[]): str
   }
   return expanded;
 }
+
+export function boolFlag(value: boolean): "1" | "0" {
+  return value ? "1" : "0";
+}
+
+export function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+export function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const precision = unitIndex <= 1 ? 0 : 1;
+  return `${size.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+export function formatLatency(value: number): string {
+  return `${Math.round(value)} ms`;
+}
+
+export function asErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+export function createId(): string {
+  if ("crypto" in window && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function confirmDestructiveAction(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+      <div class="confirm-modal">
+        <div class="confirm-body">
+          <p class="confirm-message">${escapeHtml(message)}</p>
+        </div>
+        <div class="confirm-actions">
+          <button type="button" class="confirm-btn confirm-btn-cancel">Cancel</button>
+          <button type="button" class="confirm-btn confirm-btn-confirm">Delete</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const cancelBtn = overlay.querySelector(".confirm-btn-cancel") as HTMLButtonElement;
+    const confirmBtn = overlay.querySelector(".confirm-btn-confirm") as HTMLButtonElement;
+
+    const cleanup = (result: boolean) => {
+      overlay.classList.add("modal-exit");
+      setTimeout(() => {
+        overlay.remove();
+        resolve(result);
+      }, 150);
+    };
+
+    cancelBtn.addEventListener("click", () => cleanup(false));
+    confirmBtn.addEventListener("click", () => cleanup(true));
+
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        document.removeEventListener("keydown", handleEsc);
+        cleanup(false);
+      }
+    };
+    document.addEventListener("keydown", handleEsc);
+
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        document.removeEventListener("keydown", handleEsc);
+        cleanup(false);
+      }
+    });
+  });
+}

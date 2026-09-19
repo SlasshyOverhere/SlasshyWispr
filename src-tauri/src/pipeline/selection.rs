@@ -839,4 +839,139 @@ mod tests {
         let prompt = build_selected_context_answer_prompt("", "selected text here");
         assert!(prompt.contains("Explain this selected text."));
     }
+
+#[test]
+fn parses_selection_edit_decision_json() {
+    let raw =
+        r#"{"action":"replace_now","rewrite":"Improved sentence.","message":"Applying edit."}"#;
+    let decision = parse_selection_edit_decision(raw).expect("decision should parse");
+    assert_eq!(decision.action, SelectionEditAction::ReplaceNow);
+    assert_eq!(decision.rewrite_text, "Improved sentence.");
+    assert_eq!(decision.message, "Applying edit.");
+}
+
+#[test]
+fn detects_selection_confirmation_intents() {
+    assert!(is_affirmative_selection_confirmation("yes replace it"));
+    assert!(is_affirmative_selection_confirmation("go ahead and apply"));
+    assert!(is_negative_selection_confirmation("no cancel that"));
+    assert!(is_negative_selection_confirmation("don't do that"));
+    assert!(!is_affirmative_selection_confirmation("don't replace it"));
+}
+
+#[test]
+fn flags_suspicious_short_rewrite_for_confirmation() {
+    let selected = "This is a fairly detailed paragraph that should not be replaced with a tiny generic output because it would lose meaning for the user.";
+    let suspicious = "Looks good.";
+    assert!(is_rewrite_suspicious(
+        "make this better",
+        selected,
+        suspicious
+    ));
+    assert!(!is_rewrite_suspicious(
+        "summarize this",
+        selected,
+        "A concise summary."
+    ));
+}
+
+#[test]
+fn detects_edit_intent_for_selection_guard() {
+    assert!(seems_like_selection_edit_instruction(
+        "make this review better"
+    ));
+    assert!(seems_like_selection_edit_instruction("rewrite this"));
+    assert!(!seems_like_selection_edit_instruction(
+        "which laptop is better"
+    ));
+    assert!(!seems_like_selection_edit_instruction(
+        "what is the weather"
+    ));
+}
+
+#[test]
+fn detects_draft_generation_instruction_for_compose_guard() {
+    assert!(seems_like_draft_generation_instruction(
+        "create an email for sick leave"
+    ));
+    assert!(seems_like_draft_generation_instruction(
+        "write a follow up letter"
+    ));
+    assert!(!seems_like_draft_generation_instruction(
+        "what is email marketing"
+    ));
+}
+
+#[test]
+fn parse_selection_edit_decision_rejects_invalid_json() {
+    assert!(parse_selection_edit_decision("not json").is_err());
+}
+
+#[test]
+fn parse_selection_edit_decision_unknown_action_defaults_to_ask_confirm() {
+    let raw = r#"{"action":"unknown","rewrite":"text","message":"msg"}"#;
+    let decision = parse_selection_edit_decision(raw).unwrap();
+    assert_eq!(decision.action, SelectionEditAction::AskConfirm);
+}
+
+// ===== INCOMPLETE DRAFT DETECTION =====
+
+#[test]
+fn seems_like_draft_instruction_rejects_questions() {
+    assert!(!seems_like_draft_generation_instruction("what is the capital of France"));
+    assert!(!seems_like_draft_generation_instruction("who is the president"));
+}
+
+#[test]
+fn seems_like_selection_edit_rejects_factual_questions() {
+    assert!(!seems_like_selection_edit_instruction("what time is it"));
+    assert!(!seems_like_selection_edit_instruction("how does TCP work"));
+}
+
+// ===== REWRITE SUSPICION DETECTION =====
+
+#[test]
+fn is_rewrite_suspicious_detects_overshortening() {
+    // "summarize this" is in instruction_allows_short_rewrite, so returns false
+    let long_text = "This is a very detailed explanation of how the system works with many paragraphs and specifics and a lot of content to analyze.";
+    let short_rewrite = "Ok.";
+    // "make this better" is NOT in instruction_allows_short_rewrite
+    assert!(is_rewrite_suspicious("make this better", long_text, short_rewrite));
+}
+
+#[test]
+fn is_rewrite_suspicious_allows_similar_length_output() {
+    let text = "Please improve this text.";
+    let rewrite = "Please improve this text now.";
+    assert!(!is_rewrite_suspicious("improve", text, rewrite));
+}
+
+// ===== SELECTION CONFIRMATION DETECTION =====
+
+#[test]
+fn is_affirmative_detection_handles_various_intents() {
+    assert!(is_affirmative_selection_confirmation("yes"));
+    assert!(is_affirmative_selection_confirmation("apply it"));
+    assert!(is_affirmative_selection_confirmation("do it"));
+}
+
+#[test]
+fn is_negative_detection_handles_various_intents() {
+    assert!(is_negative_selection_confirmation("no"));
+    assert!(is_negative_selection_confirmation("skip this"));
+    assert!(is_negative_selection_confirmation("cancel"));
+}
+
+// ===== ONLINE AI REASONING DETECTION =====
+
+
+
+
+
+
+
+// ===== IPC SERIALIZATION CONTRACT =====
+// These tests verify that the Rust serde configuration matches
+// the TypeScript type definitions for the IPC request/response types.
+// If these tests fail, the Rust ↔ TypeScript contract has drifted.
 }

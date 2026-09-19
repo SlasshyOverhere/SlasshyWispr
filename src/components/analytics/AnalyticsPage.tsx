@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { AchievementDef, AchievementState, AnalyticsSessionDetail, UsageStats } from '../../types';
+import type { AchievementState, AnalyticsSessionDetail, UsageStats } from '../../types';
+import {
+  ACHIEVEMENTS_STATE_KEY as ACHIEVEMENTS_KEY,
+  ANALYTICS_SESSIONS_KEY as SESSIONS_KEY,
+  USAGE_STORAGE_KEY as USAGE_KEY,
+} from '../../constants';
+import { ACHIEVEMENT_DEFS } from '../../state/achievements';
+import { parseJson } from '../../state/storage';
 import './analytics.css';
-
-const USAGE_KEY = "slasshy-wispr-usage-v1";
-const SESSIONS_KEY = "slasshy-wispr-analytics-sessions-v1";
-const ACHIEVEMENTS_KEY = "slasshy-wispr-achievements-state-v1";
 
 type AnalyticsRange = '7d' | '30d' | 'all';
 
@@ -13,24 +16,6 @@ interface AnalyticsPageProps {
   analyticsSessions: AnalyticsSessionDetail[];
   achievementStates: AchievementState[];
 }
-
-function parseJson<T>(key: string, fallback: T): T {
-  const raw = localStorage.getItem(key);
-  if (!raw) return fallback;
-  try { return JSON.parse(raw) as T; } catch { return fallback; }
-}
-
-const ACHIEVEMENT_DEFS: AchievementDef[] = [
-  { id: 'words-1k', label: 'First Milestone', description: '1,000 total words dictated', threshold: 1000, metric: 'words' },
-  { id: 'words-10k', label: 'Word Explorer', description: '10,000 total words dictated', threshold: 10000, metric: 'words' },
-  { id: 'words-50k', label: 'Wordsmith', description: '50,000 total words dictated', threshold: 50000, metric: 'words' },
-  { id: 'words-100k', label: 'Lexicon Master', description: '100,000 total words dictated', threshold: 100000, metric: 'words' },
-  { id: 'sessions-100', label: 'Century Mark', description: '100 dictation sessions', threshold: 100, metric: 'sessions' },
-  { id: 'sessions-1k', label: 'Dedicated Dictator', description: '1,000 dictation sessions', threshold: 1000, metric: 'sessions' },
-  { id: 'time-1h', label: 'First Hour', description: '1 hour of speaking time', threshold: 3600, metric: 'speakingSeconds' },
-  { id: 'time-10h', label: 'Vocal Veteran', description: '10 hours of speaking time', threshold: 36000, metric: 'speakingSeconds' },
-  { id: 'time-50h', label: 'Orator', description: '50 hours of speaking time', threshold: 180000, metric: 'speakingSeconds' },
-];
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -269,8 +254,8 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
       }
       setLocalAchievements(parseJson<AchievementState[]>(ACHIEVEMENTS_KEY, initialAchievements));
     };
-    window.addEventListener('slasshy:store-updated', handler);
-    return () => window.removeEventListener('slasshy:store-updated', handler);
+    window.addEventListener('slasshywispr:store-updated', handler);
+    return () => window.removeEventListener('slasshywispr:store-updated', handler);
   }, [initialUsage, initialSessions, initialAchievements]);
 
   const filteredSessions = useMemo(() => {

@@ -124,7 +124,7 @@ export interface LocalSttHardwareAdviceResponse {
   gpuName: string;
   gpuVramGb: number;
   performanceTier: string;
-  slasshySuggestionModel: string;
+  slasshywisprSuggestionModel: string;
   suggestedModels: string[];
   cautionModels: string[];
   selectedModelWarning: string;

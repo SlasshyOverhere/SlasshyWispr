@@ -8,17 +8,17 @@ import {
 
 describe("update constants", () => {
   it("APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY has the correct format", () => {
-    expect(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY).toStartWith("slasshy-wispr-");
+    expect(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY).toStartWith("slasshywispr-");
     expect(APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY).toEndWith("-v1");
   });
 
   it("APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY has the correct format", () => {
-    expect(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY).toStartWith("slasshy-wispr-");
+    expect(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY).toStartWith("slasshywispr-");
     expect(APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY).toEndWith("-v1");
   });
 
   it("APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY has the correct format", () => {
-    expect(APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY).toStartWith("slasshy-wispr-");
+    expect(APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY).toStartWith("slasshywispr-");
     expect(APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY).toEndWith("-v1");
   });
 

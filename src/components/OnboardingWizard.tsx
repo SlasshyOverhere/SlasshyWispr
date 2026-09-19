@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { SETTINGS_STORAGE_KEY } from '../constants';
 
-const ONBOARDING_DISMISSED_KEY = 'slasshy-wispr-onboarding-dismissed-v1';
+const ONBOARDING_DISMISSED_KEY = 'slasshywispr-onboarding-dismissed-v1';
 
 type Step = 'welcome' | 'hotkey' | 'tts' | 'done';
 
@@ -10,7 +11,7 @@ export function OnboardingWizard() {
 
   useEffect(() => {
     if (localStorage.getItem(ONBOARDING_DISMISSED_KEY)) return;
-    const raw = localStorage.getItem('slasshy-desktop-assistant-settings-v4');
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) setVisible(true);
     else {
       try {
@@ -33,7 +34,7 @@ export function OnboardingWizard() {
         {step === 'welcome' && (
           <>
             <h2 id="onboardingTitle">Welcome to SlasshyWispr</h2>
-            <p>Your voice dictation and AI assistant. Take 30s to set up.</p>
+            <p>Your voice dictation for SlasshyWispr. Take 30s to set up.</p>
             <ol className="onboarding-steps">
               <li>Set your push-to-talk hotkey</li>
               <li>Configure speech output (TTS)</li>
@@ -77,7 +78,7 @@ export function OnboardingWizard() {
         {step === 'done' && (
           <>
             <h2 id="onboardingTitle">You're all set!</h2>
-            <p>Press your hotkey to start dictating, or say <strong>"Hey {localStorage.getItem('slasshy-desktop-assistant-settings-v4') ? JSON.parse(localStorage.getItem('slasshy-desktop-assistant-settings-v4') || '{}').assistantName || 'Lily' : 'Lily'}"</strong> for assistant mode.</p>
+            <p>Press your hotkey to start dictating, or say <strong>"Hey {localStorage.getItem(SETTINGS_STORAGE_KEY) ? JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}').assistantName || 'Lily' : 'Lily'}"</strong> for assistant mode.</p>
             <p className="onboarding-hint">Need help? Check Settings or hit <kbd>Alt+S</kbd>.</p>
             <div className="onboarding-actions">
               <button className="dark-action" type="button" onClick={dismiss}>Start dictating</button>

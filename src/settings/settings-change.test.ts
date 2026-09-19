@@ -1,0 +1,363 @@
+/**
+ * Settings-change move-boundary test — Phase 5 shell decomposition.
+ *
+ * Pins handleSettingsChange (pipeline commit, snapshot commit, hotkey
+ * display cache refresh), settingsHandleEffects.afterPersist (shortcut
+ * resync on signature drift, launch-at-login sync, runtime-mode notices,
+ * local-STT sync request, capture prime on mic change), hydrate (apply +
+ * notify chain, null passthrough), and backfillAchievementsFromUsageStats
+ * (threshold totals, single-fire guard, store notify). Runs against stub
+ * form refs and seam deps.
+ */
+import { describe, it, expect, beforeEach } from "bun:test";
+import { defaultSettings } from "../state/settings-store";
+import type { PersistedSettings } from "../types";
+import {
+  backfillAchievementsFromUsageStats,
+  getCachedHotkeyDisplay,
+  handleSettingsChange,
+  hydrateSettingsFromNativeStorage,
+  initSettingsChange,
+  settingsHandleEffects,
+  type SettingsChangeDeps,
+} from "./settings-change";
+
+// The pipeline touches real DOM APIs (setCustomValidity, document theme
+// root, classList on panels); stub them at module scope.
+{
+  const root = {
+    setAttribute() {},
+    removeAttribute() {},
+  };
+  (globalThis as unknown as { document?: unknown }).document ??= {};
+  Object.assign(globalThis as unknown as { document: Record<string, unknown> }, {
+    document: {
+      ...((globalThis as unknown as { document: Record<string, unknown> }).document ?? {}),
+      documentElement: root,
+    },
+  });
+}
+
+function fakeInput(value = ""): HTMLInputElement {
+  return {
+    value,
+    checked: false,
+    disabled: false,
+    setCustomValidity() {},
+    toggleAttribute() {},
+  } as unknown as HTMLInputElement;
+}
+
+function fakeSelect(value = ""): HTMLSelectElement {
+  return { value, disabled: false } as unknown as HTMLSelectElement;
+}
+
+function fakePanel(): HTMLElement {
+  return { classList: { contains: () => false }, dataset: {} } as unknown as HTMLElement;
+}
+
+function fakeDiv(): HTMLDivElement {
+  return { hidden: false } as unknown as HTMLDivElement;
+}
+
+function fakePara(): HTMLParagraphElement {
+  return { textContent: "", hidden: false } as unknown as HTMLParagraphElement;
+}
+
+function fakeRefs() {
+  return {
+    apiKeyInput: fakeInput(),
+    apiBaseUrlInput: fakeInput("https://api.example.com/v1"),
+    sttModelInput: fakeInput("whisper-1"),
+    aiModelInput: fakeInput("gpt-4o"),
+    localOllamaBaseUrlInput: fakeInput(""),
+    localOllamaModelInput: fakeInput(""),
+    localSttModelInput: fakeInput(""),
+    rememberApiKeyInput: fakeInput(),
+    captureModeSingleInput: { ...fakeInput(), checked: true },
+    captureModePushToTalkInput: fakeInput(),
+    microphoneSelect: fakeSelect("mic-1"),
+    hotkeyInput: fakeInput("Ctrl+Space"),
+    commandHotkeyInput: fakeInput("Ctrl+Shift+Space"),
+    sttRuntimeModeOnlineInput: { ...fakeInput(), checked: true },
+    sttRuntimeModeOfflineInput: fakeInput(),
+    aiRuntimeModeOnlineInput: { ...fakeInput(), checked: true },
+    aiRuntimeModeOfflineInput: fakeInput(),
+    dictationLanguageSelect: fakeSelect("en"),
+    dictationLanguageModeSingleInput: { ...fakeInput(), checked: true },
+    dictationLanguageModeMultipleInput: fakeInput(),
+    dictationLanguageOptionInputs: [],
+    styleProfileSelect: fakeSelect("adaptive"),
+    systemPromptInput: { value: "prompt" },
+    temperatureInput: fakeInput("0.35"),
+    maxTokensInput: fakeInput("320"),
+    launchAtLoginToggle: fakeInput(),
+    showFlowBarToggle: fakeInput(),
+    showDockAlwaysToggle: fakeInput(),
+    commandModeToggle: fakeInput(),
+    wakeWordEnabledToggle: fakeInput(),
+    assistantNameInput: fakeInput("Nova"),
+    autoPasteDictationToggle: fakeInput(),
+    contextAwarenessToggle: fakeInput(),
+    copyToClipboardToggle: fakeInput(),
+    incognitoModeToggle: fakeInput(),
+    saveRecordingsToggle: fakeInput(),
+    themeModeSelect: fakeSelect("dark"),
+    dictationSoundEffectsToggle: fakeInput(),
+    muteMusicWhileDictatingToggle: fakeInput(),
+    pushToTalkSoundSelect: fakeSelect("beep-start"),
+    pushToTalkEndSoundSelect: fakeSelect("beep-end"),
+    pushToTalkSoundVolumeRange: fakeInput("50"),
+    rawModeToggle: fakeInput(),
+    backtrackToggle: fakeInput(),
+    removeFillersToggle: fakeInput(),
+    autoPunctuationToggle: fakeInput(),
+    numberedListsToggle: fakeInput(),
+    noiseSuppressionToggle: fakeInput(),
+    ttsEngineSelect: fakeSelect("piper"),
+    piperPathInput: fakeInput(""),
+    piperQualitySelect: fakeSelect("balanced"),
+    piperEmotionSelect: fakeSelect("neutral"),
+    piperSpeedInput: fakeInput("1.00"),
+    piperSpeedValue: { textContent: "" },
+    systemPromptInput: { value: "prompt" },
+    temperatureValue: { textContent: "" },
+    dictationLanguageMultiWrap: fakeDiv(),
+    dictationLanguageSummary: fakePara(),
+    themeCardInputs: [],
+    runtimeModeNotice: fakePara(),
+    onlineProviderSection: fakeDiv(),
+    onlineSttModelField: fakeDiv(),
+    onlineAiModelField: fakeDiv(),
+    offlineOllamaSection: fakeDiv(),
+    offlineSttSection: fakeDiv(),
+    onlineProviderModeNotice: fakePara(),
+    offlineRuntimeModeNotice: fakePara(),
+    settingsPanels: [fakePanel()],
+    wakePhrasePreview: fakePara(),
+    recordingsStorageHint: { textContent: "" },
+    recordingsStorageHintWeb: fakePara(),
+    pttVolumeHint: { textContent: "" },
+    hotkeyHint: { textContent: "" },
+    captureModeHint: { textContent: "" },
+  } as unknown as SettingsChangeDeps["getFormRefs"] extends () => infer R ? R : never;
+}
+
+function wireHarness(overrides: {
+  settings?: PersistedSettings;
+  nativePayload?: string | null;
+  sessions?: number;
+  achievements?: number;
+  stats?: Partial<PersistedSettings>;
+} = {}) {
+  let settings = overrides.settings ?? defaultSettings();
+  const formRefs = fakeRefs();
+  const notices: string[] = [];
+  const logs: string[] = [];
+  const calls: string[] = [];
+  let snapshots = 0;
+  let persists = 0;
+  let storeUpdates = 0;
+  let appended = 0;
+  const stats = {
+    sessions: 5,
+    words: 100,
+    avgWpm: 0,
+    speakingSeconds: 60,
+    prevSessions: 0,
+    prevWords: 0,
+    prevWpm: 0,
+    prevSpeakingSeconds: 0,
+    lastPeriodReset: Date.now(),
+  };
+  const achievements: Array<{ id: string }> = Array.from(
+    { length: overrides.achievements ?? 0 },
+    (_, i) => ({ id: `a-${i}` }),
+  ) as never[];
+  const providerSelect = fakeSelect();
+  const ollamaSelect = fakeSelect();
+  const sttSelect = fakeSelect();
+  initSettingsChange({
+    getSettings: () => settings,
+    setSettings: (next) => {
+      settings = next;
+    },
+    commitSettingsSnapshot: () => {
+      snapshots += 1;
+    },
+    getFormRefs: () => formRefs,
+    getCatalogs: () => ({ providerModels: [], localOllamaModels: [], localSttModels: [] }),
+    getAssistantInfoDefaults: () => null,
+    getStage: () => "idle",
+    currentSettings: () => settings,
+    buildCaptureDeps: () => ({
+      isCapturingHotkey: () => false,
+      isCapturingCommandHotkey: () => false,
+      refreshRecordingsStorageHint: () => {},
+      isTauri: () => true,
+      showStaleRuntimePane: () => {},
+    }),
+    formatHotkeyDisplay: (hotkey) => hotkey,
+    log: (message) => {
+      logs.push(message);
+    },
+    warn: () => {},
+    renderSidebarLocalSttToggle: () => {
+      calls.push("sidebar-toggle");
+    },
+    refreshRecordButton: () => {
+      calls.push("record-button");
+    },
+    syncActionAvailability: () => {
+      calls.push("availability");
+    },
+    updateMicrophoneSummary: () => {
+      calls.push("mic-summary");
+    },
+    renderNotesList: () => {
+      calls.push("notes");
+    },
+    renderAssistantInfo: () => {
+      calls.push("assistant-info");
+    },
+    setActiveTtsProfile: () => {
+      calls.push("tts-profile");
+    },
+    setCatalogSelects: () => {
+      providerSelect.value = "";
+      ollamaSelect.value = "";
+      sttSelect.value = "";
+    },
+    requestGlobalShortcutSync: () => {
+      calls.push("shortcut-sync");
+    },
+    requestLaunchAtLoginSync: () => {
+      calls.push("launch-sync");
+    },
+    interruptTtsPlayback: () => {
+      calls.push("tts-interrupt");
+    },
+    notice: (message) => {
+      notices.push(message);
+    },
+    requestLocalSttRuntimeSyncForMode: () => {
+      calls.push("local-stt-sync");
+    },
+    updateTtsSetupGate: () => {
+      calls.push("tts-gate");
+    },
+    publishDockState: () => {
+      calls.push("dock");
+    },
+    syncFloatingIndicatorWindow: () => {},
+    primeCaptureReadiness: () => {
+      calls.push("prime");
+    },
+    clearCaptureHolds: () => {
+      calls.push("clear-holds");
+    },
+    notifyIncognitoChanged: () => {},
+    syncExternalMediaMute: () => {},
+    persist: () => {
+      persists += 1;
+    },
+    notifyStoreUpdated: () => {
+      storeUpdates += 1;
+    },
+    readSettingsFromForm: (refs) => {
+      void refs;
+      return settings;
+    },
+    applySettingsToForm: () => {},
+    getUsageStats: () => stats,
+    getSessionCount: () => overrides.sessions ?? 3,
+    getAchievements: () => achievements,
+    appendAchievements: (unlocked) => {
+      appended += unlocked.length;
+    },
+    persistAchievements: () => {
+      calls.push("persist-achievements");
+    },
+    isTauri: () => true,
+    loadNativeSettings: async () => overrides.nativePayload ?? "",
+  });
+  return {
+    formRefs,
+    notices,
+    logs,
+    calls,
+    snapshots: () => snapshots,
+    persists: () => persists,
+    storeUpdates: () => storeUpdates,
+    appended: () => appended,
+    getSettings: () => settings,
+  };
+}
+
+beforeEach(() => {
+  wireHarness();
+});
+
+describe("handleSettingsChange", () => {
+  it("commits the pipeline result and caches the hotkey display", async () => {
+    const harness = wireHarness();
+    await handleSettingsChange();
+    expect(harness.snapshots()).toBe(1);
+    expect(harness.persists()).toBe(1);
+    expect(getCachedHotkeyDisplay()).toContain("Ctrl");
+    expect(harness.getSettings().assistantName).toBe("Nova");
+  });
+});
+
+describe("settingsHandleEffects.afterPersist", () => {
+  it("resyncs shortcuts on signature drift and syncs launch-at-login", () => {
+    const harness = wireHarness();
+    const previous = defaultSettings();
+    const next = { ...defaultSettings(), pushToTalkHotkey: "Alt+X", launchAtLogin: !previous.launchAtLogin };
+    settingsHandleEffects.afterPersist(previous, next, "idle");
+    expect(harness.calls).toContain("shortcut-sync");
+    expect(harness.calls).toContain("launch-sync");
+    expect(harness.calls).toContain("tts-gate");
+    expect(harness.calls).toContain("dock");
+  });
+
+  it("notices runtime-mode flips and requests local STT sync", () => {
+    const harness = wireHarness();
+    const previous = defaultSettings();
+    const next = { ...defaultSettings(), sttRuntimeMode: "local" as const };
+    settingsHandleEffects.afterPersist(previous, next, "idle");
+    expect(harness.calls).toContain("local-stt-sync");
+    expect(harness.notices.some((line) => line.includes("Hybrid"))).toBe(true);
+  });
+
+  it("primes capture when the microphone changes at idle", () => {
+    const harness = wireHarness();
+    const previous = defaultSettings();
+    const next = { ...defaultSettings(), microphoneDeviceId: "mic-2" };
+    settingsHandleEffects.afterPersist(previous, next, "idle");
+    expect(harness.calls).toContain("prime");
+  });
+});
+
+describe("hydrateSettingsFromNativeStorage", () => {
+  it("returns quietly on empty payload", async () => {
+    const harness = wireHarness({ nativePayload: "" });
+    await hydrateSettingsFromNativeStorage();
+    expect(harness.snapshots()).toBe(0);
+  });
+});
+
+describe("backfillAchievementsFromUsageStats", () => {
+  it("unlocks once and notifies the store", () => {
+    const harness = wireHarness({ sessions: 2, achievements: 0 });
+    backfillAchievementsFromUsageStats();
+    expect(harness.storeUpdates()).toBe(1);
+  });
+
+  it("stays quiet with no sessions", () => {
+    const harness = wireHarness({ sessions: 0, achievements: 0 });
+    backfillAchievementsFromUsageStats();
+    expect(harness.storeUpdates()).toBe(0);
+    expect(harness.appended()).toBe(0);
+  });
+});

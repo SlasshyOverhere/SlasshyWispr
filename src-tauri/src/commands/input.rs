@@ -1,0 +1,271 @@
+//! Input/clipboard/OS-integration commands — Phase 6h extraction + platform split.
+//!
+//! Tauri command adapters only. Windows-native primitives live in
+//! `crate::platform::windows_native`, pure foreground-blocking policy in
+//! `crate::platform::input::policy`, shared types in
+//! `crate::platform::windows_types` (re-exported here so existing
+//! `commands::input::X` paths keep working).
+
+use std::thread;
+use std::time::Duration;
+
+use log::{info, warn};
+
+use crate::constants::{STARTUP_ARG_START_IN_TRAY, STARTUP_RUN_VALUE_NAME};
+use crate::platform::windows_native::{
+    capture_selected_text_windows, probe_foreground_window_windows,
+    simulate_ctrl_combo, native_set_clipboard_text,
+};
+use crate::platform::windows_types::ForegroundInputBlockStatus;
+use crate::pipeline::log::{clip_text, single_line};
+
+pub(crate) use crate::platform::input::foreground_input_block_reason;
+pub(crate) use crate::platform::windows_native::set_clipboard_text_windows;
+
+
+#[tauri::command]
+pub(crate) async fn capture_selected_text() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let text = capture_selected_text_windows()?;
+        info!(
+            "[client] captured selected text chars={}",
+            text.chars().count()
+        );
+        return Ok(text);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Selected-text capture is currently implemented for Windows builds only.".to_string())
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn set_clipboard_text(text: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        set_clipboard_text_windows(&text)?;
+        info!("[client] clipboard updated chars={}", text.chars().count());
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = text;
+        Err("Clipboard write helper is currently implemented for Windows builds only.".to_string())
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn configure_launch_at_login(enabled: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::*;
+        use winreg::RegKey;
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let run_key = hkcu
+            .open_subkey_with_flags(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                KEY_READ | KEY_WRITE,
+            )
+            .or_else(|_| {
+                hkcu.create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+                    .map(|(key, _)| key)
+            })
+            .map_err(|e| format!("Unable to open startup registry key: {e}"))?;
+
+        if enabled {
+            let exe_path = std::env::current_exe()
+                .map_err(|e| format!("Failed to resolve executable path: {e}"))?;
+            let exe_text = exe_path.to_string_lossy().to_string();
+            let value = format!("\"{}\" {}", exe_text, STARTUP_ARG_START_IN_TRAY);
+            run_key
+                .set_value(STARTUP_RUN_VALUE_NAME, &value)
+                .map_err(|e| format!("Unable to enable launch at login: {e}"))?;
+            info!(
+                "[startup] launch at login enabled with start-in-tray flag path={}",
+                clip_text(&single_line(&exe_text), 240)
+            );
+        } else {
+            run_key
+                .delete_value(STARTUP_RUN_VALUE_NAME)
+                .ok(); // ignore if not present
+            info!("[startup] launch at login disabled");
+        }
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = enabled;
+        Err("Launch at login helper is currently implemented for Windows builds only.".to_string())
+    }
+}
+
+/// Report whether the Windows Run key (or its non-Windows placeholder) currently
+/// points at this executable, plus whether it is enabled at all. The frontend uses
+/// this to reconcile "settings.launchAtLogin" against the actual OS state after an
+/// update replaces the binary path.
+#[tauri::command]
+pub(crate) async fn launch_at_login_status() -> Result<LaunchAtLoginStatus, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::*;
+        use winreg::RegKey;
+
+        let current_exe = std::env::current_exe()
+            .map_err(|e| format!("Failed to resolve executable path: {e}"))?;
+        let current_exe_text = current_exe.to_string_lossy().to_string();
+        let expected_quoted = format!("\"{}\" {}", current_exe_text, STARTUP_ARG_START_IN_TRAY);
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let run_key = hkcu
+            .open_subkey_with_flags(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                KEY_READ,
+            )
+            .or_else(|_| {
+                // Key may not exist yet (clean system, Group Policy removal).
+                // Return a status indicating no entry — the frontend will
+                // reconcile this as "not enabled."
+                hkcu.create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+                    .map(|(k, _)| k)
+            })
+            .map_err(|e| format!("Unable to open startup registry key: {e}"))?;
+        let stored: Result<String, _> = run_key.get_value(STARTUP_RUN_VALUE_NAME);
+
+        match stored {
+            Ok(value) => {
+                let path_matches = value == expected_quoted;
+                Ok(LaunchAtLoginStatus {
+                    enabled: true,
+                    path_matches,
+                    stored_value: Some(value),
+                })
+            }
+            Err(_) => Ok(LaunchAtLoginStatus {
+                enabled: false,
+                path_matches: false,
+                stored_value: None,
+            }),
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(LaunchAtLoginStatus {
+            enabled: false,
+            path_matches: false,
+            stored_value: None,
+        })
+    }
+}
+
+#[derive(serde::Serialize)]
+pub(crate) struct LaunchAtLoginStatus {
+    pub enabled: bool,
+    pub path_matches: bool,
+    pub stored_value: Option<String>,
+}
+
+#[tauri::command]
+pub(crate) async fn paste_clipboard_text() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        thread::sleep(Duration::from_millis(70));
+        simulate_ctrl_combo(0x56).map_err(|e| format!("Auto-paste failed: {e}"))?; // Ctrl+V
+        info!("[client] auto-paste triggered");
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Auto-paste is currently implemented for Windows builds only.".to_string())
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn paste_text_via_clipboard(text: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        native_set_clipboard_text(&text)?;
+        thread::sleep(Duration::from_millis(90));
+        simulate_ctrl_combo(0x56).map_err(|e| format!("Dictation paste failed: {e}"))?; // Ctrl+V
+        info!(
+            "[client] dictation clipboard+paste triggered chars={}",
+            text.chars().count()
+        );
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = text;
+        Err("Dictation paste helper is currently implemented for Windows builds only.".to_string())
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn control_media_playback(action: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::platform::windows_native::send_media_app_command(&action)?;
+        info!("[client] media playback action={}", action.trim().to_ascii_lowercase());
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = action;
+        Err("Media playback control is currently implemented for Windows builds only.".to_string())
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn mute_system_audio(mute: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::platform::windows_native::set_system_mute(mute);
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = mute;
+        return Err("System audio mute is currently implemented for Windows builds only.".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn get_foreground_input_block_status() -> Result<ForegroundInputBlockStatus, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let probe = probe_foreground_window_windows()?;
+        let reason = foreground_input_block_reason(
+            &probe.process_name,
+            &probe.window_title,
+            probe.fullscreen,
+        );
+        return Ok(ForegroundInputBlockStatus {
+            blocked: reason.is_some(),
+            process_name: probe.process_name,
+            reason: reason.unwrap_or_default().to_string(),
+            fullscreen: probe.fullscreen,
+        });
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(ForegroundInputBlockStatus {
+            blocked: false,
+            process_name: String::new(),
+            reason: String::new(),
+            fullscreen: false,
+        })
+    }
+}
+

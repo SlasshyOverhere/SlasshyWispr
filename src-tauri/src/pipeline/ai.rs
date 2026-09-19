@@ -199,7 +199,7 @@ async fn generate_assistant_response_online(
                         "[pipeline] online ai transport error; retrying: {}",
                         clip_text(&single_line(&last_error), 280)
                     );
-                    std::thread::sleep(std::time::Duration::from_millis(350));
+                    tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(350))).await.map_err(|error| format!("AI retry delay failed: {error}"))?;
                     continue;
                 }
                 log::warn!(
@@ -228,7 +228,7 @@ async fn generate_assistant_response_online(
                     clip_text(&single_line(&body), 220)
                 );
                 last_error = message;
-                std::thread::sleep(std::time::Duration::from_millis(450));
+                tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(450))).await.map_err(|error| format!("AI retry delay failed: {error}"))?;
                 continue;
             }
             log::warn!(
@@ -265,7 +265,7 @@ async fn generate_assistant_response_online(
                 clip_text(&single_line(&body), 360)
             );
             last_error = missing_content_error;
-            std::thread::sleep(std::time::Duration::from_millis(350));
+            tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(350))).await.map_err(|error| format!("AI retry delay failed: {error}"))?;
             continue;
         }
         log::warn!(
@@ -335,7 +335,7 @@ async fn generate_assistant_response_ollama(
                         "[pipeline] local ollama request transport error; retrying: {}",
                         clip_text(&single_line(&last_error), 280)
                     );
-                    std::thread::sleep(std::time::Duration::from_millis(350));
+                    tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(350))).await.map_err(|error| format!("AI retry delay failed: {error}"))?;
                     continue;
                 }
                 return Err(last_error);
@@ -360,7 +360,7 @@ async fn generate_assistant_response_ollama(
                     clip_text(&single_line(&body), 220)
                 );
                 last_error = message;
-                std::thread::sleep(std::time::Duration::from_millis(450));
+                tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(450))).await.map_err(|error| format!("AI retry delay failed: {error}"))?;
                 continue;
             }
             return Err(message);
