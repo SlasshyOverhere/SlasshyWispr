@@ -24,6 +24,29 @@ export function initDockGeometry(deps: DockGeometryDeps): void {
   geometryDeps = deps;
 }
 
+// F-026: main-window floor proposed for tauri.conf.json (coordinator approves;
+// this module owns the TS-side constants + breakpoint so layout follows suit).
+export const MAIN_WINDOW_MIN_SIZE = { width: 1024, height: 640 } as const;
+
+// F-026: below this viewport width the dock-dependent layout goes compact.
+export const DOCK_VIEWPORT_BREAKPOINT = 1100;
+
+export function dockCompactForViewport(viewportWidth: number): boolean {
+  if (!Number.isFinite(viewportWidth)) return false;
+  return viewportWidth < DOCK_VIEWPORT_BREAKPOINT;
+}
+
+// F-030: single reduced-motion probe shared by dock + popup. Gated behind
+// typeof guards so bun tests (no matchMedia) default to motion allowed.
+export function prefersReducedMotion(): boolean {
+  try {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+
 export function clampDockAxis(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) {
     return Math.round(min);

@@ -667,6 +667,39 @@
   line-height: 1.4;
 }
 
+/* F-021: inline validation message under a field. */
+.field-error {
+  font-size: 11.5px;
+  color: oklch(65% 0.15 25);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.settings-pane input[aria-invalid="true"] {
+  border-color: oklch(65% 0.15 25 / 0.65);
+}
+
+/* F-003: the incognito proof list. Tonal recess, no decoration. */
+.privacy-suppressed {
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  background: var(--bg-recess);
+  border-radius: 8px;
+}
+
+.privacy-suppressed-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 3px;
+}
+
+.privacy-suppressed-list li {
+  font-size: 12px;
+  color: var(--ink-secondary);
+  line-height: 1.45;
+}
+
 .settings-pane input[type="text"],
 .settings-pane input[type="password"],
 .settings-pane input[type="number"],

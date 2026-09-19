@@ -10,12 +10,11 @@
 use std::sync::Mutex;
 
 use crate::pipeline::response::{
-    looks_like_direct_question, looks_like_question_echo,
-    normalize_assistant_response_text,
+    looks_like_direct_question, looks_like_question_echo, normalize_assistant_response_text,
 };
 use crate::pipeline::selection::{
-    is_affirmative_selection_confirmation,
-    is_negative_selection_confirmation, is_rewrite_suspicious, looks_like_incomplete_draft_output,
+    is_affirmative_selection_confirmation, is_negative_selection_confirmation,
+    is_rewrite_suspicious, looks_like_incomplete_draft_output,
     seems_like_draft_generation_instruction, seems_like_selection_context_query,
     seems_like_selection_edit_instruction, SelectionEditAction, SelectionEditDecision,
 };
@@ -59,14 +58,15 @@ impl PipelineState {
     }
 
     pub fn clear_pending_rewrite(&self) -> bool {
-        self.pending_selection_rewrite.lock().unwrap().take().is_some()
-    }
-
-    pub fn peek_pending_rewrite(&self) -> Option<String> {
         self.pending_selection_rewrite
             .lock()
             .unwrap()
-            .clone()
+            .take()
+            .is_some()
+    }
+
+    pub fn peek_pending_rewrite(&self) -> Option<String> {
+        self.pending_selection_rewrite.lock().unwrap().clone()
     }
 
     pub fn take_pending_rewrite(&self) -> Option<String> {
@@ -253,7 +253,8 @@ pub fn orchestrate_post_stt(input: OrchestratorInput) -> OrchestratorResult {
             String::new()
         } else if input.state.peek_pending_rewrite().is_some() {
             if is_negative_selection_confirmation(&command_for_ai) {
-                selection_context_cleared = input.state.clear_pending_rewrite() || selection_context_cleared;
+                selection_context_cleared =
+                    input.state.clear_pending_rewrite() || selection_context_cleared;
                 skip_tts = true;
                 ai_action = AiAction::None;
                 "Pending rewrite canceled.".to_string()
@@ -275,7 +276,8 @@ pub fn orchestrate_post_stt(input: OrchestratorInput) -> OrchestratorResult {
             if selection_edit_intent || selection_context_query_intent {
                 skip_tts = true;
                 ai_action = AiAction::None;
-                "No selected text detected. Select text first, then repeat your selection command.".to_string()
+                "No selected text detected. Select text first, then repeat your selection command."
+                    .to_string()
             } else {
                 let transcript_for_ai = if command_for_ai.is_empty() {
                     "Command mode is active. Ask the user what to edit next.".to_string()
@@ -292,7 +294,8 @@ pub fn orchestrate_post_stt(input: OrchestratorInput) -> OrchestratorResult {
             }
         }
     } else {
-        selection_context_cleared = input.state.clear_pending_rewrite() || selection_context_cleared;
+        selection_context_cleared =
+            input.state.clear_pending_rewrite() || selection_context_cleared;
         ai_action = AiAction::GenerateResponse {
             prompt: command_for_ai.clone(),
             system_prompt: input.config.system_prompt.clone(),
@@ -372,7 +375,8 @@ pub fn apply_selection_edit_result(
     {
         decision.action = SelectionEditAction::AskConfirm;
         if decision.message.trim().is_empty() {
-            decision.message = "I drafted an edit but want confirmation before replacing.".to_string();
+            decision.message =
+                "I drafted an edit but want confirmation before replacing.".to_string();
         }
     }
 
@@ -413,7 +417,9 @@ pub fn apply_selection_edit_result(
         SelectionEditAction::NoEdit => {
             selection_context_cleared = state.clear_pending_rewrite();
             if decision.message.trim().is_empty()
-                || crate::pipeline::selection::looks_like_missing_selection_prompt(&decision.message)
+                || crate::pipeline::selection::looks_like_missing_selection_prompt(
+                    &decision.message,
+                )
             {
                 // NoEdit with empty/prompt-like message → generate AI answer with selected context
                 skip_tts = false;

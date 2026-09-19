@@ -1,4 +1,5 @@
 import { DEFAULT_LOCAL_OLLAMA_BASE_URL } from '../../constants';
+import { apiBaseUrlError } from '../../state/settings-store';
 import { dispatchSettingsPatch, useSettingsSnapshot } from '../../settings/settings-react-shim';
 
 export function ModelsSettingsPane() {
@@ -36,7 +37,19 @@ export function ModelsSettingsPane() {
         <div className="compact-grid">
           <label className="field" data-online-field="base-url">
             <span className="field-label">API Base URL</span>
-            <input id="apiBaseUrlInput" type="text" placeholder="Use default provider URL" autoComplete="off" value={settings.apiBaseUrl} onChange={(event) => dispatchSettingsPatch({ apiBaseUrl: event.target.value })} />
+            <input
+              id="apiBaseUrlInput"
+              type="text"
+              placeholder="Use default provider URL"
+              autoComplete="off"
+              value={settings.apiBaseUrl}
+              aria-invalid={apiBaseUrlError(settings.apiBaseUrl) !== null}
+              onChange={(event) => dispatchSettingsPatch({ apiBaseUrl: event.target.value })}
+            />
+            {/* F-021: inline invariant instead of a silent coerce. */}
+            {apiBaseUrlError(settings.apiBaseUrl) && (
+              <span className="field-error">{apiBaseUrlError(settings.apiBaseUrl)}</span>
+            )}
           </label>
           <label className="field" data-online-field="stt-model">
             <span className="field-label">STT Model</span>
@@ -174,9 +187,11 @@ export function ModelsSettingsPane() {
 
         <label className="field">
           <span className="field-label">Active Engine</span>
+          {/* F-027: Coqui is not bundled (the bridge was removed), so the
+              option is marked disabled rather than selectable-but-broken. */}
           <select id="ttsEngineSelect">
             <option value="piper">Piper (Main)</option>
-            <option value="coqui">Coqui (Disabled)</option>
+            <option value="coqui" disabled>Coqui (Unavailable)</option>
           </select>
         </label>
 
@@ -213,7 +228,7 @@ export function ModelsSettingsPane() {
 
         <div className="profile-tabs" role="tablist" aria-label="TTS profiles">
           <button id="ttsProfilePiperTab" className="profile-tab is-active" type="button">Piper</button>
-          <button id="ttsProfileCoquiTab" className="profile-tab" type="button">Coqui (Beta)</button>
+          <button id="ttsProfileCoquiTab" className="profile-tab" type="button" disabled title="Coqui is not bundled in this build">Coqui (Unavailable)</button>
         </div>
 
         <div id="ttsProfilePiperPanel">

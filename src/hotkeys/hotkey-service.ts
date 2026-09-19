@@ -410,11 +410,9 @@ export function isTypingElement(target: EventTarget | null): boolean {
 }
 
 export function isHotkeyReleaseEvent(event: KeyboardEvent, hotkey: HotkeySpec): boolean {
-  const key = normalizeEventKey(event.key);
-  if (key === hotkey.key) return true;
-  if (hotkey.ctrl && key === "control") return true;
-  if (hotkey.shift && key === "shift") return true;
-  if (hotkey.alt && key === "alt") return true;
-  if (hotkey.meta && key === "meta") return true;
-  return false;
+  // F-007: the MAIN key must come up. Releasing a modifier alone (e.g. letting
+  // go of Ctrl while Space is still held) must NOT end a PTT hold, or a
+  // mid-hold modifier tap would cut the recording short.
+  if (normalizeEventKey(event.key) !== hotkey.key) return false;
+  return true;
 }

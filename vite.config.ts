@@ -24,4 +24,18 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) return "vendor";
+          // The lazy AnalyticsPage boundary in App.tsx: both the page component
+          // and its analytics helpers land in the one on-demand chunk.
+          if (id.includes("src/components/analytics") || id.includes("src/analytics")) {
+            return "analytics";
+          }
+        },
+      },
+    },
+  },
 }));

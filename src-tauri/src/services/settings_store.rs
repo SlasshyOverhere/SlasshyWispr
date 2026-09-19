@@ -25,11 +25,25 @@ use windows_sys::Win32::Security::Cryptography::{
     CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
 };
 
-use crate::constants::{PERSISTED_SETTINGS_DIR_NAME, PERSISTED_SETTINGS_FILE_NAME};
+use crate::constants::{
+    API_KEY_FINGERPRINT_HMAC_SECRET_DEFAULT, API_KEY_FINGERPRINT_HMAC_SECRET_ENV,
+    PERSISTED_SETTINGS_DIR_NAME, PERSISTED_SETTINGS_FILE_NAME,
+};
 use crate::pipeline::routing::normalize_api_key_secret;
 
-const KEYRING_SERVICE: &str = "SlasshyWispr";
+pub(crate) const KEYRING_SERVICE_PROD: &str = "online.slasshy.slasshywispr";
+pub(crate) const KEYRING_SERVICE_DEV: &str = "online.slasshy.slasshywispr.dev";
 const KEYRING_USER: &str = "api_key";
+
+/// Active keyring service: prod bundle id, `.dev` suffix under tauri dev.
+/// One-time migration copies any legacy credential forward on read.
+pub(crate) fn keyring_service() -> &'static str {
+    if cfg!(debug_assertions) {
+        KEYRING_SERVICE_DEV
+    } else {
+        KEYRING_SERVICE_PROD
+    }
+}
 // ponytail: legacy service names kept as read fallback so existing installs
 // keep their saved API key; new writes go to KEYRING_SERVICE only.
 // Drop these once old installs are extinct in the wild.
@@ -49,21 +63,29 @@ pub(crate) fn api_key_fingerprint(api_key: &str) -> String {
     if normalized.is_empty() {
         return String::new();
     }
-
-    let mut hash: u64 = 0xcbf29ce484222325;
-    for byte in normalized.as_bytes() {
-        hash ^= *byte as u64;
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("{hash:016x}")
+    let secret = std::env::var(API_KEY_FINGERPRINT_HMAC_SECRET_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| API_KEY_FINGERPRINT_HMAC_SECRET_DEFAULT.to_string());
+    crate::security::create_api_key_fingerprint(&normalized, &secret).unwrap_or_default()
 }
 
 pub(crate) fn known_keyring_targets() -> Vec<(&'static str, &'static str)> {
-    let mut targets =
-        Vec::with_capacity((KEYRING_SERVICE_ALIASES.len() + 1) * (KEYRING_USER_ALIASES.len() + 1));
-    let mut services = Vec::with_capacity(KEYRING_SERVICE_ALIASES.len() + 1);
-    services.push(KEYRING_SERVICE);
-    services.extend(KEYRING_SERVICE_ALIASES);
+    // Active service first, then the other env (one-time cross-env copy),
+    // then legacy aliases (deduped, read-only fallback).
+    let mut services: Vec<&'static str> = Vec::with_capacity(KEYRING_SERVICE_ALIASES.len() + 2);
+    services.push(keyring_service());
+    services.push(if keyring_service() == KEYRING_SERVICE_PROD {
+        KEYRING_SERVICE_DEV
+    } else {
+        KEYRING_SERVICE_PROD
+    });
+    for alias in KEYRING_SERVICE_ALIASES {
+        if !services.contains(&alias) {
+            services.push(alias);
+        }
+    }
+    let mut targets = Vec::with_capacity(services.len() * (KEYRING_USER_ALIASES.len() + 1));
 
     let mut users = Vec::with_capacity(KEYRING_USER_ALIASES.len() + 1);
     users.push(KEYRING_USER);
@@ -85,7 +107,7 @@ pub(crate) fn write_api_key_to_primary_keyring(api_key: &str) -> Result<(), Stri
         );
     }
 
-    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER)
+    let entry = Entry::new(keyring_service(), KEYRING_USER)
         .map_err(|error| format!("failed to initialize keyring entry: {error}"))?;
     entry
         .set_password(&normalized_api_key)
@@ -357,11 +379,14 @@ pub(crate) fn restore_settings_payload(payload: &str) -> Result<String, String> 
             .unwrap_or_else(|| "<missing>".to_string());
 
         if let Some((_, source_service, source_user)) = &keyring_entry {
-            if source_service != KEYRING_SERVICE || source_user != KEYRING_USER {
+            if source_service != keyring_service() || source_user != KEYRING_USER {
                 if write_api_key_to_primary_keyring(&keyring_api_key).is_ok() {
                     info!(
                         "[settings] migrated keyring credential source='{}:{}' -> '{}:{}'",
-                        source_service, source_user, KEYRING_SERVICE, KEYRING_USER
+                        source_service,
+                        source_user,
+                        keyring_service(),
+                        KEYRING_USER
                     );
                 }
             }
@@ -644,4 +669,35 @@ pub(crate) fn persisted_settings_path(app: &AppHandle) -> Result<PathBuf, String
     }
 
     Ok(primary_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dev_prod_keyring_services_are_independent() {
+        assert_ne!(KEYRING_SERVICE_PROD, KEYRING_SERVICE_DEV);
+        assert!(KEYRING_SERVICE_PROD.contains("slasshywispr"));
+        assert!(KEYRING_SERVICE_DEV.contains("slasshywispr"));
+        // Both envs are probed (one-time cross-env copy), active first.
+        let targets = known_keyring_targets();
+        let services: Vec<&str> = targets.iter().map(|(service, _)| *service).collect();
+        assert!(services.contains(&KEYRING_SERVICE_PROD));
+        assert!(services.contains(&KEYRING_SERVICE_DEV));
+        assert!(services.contains(&"SlasshyWispr Desktop Assistant"));
+        assert_eq!(
+            targets.first().map(|(service, _)| *service),
+            Some(keyring_service())
+        );
+    }
+
+    #[test]
+    fn fingerprint_is_hmac_sha256_not_fnv() {
+        let first = api_key_fingerprint("sk-test-key-123");
+        assert_eq!(first.len(), 64, "HMAC-SHA256 hex, not 16-char FNV: {first}");
+        assert_eq!(first, api_key_fingerprint("sk-test-key-123"));
+        assert_ne!(first, api_key_fingerprint("sk-other-key-456"));
+        assert!(api_key_fingerprint("").is_empty());
+    }
 }

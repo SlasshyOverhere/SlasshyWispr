@@ -11,14 +11,17 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use log::warn;
-use reqwest::{header::{ACCEPT_RANGES, RANGE}, Client, StatusCode};
+use reqwest::{
+    header::{ACCEPT_RANGES, RANGE},
+    Client, StatusCode,
+};
 
-use crate::constants::*;
-use crate::pipeline::log::{clip_text, single_line};
 use super::archive::{
     find_local_parakeet_model_root, local_parakeet_archive_source, LocalParakeetArchiveSource,
 };
 use super::progress::SharedStatus;
+use crate::constants::*;
+use crate::pipeline::log::{clip_text, single_line};
 
 /// Number of parallel archive chunks, capped by size policy and env override.
 pub(crate) fn local_stt_archive_parallel_chunk_count(total_bytes: u64) -> usize {
@@ -102,7 +105,10 @@ pub(crate) async fn download_archive_range_chunk(
 }
 
 /// Concatenate downloaded archive parts into a single archive file.
-pub(crate) fn concatenate_archive_parts(parts: &[PathBuf], destination: &Path) -> Result<(), String> {
+pub(crate) fn concatenate_archive_parts(
+    parts: &[PathBuf],
+    destination: &Path,
+) -> Result<(), String> {
     let mut output = fs::File::create(destination).map_err(|error| {
         format!(
             "Failed to create archive destination '{}': {error}",
@@ -290,8 +296,8 @@ pub(crate) async fn download_prepacked_parakeet_model(
 ) -> Result<String, String> {
     let source: LocalParakeetArchiveSource =
         local_parakeet_archive_source(repo_id).ok_or_else(|| {
-        format!("No prepacked Parakeet archive source configured for '{repo_id}'.")
-    })?;
+            format!("No prepacked Parakeet archive source configured for '{repo_id}'.")
+        })?;
 
     if let Ok(existing_root) = find_local_parakeet_model_root(target_dir) {
         return Ok(format!(

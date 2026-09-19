@@ -11,6 +11,8 @@ import type { AchievementState, AnalyticsSessionDetail, UsageStats } from "../ty
 import { accumulateUsage, countWords, newlyUnlockedAchievements } from "./analytics-service";
 
 export interface UsageTrackerDeps {
+  /** F-003: in incognito nothing about the session is recorded. */
+  isIncognito?: () => boolean;
   getStats: () => UsageStats;
   setStats: (stats: UsageStats) => void;
   getSessions: () => AnalyticsSessionDetail[];
@@ -32,6 +34,8 @@ export function initUsageTracker(deps: UsageTrackerDeps): void {
 }
 
 export function trackUsage(transcript: string): void {
+  // F-003: incognito means no usage delta, no session row, no achievement.
+  if (trackerDeps.isIncognito?.()) return;
   const words = countWords(transcript);
   if (words === 0) return;
   const stats = trackerDeps.getStats();

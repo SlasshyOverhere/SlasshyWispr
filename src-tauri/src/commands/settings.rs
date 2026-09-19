@@ -10,8 +10,11 @@ use log::info;
 use serde_json::Value;
 use tauri::AppHandle;
 
+use crate::pipeline::routing::{validate_api_base_url, validate_local_ollama_base_url};
 use crate::security;
-use crate::services::settings_store::{persisted_settings_path, restore_settings_payload, secure_settings_payload};
+use crate::services::settings_store::{
+    persisted_settings_path, restore_settings_payload, secure_settings_payload,
+};
 #[tauri::command]
 pub(crate) async fn load_persisted_local_settings(app: AppHandle) -> Result<String, String> {
     let settings_path = persisted_settings_path(&app)?;
@@ -36,7 +39,10 @@ pub(crate) async fn load_persisted_local_settings(app: AppHandle) -> Result<Stri
 }
 
 #[tauri::command]
-pub(crate) async fn save_persisted_local_settings(app: AppHandle, payload: String) -> Result<(), String> {
+pub(crate) async fn save_persisted_local_settings(
+    app: AppHandle,
+    payload: String,
+) -> Result<(), String> {
     let trimmed = payload.trim();
     if trimmed.is_empty() {
         return Err("Settings payload is empty.".to_string());
@@ -48,10 +54,7 @@ pub(crate) async fn save_persisted_local_settings(app: AppHandle, payload: Strin
         return Err("Settings payload must be a JSON object.".to_string());
     }
 
-    // Validate text fields before persisting
-    if let Some(api_key) = parsed.get("apiKey").and_then(|v| v.as_str()) {
-        security::validate_text_input(api_key, 4096, "apiKey").map_err(|e| format!("Invalid apiKey: {e}"))?;
-    }
+    validate_settings_payload(&parsed)?;
 
     info!("[settings] save requested bytes={}", trimmed.len());
     let secured_payload = secure_settings_payload(trimmed)?;
@@ -71,3 +74,147 @@ pub(crate) async fn save_persisted_local_settings(app: AppHandle, payload: Strin
     Ok(())
 }
 
+/// Central backend settings validator (F-021). Agent 2 calls this on the
+/// pipeline path too (see NEEDS). Length caps + enum allowlists + URL shape.
+/// URL checks reuse the routing validators so messages match everywhere.
+pub(crate) fn validate_settings_payload(parsed: &serde_json::Value) -> Result<(), String> {
+    let Some(obj) = parsed.as_object() else {
+        return Ok(());
+    };
+    let capped = |key: &str, max: usize| -> Result<(), String> {
+        if let Some(value) = obj.get(key).and_then(|v| v.as_str()) {
+            security::validate_text_input(value, max, key)
+                .map(|_| ())
+                .map_err(|error| format!("Invalid {key}: {error}"))?;
+        }
+        Ok(())
+    };
+    capped("apiKey", 4096)?;
+    capped("apiBaseUrl", 2048)?;
+    capped("sttModelName", 256)?;
+    capped("aiModelName", 256)?;
+    capped("localOllamaBaseUrl", 2048)?;
+    capped("localOllamaModel", 256)?;
+    capped("localSttModel", 256)?;
+    capped("systemPrompt", 8000)?;
+    capped("assistantName", 128)?;
+    capped("piperPath", 1024)?;
+    capped("microphoneDeviceId", 256)?;
+    capped("pushToTalkHotkey", 128)?;
+    capped("commandHotkey", 128)?;
+    capped("dictationLanguage", 64)?;
+
+    let allowed = |key: &str, values: &[&str]| -> Result<(), String> {
+        if let Some(value) = obj.get(key).and_then(|v| v.as_str()) {
+            if !value.trim().is_empty() && !values.contains(&value) {
+                return Err(format!("Invalid {key}: '{value}'."));
+            }
+        }
+        Ok(())
+    };
+    // Mirrors src/types.ts unions (Agent 3 owns the TS side; keep in sync).
+    allowed("runtimeMode", &["online", "local"])?;
+    allowed("sttRuntimeMode", &["online", "local"])?;
+    allowed("aiRuntimeMode", &["online", "local"])?;
+    allowed("captureMode", &["single-tap", "push-to-talk"])?;
+    allowed("themeMode", &["system", "dark", "light", "mono"])?;
+    allowed(
+        "styleProfile",
+        &["adaptive", "professional", "casual", "concise", "developer"],
+    )?;
+    allowed("ttsEngine", &["piper"])?;
+    allowed("dictationLanguageMode", &["single", "multiple"])?;
+    allowed("piperQuality", &["fast", "balanced", "high"])?;
+    allowed(
+        "piperEmotion",
+        &["neutral", "calm", "happy", "excited", "serious", "sad"],
+    )?;
+
+    if let Some(temperature) = obj.get("temperature").and_then(|v| v.as_f64()) {
+        if !(0.0..=2.0).contains(&temperature) {
+            return Err("Invalid temperature: must be between 0 and 2.".to_string());
+        }
+    }
+    if let Some(max_tokens) = obj.get("maxTokens").and_then(|v| v.as_u64()) {
+        if max_tokens == 0 || max_tokens > 128_000 {
+            return Err("Invalid maxTokens: must be between 1 and 128000.".to_string());
+        }
+    }
+
+    if obj
+        .get("apiBaseUrl")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .is_some()
+    {
+        validate_api_base_url(obj.get("apiBaseUrl").and_then(|v| v.as_str()))
+            .map(|_| ())
+            .map_err(|error| format!("Invalid apiBaseUrl: {error}"))?;
+    }
+    if obj
+        .get("localOllamaBaseUrl")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .is_some()
+    {
+        validate_local_ollama_base_url(obj.get("localOllamaBaseUrl").and_then(|v| v.as_str()))
+            .map(|_| ())
+            .map_err(|error| format!("Invalid localOllamaBaseUrl: {error}"))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_settings_payload;
+
+    fn payload(json: serde_json::Value) -> serde_json::Value {
+        json
+    }
+
+    #[test]
+    fn rejects_plain_http_api_base_url() {
+        let err = validate_settings_payload(&payload(serde_json::json!({
+            "apiBaseUrl": "http://api.example.com/v1"
+        })))
+        .expect_err("http cloud url must fail");
+        assert!(err.contains("apiBaseUrl"), "{err}");
+    }
+
+    #[test]
+    fn rejects_metadata_ip_api_base_url() {
+        let err = validate_settings_payload(&payload(serde_json::json!({
+            "apiBaseUrl": "https://169.254.169.254/latest/meta-data/"
+        })))
+        .expect_err("metadata IP must fail");
+        assert!(err.contains("not allowed"), "{err}");
+    }
+
+    #[test]
+    fn rejects_bad_enum_and_range() {
+        let err = validate_settings_payload(&payload(serde_json::json!({
+            "ttsEngine": "coqui"
+        })))
+        .expect_err("enum must fail");
+        assert!(err.contains("ttsEngine"), "{err}");
+        let err = validate_settings_payload(&payload(serde_json::json!({
+            "temperature": 9.0
+        })))
+        .expect_err("range must fail");
+        assert!(err.contains("temperature"), "{err}");
+    }
+
+    #[test]
+    fn accepts_valid_payload() {
+        validate_settings_payload(&payload(serde_json::json!({
+            "apiBaseUrl": "https://api.example.com/v1",
+            "localOllamaBaseUrl": "http://127.0.0.1:11434",
+            "ttsEngine": "piper",
+            "temperature": 0.7,
+            "maxTokens": 800
+        })))
+        .expect("valid payload passes");
+    }
+}

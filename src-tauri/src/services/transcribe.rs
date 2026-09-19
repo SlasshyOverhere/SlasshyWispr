@@ -12,33 +12,28 @@ use std::time::Instant;
 
 use log::{info, warn};
 use reqwest::{multipart, Client};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
 use crate::audio;
-use crate::audio::parakeet::local_stt_native_parakeet_runtime;
-use crate::audio::processing::decode_local_stt_audio_to_mono_f32;
 use crate::audio::vad;
-use crate::commands::local_stt::LocalSttDeactivateRequest;
 use crate::constants::{
     LOCAL_STT_BRIDGE_SCRIPT, LOCAL_STT_RUNTIME_READY_MARKER_CONTENT,
     LOCAL_STT_RUNTIME_READY_MARKER_FILE, ZERO_PYTHON_STT_NOTICE,
 };
-use crate::pipeline::daemon::{
-    run_local_stt_bridge_via_daemon, stop_all_local_stt_bridge_daemons,
-};
-use crate::pipeline::log::{clip_text, single_line};
+use crate::pipeline::daemon::{run_local_stt_bridge_via_daemon, stop_all_local_stt_bridge_daemons};
 use crate::pipeline::fs::file_exists_with_content;
+use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::process::{
     apply_no_window, elapsed_ms, merge_process_output, validate_python_binary_path,
 };
 use crate::pipeline::routing::{
-    canonical_local_stt_model_id, infer_local_stt_provider_from_model, LocalSttConfig,
-    zero_python_mode_enabled,
+    canonical_local_stt_model_id, infer_local_stt_provider_from_model, zero_python_mode_enabled,
+    LocalSttConfig,
 };
 use crate::pipeline::stt::{
-    is_known_stt_hallucination, looks_like_repetitive_transcript_noise,
-    normalize_stt_allowed_languages, normalize_stt_language_hint,
+    looks_like_repetitive_transcript_noise, normalize_stt_allowed_languages,
+    normalize_stt_language_hint,
 };
 use crate::pipeline::stt_download::archive::find_local_parakeet_model_root;
 use crate::pipeline::stt_download::progress::now_unix_ms;
@@ -127,10 +122,6 @@ pub(crate) fn ensure_local_stt_bridge_script(app: &AppHandle) -> Result<PathBuf,
     }
     Ok(script_path)
 }
-
-
-
-
 
 pub(crate) fn local_stt_runtime_ready_marker_path(runtime_dir: &Path) -> PathBuf {
     runtime_dir.join(LOCAL_STT_RUNTIME_READY_MARKER_FILE)
@@ -223,17 +214,6 @@ fn try_install_local_stt_cuda_torch(
     Ok(false)
 }
 
-
-
-
-
-
-
-
-
-
-
-
 pub(crate) fn run_local_stt_python_command(
     python_path: &str,
     args: &[&str],
@@ -274,7 +254,10 @@ pub(crate) fn detect_nvidia_gpu_available() -> bool {
         _ => false,
     }
 }
-pub(crate) fn local_stt_torch_cuda_available(python_path: &str, cache_dir: &Path) -> Result<bool, String> {
+pub(crate) fn local_stt_torch_cuda_available(
+    python_path: &str,
+    cache_dir: &Path,
+) -> Result<bool, String> {
     let output = run_local_stt_python_command(
         python_path,
         &[
@@ -1018,8 +1001,12 @@ pub(crate) async fn transcribe_audio_openai_compatible(
         form = form.text("language", language.to_string());
     }
 
+    // F-010: STT gets a 60s ceiling. The shared client's 150s default is sized
+    // for model downloads, so a hung transcription would otherwise hold the
+    // pipeline (and the mic indicator) for two and a half minutes.
     let request_builder = client
         .post(format!("{api_base_url}/audio/transcriptions"))
+        .timeout(std::time::Duration::from_secs(60))
         .multipart(form);
     let response = apply_optional_bearer_auth(request_builder, api_key)
         .send()
@@ -1070,21 +1057,21 @@ pub(crate) async fn transcribe_audio_openai_compatible(
 mod tests {
     use super::*;
 
-#[test]
-fn mime_to_extension_handles_common_types() {
-    assert_eq!(mime_to_extension("audio/webm"), "webm");
-    assert_eq!(mime_to_extension("audio/wav"), "wav");
-    assert_eq!(mime_to_extension("audio/ogg"), "ogg");
-    assert_eq!(mime_to_extension("audio/mp4"), "m4a");
-    assert_eq!(mime_to_extension("audio/mpeg"), "mp3");
-    assert_eq!(mime_to_extension("audio/mp3"), "mp3");
-}
+    #[test]
+    fn mime_to_extension_handles_common_types() {
+        assert_eq!(mime_to_extension("audio/webm"), "webm");
+        assert_eq!(mime_to_extension("audio/wav"), "wav");
+        assert_eq!(mime_to_extension("audio/ogg"), "ogg");
+        assert_eq!(mime_to_extension("audio/mp4"), "m4a");
+        assert_eq!(mime_to_extension("audio/mpeg"), "mp3");
+        assert_eq!(mime_to_extension("audio/mp3"), "mp3");
+    }
 
-#[test]
-fn mime_to_extension_defaults_to_webm() {
-    assert_eq!(mime_to_extension("audio/unknown"), "webm");
-    assert_eq!(mime_to_extension("application/octet-stream"), "webm");
-}
+    #[test]
+    fn mime_to_extension_defaults_to_webm() {
+        assert_eq!(mime_to_extension("audio/unknown"), "webm");
+        assert_eq!(mime_to_extension("application/octet-stream"), "webm");
+    }
 
-// ===== SELECTION EDIT DECISION =====
+    // ===== SELECTION EDIT DECISION =====
 }

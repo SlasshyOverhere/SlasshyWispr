@@ -121,7 +121,11 @@ pub fn windows_installer_score(name: &str, release_version: &str) -> i32 {
     if lower.contains("portable") || lower.contains("debug") || lower.contains("symbols") {
         score -= 8;
     }
-    if lower.contains("arm64") || lower.contains("aarch64") || lower.contains("x86") || lower.contains("ia32") {
+    if lower.contains("arm64")
+        || lower.contains("aarch64")
+        || lower.contains("x86")
+        || lower.contains("ia32")
+    {
         score -= 6;
     }
     score
@@ -157,7 +161,10 @@ pub fn select_latest_stable_release<'a>(
 /// Parse a version string into numeric parts and optional prerelease tag.
 pub fn parse_version_triplet(version: &str) -> Option<ParsedVersion> {
     let normalized = normalize_release_version(version);
-    let without_build = normalized.split_once('+').map(|(value, _)| value).unwrap_or(&normalized);
+    let without_build = normalized
+        .split_once('+')
+        .map(|(value, _)| value)
+        .unwrap_or(&normalized);
     let (core, prerelease) = without_build
         .split_once('-')
         .map(|(value, tag)| (value.trim(), Some(tag.trim().to_ascii_lowercase())))
@@ -186,7 +193,10 @@ pub fn parse_version_triplet(version: &str) -> Option<ParsedVersion> {
 
 /// Whether `latest` is newer than `current`.
 pub fn is_newer_version(current: &str, latest: &str) -> bool {
-    match (parse_version_triplet(current), parse_version_triplet(latest)) {
+    match (
+        parse_version_triplet(current),
+        parse_version_triplet(latest),
+    ) {
         (Some(current_parts), Some(latest_parts)) => {
             let max_len = current_parts
                 .numeric_parts
@@ -252,7 +262,11 @@ pub fn extract_version_from_download_url(url: &str) -> Option<String> {
     // segments[0..5] = [owner, name, "releases", "download", tag]
     let tag = *segments.get(4)?;
     let version = normalize_release_version(tag);
-    if version.is_empty() { None } else { Some(version) }
+    if version.is_empty() {
+        None
+    } else {
+        Some(version)
+    }
 }
 
 /// Resolve the installer filename from asset name or download URL.
@@ -271,26 +285,44 @@ pub fn resolve_installer_file_name(
         }
     }
 
-    let target_version = extract_version_from_download_url(download_url)
-        .unwrap_or_else(|| String::from("unknown"));
+    let target_version =
+        extract_version_from_download_url(download_url).unwrap_or_else(|| String::from("unknown"));
     format!("SlasshyWispr-{target_version}-update.exe")
 }
 
 // ===== Update repository resolution =====
 
-/// Resolve the update repository owner and name from environment variables or defaults.
+/// Resolve the update repository owner and name.
+/// Release builds pin the compiled constants: env overrides are debug-only so
+/// a planted env var cannot redirect the updater at a victim binary.
+/// Debug builds still honor the env vars for local testing.
 pub fn resolve_update_repository() -> (String, String) {
-    let owner = std::env::var(UPDATE_REPOSITORY_OWNER_ENV)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| UPDATE_REPOSITORY_OWNER.to_string());
-    let name = std::env::var(UPDATE_REPOSITORY_NAME_ENV)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| UPDATE_REPOSITORY_NAME.to_string());
-    (owner, name)
+    if cfg!(debug_assertions) {
+        let owner = std::env::var(UPDATE_REPOSITORY_OWNER_ENV)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| UPDATE_REPOSITORY_OWNER.to_string());
+        let name = std::env::var(UPDATE_REPOSITORY_NAME_ENV)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| UPDATE_REPOSITORY_NAME.to_string());
+        return (owner, name);
+    }
+    (
+        UPDATE_REPOSITORY_OWNER.to_string(),
+        UPDATE_REPOSITORY_NAME.to_string(),
+    )
+}
+
+/// Minisign-style pubkey verify stub (F-001). Returns Ok(()) ONLY when a real
+/// signature check passes. Until a signing key ships, every non-empty payload
+/// fails closed: no installer executes on a verify bypass.
+/// ponytail: replace the body with ed25519 verify (e.g. `ed25519-dalek`)
+/// against a baked-in pubkey + `.minisig` sidecar; ceiling = real sig verify.
+pub fn verify_installer_signature(_installer_bytes: &[u8], _signature: &str) -> Result<(), String> {
+    Err("installer signature verification is not yet provisioned: refusing to execute".to_string())
 }
 
 /// Whether the given URL is a safe update download from the trusted repository.
@@ -410,6 +442,31 @@ mod tests {
         assert!(!is_safe_update_url("ftp://github.com/user/repo"));
     }
 
+    // ===== F-001 release repo pin + signature gate =====
+
+    #[test]
+    fn release_build_ignores_repo_env_override() {
+        std::env::set_var(UPDATE_REPOSITORY_OWNER_ENV, "Attacker");
+        std::env::set_var(UPDATE_REPOSITORY_NAME_ENV, "MalwareRepo");
+        let (owner, name) = resolve_update_repository();
+        std::env::remove_var(UPDATE_REPOSITORY_OWNER_ENV);
+        std::env::remove_var(UPDATE_REPOSITORY_NAME_ENV);
+        if cfg!(debug_assertions) {
+            assert_eq!((owner.as_str(), name.as_str()), ("Attacker", "MalwareRepo"));
+        } else {
+            assert_eq!(
+                (owner.as_str(), name.as_str()),
+                (UPDATE_REPOSITORY_OWNER, UPDATE_REPOSITORY_NAME)
+            );
+        }
+    }
+
+    #[test]
+    fn installer_signature_stub_fails_closed() {
+        let err = verify_installer_signature(b"MZ-fake", "").expect_err("stub must fail closed");
+        assert!(err.contains("refusing"), "{err}");
+    }
+
     // ===== Version comparison =====
 
     #[test]
@@ -444,7 +501,10 @@ mod tests {
         // same version → not newer
         assert!(!is_newer_version("1.0.0", "1.0.0"));
         // different prerelease tags compared lexicographically
-        assert!(is_newer_version("1.0.0-alpha", "1.0.0-beta"), "beta > alpha lexicographically");
+        assert!(
+            is_newer_version("1.0.0-alpha", "1.0.0-beta"),
+            "beta > alpha lexicographically"
+        );
         assert!(!is_newer_version("1.0.0-alpha", "1.0.0-alpha"));
     }
 
@@ -496,20 +556,30 @@ mod tests {
 
     #[test]
     fn windows_installer_asset_detection_supports_exe_and_msi() {
-        assert!(is_windows_installer_asset("SlasshyWispr_0.1.1_x64-setup.exe"));
+        assert!(is_windows_installer_asset(
+            "SlasshyWispr_0.1.1_x64-setup.exe"
+        ));
         assert!(is_windows_installer_asset("SlasshyWispr_0.1.1_x64.msi"));
         assert!(!is_windows_installer_asset("checksums.txt"));
-        assert!(!is_windows_installer_asset("SlasshyWispr_0.1.1_x64-setup.exe.sig"));
+        assert!(!is_windows_installer_asset(
+            "SlasshyWispr_0.1.1_x64-setup.exe.sig"
+        ));
     }
 
     #[test]
     fn windows_installer_kind_from_name_detects_exe() {
-        assert!(matches!(windows_installer_kind_from_name("setup.exe"), Some(WindowsInstallerKind::Exe)));
+        assert!(matches!(
+            windows_installer_kind_from_name("setup.exe"),
+            Some(WindowsInstallerKind::Exe)
+        ));
     }
 
     #[test]
     fn windows_installer_kind_from_name_detects_msi() {
-        assert!(matches!(windows_installer_kind_from_name("package.msi"), Some(WindowsInstallerKind::Msi)));
+        assert!(matches!(
+            windows_installer_kind_from_name("package.msi"),
+            Some(WindowsInstallerKind::Msi)
+        ));
     }
 
     #[test]
@@ -524,14 +594,18 @@ mod tests {
 
     #[test]
     fn exe_installer_supports_silent_mode_detects_setup() {
-        assert!(exe_installer_supports_silent_mode("SlasshyWispr_1.0_x64-setup.exe"));
+        assert!(exe_installer_supports_silent_mode(
+            "SlasshyWispr_1.0_x64-setup.exe"
+        ));
         assert!(exe_installer_supports_silent_mode("installer.exe"));
         assert!(exe_installer_supports_silent_mode("app-nsis.exe"));
     }
 
     #[test]
     fn exe_installer_supports_silent_mode_rejects_portable() {
-        assert!(!exe_installer_supports_silent_mode("SlasshyWispr_portable.exe"));
+        assert!(!exe_installer_supports_silent_mode(
+            "SlasshyWispr_portable.exe"
+        ));
         assert!(!exe_installer_supports_silent_mode("helper.exe"));
     }
 
@@ -550,11 +624,13 @@ mod tests {
             assets: vec![
                 GithubReleaseAsset {
                     name: "SlasshyWispr_0.1.1_x64.msi".to_string(),
-                    browser_download_url: "https://example.com/SlasshyWispr_0.1.1_x64.msi".to_string(),
+                    browser_download_url: "https://example.com/SlasshyWispr_0.1.1_x64.msi"
+                        .to_string(),
                 },
                 GithubReleaseAsset {
                     name: "SlasshyWispr_0.1.1_x64-setup.exe".to_string(),
-                    browser_download_url: "https://example.com/SlasshyWispr_0.1.1_x64-setup.exe".to_string(),
+                    browser_download_url: "https://example.com/SlasshyWispr_0.1.1_x64-setup.exe"
+                        .to_string(),
                 },
             ],
         };
@@ -568,8 +644,12 @@ mod tests {
     fn select_windows_installer_asset_avoids_portable_or_mismatched_builds() {
         let release = GithubLatestReleaseResponse {
             tag_name: "v1.0.0".to_string(),
-            name: None, body: None, draft: false, prerelease: false,
-            published_at: None, html_url: None,
+            name: None,
+            body: None,
+            draft: false,
+            prerelease: false,
+            published_at: None,
+            html_url: None,
             assets: vec![
                 GithubReleaseAsset {
                     name: "helper-installer.exe".to_string(),
@@ -577,7 +657,8 @@ mod tests {
                 },
                 GithubReleaseAsset {
                     name: "SlasshyWispr_1.0.1_x64-setup.exe".to_string(),
-                    browser_download_url: "https://example.com/SlasshyWispr_1.0.1_x64-setup.exe".to_string(),
+                    browser_download_url: "https://example.com/SlasshyWispr_1.0.1_x64-setup.exe"
+                        .to_string(),
                 },
             ],
         };
@@ -606,8 +687,12 @@ mod tests {
     fn select_windows_installer_asset_uses_name_length_as_tiebreaker() {
         let release = GithubLatestReleaseResponse {
             tag_name: "v1.0.0".to_string(),
-            name: None, body: None, draft: false, prerelease: false,
-            published_at: None, html_url: None,
+            name: None,
+            body: None,
+            draft: false,
+            prerelease: false,
+            published_at: None,
+            html_url: None,
             assets: vec![
                 GithubReleaseAsset {
                     name: "a.exe".to_string(),
@@ -619,8 +704,7 @@ mod tests {
                 },
             ],
         };
-        let selected = select_windows_installer_asset(&release)
-            .expect("should pick one");
+        let selected = select_windows_installer_asset(&release).expect("should pick one");
         assert_eq!(selected.name, "longer-name.exe", "longer name wins on tie");
     }
 
@@ -630,14 +714,20 @@ mod tests {
     fn windows_installer_score_prefers_nsis_setup_over_msi() {
         let setup_score = windows_installer_score("SlasshyWispr_1.0.3_x64-setup.exe", "v1.0.3");
         let msi_score = windows_installer_score("SlasshyWispr_1.0.3_x64.msi", "v1.0.3");
-        assert!(setup_score > msi_score, "EXE setup should score higher than MSI");
+        assert!(
+            setup_score > msi_score,
+            "EXE setup should score higher than MSI"
+        );
     }
 
     #[test]
     fn windows_installer_score_penalizes_portable_and_debug() {
         let portable_score = windows_installer_score("SlasshyWispr_1.0.3_portable.exe", "v1.0.3");
         let normal_score = windows_installer_score("SlasshyWispr_1.0.3_x64-setup.exe", "v1.0.3");
-        assert!(normal_score > portable_score, "normal installer should score higher than portable");
+        assert!(
+            normal_score > portable_score,
+            "normal installer should score higher than portable"
+        );
     }
 
     #[test]
@@ -656,13 +746,23 @@ mod tests {
         let releases = vec![
             GithubLatestReleaseResponse {
                 tag_name: "v1.0.0-rc.1".to_string(),
-                name: None, body: None, draft: false, prerelease: true,
-                published_at: None, html_url: None, assets: vec![],
+                name: None,
+                body: None,
+                draft: false,
+                prerelease: true,
+                published_at: None,
+                html_url: None,
+                assets: vec![],
             },
             GithubLatestReleaseResponse {
                 tag_name: "v0.9.0".to_string(),
-                name: None, body: None, draft: false, prerelease: false,
-                published_at: None, html_url: None, assets: vec![],
+                name: None,
+                body: None,
+                draft: false,
+                prerelease: false,
+                published_at: None,
+                html_url: None,
+                assets: vec![],
             },
         ];
         let selected = select_latest_stable_release(&releases);
@@ -671,13 +771,16 @@ mod tests {
 
     #[test]
     fn select_latest_stable_release_returns_none_when_all_draft() {
-        let releases = vec![
-            GithubLatestReleaseResponse {
-                tag_name: "v1.0.0".to_string(),
-                name: None, body: None, draft: true, prerelease: false,
-                published_at: None, html_url: None, assets: vec![],
-            },
-        ];
+        let releases = vec![GithubLatestReleaseResponse {
+            tag_name: "v1.0.0".to_string(),
+            name: None,
+            body: None,
+            draft: true,
+            prerelease: false,
+            published_at: None,
+            html_url: None,
+            assets: vec![],
+        }];
         assert!(select_latest_stable_release(&releases).is_none());
     }
 
@@ -706,7 +809,10 @@ mod tests {
     #[test]
     fn extract_version_from_download_url_parses_github_url() {
         let url = "https://github.com/SlasshyOverhere/SlasshyWispr/releases/download/v1.0.3/SlasshyWispr_1.0.3_x64-setup.exe";
-        assert_eq!(extract_version_from_download_url(url).as_deref(), Some("1.0.3"));
+        assert_eq!(
+            extract_version_from_download_url(url).as_deref(),
+            Some("1.0.3")
+        );
     }
 
     #[test]
@@ -798,8 +904,12 @@ mod tests {
     fn is_windows_installer_asset_detects_known_formats() {
         assert!(is_windows_installer_asset("installer.exe"));
         assert!(is_windows_installer_asset("setup.msi"));
-        assert!(is_windows_installer_asset("SlasshyWispr_1.0.3_x64-setup.exe"));
-        assert!(!is_windows_installer_asset("SlasshyWispr_1.0.3_x64-setup.exe.sig"));
+        assert!(is_windows_installer_asset(
+            "SlasshyWispr_1.0.3_x64-setup.exe"
+        ));
+        assert!(!is_windows_installer_asset(
+            "SlasshyWispr_1.0.3_x64-setup.exe.sig"
+        ));
         assert!(!is_windows_installer_asset("checksums.txt"));
         assert!(!is_windows_installer_asset(""));
     }

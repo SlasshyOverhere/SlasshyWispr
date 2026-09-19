@@ -64,6 +64,29 @@ export function coerceBoolean(value: unknown, fallback: boolean): boolean {
   return fallback;
 }
 
+/**
+ * F-021: inline URL invariant, mirroring the backend validator's shape check
+ * (commands/settings.rs). Empty is valid (means "use the default"); anything
+ * else must be a well-formed http(s) URL. Returns an error message or null —
+ * callers surface it inline instead of silently coercing.
+ */
+export function apiBaseUrlError(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return "Enter a full URL, e.g. https://api.example.com/v1";
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return "URL must start with https:// (or http:// for a local host)";
+  }
+  return null;
+}
+
 export function asStyleProfile(value: unknown): StyleProfile {
   if (
     value === "adaptive" ||

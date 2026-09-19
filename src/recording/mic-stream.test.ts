@@ -142,4 +142,34 @@ describe("releasePreWarmedStream", () => {
     expect(cannedStream.tracks[0].stopped).toBe(true);
     expect(logs.some((line) => line.includes("released pre-warmed stream"))).toBe(true);
   });
+
+  it("F-006: refuses reuse once the prewarm TTL has elapsed", async () => {
+    cannedStream = fakeStream(true);
+    getUserMediaImpl = async () => cannedStream!;
+    await preWarmMicrophoneStream("mic-a");
+    const prewarmCalls = getUserMediaCalls;
+
+    // Age the prewarm past its TTL (60s) without waiting in real time.
+    const realNow = Date.now;
+    Date.now = () => realNow() + 61_000;
+    try {
+      const fresh = fakeStream(true);
+      getUserMediaImpl = async () => fresh;
+      const opened = await openMicrophoneStream("mic-a");
+      expect(opened as unknown as FakeStream).toBe(fresh as unknown as FakeStream);
+      expect(getUserMediaCalls).toBe(prewarmCalls + 1);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it("F-006: releases the pre-warmed stream when the window blurs", async () => {
+    cannedStream = fakeStream(true);
+    getUserMediaImpl = async () => cannedStream!;
+    await preWarmMicrophoneStream("mic-a");
+
+    window.dispatchEvent(new Event("blur"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(cannedStream.tracks[0].stopped).toBe(true);
+  });
 });

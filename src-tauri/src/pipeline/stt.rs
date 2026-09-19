@@ -78,11 +78,34 @@ pub fn is_known_stt_hallucination(transcript: &str) -> bool {
     let lower = trimmed.to_ascii_lowercase();
 
     let known_hallucinations: &[&str] = &[
-        ".", "..", "...", ",", "?", "!", "you", "i", "a", "thank you.", "thank you",
-        "thanks for watching.", "thanks for watching", "thank you for watching.",
-        "thank you for watching", "thanks for watching!", "you", "i", "uh", "mm", "okay.",
-        "yeah.", "thank you for watching i'll see you in the next video", "thanks for watching",
-        "thank you", "thank you!", "thank you.", "thanks.",
+        ".",
+        "..",
+        "...",
+        ",",
+        "?",
+        "!",
+        "you",
+        "i",
+        "a",
+        "thank you.",
+        "thank you",
+        "thanks for watching.",
+        "thanks for watching",
+        "thank you for watching.",
+        "thank you for watching",
+        "thanks for watching!",
+        "you",
+        "i",
+        "uh",
+        "mm",
+        "okay.",
+        "yeah.",
+        "thank you for watching i'll see you in the next video",
+        "thanks for watching",
+        "thank you",
+        "thank you!",
+        "thank you.",
+        "thanks.",
     ];
 
     if known_hallucinations.contains(&lower.as_str()) {
@@ -105,10 +128,7 @@ pub fn is_known_stt_hallucination(transcript: &str) -> bool {
 }
 
 /// Check if a transcript looks like repetitive noise.
-pub fn looks_like_repetitive_transcript_noise(
-    input: &str,
-    language_hint: Option<&str>,
-) -> bool {
+pub fn looks_like_repetitive_transcript_noise(input: &str, language_hint: Option<&str>) -> bool {
     use std::collections::HashMap;
 
     let compact: Vec<char> = input.chars().filter(|ch| ch.is_alphabetic()).collect();
@@ -217,15 +237,30 @@ mod tests {
 
     #[test]
     fn normalizes_full_language_names() {
-        assert_eq!(normalize_stt_language_hint(Some("English")), Some("en".to_string()));
-        assert_eq!(normalize_stt_language_hint(Some("Spanish")), Some("es".to_string()));
-        assert_eq!(normalize_stt_language_hint(Some("french")), Some("fr".to_string()));
+        assert_eq!(
+            normalize_stt_language_hint(Some("English")),
+            Some("en".to_string())
+        );
+        assert_eq!(
+            normalize_stt_language_hint(Some("Spanish")),
+            Some("es".to_string())
+        );
+        assert_eq!(
+            normalize_stt_language_hint(Some("french")),
+            Some("fr".to_string())
+        );
     }
 
     #[test]
     fn normalizes_iso_codes() {
-        assert_eq!(normalize_stt_language_hint(Some("en")), Some("en".to_string()));
-        assert_eq!(normalize_stt_language_hint(Some("en-US")), Some("en".to_string()));
+        assert_eq!(
+            normalize_stt_language_hint(Some("en")),
+            Some("en".to_string())
+        );
+        assert_eq!(
+            normalize_stt_language_hint(Some("en-US")),
+            Some("en".to_string())
+        );
     }
 
     #[test]
@@ -271,7 +306,9 @@ mod tests {
     #[test]
     fn accepts_valid_transcripts() {
         assert!(!is_known_stt_hallucination("Hello, how are you?"));
-        assert!(!is_known_stt_hallucination("The quick brown fox jumps over the lazy dog."));
+        assert!(!is_known_stt_hallucination(
+            "The quick brown fox jumps over the lazy dog."
+        ));
     }
 
     #[test]
@@ -284,7 +321,10 @@ mod tests {
 
     #[test]
     fn detects_repetitive_noise() {
-        assert!(looks_like_repetitive_transcript_noise("aaaaaaaaaaaaaaaaaaaa", Some("en")));
+        assert!(looks_like_repetitive_transcript_noise(
+            "aaaaaaaaaaaaaaaaaaaa",
+            Some("en")
+        ));
     }
 
     #[test]
@@ -295,27 +335,27 @@ mod tests {
         ));
     }
 
-#[test]
-fn detects_repetitive_transcript_noise() {
-    let noisy = "ලලලලලලලලලලලලලලලලලලලලලලලලලලලල";
-    assert!(looks_like_repetitive_transcript_noise(noisy, Some("en")));
-}
+    #[test]
+    fn detects_repetitive_transcript_noise() {
+        let noisy = "ලලලලලලලලලලලලලලලලලලලලලලලලලලලල";
+        assert!(looks_like_repetitive_transcript_noise(noisy, Some("en")));
+    }
 
-#[test]
-fn rejects_script_mismatch_for_latin_language_hint() {
-    let transcript = "සාරි සාරි සාරි සාරි සාරි";
-    assert!(looks_like_repetitive_transcript_noise(
-        transcript,
-        Some("en")
-    ));
-}
+    #[test]
+    fn rejects_script_mismatch_for_latin_language_hint() {
+        let transcript = "සාරි සාරි සාරි සාරි සාරි";
+        assert!(looks_like_repetitive_transcript_noise(
+            transcript,
+            Some("en")
+        ));
+    }
 
-#[test]
-fn accepts_normal_english_transcript() {
-    let transcript = "Hey Lily what do you think about India today";
-    assert!(!looks_like_repetitive_transcript_noise(
-        transcript,
-        Some("en")
-    ));
-}
+    #[test]
+    fn accepts_normal_english_transcript() {
+        let transcript = "Hey Lily what do you think about India today";
+        assert!(!looks_like_repetitive_transcript_noise(
+            transcript,
+            Some("en")
+        ));
+    }
 }

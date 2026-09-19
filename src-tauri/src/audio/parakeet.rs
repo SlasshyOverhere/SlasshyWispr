@@ -144,14 +144,17 @@ pub(crate) fn unload_native_parakeet_runtime(reason: &str) -> Result<bool, Strin
     Ok(false)
 }
 
-pub(crate) fn native_parakeet_runtime_loaded() -> bool {
+/// F-017: tri-state. `None` means the runtime lock is held (an inference is
+/// in flight), so the answer is genuinely unknown. The old code returned
+/// `true` there, which reported "loaded" for a model that may not exist.
+pub(crate) fn native_parakeet_runtime_loaded() -> Option<bool> {
     let runtime = local_stt_native_parakeet_runtime();
     let guard = match runtime.try_lock() {
         Ok(guard) => guard,
-        Err(std::sync::TryLockError::WouldBlock) => return true,
-        Err(std::sync::TryLockError::Poisoned(_)) => return false,
+        Err(std::sync::TryLockError::WouldBlock) => return None,
+        Err(std::sync::TryLockError::Poisoned(_)) => return Some(false),
     };
-    guard.is_some()
+    Some(guard.is_some())
 }
 
 pub(crate) fn transcribe_local_stt_parakeet_native(
@@ -176,7 +179,10 @@ pub(crate) fn transcribe_local_stt_parakeet_native(
                     );
                 }
                 Err(error) => {
-                    warn!("[vad] trim_speech failed, continuing without VAD: {}", error);
+                    warn!(
+                        "[vad] trim_speech failed, continuing without VAD: {}",
+                        error
+                    );
                 }
             }
         }

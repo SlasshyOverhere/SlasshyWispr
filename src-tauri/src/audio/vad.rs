@@ -27,8 +27,7 @@ pub async fn ensure_vad_model(app_data_dir: &Path, client: &Client) -> Result<Pa
 
     info!("[vad] downloading model from {}", SILERO_VAD_MODEL_URL);
     let dir = path.parent().ok_or("Invalid VAD model directory.")?;
-    std::fs::create_dir_all(dir)
-        .map_err(|e| format!("Failed to create VAD dir: {e}"))?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("Failed to create VAD dir: {e}"))?;
 
     let temp_path = dir.join(format!("{}.downloading", SILERO_VAD_MODEL_FILE));
     let response = client
@@ -41,10 +40,8 @@ pub async fn ensure_vad_model(app_data_dir: &Path, client: &Client) -> Result<Pa
         .await
         .map_err(|e| format!("Failed to read VAD model: {e}"))?;
 
-    std::fs::write(&temp_path, &bytes)
-        .map_err(|e| format!("Failed to write VAD model: {e}"))?;
-    std::fs::rename(&temp_path, &path)
-        .map_err(|e| format!("Failed to finalize VAD model: {e}"))?;
+    std::fs::write(&temp_path, &bytes).map_err(|e| format!("Failed to write VAD model: {e}"))?;
+    std::fs::rename(&temp_path, &path).map_err(|e| format!("Failed to finalize VAD model: {e}"))?;
 
     info!("[vad] model downloaded to {}", path.display());
     Ok(path)
@@ -88,11 +85,9 @@ fn vad_frame_probability(
     )
     .map_err(|e| format!("VAD input shape: {e}"))?;
 
-    let state_arr = ndarray::Array::from_shape_vec(
-        ndarray::IxDyn(&[2usize, 1usize, 128usize]),
-        concat_state,
-    )
-    .map_err(|e| format!("VAD state shape: {e}"))?;
+    let state_arr =
+        ndarray::Array::from_shape_vec(ndarray::IxDyn(&[2usize, 1usize, 128usize]), concat_state)
+            .map_err(|e| format!("VAD state shape: {e}"))?;
 
     let sr_arr = ndarray::Array::from_shape_vec(
         ndarray::IxDyn(&[1usize]),
@@ -100,12 +95,9 @@ fn vad_frame_probability(
     )
     .map_err(|e| format!("VAD sr shape: {e}"))?;
 
-    let input_t = Tensor::from_array(input_arr)
-        .map_err(|e| format!("VAD input tensor: {e}"))?;
-    let state_t = Tensor::from_array(state_arr)
-        .map_err(|e| format!("VAD state tensor: {e}"))?;
-    let sr_t = Tensor::from_array(sr_arr)
-        .map_err(|e| format!("VAD sr tensor: {e}"))?;
+    let input_t = Tensor::from_array(input_arr).map_err(|e| format!("VAD input tensor: {e}"))?;
+    let state_t = Tensor::from_array(state_arr).map_err(|e| format!("VAD state tensor: {e}"))?;
+    let sr_t = Tensor::from_array(sr_arr).map_err(|e| format!("VAD sr tensor: {e}"))?;
 
     use ort::session::input::SessionInputValue;
     let sess_inputs: [SessionInputValue; 3] = [
@@ -140,10 +132,7 @@ fn vad_frame_probability(
 /// Runs Silero VAD on 16 kHz mono f32 samples.
 /// Returns trimmed audio containing the longest speech segment,
 /// or `None` if no speech is detected.
-pub fn trim_speech(
-    samples_16khz: &[f32],
-    model_path: &Path,
-) -> Result<Option<Vec<f32>>, String> {
+pub fn trim_speech(samples_16khz: &[f32], model_path: &Path) -> Result<Option<Vec<f32>>, String> {
     let start = Instant::now();
 
     if samples_16khz.is_empty() {
@@ -172,7 +161,8 @@ pub fn trim_speech(
         let mut frame = vec![0.0f32; SILERO_VAD_FRAME_SIZE];
         frame[..(hi - lo)].copy_from_slice(&samples_16khz[lo..hi]);
 
-        let prob = vad_frame_probability(&mut vad_model.session, &frame, &mut state_h, &mut state_c)?;
+        let prob =
+            vad_frame_probability(&mut vad_model.session, &frame, &mut state_h, &mut state_c)?;
         probs.push(prob);
     }
 

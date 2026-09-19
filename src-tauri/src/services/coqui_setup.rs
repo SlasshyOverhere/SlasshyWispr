@@ -7,16 +7,17 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
-use log::{info, warn};
 use tauri::AppHandle;
 
 use crate::pipeline::daemon::stop_all_coqui_bridge_daemons;
 use crate::pipeline::fs::file_exists_with_content;
 use crate::pipeline::log::{clip_text, single_line};
-use crate::pipeline::process::{apply_no_window, merge_process_output, validate_python_binary_path};
+use crate::pipeline::process::{
+    apply_no_window, merge_process_output, validate_python_binary_path,
+};
 use crate::pipeline::tts::{coqui_cache_dir, coqui_runtime_dir, coqui_venv_python_path};
 
 pub(crate) fn detect_nvidia_gpu() -> bool {
@@ -283,8 +284,11 @@ pub(crate) fn setup_coqui_runtime_blocking(
     Ok((venv_python, details.join(" ")))
 }
 
-
-pub(crate) fn run_python_command(python_path: &str, args: &[&str], tts_home: &Path) -> Result<String, String> {
+pub(crate) fn run_python_command(
+    python_path: &str,
+    args: &[&str],
+    tts_home: &Path,
+) -> Result<String, String> {
     let mut command = Command::new(python_path);
     apply_no_window(&mut command);
     command.args(args);
@@ -305,7 +309,6 @@ pub(crate) fn run_python_command(python_path: &str, args: &[&str], tts_home: &Pa
     }
     Ok(merge_process_output(&output.stdout, &output.stderr))
 }
-
 
 pub(crate) fn list_coqui_voice_ids(voice_dir: &Path) -> Result<Vec<String>, String> {
     if !voice_dir.exists() {
@@ -338,12 +341,3 @@ pub(crate) fn list_coqui_voice_ids(voice_dir: &Path) -> Result<Vec<String>, Stri
 
     Ok(voice_ids.into_iter().collect())
 }
-
-
-
-
-
-
-
-
-

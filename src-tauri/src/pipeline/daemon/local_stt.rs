@@ -44,8 +44,7 @@ impl std::ops::DerefMut for LocalSttBridgeDaemon {
     }
 }
 
-static LOCAL_STT_DAEMONS: OnceLock<Mutex<HashMap<String, LocalSttBridgeDaemon>>> =
-    OnceLock::new();
+static LOCAL_STT_DAEMONS: OnceLock<Mutex<HashMap<String, LocalSttBridgeDaemon>>> = OnceLock::new();
 static LOCAL_STT_DAEMON_SWEEPER_STARTED: OnceLock<()> = OnceLock::new();
 
 pub(crate) fn local_stt_daemons() -> &'static Mutex<HashMap<String, LocalSttBridgeDaemon>> {
@@ -106,10 +105,19 @@ fn spawn_local_stt_bridge_daemon(
         script_path,
         &[
             ("HF_HOME", cache_dir.to_string_lossy().into_owned()),
-            ("TRANSFORMERS_CACHE", cache_dir.to_string_lossy().into_owned()),
+            (
+                "TRANSFORMERS_CACHE",
+                cache_dir.to_string_lossy().into_owned(),
+            ),
             ("NEMO_CACHE_DIR", cache_dir.to_string_lossy().into_owned()),
-            ("SLASSHYWISPR_STT_PARAKEET_CPU_INT8", parakeet_cpu_int8.to_string()),
-            ("SLASSHYWISPR_STT_PARAKEET_FORCE_CPU", parakeet_force_cpu.to_string()),
+            (
+                "SLASSHYWISPR_STT_PARAKEET_CPU_INT8",
+                parakeet_cpu_int8.to_string(),
+            ),
+            (
+                "SLASSHYWISPR_STT_PARAKEET_FORCE_CPU",
+                parakeet_force_cpu.to_string(),
+            ),
             ("PYTHONUNBUFFERED", "1".to_string()),
         ],
     )?;
@@ -406,9 +414,7 @@ pub fn ensure_local_stt_daemon_idle_sweeper() {
     }
 
     std::thread::spawn(|| loop {
-        std::thread::sleep(Duration::from_secs(
-            local_stt_daemon_sweep_interval_secs(),
-        ));
+        std::thread::sleep(Duration::from_secs(local_stt_daemon_sweep_interval_secs()));
         stop_idle_local_stt_bridge_daemons();
         stop_idle_local_stt_native_parakeet_runtime();
     });

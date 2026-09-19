@@ -337,11 +337,13 @@ import {
   isHotkeyCaptureActive,
 } from "./hotkeys/hotkey-capture";
 import {
+  drainPendingRemap as drainPendingRemapService,
   getNormalizedRegisteredShortcuts,
   initHotkeySync,
   isGlobalShortcutsActive,
   isShortcutSuppressionActive,
   markGlobalShortcutHandled as markGlobalShortcutHandledService,
+  noteLocalShortcutPressed as noteLocalShortcutPressedService,
   requestGlobalShortcutSync as requestGlobalShortcutSyncService,
   setShortcutSuppressionActive,
   shouldBypassLocalShortcutHandling as shouldBypassLocalShortcutHandlingService,
@@ -932,6 +934,8 @@ initForegroundPolicy({
 });
 initTrayLifecycle({
   isTauri: isTauriEnvironment,
+  // F-028: first close-to-tray hide explains how to get the window back.
+  notify: (message, isError) => setNoticeService(message, isError),
   isTtsSetupRunning: () => ttsSetupRunning,
   isLocalSttDownloadActive: () => localSttDownloadActive,
   stopTtsSetupPolling: () => stopTtsSetupPollingService(),
@@ -1017,6 +1021,14 @@ initSelectionPopup(
     nextToken: () => {
       selectionPopupTokenCounter += 1;
       return selectionPopupTokenCounter;
+    },
+    // F-030/F-009: only the newest issued token is live; any older payload
+    // (a superseded run) no-ops on show/copy/replace instead of pasting stale text.
+    isTokenStale: (token) => token !== selectionPopupTokenCounter,
+    focusMainWindow: async () => {
+      const win = getCurrentWindow();
+      await win.show();
+      await win.setFocus();
     },
   },
   selectionPopupChannel,
@@ -1735,6 +1747,8 @@ initHotkeyCapture(
 
 initHotkeySync({
   isTauri: isTauriEnvironment,
+  // F-007: remaps requested mid-hold are parked until the PTT release drains them.
+  isHoldActive: () => hasPushToTalkHold("hotkey"),
   getSettings: getSettingsSnapshot,
   notify: (message, isError) => setNoticeService(message, isError),
   log: (message) => logClientEventService(message),
@@ -1801,6 +1815,8 @@ initLocalShortcuts(
         shouldBypassLocalShortcutHandlingService(token),
       shouldIgnoreLocalShortcutFromRecentGlobal: (token, state) =>
         shouldIgnoreLocalShortcutFromRecentGlobalService(token, state),
+      noteLocalPressed: (token) => noteLocalShortcutPressedService(token),
+      drainPendingRemap: () => drainPendingRemapService(),
     },
   },
 );
@@ -1943,6 +1959,12 @@ applyModelToSttBtn.addEventListener("click", () => {
 });
 
 
+/* F-007: a global PTT release already ends the hold via the dispatch deps;
+   this only drains a hotkey remap that was parked while the hold was active. */
+window.addEventListener("slasshywispr:ptt-release", () => {
+  drainPendingRemapService();
+});
+
 /* Home tab search-button → switch to History and focus the search
    input. rAF ensures the React tree has time to mount the History
    section before the input exists in the DOM. */
@@ -2032,6 +2054,9 @@ document.addEventListener("visibilitychange", () => {
 });
 
 initUsageTracker({
+  // F-003: reads the live settings object so toggling incognito takes effect
+  // on the next dictation without a reload.
+  isIncognito: () => settings.incognitoMode,
   getStats: () => usageStats,
   setStats: (stats) => {
     usageStats = stats;

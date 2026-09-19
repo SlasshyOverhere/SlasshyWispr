@@ -4,6 +4,26 @@
  * Single owner for safe JSON parsing. Storage keys remain owned by
  * `src/constants.ts` — import keys from there, parse with this.
  */
+
+/**
+ * F-035: preserve the unparseable payload instead of silently discarding it.
+ * The bad value is copied to `<key>.corrupt-<timestamp>.bak` and the live key
+ * is cleared, so boot recovers immediately and the bytes survive for support.
+ * Best-effort: storage may be full or unavailable.
+ */
+function quarantineCorruptValue(key: string, raw: string): void {
+  try {
+    localStorage.setItem(`${key}.corrupt-${Date.now()}.bak`, raw);
+  } catch {
+    // Quarantine copy failed (quota/private mode); still clear the live key.
+  }
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore — a later write will overwrite the bad value.
+  }
+}
+
 export function parseJson<T>(key: string, fallback: T): T {
   const raw = localStorage.getItem(key);
   if (!raw) {
@@ -13,6 +33,7 @@ export function parseJson<T>(key: string, fallback: T): T {
   try {
     return JSON.parse(raw) as T;
   } catch {
+    quarantineCorruptValue(key, raw);
     return fallback;
   }
 }

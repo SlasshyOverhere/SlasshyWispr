@@ -18,6 +18,45 @@ import {
 } from "../ipc/client";
 import { inferLocalSttProviderFromModel } from "./provider-inference";
 
+export interface StageTimings {
+  sttMs?: number;
+  aiMs?: number;
+  ttsMs?: number;
+  totalMs?: number;
+}
+
+function formatStageMs(value: number | undefined): string {
+  return Number.isFinite(value) ? `${Math.max(0, Math.round(value as number))}ms` : "n/a";
+}
+
+/** One-line latency budget: `STT 412ms / AI 1830ms / TTS 305ms (total 2547ms)`. */
+export function formatStageTimings(timings: StageTimings): string {
+  const stages = `STT ${formatStageMs(timings.sttMs)} / AI ${formatStageMs(timings.aiMs)} / TTS ${formatStageMs(timings.ttsMs)}`;
+  return Number.isFinite(timings.totalMs) ? `${stages} (total ${Math.round(timings.totalMs as number)}ms)` : stages;
+}
+
+/** Explain-Why-Slow thin slice: names the slowest stage plus one fix hint. */
+// ponytail: ceiling is slowest-stage heuristic; add per-model thresholds when Agent 2 ships tts_status semantics.
+export function explainWhySlow(timings: StageTimings): string {
+  const entries: Array<[string, number | undefined]> = [
+    ["STT", timings.sttMs],
+    ["AI", timings.aiMs],
+    ["TTS", timings.ttsMs],
+  ];
+  const known = entries.filter((entry): entry is [string, number] => Number.isFinite(entry[1]));
+  if (known.length === 0) return "No timing data yet — run one dictation turn first.";
+  known.sort((a, b) => b[1] - a[1]);
+  const [slowest, ms] = known[0];
+  if (ms < 2000) return `All stages fast (slowest: ${slowest} ${Math.round(ms)}ms).`;
+  const hint =
+    slowest === "STT"
+      ? "Try a smaller offline model or check microphone audio."
+      : slowest === "AI"
+        ? "Try a smaller/faster model or switch to online mode."
+        : "Piper TTS runs locally; long replies take longer — shorten replies.";
+  return `Slowest stage: ${slowest} (${Math.round(ms)}ms). ${hint}`;
+}
+
 export interface OfflineDiagnosticDetails {
   model?: string;
   expectedPath?: string;

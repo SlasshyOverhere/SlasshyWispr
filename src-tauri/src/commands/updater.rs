@@ -25,20 +25,20 @@ use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::process::apply_no_window;
 use crate::state::AppState;
 
-use crate::updater::{
-    exe_installer_supports_silent_mode, is_newer_version, is_safe_update_url,
-    normalize_release_version, resolve_installer_file_name, resolve_update_repository,
-    select_latest_stable_release, select_windows_installer_asset,
-    validate_downloaded_installer_file, windows_installer_kind_from_name, GithubLatestReleaseResponse,
-    WindowsInstallerKind,
-};
-use crate::platform::windows_native::schedule_app_relaunch_after_installer;
 use super::windows::{emit_update_install_progress, show_main_window};
+use crate::commands::input::configure_launch_at_login;
+use crate::constants::TRAY_ID;
+use crate::platform::windows_native::schedule_app_relaunch_after_installer;
 use crate::services::providers::update_github_token;
 use crate::services::startup::read_launch_at_login_preference;
-use crate::constants::TRAY_ID;
 use crate::state::TRAY_UPDATE_ITEM;
-use crate::commands::input::configure_launch_at_login;
+use crate::updater::{
+    exe_installer_supports_silent_mode, extract_version_from_download_url, is_newer_version,
+    is_safe_update_url, normalize_release_version, resolve_installer_file_name,
+    resolve_update_repository, select_latest_stable_release, select_windows_installer_asset,
+    validate_downloaded_installer_file, verify_installer_signature,
+    windows_installer_kind_from_name, GithubLatestReleaseResponse, WindowsInstallerKind,
+};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -84,6 +84,10 @@ pub(crate) struct InstallAppUpdateRequest {
     pub asset_name: Option<String>,
     pub silent: Option<bool>,
     pub expected_sha256: Option<String>,
+    /// Version the check-step advertised (e.g. "1.0.11"). Re-checked against
+    /// the download URL tag before any exec: a stale/relayed request that
+    /// would install an older build is rejected (downgrade guard).
+    pub expected_version: Option<String>,
 }
 #[tauri::command]
 pub(crate) async fn log_client_event(message: String) -> Result<(), String> {
@@ -280,6 +284,33 @@ pub(crate) async fn download_and_install_app_update(
             ));
         }
 
+        // Downgrade guard: the URL tag must identify a build strictly newer
+        // than this binary, and must match the advertised expected_version
+        // when the caller provides one. A relayed/stale request for an older
+        // installer is rejected before a single byte downloads.
+        let current_version = app.package_info().version.to_string();
+        let url_version = extract_version_from_download_url(download_url).ok_or_else(|| {
+            "Update download URL does not identify a release version.".to_string()
+        })?;
+        if !is_newer_version(&current_version, &url_version) {
+            return Err(format!(
+                "Update {url_version} is not newer than installed {current_version}; refusing downgrade."
+            ));
+        }
+        if let Some(expected) = request
+            .expected_version
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            let expected = normalize_release_version(expected);
+            if normalize_release_version(&url_version) != expected {
+                return Err(format!(
+                    "Update URL version {url_version} does not match expected {expected}; refusing."
+                ));
+            }
+        }
+
         let updates_dir = app
             .path()
             .app_data_dir()
@@ -304,9 +335,13 @@ pub(crate) async fn download_and_install_app_update(
             false,
         );
 
-        let existing_size = fs::metadata(&installer_path)
-            .ok()
-            .and_then(|m| if m.len() > 0 { Some(m.len()) } else { None });
+        let existing_size = fs::metadata(&installer_path).ok().and_then(|m| {
+            if m.len() > 0 {
+                Some(m.len())
+            } else {
+                None
+            }
+        });
 
         let mut req_builder = state
             .http
@@ -319,14 +354,11 @@ pub(crate) async fn download_and_install_app_update(
             );
             req_builder = req_builder.header(RANGE, format!("bytes={size}-"));
         }
-        let response = req_builder
-            .send()
-            .await
-            .map_err(|error| {
-                let message = format!("Failed to download update installer: {error}");
-                emit_update_install_progress(&app, "error", &message, 0, 0, true, false);
-                message
-            })?;
+        let response = req_builder.send().await.map_err(|error| {
+            let message = format!("Failed to download update installer: {error}");
+            emit_update_install_progress(&app, "error", &message, 0, 0, true, false);
+            message
+        })?;
         let status = response.status();
         if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
             let body = response.text().await.unwrap_or_default();
@@ -530,10 +562,13 @@ pub(crate) async fn download_and_install_app_update(
             }
         }
         // Enforce SHA256: fail if hash is missing (None or empty) when asset is known
-        let hash_missing = request.expected_sha256.is_none()
-            || request.expected_sha256.as_deref() == Some("");
+        let hash_missing =
+            request.expected_sha256.is_none() || request.expected_sha256.as_deref() == Some("");
         if hash_missing {
-            let has_asset = request.asset_name.as_deref().map_or(false, |n| !n.is_empty());
+            let has_asset = request
+                .asset_name
+                .as_deref()
+                .map_or(false, |n| !n.is_empty());
             if has_asset {
                 let message =
                     "Update installer manifest is missing SHA256 hash. Cannot verify installer integrity.".to_string();
@@ -583,6 +618,36 @@ pub(crate) async fn download_and_install_app_update(
             );
             let _ = fs::remove_file(&installer_path);
             return Err(error);
+        }
+
+        // Signature gate: no exec until verify passes. Currently fails closed
+        // (see verify_installer_signature stub); remove_file + error below.
+        let installer_bytes = fs::read(&installer_path).map_err(|error| {
+            let message = format!("Failed to read installer for signature check: {error}");
+            emit_update_install_progress(
+                &app,
+                "error",
+                &message,
+                downloaded_bytes,
+                total_bytes.max(downloaded_bytes),
+                true,
+                false,
+            );
+            message
+        })?;
+        if let Err(error) = verify_installer_signature(&installer_bytes, "") {
+            let message = format!("Installer signature check failed: {error}");
+            emit_update_install_progress(
+                &app,
+                "error",
+                &message,
+                downloaded_bytes,
+                total_bytes.max(downloaded_bytes),
+                true,
+                false,
+            );
+            let _ = fs::remove_file(&installer_path);
+            return Err(message);
         }
 
         let mut command = match installer_kind {
@@ -749,4 +814,3 @@ pub(crate) async fn set_tray_update_available(
     }
     Ok(())
 }
-

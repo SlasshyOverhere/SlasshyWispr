@@ -14,13 +14,45 @@ export interface MicStreamDeps {
   log: (message: string) => void;
 }
 
+// F-006: a pre-warmed stream holds the mic open (device light on, battery
+// drain) for as long as it lives. Keep it briefly, then release it.
+// ponytail: fixed TTL; add a user setting only if someone asks to disable prewarm.
+const PREWARM_TTL_MS = 60_000;
+
 let micDeps!: MicStreamDeps;
 let preWarmedStream: MediaStream | null = null;
 let preWarmedStreamDeviceId: string | null = null;
 let preWarmedStreamCreateTime = 0;
+let preWarmExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+
+let lifecycleListenersAttached = false;
 
 export function initMicStream(deps: MicStreamDeps): void {
   micDeps = deps;
+  if (lifecycleListenersAttached) {
+    return;
+  }
+  if (typeof window === "undefined" || typeof window.addEventListener !== "function") {
+    return;
+  }
+  lifecycleListenersAttached = true;
+  // Releasing on hide/visibility stops the mic from staying open while the
+  // app is in the background and nobody can record.
+  window.addEventListener("blur", () => {
+    void releasePreWarmedStream();
+  });
+  if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        void releasePreWarmedStream();
+      }
+    });
+  }
+}
+
+function isPrewarmExpired(): boolean {
+  return preWarmedStreamCreateTime > 0
+    && Date.now() - preWarmedStreamCreateTime >= PREWARM_TTL_MS;
 }
 
 export async function canPreWarmMicrophone(): Promise<boolean> {
@@ -45,9 +77,15 @@ export async function canPreWarmMicrophone(): Promise<boolean> {
 }
 
 export async function openMicrophoneStream(preferredDeviceId: string): Promise<MediaStream> {
-  if (preWarmedStream && preWarmedStreamDeviceId === preferredDeviceId && preWarmedStream.active) {
+  if (
+    preWarmedStream &&
+    preWarmedStreamDeviceId === preferredDeviceId &&
+    preWarmedStream.active &&
+    !isPrewarmExpired()
+  ) {
     micDeps.log(`[record.mic] reusing pre-warmed stream age=${Date.now() - preWarmedStreamCreateTime}ms`);
     const clonedStream = preWarmedStream.clone();
+    clearPrewarmExpiryTimer();
     return clonedStream;
   }
 
@@ -77,6 +115,7 @@ export async function openMicrophoneStream(preferredDeviceId: string): Promise<M
 }
 
 export async function releasePreWarmedStream(): Promise<void> {
+  clearPrewarmExpiryTimer();
   if (!preWarmedStream) return;
   for (const track of preWarmedStream.getTracks()) {
     track.stop();
@@ -85,6 +124,13 @@ export async function releasePreWarmedStream(): Promise<void> {
   preWarmedStreamDeviceId = null;
   preWarmedStreamCreateTime = 0;
   micDeps.log("[record.prewarm] released pre-warmed stream");
+}
+
+function clearPrewarmExpiryTimer(): void {
+  if (preWarmExpiryTimer !== null) {
+    clearTimeout(preWarmExpiryTimer);
+    preWarmExpiryTimer = null;
+  }
 }
 
 export async function preWarmMicrophoneStream(deviceId: string): Promise<void> {
@@ -112,6 +158,11 @@ export async function preWarmMicrophoneStream(deviceId: string): Promise<void> {
     preWarmedStream = await navigator.mediaDevices.getUserMedia(constraints);
     preWarmedStreamDeviceId = deviceId;
     preWarmedStreamCreateTime = Date.now();
+    clearPrewarmExpiryTimer();
+    preWarmExpiryTimer = setTimeout(() => {
+      micDeps.log(`[record.prewarm] TTL ${PREWARM_TTL_MS}ms reached; releasing idle stream`);
+      void releasePreWarmedStream();
+    }, PREWARM_TTL_MS);
     micDeps.log(`[record.prewarm] stream opened deviceId=${deviceId || "default"}`);
   } catch (error) {
     micDeps.log(`[record.prewarm] failed: ${asErrorMessage(error)}`);

@@ -94,12 +94,87 @@ export function loadUsageStats(): UsageStats {
   }
 }
 
+/**
+ * F-024: the write-heavy keys (usage, sessions, history, dock) were being
+ * stringified synchronously on every dictation and every dock drag frame.
+ * Coalesce them into one write per key per 300ms window and flush on
+ * hide/unload so nothing is lost when the window closes.
+ */
+const PERSIST_DEBOUNCE_MS = 300;
+const MAX_PERSISTED_SESSIONS = 5000;
+
+const pendingWrites = new Map<string, ReturnType<typeof setTimeout>>();
+
+function writeNow(key: string, serialize: () => string): void {
+  const pending = pendingWrites.get(key);
+  if (pending !== undefined) {
+    clearTimeout(pending);
+    pendingWrites.delete(key);
+  }
+  try {
+    localStorage.setItem(key, serialize());
+  } catch {
+    // Quota exceeded — keep the in-memory state; the next write retries.
+  }
+}
+
+function debouncedWrite(key: string, serialize: () => string): void {
+  const pending = pendingWrites.get(key);
+  if (pending !== undefined) {
+    clearTimeout(pending);
+  }
+  pendingWrites.set(
+    key,
+    setTimeout(() => {
+      pendingWrites.delete(key);
+      writeNow(key, serialize);
+    }, PERSIST_DEBOUNCE_MS),
+  );
+}
+
+/** F-024: write every pending key immediately (window hide / beforeunload). */
+export function flushPendingWrites(): void {
+  for (const [key, pending] of pendingWrites) {
+    clearTimeout(pending);
+    pendingWrites.delete(key);
+    try {
+      localStorage.setItem(key, serializeForKey(key));
+    } catch {
+      // Best-effort on the way out.
+    }
+  }
+}
+
+function serializeForKey(key: string): string {
+  switch (key) {
+    case USAGE_STORAGE_KEY:
+      return JSON.stringify(persistDeps.getUsageStats());
+    case ANALYTICS_SESSIONS_KEY:
+      return JSON.stringify(persistDeps.getSessions().slice(-MAX_PERSISTED_SESSIONS));
+    case HOME_HISTORY_STORAGE_KEY:
+      return JSON.stringify(persistDeps.getHomeHistory());
+    default:
+      return "null";
+  }
+}
+
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("beforeunload", flushPendingWrites);
+}
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      flushPendingWrites();
+    }
+  });
+}
+
 export function persistUsageStats(): void {
-  localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(persistDeps.getUsageStats()));
+  debouncedWrite(USAGE_STORAGE_KEY, () => serializeForKey(USAGE_STORAGE_KEY));
 }
 
 export function persistAnalyticsSessionDetails(): void {
-  localStorage.setItem(ANALYTICS_SESSIONS_KEY, JSON.stringify(persistDeps.getSessions()));
+  debouncedWrite(ANALYTICS_SESSIONS_KEY, () => serializeForKey(ANALYTICS_SESSIONS_KEY));
 }
 
 export function loadAchievementStates(): AchievementState[] {
@@ -121,7 +196,7 @@ export function loadPersistedSettingsPane(): SettingsPane {
 }
 
 export function persistHomeHistory(): void {
-  localStorage.setItem(HOME_HISTORY_STORAGE_KEY, JSON.stringify(persistDeps.getHomeHistory()));
+  debouncedWrite(HOME_HISTORY_STORAGE_KEY, () => serializeForKey(HOME_HISTORY_STORAGE_KEY));
 }
 
 export function renderFullHistory(filter: "all" | "day" | "week" | "month" = "all", specificDate?: string): void {

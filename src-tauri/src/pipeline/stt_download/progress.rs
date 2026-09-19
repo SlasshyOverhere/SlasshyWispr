@@ -84,7 +84,9 @@ impl<'a> SharedStatus<'a> {
         })
     }
 
-    /// Current known status snapshot.
+    /// Current known status snapshot. Only tests read it back now that the
+    /// download summary carries just its human-readable detail.
+    #[cfg(test)]
     pub(crate) fn snapshot(&self) -> LocalSttDownloadStatusResponse {
         self.current
             .lock()
@@ -130,9 +132,7 @@ pub(crate) fn now_unix_ms() -> u64 {
 }
 
 /// Compute the IPC progress percentage from a status snapshot.
-pub(crate) fn calculate_local_stt_progress_percent(
-    status: &LocalSttDownloadStatusResponse,
-) -> f64 {
+pub(crate) fn calculate_local_stt_progress_percent(status: &LocalSttDownloadStatusResponse) -> f64 {
     if status.total_bytes > 0 {
         return ((status.downloaded_bytes as f64 / status.total_bytes as f64) * 100.0)
             .clamp(0.0, 100.0);

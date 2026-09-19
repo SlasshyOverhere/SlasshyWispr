@@ -135,8 +135,8 @@ fn apply_backtrack_correction(input: &str) -> String {
         .iter()
         .filter_map(|marker| {
             lower.rfind(marker).and_then(|index| {
-                let has_boundary = index == 0
-                    || !lower.as_bytes()[index - 1].is_ascii_alphanumeric();
+                let has_boundary =
+                    index == 0 || !lower.as_bytes()[index - 1].is_ascii_alphanumeric();
                 if !has_boundary {
                     return None;
                 }
@@ -273,7 +273,11 @@ fn apply_auto_punctuation(input: &str) -> String {
 /// Finds all occurrences of `needle` in `input` (matching case-insensitively
 /// on ASCII characters only) and replaces them with `replacement`.
 /// Preserves the casing of non-matching portions of the input.
-pub(crate) fn replace_case_insensitive_ascii(input: &str, needle: &str, replacement: &str) -> String {
+pub(crate) fn replace_case_insensitive_ascii(
+    input: &str,
+    needle: &str,
+    replacement: &str,
+) -> String {
     if needle.is_empty() {
         return input.to_string();
     }

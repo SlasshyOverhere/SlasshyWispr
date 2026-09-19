@@ -11,7 +11,7 @@ use crate::constants::*;
 
 /// Routing-relevant subset of the pipeline request.
 /// This avoids coupling the routing module to the full Tauri IPC type.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PipelineRoutingInput {
     pub api_key: String,
     pub api_base_url: Option<String>,
@@ -25,7 +25,7 @@ pub struct PipelineRoutingInput {
 }
 
 /// The resolved STT backend configuration.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum SttModeConfig {
     Online {
         api_key: String,
@@ -42,7 +42,7 @@ pub struct LocalSttConfig {
 }
 
 /// The resolved AI backend configuration.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum AiModeConfig {
     Online {
         api_key: String,
@@ -57,6 +57,60 @@ pub enum AiModeConfig {
 pub struct LocalAiConfig {
     pub ollama_base_url: String,
     pub ollama_model: Option<String>,
+}
+
+// ponytail: manual redacting Debugs; upgrade to a secrets wrapper type if
+// key-holding structs multiply.
+impl std::fmt::Debug for PipelineRoutingInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PipelineRoutingInput")
+            .field("api_key", &"[REDACTED]")
+            .field("api_base_url", &self.api_base_url)
+            .field("stt_model", &self.stt_model)
+            .field("ai_model", &self.ai_model)
+            .field("stt_local_mode", &self.stt_local_mode)
+            .field("ai_local_mode", &self.ai_local_mode)
+            .field("local_ollama_base_url", &self.local_ollama_base_url)
+            .field("local_ollama_model", &self.local_ollama_model)
+            .field("local_stt_model", &self.local_stt_model)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for SttModeConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Online {
+                api_key: _,
+                api_base_url,
+                stt_model,
+            } => f
+                .debug_struct("SttModeConfig::Online")
+                .field("api_key", &"[REDACTED]")
+                .field("api_base_url", api_base_url)
+                .field("stt_model", stt_model)
+                .finish(),
+            Self::Local(config) => f.debug_tuple("SttModeConfig::Local").field(config).finish(),
+        }
+    }
+}
+
+impl std::fmt::Debug for AiModeConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Online {
+                api_key: _,
+                api_base_url,
+                ai_model,
+            } => f
+                .debug_struct("AiModeConfig::Online")
+                .field("api_key", &"[REDACTED]")
+                .field("api_base_url", api_base_url)
+                .field("ai_model", ai_model)
+                .finish(),
+            Self::Local(config) => f.debug_tuple("AiModeConfig::Local").field(config).finish(),
+        }
+    }
 }
 
 /// The fully resolved pipeline mode configuration.
@@ -85,20 +139,143 @@ pub fn normalize_model_name(raw: Option<&str>) -> String {
         .unwrap_or_default()
 }
 
-/// Normalize an API base URL: trim whitespace, strip trailing slashes.
-pub fn normalize_api_base_url(raw: Option<&str>) -> String {
-    raw.map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.trim_end_matches('/').to_string())
+/// Hosts that never belong in an outbound API base URL.
+fn is_blocked_url_host(host: &str) -> bool {
+    let lower = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    if lower.is_empty() {
+        return true;
+    }
+    if lower == "169.254.169.254" || lower == "100.100.100.200" || lower == "fd00:ec2::254" {
+        return true;
+    }
+    if let Some(v4) = lower.split('%').next() {
+        let parts: Vec<&str> = v4.split('.').collect();
+        if parts.len() == 4 && parts[0] == "169" && parts[1] == "254" {
+            return true;
+        }
+    }
+    if lower.contains(':') {
+        let first = lower.split(['%', ':']).next().unwrap_or_default();
+        if first.len() == 4
+            && first.starts_with("fe")
+            && matches!(first.as_bytes()[2], b'8' | b'9' | b'a' | b'b')
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Hosts allowed plain http for a cloud API base URL via explicit opt-in env
+/// SLASSHYWISPR_ALLOW_INSECURE_HTTP_HOSTS (comma-separated). Loopback is
+/// NEVER valid for a cloud key: keys must not ride cleartext.
+fn insecure_http_opt_in_hosts() -> Vec<String> {
+    non_empty_env_var(INSECURE_HTTP_HOSTS_ENV)
         .unwrap_or_default()
+        .split(',')
+        .map(|entry| entry.trim().trim_end_matches('.').to_ascii_lowercase())
+        .filter(|entry| !entry.is_empty())
+        .collect()
+}
+
+fn validate_http_url(raw: &str, field: &str, allow_loopback_http: bool) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{field} is empty."));
+    }
+    if trimmed.len() > 2048 {
+        return Err(format!("{field} exceeds 2048 characters."));
+    }
+    if trimmed
+        .chars()
+        .any(|c| c.is_control() || c == ' ' || c == '<' || c == '>')
+    {
+        return Err(format!("{field} contains invalid characters."));
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    let Some((scheme, rest)) = lower.split_once("://") else {
+        return Err(format!("{field} must start with https://."));
+    };
+    if scheme != "http" && scheme != "https" {
+        return Err(format!("{field} must use https:// (got '{scheme}://')."));
+    }
+    let authority = rest
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default()
+        .rsplit('@')
+        .next()
+        .unwrap_or_default();
+    let raw_host = if let Some(bracketed) = authority.strip_prefix('[') {
+        bracketed.split(']').next().unwrap_or_default()
+    } else if authority.matches(':').count() > 1 {
+        // Bare IPv6 literal (optional %zone); port form is ambiguous, take all.
+        authority.split('%').next().unwrap_or_default()
+    } else {
+        authority.split(':').next().unwrap_or_default()
+    };
+    let host = raw_host.trim().trim_end_matches('.');
+    if host.is_empty() {
+        return Err(format!("{field} has no host."));
+    }
+    if is_blocked_url_host(host) {
+        return Err(format!("{field} host '{host}' is not allowed."));
+    }
+    let is_loopback = host == "localhost" || host == "127.0.0.1" || host == "::1";
+    if scheme == "http" {
+        if allow_loopback_http && is_loopback {
+            // Local Ollama over loopback only.
+        } else if insecure_http_opt_in_hosts().iter().any(|h| h == host) {
+            // Explicit per-host opt-in.
+        } else {
+            return Err(format!(
+                "{field} must use https:// (plain http needs {INSECURE_HTTP_HOSTS_ENV} opt-in)."
+            ));
+        }
+    }
+    Ok(trimmed.trim_end_matches('/').to_string())
+}
+
+/// Normalize an API base URL: trim whitespace, strip trailing slashes.
+/// Keeps the old signature; invalid input normalizes to "" (empty = missing).
+/// Use `validate_api_base_url` for a field-level error instead.
+pub fn normalize_api_base_url(raw: Option<&str>) -> String {
+    let trimmed = raw.map(str::trim).filter(|value| !value.is_empty());
+    match trimmed {
+        None => String::new(),
+        Some(value) => validate_http_url(value, "apiBaseUrl", false).unwrap_or_default(),
+    }
+}
+
+/// Field-level cloud API base-URL validation.
+pub fn validate_api_base_url(raw: Option<&str>) -> Result<String, String> {
+    let trimmed = raw.map(str::trim).filter(|value| !value.is_empty());
+    match trimmed {
+        None => Err(
+            "API base URL is required for online STT/AI mode. Open Settings > Models.".to_string(),
+        ),
+        Some(value) => validate_http_url(value, "apiBaseUrl", false),
+    }
 }
 
 /// Normalize the local Ollama base URL with a default fallback.
+/// Keeps the old signature; invalid input falls back to the loopback default.
 pub fn normalize_local_ollama_base_url(raw: Option<&str>) -> String {
-    raw.map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.trim_end_matches('/').to_string())
-        .unwrap_or_else(|| DEFAULT_LOCAL_OLLAMA_BASE_URL.to_string())
+    let trimmed = raw.map(str::trim).filter(|value| !value.is_empty());
+    match trimmed {
+        None => DEFAULT_LOCAL_OLLAMA_BASE_URL.to_string(),
+        Some(value) => validate_http_url(value, "localOllamaBaseUrl", true)
+            .unwrap_or_else(|_| DEFAULT_LOCAL_OLLAMA_BASE_URL.to_string()),
+    }
+}
+
+/// Field-level Ollama base-URL validation. Empty input -> loopback default.
+pub fn validate_local_ollama_base_url(raw: Option<&str>) -> Result<String, String> {
+    let trimmed = raw.map(str::trim).filter(|value| !value.is_empty());
+    match trimmed {
+        None => Ok(DEFAULT_LOCAL_OLLAMA_BASE_URL.to_string()),
+        Some(value) => validate_http_url(value, "localOllamaBaseUrl", true),
+    }
 }
 
 /// Canonicalize a local STT model ID, applying known aliases.
@@ -240,13 +417,7 @@ pub fn resolve_pipeline_mode(request: &PipelineRoutingInput) -> Result<PipelineM
         if api_key.is_empty() {
             return Err("API key is required for online STT/AI mode.".to_string());
         }
-        let api_base_url = normalize_api_base_url(request.api_base_url.as_deref());
-        if api_base_url.is_empty() {
-            return Err(
-                "API base URL is required for online STT/AI mode. Open Settings > Models."
-                    .to_string(),
-            );
-        }
+        let api_base_url = validate_api_base_url(request.api_base_url.as_deref())?;
         (api_key, api_base_url)
     } else {
         (String::new(), String::new())
@@ -279,7 +450,7 @@ pub fn resolve_pipeline_mode(request: &PipelineRoutingInput) -> Result<PipelineM
 
     let ai = if ai_local_mode {
         let ollama_base_url =
-            normalize_local_ollama_base_url(request.local_ollama_base_url.as_deref());
+            validate_local_ollama_base_url(request.local_ollama_base_url.as_deref())?;
         let ollama_model = normalize_model_name(request.local_ollama_model.as_deref());
         let ollama_model = if ollama_model.is_empty() {
             None
@@ -528,6 +699,15 @@ mod tests {
             normalize_api_base_url(Some("  https://api.example.com  ")),
             "https://api.example.com"
         );
+        // Policy: plain http + metadata IPs normalize to "" (missing).
+        assert_eq!(
+            normalize_api_base_url(Some("http://api.example.com/v1")),
+            ""
+        );
+        assert_eq!(
+            normalize_api_base_url(Some("https://169.254.169.254/latest/")),
+            ""
+        );
     }
 
     #[test]
@@ -553,6 +733,19 @@ mod tests {
         assert_eq!(
             normalize_local_ollama_base_url(Some("http://127.0.0.1:11434/")),
             "http://127.0.0.1:11434"
+        );
+        // Loopback http stays valid for Ollama; non-loopback http falls back.
+        assert_eq!(
+            normalize_local_ollama_base_url(Some("http://localhost:11434")),
+            "http://localhost:11434"
+        );
+        assert_eq!(
+            normalize_local_ollama_base_url(Some("http://192.168.1.10:11434")),
+            DEFAULT_LOCAL_OLLAMA_BASE_URL
+        );
+        assert_eq!(
+            normalize_local_ollama_base_url(Some("https://169.254.169.254/")),
+            DEFAULT_LOCAL_OLLAMA_BASE_URL
         );
     }
 
@@ -603,8 +796,12 @@ mod tests {
     fn zero_python_supported_local_stt_provider_flags() {
         assert!(local_stt_provider_supported_in_zero_python_mode("parakeet"));
         assert!(!local_stt_provider_supported_in_zero_python_mode("whisper"));
-        assert!(!local_stt_provider_supported_in_zero_python_mode("moonshine"));
-        assert!(!local_stt_provider_supported_in_zero_python_mode("sensevoice"));
+        assert!(!local_stt_provider_supported_in_zero_python_mode(
+            "moonshine"
+        ));
+        assert!(!local_stt_provider_supported_in_zero_python_mode(
+            "sensevoice"
+        ));
     }
 
     #[test]
@@ -677,5 +874,55 @@ mod tests {
         input.local_stt_model = None;
         let err = resolve_pipeline_mode(&input).unwrap_err();
         assert!(err.contains("Local STT model is required"));
+    }
+
+    // ===== F-004 URL policy =====
+
+    #[test]
+    fn downgrade_url_version_rejected_by_policy_shape() {
+        // extract_version_from_download_url is updater-owned; here assert the
+        // routing side rejects the http/metadata inputs a downgrade relay
+        // would smuggle through apiBaseUrl.
+        assert!(validate_api_base_url(Some("http://api.example.com/v1")).is_err());
+        assert!(validate_api_base_url(Some("https://100.100.100.200/")).is_err());
+        assert!(validate_api_base_url(Some("https://[fe80::1]/")).is_err());
+        assert!(validate_api_base_url(Some("https://169.254.10.20/")).is_err());
+        assert!(validate_api_base_url(Some("https://api.example.com/v1")).is_ok());
+    }
+
+    #[test]
+    fn insecure_http_opt_in_allows_listed_host_only() {
+        std::env::set_var(INSECURE_HTTP_HOSTS_ENV, "intranet.example.com, 10.0.0.5 ");
+        assert!(validate_api_base_url(Some("http://intranet.example.com/v1")).is_ok());
+        assert!(validate_api_base_url(Some("http://other.example.com/v1")).is_err());
+        assert!(validate_api_base_url(Some("http://localhost:11434")).is_err());
+        std::env::remove_var(INSECURE_HTTP_HOSTS_ENV);
+        assert!(validate_api_base_url(Some("http://intranet.example.com/v1")).is_err());
+    }
+
+    #[test]
+    fn resolve_pipeline_mode_rejects_insecure_and_metadata_urls() {
+        let mut input = online_input();
+        input.api_base_url = Some("http://api.example.com/v1".to_string());
+        let err = resolve_pipeline_mode(&input).expect_err("http must fail");
+        assert!(err.contains("https://"), "{err}");
+
+        let mut input = online_input();
+        input.api_base_url = Some("https://169.254.169.254/latest/".to_string());
+        let err = resolve_pipeline_mode(&input).expect_err("metadata IP must fail");
+        assert!(err.contains("not allowed"), "{err}");
+    }
+
+    #[test]
+    fn routing_debug_redacts_api_key() {
+        let input = online_input();
+        let shown = format!("{input:?}");
+        assert!(!shown.contains("test-key"), "api key leaked in Debug");
+        assert!(shown.contains("[REDACTED]"));
+        let mode = resolve_pipeline_mode(&online_input()).expect("resolves");
+        let stt_shown = format!("{:?}", mode.stt);
+        let ai_shown = format!("{:?}", mode.ai);
+        assert!(!stt_shown.contains("test-key"));
+        assert!(!ai_shown.contains("test-key"));
     }
 }

@@ -37,6 +37,10 @@ export interface LocalShortcutSyncGuards {
     shortcutToken: string,
     state: "pressed" | "released",
   ) => boolean;
+  /** F-018 straddle: record local keydown so a just-arriving global echo dedups. */
+  noteLocalPressed?: (shortcutToken: string) => void;
+  /** F-007: run after a PTT release to apply a remap parked mid-hold. */
+  drainPendingRemap?: () => boolean;
 }
 
 export interface LocalShortcutButtons {
@@ -151,6 +155,7 @@ export function handleLocalKeydown(event: KeyboardEvent): void {
         event.repeat,
       )}`,
     );
+    shortcutDeps.syncGuards.noteLocalPressed?.(commandShortcutToken);
     if (shortcutDeps.syncGuards.shouldBypassLocalShortcutHandling(commandShortcutToken)) {
       return;
     }
@@ -183,6 +188,7 @@ export function handleLocalKeydown(event: KeyboardEvent): void {
       event.repeat,
     )}`,
   );
+  shortcutDeps.syncGuards.noteLocalPressed?.(pushShortcutToken);
   if (shortcutDeps.syncGuards.shouldBypassLocalShortcutHandling(pushShortcutToken)) {
     return;
   }
@@ -242,6 +248,7 @@ export function handleLocalKeyup(event: KeyboardEvent): void {
 
   event.preventDefault();
   shortcutDeps.releasePushToTalk("hotkey");
+  shortcutDeps.syncGuards.drainPendingRemap?.();
 }
 
 export function handleLocalBlur(): void {
@@ -254,9 +261,16 @@ export function handleLocalBlur(): void {
     return;
   }
 
-  shortcutDeps.log(
-    `[record.ptt.blur] clearing holds=${shortcutDeps.getPushToTalkHoldCount()} stage=${shortcutDeps.getStage()}`,
-  );
+  const holds = shortcutDeps.getPushToTalkHoldCount();
+  const stage = shortcutDeps.getStage();
+  shortcutDeps.log(`[record.ptt.blur] clearing holds=${holds} stage=${stage}`);
+  try {
+    window.dispatchEvent(
+      new CustomEvent("slasshywispr:ptt-blur-cancel", { detail: { holds, stage } }),
+    );
+  } catch {
+    // Non-DOM test envs: no-op.
+  }
   shortcutDeps.clearPushToTalkHolds();
   if (shortcutDeps.getStage() === "recording") {
     shortcutDeps.log("[record.ptt.blur] window blurred during recording -> stopRecording()");

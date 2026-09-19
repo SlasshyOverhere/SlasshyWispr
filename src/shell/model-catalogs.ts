@@ -126,6 +126,12 @@ export function renderLocalOllamaModelCatalog(models: string[], selectedModel = 
   catalogElements.localOllamaSelect.value = selected;
 }
 
+/** Download-state-aware catalog label: `Parakeet v3 (478 MB)` + ` — downloaded` / ` — not downloaded`. */
+export function formatLocalSttCatalogLabel(model: string, downloaded: boolean): string {
+  const base = LOCAL_STT_MODEL_SIZE_LABELS[model] || model.trim() || "Unknown model";
+  return downloaded ? `${base} — downloaded` : `${base} — not downloaded`;
+}
+
 export function renderLocalSttModelCatalog(models: string[], selectedModel = ""): void {
   const next: string[] = [];
   const seen = new Set<string>();

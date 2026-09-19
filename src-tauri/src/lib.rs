@@ -4,78 +4,40 @@ use tauri::Manager;
 
 pub mod audio;
 pub mod commands;
-pub mod services;
 pub mod constants;
 pub mod pipeline;
 pub mod platform;
 pub mod security;
+pub mod services;
 pub mod state;
 pub mod updater;
 use commands::{
-    TtsSetupState, capture_selected_text,
-    check_for_app_update,
-    clear_dictation_recordings, clone_coqui_voice, configure_launch_at_login,
-    control_media_playback, deactivate_local_stt_model, delete_local_stt_model,
-    download_and_install_app_update, download_local_stt_model, ensure_voice_model,
-    fetch_local_stt_models, fetch_ollama_models, fetch_provider_models, get_assistant_info,
-    get_coqui_status, get_dictation_recording, get_foreground_input_block_status,
-    get_local_stt_download_status, get_local_stt_hardware_advice, get_local_stt_model_status,
-    get_local_stt_runtime_state, get_tts_runtime_setup_status, get_ollama_status, install_ollama,
-    launch_at_login_status, list_coqui_models, list_coqui_voices, list_dictation_recording_ids,
+    capture_selected_text, check_for_app_update, clear_dictation_recordings, clone_coqui_voice,
+    configure_launch_at_login, control_media_playback, deactivate_local_stt_model,
+    delete_local_stt_model, download_and_install_app_update, download_local_stt_model,
+    ensure_voice_model, fetch_local_stt_models, fetch_ollama_models, fetch_provider_models,
+    get_assistant_info, get_coqui_status, get_dictation_recording,
+    get_foreground_input_block_status, get_local_stt_download_status,
+    get_local_stt_hardware_advice, get_local_stt_model_status, get_local_stt_runtime_state,
+    get_ollama_status, get_tts_runtime_setup_status, install_ollama, launch_at_login_status,
+    list_coqui_models, list_coqui_voices, list_dictation_recording_ids,
     list_dictation_recordings_stats, load_persisted_local_settings, log_client_event,
     mute_system_audio, open_local_stt_model_path, paste_clipboard_text, paste_text_via_clipboard,
-    preview_coqui_voice, pull_ollama_model, save_dictation_recording, save_persisted_local_settings,
-    set_clipboard_text, set_tray_update_available, setup_assistant_runtime, setup_coqui_runtime,
-    run_assistant_pipeline, show_update_settings, start_tts_runtime_setup,
+    preview_coqui_voice, pull_ollama_model, run_assistant_pipeline, save_dictation_recording,
+    save_persisted_local_settings, set_clipboard_text, set_tray_update_available,
+    setup_assistant_runtime, setup_coqui_runtime, show_update_settings, start_tts_runtime_setup,
     toggle_main_window_visibility, validate_coqui, validate_piper, warmup_local_stt_model,
+    TtsSetupState,
 };
 use state::AppState;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // normalize_api_key_secret has been moved to pipeline::routing.
 
 pub fn run() {
     let app_state = AppState::new().expect("failed to initialize app state");
     let tts_setup_state = TtsSetupState::default();
-    let start_in_tray =
-        std::env::args().any(|arg| arg.eq_ignore_ascii_case(crate::constants::STARTUP_ARG_START_IN_TRAY));
+    let start_in_tray = std::env::args()
+        .any(|arg| arg.eq_ignore_ascii_case(crate::constants::STARTUP_ARG_START_IN_TRAY));
 
     let mut builder = tauri::Builder::default();
     // window-state plugin — needs to be added before .manage()
@@ -99,7 +61,6 @@ pub fn run() {
     }
 
     builder
-        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(app_state)
         .manage(tts_setup_state)
         .setup(move |app| {

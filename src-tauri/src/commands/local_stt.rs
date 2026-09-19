@@ -12,7 +12,12 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::audio;
 
+use super::ipc_types::ProviderModelsResponse;
 use crate::constants::ZERO_PYTHON_STT_NOTICE;
+use crate::pipeline::daemon::{
+    local_stt_daemon_stats, stop_all_local_stt_bridge_daemons,
+    stop_all_local_stt_bridge_daemons_with_count, trim_all_local_stt_bridge_daemon_model_caches,
+};
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::routing::{
     built_in_local_stt_model_catalog, canonical_local_stt_model_id,
@@ -25,17 +30,9 @@ use crate::pipeline::stt_download::resolve::{
     legacy_huggingface_repo_id_for_model, resolve_huggingface_repo_id,
     sanitize_model_cache_dir_name,
 };
-use crate::pipeline::daemon::{
-    local_stt_daemon_stats, stop_all_local_stt_bridge_daemons,
-    stop_all_local_stt_bridge_daemons_with_count, trim_all_local_stt_bridge_daemon_model_caches,
-};
-use crate::state::AppState;
-use crate::services::transcribe::{
-    open_path_in_file_explorer, resolve_local_stt_repo_and_dir, setup_local_stt_runtime_blocking,
-    stt_models_dir, warmup_local_stt_hf_model_blocking, warmup_local_stt_parakeet_model_blocking,
-};
 use crate::services::hardware::build_local_stt_hardware_advice;
-use super::ipc_types::ProviderModelsResponse;
+use crate::services::transcribe::{resolve_local_stt_repo_and_dir, stt_models_dir};
+use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -221,21 +218,21 @@ pub(crate) async fn download_local_stt_model(
     tauri::async_runtime::spawn(async move {
         let state_for_task = app_for_task.state::<AppState>();
         let status_sink = crate::pipeline::stt_download::AppStateSink::new(&state_for_task);
-        let shared_status = match crate::pipeline::stt_download::SharedStatus::seeded_from(&status_sink)
-        {
-            Ok(shared_status) => shared_status,
-            Err(error) => {
-                let _ = state_for_task.update_local_stt_download_status(|status| {
-                    status.active = false;
-                    status.completed = true;
-                    status.success = false;
-                    status.stage = "Download failed.".to_string();
-                    status.message = format!("Local STT download failed to start: {error}");
-                    status.current_file.clear();
-                });
-                return;
-            }
-        };
+        let shared_status =
+            match crate::pipeline::stt_download::SharedStatus::seeded_from(&status_sink) {
+                Ok(shared_status) => shared_status,
+                Err(error) => {
+                    let _ = state_for_task.update_local_stt_download_status(|status| {
+                        status.active = false;
+                        status.completed = true;
+                        status.success = false;
+                        status.stage = "Download failed.".to_string();
+                        status.message = format!("Local STT download failed to start: {error}");
+                        status.current_file.clear();
+                    });
+                    return;
+                }
+            };
         let download_result = crate::pipeline::stt_download::download_huggingface_stt_model(
             &state_for_task.http,
             &repo_id_for_task,
@@ -264,7 +261,10 @@ pub(crate) async fn download_local_stt_model(
 
                     let app_for_runtime = app_for_task.clone();
                     let runtime_setup_result = tauri::async_runtime::spawn_blocking(move || {
-                        crate::services::transcribe::setup_local_stt_runtime_blocking(&app_for_runtime, "python")
+                        crate::services::transcribe::setup_local_stt_runtime_blocking(
+                            &app_for_runtime,
+                            "python",
+                        )
                     })
                     .await
                     .map_err(|error| format!("Local STT runtime worker failed: {error}"))
@@ -738,15 +738,24 @@ pub(crate) async fn warmup_local_stt_model(
     let provider_for_worker = provider.clone();
     let warmup_result =
         tauri::async_runtime::spawn_blocking(move || match provider_for_worker.as_str() {
-            "parakeet" => {
-                crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(&app_for_worker, "", &model_for_worker)
-            }
+            "parakeet" => crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(
+                &app_for_worker,
+                "",
+                &model_for_worker,
+            ),
             "whisper" | "moonshine" | "sensevoice" => {
                 if zero_python_mode_enabled() {
                     return Err(ZERO_PYTHON_STT_NOTICE.to_string());
                 }
-                let python_path = crate::services::transcribe::setup_local_stt_runtime_blocking(&app_for_worker, "python")?;
-                crate::services::transcribe::warmup_local_stt_hf_model_blocking(&app_for_worker, &python_path, &model_for_worker)
+                let python_path = crate::services::transcribe::setup_local_stt_runtime_blocking(
+                    &app_for_worker,
+                    "python",
+                )?;
+                crate::services::transcribe::warmup_local_stt_hf_model_blocking(
+                    &app_for_worker,
+                    &python_path,
+                    &model_for_worker,
+                )
             }
             _ => Ok("Warmup skipped (unsupported provider).".to_string()),
         })
@@ -856,7 +865,12 @@ pub(crate) async fn get_local_stt_runtime_state(
 ) -> Result<LocalSttRuntimeStateResponse, String> {
     let (daemon_count, loaded_daemon_count) = local_stt_daemon_stats();
 
-    let native_loaded = audio::parakeet::native_parakeet_runtime_loaded();
+    // F-017: None = lock held (inference in flight), so the state is unknown
+    // rather than a guessed "loaded".
+    let native_loaded = match audio::parakeet::native_parakeet_runtime_loaded() {
+        Some(loaded) => loaded.to_string(),
+        None => "busy".to_string(),
+    };
     let loaded = state.local_stt_runtime_loaded_snapshot()?;
     let details = if loaded {
         format!(
@@ -865,7 +879,7 @@ pub(crate) async fn get_local_stt_runtime_state(
             loaded_daemon_count,
             daemon_count
         )
-    } else if daemon_count > 0 || native_loaded {
+    } else if daemon_count > 0 || native_loaded == "true" {
         format!(
             "Local STT is unloaded (native_parakeet_loaded={}, {} warm daemon(s) remain ready).",
             native_loaded, daemon_count
@@ -910,4 +924,3 @@ pub(crate) async fn get_local_stt_hardware_advice(
 
     Ok(advice)
 }
-

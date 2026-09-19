@@ -47,3 +47,26 @@ jobs:
 
       - name: cargo test
         run: cargo test
+
+      - name: production CSP gate (F-032)
+        shell: bash
+        working-directory: src-tauri
+        run: |
+          set -euo pipefail
+          csp=$(python3 -c "import json;print(json.load(open('tauri.conf.json'))['app']['security']['csp'])")
+          echo "CSP: $csp"
+          case "$csp" in
+            *'unsafe-eval'*|*blob:*|*https:*connect-src*|*script-src*http*) echo 'prod CSP regression: overly broad script/connect source' >&2; exit 1;;
+          esac
+          case "$csp" in
+            *default-src'self'*|*default-src*'self'*) ;;
+            *) echo 'prod CSP regression: default-src missing self lockdown' >&2; exit 1;;
+          esac
+
+      - name: Debug redaction gate (F-033)
+        shell: bash
+        working-directory: src-tauri
+        run: |
+          set -euo pipefail
+          if grep -rn 'derive.*Debug' src/commands/pipeline.rs | grep -qi 'api_key\|apiKey'; then echo 'Debug on key struct?' >&2; exit 1; fi
+          grep -rn 'REDACTED' src/commands/ipc_types.rs src/pipeline/routing.rs >/dev/null || { echo 'redacting Debug impls missing' >&2; exit 1; }

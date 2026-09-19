@@ -3,8 +3,10 @@
 //! This module owns audio validation, noise suppression orchestration,
 //! and input normalization for the pipeline.
 
-use crate::audio::processing::{decode_wav_audio_to_mono_f32, encode_mono_f32_to_wav, resample_linear};
 use crate::audio::noise_suppression;
+use crate::audio::processing::{
+    decode_wav_audio_to_mono_f32, encode_mono_f32_to_wav, resample_linear,
+};
 use log::{info, warn};
 
 /// Validate and decode base64 audio input, returning raw bytes.
@@ -56,9 +58,7 @@ pub fn apply_noise_suppression(
             return Err("Raw PCM data too short".to_string());
         }
         // Parse: [sample_rate: u32 LE][samples: f32 LE...]
-        let sr = u32::from_le_bytes([
-            raw_bytes[0], raw_bytes[1], raw_bytes[2], raw_bytes[3],
-        ]);
+        let sr = u32::from_le_bytes([raw_bytes[0], raw_bytes[1], raw_bytes[2], raw_bytes[3]]);
         let f32_data = &raw_bytes[4..];
         let num_samples = f32_data.len() / 4;
         let mut samples = Vec::with_capacity(num_samples);
@@ -72,13 +72,21 @@ pub fn apply_noise_suppression(
             ]);
             samples.push(val);
         }
-        info!("[pipeline.noise_suppression] raw PCM: samples={} sample_rate={}", samples.len(), sr);
+        info!(
+            "[pipeline.noise_suppression] raw PCM: samples={} sample_rate={}",
+            samples.len(),
+            sr
+        );
         (samples, sr)
     } else {
         // Fallback: decode WAV
         let (samples, sr) = decode_wav_audio_to_mono_f32(audio_bytes)
             .map_err(|error| format!("Failed to decode audio for noise suppression: {error}"))?;
-        info!("[pipeline.noise_suppression] WAV decode: samples={} sample_rate={}", samples.len(), sr);
+        info!(
+            "[pipeline.noise_suppression] WAV decode: samples={} sample_rate={}",
+            samples.len(),
+            sr
+        );
         (samples, sr)
     };
 
@@ -98,7 +106,9 @@ pub fn apply_noise_suppression(
     let denoise_ms = denoise_start.elapsed().as_millis();
     info!(
         "[pipeline.noise_suppression] done input_bytes={} output_bytes={} denoise_ms={}",
-        audio_bytes.len(), denoised_bytes.len(), denoise_ms
+        audio_bytes.len(),
+        denoised_bytes.len(),
+        denoise_ms
     );
     Ok(denoised_bytes)
 }

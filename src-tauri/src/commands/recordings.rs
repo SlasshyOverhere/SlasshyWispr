@@ -109,7 +109,9 @@ pub(crate) async fn save_dictation_recording(
 }
 
 #[tauri::command]
-pub(crate) async fn list_dictation_recordings_stats(app: AppHandle) -> Result<RecordingsStats, String> {
+pub(crate) async fn list_dictation_recordings_stats(
+    app: AppHandle,
+) -> Result<RecordingsStats, String> {
     let dir = recordings_dir(&app)?;
     let mut total_bytes: u64 = 0;
     let mut file_count: u32 = 0;
@@ -222,9 +224,8 @@ pub(crate) async fn get_dictation_recording(
             break;
         }
     }
-    let path = matched.ok_or_else(|| {
-        format!("Dictation recording not found for id '{recording_id}'")
-    })?;
+    let path =
+        matched.ok_or_else(|| format!("Dictation recording not found for id '{recording_id}'"))?;
     let bytes = fs::read(&path).map_err(|error| {
         format!(
             "Failed to read dictation recording '{}': {error}",
@@ -236,4 +237,3 @@ pub(crate) async fn get_dictation_recording(
     let encoded = BASE64_STANDARD.encode(&bytes);
     Ok(format!("data:{};base64,{}", mime, encoded))
 }
-

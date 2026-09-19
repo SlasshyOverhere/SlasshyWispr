@@ -13,39 +13,40 @@ use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
+use crate::commands::ipc_types::{PipelineRunIdentity, PipelineRunOutcome};
 use crate::constants::DEFAULT_SYSTEM_PROMPT;
-use crate::pipeline::log::{clip_text, single_line};
-use crate::pipeline::process::elapsed_ms;
-use crate::pipeline::input::{apply_noise_suppression, validate_audio_input};
-use crate::pipeline::routing::{
-    infer_local_stt_provider_from_model, AiModeConfig, SttModeConfig,
-};
-use crate::pipeline::tts::{
-    synthesize_with_coqui, synthesize_with_piper, CoquiPipelineRequest, PiperPipelineRequest,
-};
-use crate::pipeline::routing::zero_python_mode_enabled;
-use crate::state::AppState;
 use crate::pipeline::ai::{
     generate_assistant_response, generate_compose_draft_fallback, generate_direct_answer_fallback,
     generate_selection_edit_decision,
 };
-use crate::pipeline::refinement::{self, RefinementConfig, RefinementDictionaryEntry, RefinementSnippetEntry};
+use crate::pipeline::input::{apply_noise_suppression, validate_audio_input};
+use crate::pipeline::log::{clip_text, single_line};
+use crate::pipeline::process::elapsed_ms;
+use crate::pipeline::refinement::{
+    self, RefinementConfig, RefinementDictionaryEntry, RefinementSnippetEntry,
+};
+use crate::pipeline::routing::zero_python_mode_enabled;
+use crate::pipeline::routing::{infer_local_stt_provider_from_model, AiModeConfig, SttModeConfig};
 use crate::pipeline::selection::{
     build_selected_context_answer_prompt, seems_like_selection_context_query,
     seems_like_selection_edit_instruction, selection_action_label,
 };
-use crate::pipeline::wake::extract_wake_command;
 use crate::pipeline::stt::{
     is_known_stt_hallucination, looks_like_repetitive_transcript_noise,
     normalize_stt_allowed_languages, normalize_stt_language_hint,
 };
+use crate::pipeline::tts::{
+    synthesize_with_coqui, synthesize_with_piper, CoquiPipelineRequest, PiperPipelineRequest,
+};
+use crate::pipeline::wake::extract_wake_command;
+use crate::services::pipeline_service::resolve_pipeline_mode;
 use crate::services::{
     resolve_piper_assets, sync_orchestrator_pending_rewrite_to_app_state, sync_selection_context,
     transcribe_audio, transcribe_audio_local,
 };
-use crate::services::pipeline_service::resolve_pipeline_mode;
+use crate::state::AppState;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AssistantPipelineRequest {
     pub(crate) api_key: String,
@@ -81,6 +82,12 @@ pub(crate) struct AssistantPipelineRequest {
     pub(crate) tts_engine: Option<String>,
     pub(crate) piper: Option<PiperPipelineRequest>,
     pub(crate) coqui: Option<CoquiPipelineRequest>,
+    #[serde(flatten, default)]
+    pub(crate) run: PipelineRunIdentity,
+    /// Stale replace-selection guard: frontend popup token; backend rejects
+    /// when it does not match the latest issued token.
+    #[serde(default)]
+    pub(crate) replace_token: String,
 }
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -94,7 +101,7 @@ pub(crate) struct SnippetEntryRequest {
     pub(crate) trigger: String,
     pub(crate) expansion: String,
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AssistantPipelineResponse {
     pub(crate) mode: String,
@@ -109,6 +116,11 @@ pub(crate) struct AssistantPipelineResponse {
     pub(crate) ai_latency_ms: u64,
     pub(crate) tts_latency_ms: u64,
     pub(crate) total_latency_ms: u64,
+    /// Never silent on TTS: "disabled"|"skipped"|"synthesized"|"failed".
+    #[serde(default)]
+    pub(crate) tts_error: String,
+    #[serde(flatten, default)]
+    pub(crate) outcome: PipelineRunOutcome,
 }
 #[tauri::command]
 pub(crate) async fn run_assistant_pipeline(
@@ -116,6 +128,26 @@ pub(crate) async fn run_assistant_pipeline(
     state: State<'_, AppState>,
     request: AssistantPipelineRequest,
 ) -> Result<AssistantPipelineResponse, String> {
+    // Agent1-contract: echo pipeline_run_id (mint when frontend omits it).
+    let run_id = if request.run.pipeline_run_id.trim().is_empty() {
+        uuid::Uuid::new_v4().to_string()
+    } else {
+        request.run.pipeline_run_id.clone()
+    };
+    let outcome_for = |tts_status: &str| PipelineRunOutcome {
+        pipeline_run_id: run_id.clone(),
+        tts_status: tts_status.to_string(),
+    };
+    // F-009: a superseded rewrite must not replace the selection. The frontend
+    // stamps each popup with a monotonic token; an older one is rejected here.
+    if !state.accept_replace_token(&request.replace_token)? {
+        warn!(
+            "[pipeline] rejected stale replace_token={} run_id={}",
+            clip_text(&request.replace_token, 40),
+            run_id
+        );
+        return Err("This rewrite was superseded by a newer request.".to_string());
+    }
     let pipeline_mode = resolve_pipeline_mode(&request)?;
 
     let requested_engine = request
@@ -130,13 +162,8 @@ pub(crate) async fn run_assistant_pipeline(
         warn!("[pipeline] coqui requested but disabled in zero-python mode; falling back to piper");
     }
 
-    let piper_assets = resolve_piper_assets(
-        &app,
-        &state.http,
-        request.piper_path.as_deref(),
-        use_coqui,
-    )
-    .await;
+    let piper_assets =
+        resolve_piper_assets(&app, &state.http, request.piper_path.as_deref(), use_coqui).await;
     let piper_path = piper_assets.piper_path;
     let piper_model_path = piper_assets.piper_model_path;
 
@@ -146,7 +173,6 @@ pub(crate) async fn run_assistant_pipeline(
         request.noise_suppression.unwrap_or(false),
         request.raw_pcm_base64.as_deref(),
     )?;
-
 
     let stt_mode_label = match &pipeline_mode.stt {
         SttModeConfig::Online { .. } => "online",
@@ -344,6 +370,8 @@ pub(crate) async fn run_assistant_pipeline(
             ai_latency_ms: 0,
             tts_latency_ms: 0,
             total_latency_ms,
+            tts_error: String::new(),
+            outcome: outcome_for("skipped"),
         });
     }
 
@@ -398,7 +426,10 @@ pub(crate) async fn run_assistant_pipeline(
     if selected_text_source == "recent-context" {
         info!(
             "[pipeline] selection context recovered from recent cache chars={}",
-            selected_text.as_ref().map(|text| text.chars().count()).unwrap_or(0)
+            selected_text
+                .as_ref()
+                .map(|text| text.chars().count())
+                .unwrap_or(0)
         );
     }
     let selected_context_available = selected_text.is_some();
@@ -644,7 +675,8 @@ pub(crate) async fn run_assistant_pipeline(
         }
     }
 
-    assistant_response = crate::pipeline::orchestration::normalize_and_validate_response(&assistant_response)?;
+    assistant_response =
+        crate::pipeline::orchestration::normalize_and_validate_response(&assistant_response)?;
 
     if wake_only {
         let total_latency_ms = elapsed_ms(overall_start);
@@ -666,6 +698,8 @@ pub(crate) async fn run_assistant_pipeline(
             ai_latency_ms,
             tts_latency_ms: 0,
             total_latency_ms,
+            tts_error: String::new(),
+            outcome: outcome_for("skipped"),
         });
     }
 
@@ -689,6 +723,8 @@ pub(crate) async fn run_assistant_pipeline(
             ai_latency_ms,
             tts_latency_ms: 0,
             total_latency_ms,
+            tts_error: String::new(),
+            outcome: outcome_for("skipped"),
         });
     }
 
@@ -708,18 +744,25 @@ pub(crate) async fn run_assistant_pipeline(
         }
     };
 
-    let tts_bytes = match tts_result {
-        Ok(bytes) => bytes,
+    // F-011: never silent on TTS — explicit status + error string.
+    let (tts_bytes, tts_status, tts_error) = match tts_result {
+        Ok(bytes) if !bytes.is_empty() => (bytes, "synthesized", String::new()),
+        Ok(_) => (
+            Vec::new(),
+            "failed",
+            "TTS returned empty audio.".to_string(),
+        ),
         Err(error) => {
             warn!("[pipeline] tts synthesis skipped/failed: {}", error);
-            Vec::new()
+            (Vec::new(), "failed", error)
         }
     };
 
     let tts_latency_ms = elapsed_ms(tts_start);
     info!(
-        "[pipeline] tts done engine={} latency_ms={} audio_bytes={}",
+        "[pipeline] tts done engine={} status={} latency_ms={} audio_bytes={}",
         if use_coqui { "coqui" } else { "piper" },
+        tts_status,
         tts_latency_ms,
         tts_bytes.len()
     );
@@ -741,6 +784,8 @@ pub(crate) async fn run_assistant_pipeline(
         ai_latency_ms,
         tts_latency_ms,
         total_latency_ms,
+        tts_error,
+        outcome: outcome_for(tts_status),
     })
 }
 
@@ -749,262 +794,378 @@ mod tests {
     use super::*;
     use crate::pipeline::tts::PiperPipelineRequest;
 
-#[test]
-fn ipc_request_serializes_with_camel_case() {
-    let request = AssistantPipelineRequest {
-        api_key: "sk-test".to_string(),
-        api_base_url: Some("https://api.example.com".to_string()),
-        stt_model: Some("gpt-4o-mini-transcribe".to_string()),
-        ai_model: Some("gpt-4o-mini".to_string()),
-        stt_local_mode: Some(false),
-        ai_local_mode: Some(true),
-        local_ollama_base_url: Some("http://127.0.0.1:11434".to_string()),
-        local_ollama_model: Some("llama3".to_string()),
-        local_stt_model: Some("nvidia/parakeet-tdt-0.6b-v3".to_string()),
-        piper_path: Some("/path/to/piper".to_string()),
-        audio_base64: "dGVzdA==".to_string(),
-        audio_mime_type: "audio/wav".to_string(),
-        language: Some("en".to_string()),
-        allowed_languages: Some(vec!["en".to_string(), "es".to_string()]),
-        system_prompt: Some("You are helpful.".to_string()),
-        temperature: Some(0.5),
-        max_tokens: Some(256),
-        dictionary_entries: Some(vec![DictionaryEntryRequest {
-            source: "brb".to_string(),
-            target: "be right back".to_string(),
-        }]),
-        snippet_entries: Some(vec![SnippetEntryRequest {
-            trigger: "gj".to_string(),
-            expansion: "good job".to_string(),
-        }]),
-        raw_mode: Some(false),
-        apply_backtrack: Some(true),
-        remove_fillers: Some(true),
-        auto_punctuation: Some(true),
-        auto_numbered_lists: Some(false),
-        noise_suppression: Some(true),
-        raw_pcm_base64: Some("cGNtZGF0YQ==".to_string()),
-        command_mode: Some(true),
-        wake_word_enabled: Some(true),
-        assistant_name: Some("Lily".to_string()),
-        selected_text: Some("selected text".to_string()),
-        tts_engine: Some("piper".to_string()),
-        piper: Some(PiperPipelineRequest {
-            speed: Some(1.08),
-            quality: Some("fast".to_string()),
-            emotion: Some("neutral".to_string()),
-        }),
-        coqui: None,
-    };
-
-    let json = serde_json::to_value(&request).expect("should serialize");
-    let obj = json.as_object().expect("should be object");
-
-    // Verify camelCase field names match the TypeScript types
-    assert!(obj.contains_key("apiKey"), "expected camelCase 'apiKey'");
-    assert!(obj.contains_key("apiBaseUrl"), "expected camelCase 'apiBaseUrl'");
-    assert!(obj.contains_key("sttModel"), "expected camelCase 'sttModel'");
-    assert!(obj.contains_key("aiModel"), "expected camelCase 'aiModel'");
-    assert!(obj.contains_key("sttLocalMode"), "expected camelCase 'sttLocalMode'");
-    assert!(obj.contains_key("aiLocalMode"), "expected camelCase 'aiLocalMode'");
-    assert!(obj.contains_key("localOllamaBaseUrl"), "expected camelCase 'localOllamaBaseUrl'");
-    assert!(obj.contains_key("localOllamaModel"), "expected camelCase 'localOllamaModel'");
-    assert!(obj.contains_key("localSttModel"), "expected camelCase 'localSttModel'");
-    assert!(obj.contains_key("piperPath"), "expected camelCase 'piperPath'");
-    assert!(obj.contains_key("audioBase64"), "expected camelCase 'audioBase64'");
-    assert!(obj.contains_key("audioMimeType"), "expected camelCase 'audioMimeType'");
-    assert!(obj.contains_key("allowedLanguages"), "expected camelCase 'allowedLanguages'");
-    assert!(obj.contains_key("systemPrompt"), "expected camelCase 'systemPrompt'");
-    assert!(obj.contains_key("maxTokens"), "expected camelCase 'maxTokens'");
-    assert!(obj.contains_key("dictionaryEntries"), "expected camelCase 'dictionaryEntries'");
-    assert!(obj.contains_key("snippetEntries"), "expected camelCase 'snippetEntries'");
-    assert!(obj.contains_key("rawMode"), "expected camelCase 'rawMode'");
-    assert!(obj.contains_key("applyBacktrack"), "expected camelCase 'applyBacktrack'");
-    assert!(obj.contains_key("removeFillers"), "expected camelCase 'removeFillers'");
-    assert!(obj.contains_key("autoPunctuation"), "expected camelCase 'autoPunctuation'");
-    assert!(obj.contains_key("autoNumberedLists"), "expected camelCase 'autoNumberedLists'");
-    assert!(obj.contains_key("noiseSuppression"), "expected camelCase 'noiseSuppression'");
-    assert!(obj.contains_key("rawPcmBase64"), "expected camelCase 'rawPcmBase64'");
-    assert!(obj.contains_key("commandMode"), "expected camelCase 'commandMode'");
-    assert!(obj.contains_key("wakeWordEnabled"), "expected camelCase 'wakeWordEnabled'");
-    assert!(obj.contains_key("assistantName"), "expected camelCase 'assistantName'");
-    assert!(obj.contains_key("selectedText"), "expected camelCase 'selectedText'");
-    assert!(obj.contains_key("ttsEngine"), "expected camelCase 'ttsEngine'");
-
-    // Verify nested objects
-    let piper = obj.get("piper").expect("piper should exist").as_object().unwrap();
-    assert!(piper.contains_key("speed"));
-    assert!(piper.contains_key("quality"));
-    assert!(piper.contains_key("emotion"));
-
-    // Verify values
-    assert_eq!(obj.get("apiKey").unwrap(), "sk-test");
-    assert_eq!(obj.get("sttLocalMode").unwrap(), false);
-    assert_eq!(obj.get("aiLocalMode").unwrap(), true);
-    assert_eq!(obj.get("temperature").unwrap(), 0.5);
-    assert_eq!(obj.get("maxTokens").unwrap(), 256);
-}
-
-#[test]
-fn ipc_request_missing_optional_fields_serializes_as_null() {
-    let request = AssistantPipelineRequest {
-        api_key: String::new(),
-        api_base_url: None,
-        stt_model: None,
-        ai_model: None,
-        stt_local_mode: None,
-        ai_local_mode: None,
-        local_ollama_base_url: None,
-        local_ollama_model: None,
-        local_stt_model: None,
-        piper_path: None,
-        audio_base64: String::new(),
-        audio_mime_type: String::new(),
-        language: None,
-        allowed_languages: None,
-        system_prompt: None,
-        temperature: None,
-        max_tokens: None,
-        dictionary_entries: None,
-        snippet_entries: None,
-        raw_mode: None,
-        apply_backtrack: None,
-        remove_fillers: None,
-        auto_punctuation: None,
-        auto_numbered_lists: None,
-        noise_suppression: None,
-        raw_pcm_base64: None,
-        command_mode: None,
-        wake_word_enabled: None,
-        assistant_name: None,
-        selected_text: None,
-        tts_engine: None,
-        piper: None,
-        coqui: None,
-    };
-
-    let json = serde_json::to_value(&request).expect("should serialize");
-    let obj = json.as_object().unwrap();
-
-    // All optional fields should be null when None
-    assert!(obj.get("apiBaseUrl").unwrap().is_null());
-    assert!(obj.get("sttModel").unwrap().is_null());
-    assert!(obj.get("aiModel").unwrap().is_null());
-    assert!(obj.get("sttLocalMode").unwrap().is_null());
-    assert!(obj.get("aiLocalMode").unwrap().is_null());
-    assert!(obj.get("language").unwrap().is_null());
-    assert!(obj.get("systemPrompt").unwrap().is_null());
-    assert!(obj.get("temperature").unwrap().is_null());
-    assert!(obj.get("piper").unwrap().is_null());
-    assert!(obj.get("coqui").unwrap().is_null());
-}
-
-#[test]
-fn ipc_response_has_expected_camel_case_fields() {
-    let response = AssistantPipelineResponse {
-        mode: "dictation".to_string(),
-        selection_rewrite: false,
-        selection_pending: false,
-        selection_context_cleared: false,
-        selection_context_used: false,
-        transcript: "Hello world".to_string(),
-        assistant_response: "Hello world.".to_string(),
-        audio_base64: String::new(),
-        stt_latency_ms: 250,
-        ai_latency_ms: 800,
-        tts_latency_ms: 150,
-        total_latency_ms: 1200,
-    };
-
-    let json = serde_json::to_value(&response).expect("should serialize");
-    let obj = json.as_object().expect("should be object");
-
-    // Verify camelCase field names match TypeScript AssistantPipelineResponse
-    assert!(obj.contains_key("mode"));
-    assert!(obj.contains_key("selectionRewrite"), "expected camelCase 'selectionRewrite'");
-    assert!(obj.contains_key("selectionPending"), "expected camelCase 'selectionPending'");
-    assert!(obj.contains_key("selectionContextCleared"), "expected camelCase 'selectionContextCleared'");
-    assert!(obj.contains_key("selectionContextUsed"), "expected camelCase 'selectionContextUsed'");
-    assert!(obj.contains_key("transcript"));
-    assert!(obj.contains_key("assistantResponse"), "expected camelCase 'assistantResponse'");
-    assert!(obj.contains_key("audioBase64"), "expected camelCase 'audioBase64'");
-    assert!(obj.contains_key("sttLatencyMs"), "expected camelCase 'sttLatencyMs'");
-    assert!(obj.contains_key("aiLatencyMs"), "expected camelCase 'aiLatencyMs'");
-    assert!(obj.contains_key("ttsLatencyMs"), "expected camelCase 'ttsLatencyMs'");
-    assert!(obj.contains_key("totalLatencyMs"), "expected camelCase 'totalLatencyMs'");
-
-    // Verify values
-    assert_eq!(obj.get("mode").unwrap(), "dictation");
-    assert_eq!(obj.get("sttLatencyMs").unwrap(), 250);
-    assert_eq!(obj.get("totalLatencyMs").unwrap(), 1200);
-}
-
-#[test]
-fn ipc_nested_entry_requests_serialize_correctly() {
-    let request = AssistantPipelineRequest {
-        api_key: "key".to_string(),
-        api_base_url: Some("https://api.example.com".to_string()),
-        stt_model: Some("model".to_string()),
-        ai_model: Some("model".to_string()),
-        stt_local_mode: Some(false),
-        ai_local_mode: Some(false),
-        local_ollama_base_url: None,
-        local_ollama_model: None,
-        local_stt_model: None,
-        piper_path: None,
-        audio_base64: String::new(),
-        audio_mime_type: "audio/wav".to_string(),
-        language: None,
-        allowed_languages: None,
-        system_prompt: None,
-        temperature: None,
-        max_tokens: None,
-        dictionary_entries: Some(vec![
-            DictionaryEntryRequest {
+    #[test]
+    fn ipc_request_serializes_with_camel_case() {
+        let request = AssistantPipelineRequest {
+            api_key: "sk-test".to_string(),
+            api_base_url: Some("https://api.example.com".to_string()),
+            stt_model: Some("gpt-4o-mini-transcribe".to_string()),
+            ai_model: Some("gpt-4o-mini".to_string()),
+            stt_local_mode: Some(false),
+            ai_local_mode: Some(true),
+            local_ollama_base_url: Some("http://127.0.0.1:11434".to_string()),
+            local_ollama_model: Some("llama3".to_string()),
+            local_stt_model: Some("nvidia/parakeet-tdt-0.6b-v3".to_string()),
+            piper_path: Some("/path/to/piper".to_string()),
+            audio_base64: "dGVzdA==".to_string(),
+            audio_mime_type: "audio/wav".to_string(),
+            language: Some("en".to_string()),
+            allowed_languages: Some(vec!["en".to_string(), "es".to_string()]),
+            system_prompt: Some("You are helpful.".to_string()),
+            temperature: Some(0.5),
+            max_tokens: Some(256),
+            dictionary_entries: Some(vec![DictionaryEntryRequest {
                 source: "brb".to_string(),
                 target: "be right back".to_string(),
-            },
-            DictionaryEntryRequest {
-                source: "idk".to_string(),
-                target: "I don't know".to_string(),
-            },
-        ]),
-        snippet_entries: Some(vec![SnippetEntryRequest {
-            trigger: "gj".to_string(),
-            expansion: "good job".to_string(),
-        }]),
-        raw_mode: None,
-        apply_backtrack: None,
-        remove_fillers: None,
-        auto_punctuation: None,
-        auto_numbered_lists: None,
-        noise_suppression: None,
-        raw_pcm_base64: None,
-        command_mode: None,
-        wake_word_enabled: None,
-        assistant_name: None,
-        selected_text: None,
-        tts_engine: None,
-        piper: None,
-        coqui: None,
-    };
+            }]),
+            snippet_entries: Some(vec![SnippetEntryRequest {
+                trigger: "gj".to_string(),
+                expansion: "good job".to_string(),
+            }]),
+            raw_mode: Some(false),
+            apply_backtrack: Some(true),
+            remove_fillers: Some(true),
+            auto_punctuation: Some(true),
+            auto_numbered_lists: Some(false),
+            noise_suppression: Some(true),
+            raw_pcm_base64: Some("cGNtZGF0YQ==".to_string()),
+            command_mode: Some(true),
+            wake_word_enabled: Some(true),
+            assistant_name: Some("Lily".to_string()),
+            selected_text: Some("selected text".to_string()),
+            tts_engine: Some("piper".to_string()),
+            piper: Some(PiperPipelineRequest {
+                speed: Some(1.08),
+                quality: Some("fast".to_string()),
+                emotion: Some("neutral".to_string()),
+            }),
+            coqui: None,
+            ..Default::default()
+        };
 
-    let json = serde_json::to_value(&request).expect("should serialize");
-    let entries = json.get("dictionaryEntries").unwrap().as_array().unwrap();
-    assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].get("source").unwrap(), "brb");
-    assert_eq!(entries[0].get("target").unwrap(), "be right back");
+        let json = serde_json::to_value(&request).expect("should serialize");
+        let obj = json.as_object().expect("should be object");
 
-    let snippets = json.get("snippetEntries").unwrap().as_array().unwrap();
-    assert_eq!(snippets.len(), 1);
-    assert_eq!(snippets[0].get("trigger").unwrap(), "gj");
-    assert_eq!(snippets[0].get("expansion").unwrap(), "good job");
-}
+        // Verify camelCase field names match the TypeScript types
+        assert!(obj.contains_key("apiKey"), "expected camelCase 'apiKey'");
+        assert!(
+            obj.contains_key("apiBaseUrl"),
+            "expected camelCase 'apiBaseUrl'"
+        );
+        assert!(
+            obj.contains_key("sttModel"),
+            "expected camelCase 'sttModel'"
+        );
+        assert!(obj.contains_key("aiModel"), "expected camelCase 'aiModel'");
+        assert!(
+            obj.contains_key("sttLocalMode"),
+            "expected camelCase 'sttLocalMode'"
+        );
+        assert!(
+            obj.contains_key("aiLocalMode"),
+            "expected camelCase 'aiLocalMode'"
+        );
+        assert!(
+            obj.contains_key("localOllamaBaseUrl"),
+            "expected camelCase 'localOllamaBaseUrl'"
+        );
+        assert!(
+            obj.contains_key("localOllamaModel"),
+            "expected camelCase 'localOllamaModel'"
+        );
+        assert!(
+            obj.contains_key("localSttModel"),
+            "expected camelCase 'localSttModel'"
+        );
+        assert!(
+            obj.contains_key("piperPath"),
+            "expected camelCase 'piperPath'"
+        );
+        assert!(
+            obj.contains_key("audioBase64"),
+            "expected camelCase 'audioBase64'"
+        );
+        assert!(
+            obj.contains_key("audioMimeType"),
+            "expected camelCase 'audioMimeType'"
+        );
+        assert!(
+            obj.contains_key("allowedLanguages"),
+            "expected camelCase 'allowedLanguages'"
+        );
+        assert!(
+            obj.contains_key("systemPrompt"),
+            "expected camelCase 'systemPrompt'"
+        );
+        assert!(
+            obj.contains_key("maxTokens"),
+            "expected camelCase 'maxTokens'"
+        );
+        assert!(
+            obj.contains_key("dictionaryEntries"),
+            "expected camelCase 'dictionaryEntries'"
+        );
+        assert!(
+            obj.contains_key("snippetEntries"),
+            "expected camelCase 'snippetEntries'"
+        );
+        assert!(obj.contains_key("rawMode"), "expected camelCase 'rawMode'");
+        assert!(
+            obj.contains_key("applyBacktrack"),
+            "expected camelCase 'applyBacktrack'"
+        );
+        assert!(
+            obj.contains_key("removeFillers"),
+            "expected camelCase 'removeFillers'"
+        );
+        assert!(
+            obj.contains_key("autoPunctuation"),
+            "expected camelCase 'autoPunctuation'"
+        );
+        assert!(
+            obj.contains_key("autoNumberedLists"),
+            "expected camelCase 'autoNumberedLists'"
+        );
+        assert!(
+            obj.contains_key("noiseSuppression"),
+            "expected camelCase 'noiseSuppression'"
+        );
+        assert!(
+            obj.contains_key("rawPcmBase64"),
+            "expected camelCase 'rawPcmBase64'"
+        );
+        assert!(
+            obj.contains_key("commandMode"),
+            "expected camelCase 'commandMode'"
+        );
+        assert!(
+            obj.contains_key("wakeWordEnabled"),
+            "expected camelCase 'wakeWordEnabled'"
+        );
+        assert!(
+            obj.contains_key("assistantName"),
+            "expected camelCase 'assistantName'"
+        );
+        assert!(
+            obj.contains_key("selectedText"),
+            "expected camelCase 'selectedText'"
+        );
+        assert!(
+            obj.contains_key("ttsEngine"),
+            "expected camelCase 'ttsEngine'"
+        );
 
-#[test]
-fn ipc_round_trip_preserves_option_vs_null_distinction() {
-    // When frontend sends null for optional fields, Rust should deserialize as None
-    let json_str = r#"{
+        // Verify nested objects
+        let piper = obj
+            .get("piper")
+            .expect("piper should exist")
+            .as_object()
+            .unwrap();
+        assert!(piper.contains_key("speed"));
+        assert!(piper.contains_key("quality"));
+        assert!(piper.contains_key("emotion"));
+
+        // Verify values
+        assert_eq!(obj.get("apiKey").unwrap(), "sk-test");
+        assert_eq!(obj.get("sttLocalMode").unwrap(), false);
+        assert_eq!(obj.get("aiLocalMode").unwrap(), true);
+        assert_eq!(obj.get("temperature").unwrap(), 0.5);
+        assert_eq!(obj.get("maxTokens").unwrap(), 256);
+    }
+
+    #[test]
+    fn ipc_request_missing_optional_fields_serializes_as_null() {
+        let request = AssistantPipelineRequest {
+            api_key: String::new(),
+            api_base_url: None,
+            stt_model: None,
+            ai_model: None,
+            stt_local_mode: None,
+            ai_local_mode: None,
+            local_ollama_base_url: None,
+            local_ollama_model: None,
+            local_stt_model: None,
+            piper_path: None,
+            audio_base64: String::new(),
+            audio_mime_type: String::new(),
+            language: None,
+            allowed_languages: None,
+            system_prompt: None,
+            temperature: None,
+            max_tokens: None,
+            dictionary_entries: None,
+            snippet_entries: None,
+            raw_mode: None,
+            apply_backtrack: None,
+            remove_fillers: None,
+            auto_punctuation: None,
+            auto_numbered_lists: None,
+            noise_suppression: None,
+            raw_pcm_base64: None,
+            command_mode: None,
+            wake_word_enabled: None,
+            assistant_name: None,
+            selected_text: None,
+            tts_engine: None,
+            piper: None,
+            coqui: None,
+            ..Default::default()
+        };
+
+        let json = serde_json::to_value(&request).expect("should serialize");
+        let obj = json.as_object().unwrap();
+
+        // All optional fields should be null when None
+        assert!(obj.get("apiBaseUrl").unwrap().is_null());
+        assert!(obj.get("sttModel").unwrap().is_null());
+        assert!(obj.get("aiModel").unwrap().is_null());
+        assert!(obj.get("sttLocalMode").unwrap().is_null());
+        assert!(obj.get("aiLocalMode").unwrap().is_null());
+        assert!(obj.get("language").unwrap().is_null());
+        assert!(obj.get("systemPrompt").unwrap().is_null());
+        assert!(obj.get("temperature").unwrap().is_null());
+        assert!(obj.get("piper").unwrap().is_null());
+        assert!(obj.get("coqui").unwrap().is_null());
+    }
+
+    #[test]
+    fn ipc_response_has_expected_camel_case_fields() {
+        let response = AssistantPipelineResponse {
+            mode: "dictation".to_string(),
+            selection_rewrite: false,
+            selection_pending: false,
+            selection_context_cleared: false,
+            selection_context_used: false,
+            transcript: "Hello world".to_string(),
+            assistant_response: "Hello world.".to_string(),
+            audio_base64: String::new(),
+            stt_latency_ms: 250,
+            ai_latency_ms: 800,
+            tts_latency_ms: 150,
+            total_latency_ms: 1200,
+            ..Default::default()
+        };
+
+        let json = serde_json::to_value(&response).expect("should serialize");
+        let obj = json.as_object().expect("should be object");
+
+        // Verify camelCase field names match TypeScript AssistantPipelineResponse
+        assert!(obj.contains_key("mode"));
+        assert!(
+            obj.contains_key("selectionRewrite"),
+            "expected camelCase 'selectionRewrite'"
+        );
+        assert!(
+            obj.contains_key("selectionPending"),
+            "expected camelCase 'selectionPending'"
+        );
+        assert!(
+            obj.contains_key("selectionContextCleared"),
+            "expected camelCase 'selectionContextCleared'"
+        );
+        assert!(
+            obj.contains_key("selectionContextUsed"),
+            "expected camelCase 'selectionContextUsed'"
+        );
+        assert!(obj.contains_key("transcript"));
+        assert!(
+            obj.contains_key("assistantResponse"),
+            "expected camelCase 'assistantResponse'"
+        );
+        assert!(
+            obj.contains_key("audioBase64"),
+            "expected camelCase 'audioBase64'"
+        );
+        assert!(
+            obj.contains_key("sttLatencyMs"),
+            "expected camelCase 'sttLatencyMs'"
+        );
+        assert!(
+            obj.contains_key("aiLatencyMs"),
+            "expected camelCase 'aiLatencyMs'"
+        );
+        assert!(
+            obj.contains_key("ttsLatencyMs"),
+            "expected camelCase 'ttsLatencyMs'"
+        );
+        assert!(
+            obj.contains_key("totalLatencyMs"),
+            "expected camelCase 'totalLatencyMs'"
+        );
+
+        // Verify values
+        assert_eq!(obj.get("mode").unwrap(), "dictation");
+        assert_eq!(obj.get("sttLatencyMs").unwrap(), 250);
+        assert_eq!(obj.get("totalLatencyMs").unwrap(), 1200);
+    }
+
+    #[test]
+    fn ipc_nested_entry_requests_serialize_correctly() {
+        let request = AssistantPipelineRequest {
+            api_key: "key".to_string(),
+            api_base_url: Some("https://api.example.com".to_string()),
+            stt_model: Some("model".to_string()),
+            ai_model: Some("model".to_string()),
+            stt_local_mode: Some(false),
+            ai_local_mode: Some(false),
+            local_ollama_base_url: None,
+            local_ollama_model: None,
+            local_stt_model: None,
+            piper_path: None,
+            audio_base64: String::new(),
+            audio_mime_type: "audio/wav".to_string(),
+            language: None,
+            allowed_languages: None,
+            system_prompt: None,
+            temperature: None,
+            max_tokens: None,
+            dictionary_entries: Some(vec![
+                DictionaryEntryRequest {
+                    source: "brb".to_string(),
+                    target: "be right back".to_string(),
+                },
+                DictionaryEntryRequest {
+                    source: "idk".to_string(),
+                    target: "I don't know".to_string(),
+                },
+            ]),
+            snippet_entries: Some(vec![SnippetEntryRequest {
+                trigger: "gj".to_string(),
+                expansion: "good job".to_string(),
+            }]),
+            raw_mode: None,
+            apply_backtrack: None,
+            remove_fillers: None,
+            auto_punctuation: None,
+            auto_numbered_lists: None,
+            noise_suppression: None,
+            raw_pcm_base64: None,
+            command_mode: None,
+            wake_word_enabled: None,
+            assistant_name: None,
+            selected_text: None,
+            tts_engine: None,
+            piper: None,
+            coqui: None,
+            ..Default::default()
+        };
+
+        let json = serde_json::to_value(&request).expect("should serialize");
+        let entries = json.get("dictionaryEntries").unwrap().as_array().unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].get("source").unwrap(), "brb");
+        assert_eq!(entries[0].get("target").unwrap(), "be right back");
+
+        let snippets = json.get("snippetEntries").unwrap().as_array().unwrap();
+        assert_eq!(snippets.len(), 1);
+        assert_eq!(snippets[0].get("trigger").unwrap(), "gj");
+        assert_eq!(snippets[0].get("expansion").unwrap(), "good job");
+    }
+
+    #[test]
+    fn ipc_round_trip_preserves_option_vs_null_distinction() {
+        // When frontend sends null for optional fields, Rust should deserialize as None
+        let json_str = r#"{
         "apiKey": "test",
         "apiBaseUrl": null,
         "sttModel": null,
@@ -1040,22 +1201,21 @@ fn ipc_round_trip_preserves_option_vs_null_distinction() {
         "coqui": null
     }"#;
 
-    let request: AssistantPipelineRequest =
-        serde_json::from_str(json_str).expect("should deserialize from null-heavy JSON");
+        let request: AssistantPipelineRequest =
+            serde_json::from_str(json_str).expect("should deserialize from null-heavy JSON");
 
-    // Verify that null fields become None
-    assert!(request.api_base_url.is_none());
-    assert!(request.stt_model.is_none());
-    assert!(request.ai_model.is_none());
-    assert_eq!(request.stt_local_mode, Some(true));
-    assert_eq!(request.ai_local_mode, Some(true));
-    assert!(request.local_ollama_model.is_none());
-    assert!(request.local_stt_model.is_none());
-    assert!(request.temperature.is_none());
-    assert!(request.max_tokens.is_none());
-    assert!(request.system_prompt.is_none());
-    assert!(request.dictionary_entries.is_none());
-    assert!(request.piper.is_none());
-}
-
+        // Verify that null fields become None
+        assert!(request.api_base_url.is_none());
+        assert!(request.stt_model.is_none());
+        assert!(request.ai_model.is_none());
+        assert_eq!(request.stt_local_mode, Some(true));
+        assert_eq!(request.ai_local_mode, Some(true));
+        assert!(request.local_ollama_model.is_none());
+        assert!(request.local_stt_model.is_none());
+        assert!(request.temperature.is_none());
+        assert!(request.max_tokens.is_none());
+        assert!(request.system_prompt.is_none());
+        assert!(request.dictionary_entries.is_none());
+        assert!(request.piper.is_none());
+    }
 }

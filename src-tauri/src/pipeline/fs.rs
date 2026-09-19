@@ -65,7 +65,11 @@ pub(crate) fn find_file_by_name(root: &Path, target_name: &str) -> Result<Option
     Ok(None)
 }
 
-pub(crate) async fn download_file(client: &Client, url: &str, destination: &Path) -> Result<(), String> {
+pub(crate) async fn download_file(
+    client: &Client,
+    url: &str,
+    destination: &Path,
+) -> Result<(), String> {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("Failed to prepare destination folder: {error}"))?;
@@ -106,7 +110,10 @@ pub(crate) async fn download_file(client: &Client, url: &str, destination: &Path
 }
 
 /// Extract a tar.gz archive into `destination`, rejecting unsafe entries.
-pub(crate) fn extract_tar_gz_archive(archive_path: &Path, destination: &Path) -> Result<(), String> {
+pub(crate) fn extract_tar_gz_archive(
+    archive_path: &Path,
+    destination: &Path,
+) -> Result<(), String> {
     let archive_file = fs::File::open(archive_path).map_err(|error| {
         format!(
             "Failed to open local STT archive '{}': {error}",
