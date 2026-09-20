@@ -33,7 +33,7 @@ pub(crate) async fn capture_selected_text() -> Result<String, String> {
             "[client] captured selected text chars={}",
             text.chars().count()
         );
-        return Ok(text);
+        Ok(text)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -48,7 +48,7 @@ pub(crate) async fn set_clipboard_text(text: String) -> Result<(), String> {
     {
         set_clipboard_text_windows(&text)?;
         info!("[client] clipboard updated chars={}", text.chars().count());
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -93,7 +93,7 @@ pub(crate) async fn configure_launch_at_login(enabled: bool) -> Result<(), Strin
             run_key.delete_value(STARTUP_RUN_VALUE_NAME).ok(); // ignore if not present
             info!("[startup] launch at login disabled");
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -187,7 +187,7 @@ pub(crate) async fn paste_clipboard_text() -> Result<(), String> {
         ensure_paste_focus(target, "Auto-paste").await?;
         simulate_ctrl_combo(0x56).map_err(|e| format!("Auto-paste failed: {e}"))?; // Ctrl+V
         info!("[client] auto-paste triggered");
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -218,7 +218,7 @@ pub(crate) async fn shell_integration_status() -> Result<bool, String> {
 pub(crate) async fn note_paste_target() -> Result<i64, String> {
     #[cfg(target_os = "windows")]
     {
-        return Ok(crate::platform::windows_native::note_paste_target_windows());
+        Ok(crate::platform::windows_native::note_paste_target_windows())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -345,7 +345,7 @@ pub(crate) async fn paste_text_via_clipboard(text: String) -> Result<(), String>
                 warn!("[client] clipboard taken over during dictation paste; left untouched");
             }
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -364,7 +364,7 @@ pub(crate) async fn control_media_playback(action: String) -> Result<(), String>
             "[client] media playback action={}",
             action.trim().to_ascii_lowercase()
         );
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -379,7 +379,7 @@ pub(crate) async fn mute_system_audio(mute: bool) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         crate::platform::windows_native::set_system_mute(mute);
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -402,12 +402,12 @@ pub(crate) async fn get_foreground_input_block_status() -> Result<ForegroundInpu
             &probe.window_title,
             probe.fullscreen,
         );
-        return Ok(ForegroundInputBlockStatus {
+        Ok(ForegroundInputBlockStatus {
             blocked: reason.is_some(),
             process_name: probe.process_name,
             reason: reason.unwrap_or_default().to_string(),
             fullscreen: probe.fullscreen,
-        });
+        })
     }
 
     #[cfg(not(target_os = "windows"))]

@@ -620,7 +620,7 @@ pub(crate) fn open_path_in_file_explorer(path: &Path) -> Result<(), String> {
                 path.display()
             )
         })?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "macos")]
@@ -666,6 +666,7 @@ pub(crate) fn mime_to_extension(mime: &str) -> &'static str {
 pub(crate) fn transcript_candidate_score(input: &str) -> usize {
     input.chars().filter(|ch| ch.is_alphanumeric()).count()
 }
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn transcribe_audio(
     client: &Client,
     api_key: &str,
@@ -969,6 +970,7 @@ pub(crate) fn apply_optional_bearer_auth(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn transcribe_audio_openai_compatible(
     client: &Client,
     api_key: Option<&str>,

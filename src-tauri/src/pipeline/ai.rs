@@ -147,6 +147,7 @@ pub async fn generate_assistant_response(
 
 // ===== Online backend =====
 
+#[allow(clippy::too_many_arguments)]
 async fn generate_assistant_response_online(
     client: &Client,
     api_key: &str,

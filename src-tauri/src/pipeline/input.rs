@@ -49,7 +49,7 @@ pub fn apply_noise_suppression(
     let denoise_start = std::time::Instant::now();
 
     // Use raw PCM if frontend sent it (faster — no WAV decode needed)
-    let (samples, sample_rate) = if let Some(ref raw_pcm) = raw_pcm_base64 {
+    let (samples, sample_rate) = if let Some(raw_pcm) = raw_pcm_base64 {
         use base64::Engine;
         let raw_bytes = base64::engine::general_purpose::STANDARD
             .decode(raw_pcm.as_bytes())

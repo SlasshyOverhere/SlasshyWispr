@@ -34,6 +34,8 @@ pub(crate) mod win32_native {
 
     #[repr(C)]
     #[allow(non_snake_case)]
+    // Mirrors the Win32 type name.
+    #[allow(clippy::upper_case_acronyms)]
     pub struct MONITORINFO {
         pub cbSize: u32,
         pub rcMonitor: RECT,
@@ -426,7 +428,7 @@ pub(crate) fn note_paste_target_windows() -> i64 {
 /// The snapshotted paste target, if any.
 #[cfg(target_os = "windows")]
 pub(crate) fn noted_paste_target() -> Option<(isize, u32)> {
-    PASTE_TARGET.lock().ok().and_then(|guard| guard.clone())
+    PASTE_TARGET.lock().ok().and_then(|guard| *guard)
 }
 
 /// True when the window belongs to this process — one of our own windows

@@ -29,6 +29,12 @@ pub struct PipelineState {
     pub recent_selection_context: Mutex<Option<String>>,
 }
 
+impl Default for PipelineState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PipelineState {
     pub fn new() -> Self {
         Self {

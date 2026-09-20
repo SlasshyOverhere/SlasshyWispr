@@ -36,7 +36,7 @@ pub(crate) fn round_to_single_decimal(value: f64) -> f64 {
 }
 
 pub(crate) fn parse_u64_token(raw: &str) -> Option<u64> {
-    let token = raw.trim().split_whitespace().next().unwrap_or_default();
+    let token = raw.split_whitespace().next().unwrap_or_default();
     if token.is_empty() {
         return None;
     }
@@ -45,10 +45,12 @@ pub(crate) fn parse_u64_token(raw: &str) -> Option<u64> {
 }
 
 pub(crate) fn probe_local_stt_hardware() -> LocalSttHardwareProbe {
-    let mut probe = LocalSttHardwareProbe::default();
-    probe.logical_cores = std::thread::available_parallelism()
-        .map(|value| value.get())
-        .unwrap_or(0);
+    let mut probe = LocalSttHardwareProbe {
+        logical_cores: std::thread::available_parallelism()
+            .map(|value| value.get())
+            .unwrap_or(0),
+        ..Default::default()
+    };
 
     #[cfg(target_os = "windows")]
     probe_windows_local_stt_hardware(&mut probe);

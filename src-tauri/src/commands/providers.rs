@@ -327,12 +327,12 @@ pub(crate) async fn install_ollama(
                 .to_string()
         };
 
-        return Ok(OllamaStatusResponse {
+        Ok(OllamaStatusResponse {
             installed: !version.trim().is_empty(),
             running,
             version,
             details,
-        });
+        })
     }
 
     #[cfg(not(target_os = "windows"))]

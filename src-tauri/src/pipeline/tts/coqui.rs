@@ -150,7 +150,7 @@ async fn synthesize_with_coqui_resolved(
     tauri::async_runtime::spawn_blocking(move || run_coqui_bridge(&python_for_worker, payload))
         .await
         .map_err(|error| format!("Coqui synthesis worker failed: {error}"))?
-        .map(|result| {
+        .inspect(|result| {
             let device = result
                 .get("device")
                 .and_then(Value::as_str)
@@ -163,7 +163,6 @@ async fn synthesize_with_coqui_resolved(
                 "[coqui.synthesize] bridge done device={} model_cached={}",
                 device, model_cached
             );
-            result
         })?;
 
     let wav_bytes = fs::read(&output_path)

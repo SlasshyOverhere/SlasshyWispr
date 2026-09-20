@@ -379,16 +379,16 @@ pub(crate) fn restore_settings_payload(payload: &str) -> Result<String, String> 
             .unwrap_or_else(|| "<missing>".to_string());
 
         if let Some((_, source_service, source_user)) = &keyring_entry {
-            if source_service != keyring_service() || source_user != KEYRING_USER {
-                if write_api_key_to_primary_keyring(&keyring_api_key).is_ok() {
-                    info!(
-                        "[settings] migrated keyring credential source='{}:{}' -> '{}:{}'",
-                        source_service,
-                        source_user,
-                        keyring_service(),
-                        KEYRING_USER
-                    );
-                }
+            if (source_service != keyring_service() || source_user != KEYRING_USER)
+                && write_api_key_to_primary_keyring(&keyring_api_key).is_ok()
+            {
+                info!(
+                    "[settings] migrated keyring credential source='{}:{}' -> '{}:{}'",
+                    source_service,
+                    source_user,
+                    keyring_service(),
+                    KEYRING_USER
+                );
             }
         }
 

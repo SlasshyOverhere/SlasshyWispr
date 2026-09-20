@@ -335,7 +335,7 @@ pub fn validate_piper_binary_path(path: &str) -> Result<(), String> {
         return Err("Piper binary path is empty.".to_string());
     }
 
-    if path_str.contains(|c: char| matches!(c, '\0' | '\n' | '\r')) {
+    if path_str.contains(['\0', '\n', '\r']) {
         return Err("Piper binary path contains invalid characters.".to_string());
     }
 

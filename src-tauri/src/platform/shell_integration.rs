@@ -52,7 +52,7 @@ pub(crate) fn shell_verbs() -> Vec<ShellVerb> {
 
 /// Explorer substitution for the selected file, quoted for paths with spaces.
 pub(crate) fn transcribe_file_arguments() -> &'static str {
-    concat!("--transcribe-file \"%1\"")
+    "--transcribe-file \"%1\""
 }
 
 /// Parse `--transcribe-file <path>` (or `--transcribe-file=<path>`) from argv.

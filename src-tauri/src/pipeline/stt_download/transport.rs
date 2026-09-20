@@ -39,8 +39,8 @@ pub(crate) fn local_stt_archive_parallel_chunk_count(total_bytes: u64) -> usize 
         return 1;
     }
 
-    let max_chunks_by_size = ((total_bytes + LOCAL_STT_ARCHIVE_MIN_BYTES_PER_CHUNK - 1)
-        / LOCAL_STT_ARCHIVE_MIN_BYTES_PER_CHUNK)
+    let max_chunks_by_size = total_bytes
+        .div_ceil(LOCAL_STT_ARCHIVE_MIN_BYTES_PER_CHUNK)
         .max(1) as usize;
     configured.min(max_chunks_by_size).max(1)
 }
@@ -147,7 +147,7 @@ pub(crate) async fn download_archive_parallel_ranges(
         );
     }
 
-    let chunk_size = ((total_bytes + chunk_count as u64 - 1) / chunk_count as u64).max(1);
+    let chunk_size = total_bytes.div_ceil(chunk_count as u64).max(1);
     let mut part_paths: Vec<PathBuf> = Vec::new();
     let mut tasks = Vec::new();
     let progress = Arc::new(AtomicU64::new(0));

@@ -642,7 +642,7 @@ pub(crate) async fn run_assistant_pipeline(
                 &instruction,
                 &selected_text,
                 &orch_state,
-                &assistant_name,
+                assistant_name,
             );
             assistant_response = edit_result.assistant_response;
             selection_rewrite = edit_result.selection_rewrite;

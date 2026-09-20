@@ -79,7 +79,7 @@ pub fn parse_selection_edit_decision(raw: &str) -> Result<SelectionEditDecision,
         Err(_) => extract_json_value_from_output(raw).ok_or_else(|| {
             format!(
                 "Invalid edit-decision JSON from AI: {}",
-                &raw.chars().take(420).collect::<String>()
+                raw.chars().take(420).collect::<String>()
             )
         })?,
     };

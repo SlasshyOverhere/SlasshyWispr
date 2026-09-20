@@ -198,7 +198,7 @@ pub(crate) fn select_huggingface_stt_download_entries(
             .enumerate()
             .find(|(_, (path, _))| file_name_equals(path, preferred_file_name))
         {
-            if !selected_indices.iter().any(|existing| *existing == index) {
+            if !selected_indices.contains(&index) {
                 selected_indices.push(index);
             }
         }
@@ -216,7 +216,7 @@ pub(crate) fn select_huggingface_stt_download_entries(
             })
             .max_by_key(|(_, (_, size))| size.unwrap_or(0))
         {
-            if !selected_indices.iter().any(|existing| *existing == index) {
+            if !selected_indices.contains(&index) {
                 selected_indices.push(index);
             }
         }
@@ -224,12 +224,11 @@ pub(crate) fn select_huggingface_stt_download_entries(
         && repo_id.eq_ignore_ascii_case("FunAudioLLM/SenseVoiceSmall")
     {
         for (index, (path, _)) in entries.iter().enumerate() {
-            if file_name_equals(path, "model.pt")
-                || file_name_equals(path, "chn_jpn_yue_eng_ko_spectok.bpe.model")
+            if (file_name_equals(path, "model.pt")
+                || file_name_equals(path, "chn_jpn_yue_eng_ko_spectok.bpe.model"))
+                && !selected_indices.contains(&index)
             {
-                if !selected_indices.iter().any(|existing| *existing == index) {
-                    selected_indices.push(index);
-                }
+                selected_indices.push(index);
             }
         }
     } else if selected_indices.is_empty() {
@@ -247,7 +246,7 @@ pub(crate) fn select_huggingface_stt_download_entries(
                 .enumerate()
                 .find(|(_, (path, _))| file_name_equals(path, primary_name))
             {
-                if !selected_indices.iter().any(|existing| *existing == index) {
+                if !selected_indices.contains(&index) {
                     selected_indices.push(index);
                 }
                 break;
@@ -271,7 +270,7 @@ pub(crate) fn select_huggingface_stt_download_entries(
                 })
                 .max_by_key(|(_, (_, size))| size.unwrap_or(0))
             {
-                if !selected_indices.iter().any(|existing| *existing == index) {
+                if !selected_indices.contains(&index) {
                     selected_indices.push(index);
                 }
             }
@@ -298,10 +297,9 @@ pub(crate) fn select_huggingface_stt_download_entries(
         if support_file_names
             .iter()
             .any(|file_name| file_name_equals(path, file_name))
+            && !selected_indices.contains(&index)
         {
-            if !selected_indices.iter().any(|existing| *existing == index) {
-                selected_indices.push(index);
-            }
+            selected_indices.push(index);
         }
     }
 

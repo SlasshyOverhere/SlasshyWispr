@@ -866,9 +866,7 @@ pub(crate) async fn start_tts_runtime_setup(
         .filter(|value| !value.is_empty())
         .unwrap_or("python")
         .to_string();
-    if let Err(error) = validate_python_binary_path(&bootstrap_python) {
-        return Err(error);
-    }
+    validate_python_binary_path(&bootstrap_python)?;
     let use_gpu = request.use_gpu.unwrap_or(false);
 
     setup.reset_and_start();

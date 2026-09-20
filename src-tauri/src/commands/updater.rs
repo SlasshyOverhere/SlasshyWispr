@@ -584,33 +584,28 @@ pub(crate) async fn download_and_install_app_update(
         // Verify SHA256 if manifest hash was provided
         let computed_hash = format!("{:x}", hasher.finalize());
         if let Some(ref expected) = request.expected_sha256 {
-            if !expected.is_empty() {
-                if !computed_hash.eq_ignore_ascii_case(expected) {
-                    let message = format!(
-                        "Installer SHA256 mismatch (expected={expected} computed={computed_hash})"
-                    );
-                    emit_update_install_progress(
-                        &app,
-                        "error",
-                        &message,
-                        downloaded_bytes,
-                        total_bytes.max(downloaded_bytes),
-                        true,
-                        false,
-                    );
-                    let _ = fs::remove_file(&installer_path);
-                    return Err(message);
-                }
+            if !expected.is_empty() && !computed_hash.eq_ignore_ascii_case(expected) {
+                let message = format!(
+                    "Installer SHA256 mismatch (expected={expected} computed={computed_hash})"
+                );
+                emit_update_install_progress(
+                    &app,
+                    "error",
+                    &message,
+                    downloaded_bytes,
+                    total_bytes.max(downloaded_bytes),
+                    true,
+                    false,
+                );
+                let _ = fs::remove_file(&installer_path);
+                return Err(message);
             }
         }
         // Enforce SHA256: fail if hash is missing (None or empty) when asset is known
         let hash_missing =
             request.expected_sha256.is_none() || request.expected_sha256.as_deref() == Some("");
         if hash_missing {
-            let has_asset = request
-                .asset_name
-                .as_deref()
-                .map_or(false, |n| !n.is_empty());
+            let has_asset = request.asset_name.as_deref().is_some_and(|n| !n.is_empty());
             if has_asset {
                 let message =
                     "Update installer manifest is missing SHA256 hash. Cannot verify installer integrity.".to_string();
@@ -830,7 +825,7 @@ pub(crate) async fn download_and_install_app_update(
             std::thread::sleep(Duration::from_millis(1000));
             app_for_exit.exit(0);
         });
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]

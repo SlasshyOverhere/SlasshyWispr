@@ -88,7 +88,7 @@ pub(crate) fn get_or_load_native_parakeet_runtime(model_root: &Path) -> Result<b
             current.last_used = Instant::now();
             return Ok(true);
         }
-        let _ = current.engine.unload_model();
+        current.engine.unload_model();
         *guard = None;
     }
     drop(guard);
@@ -112,7 +112,7 @@ pub(crate) fn get_or_load_native_parakeet_runtime(model_root: &Path) -> Result<b
             current.last_used = Instant::now();
             return Ok(true);
         }
-        let _ = current.engine.unload_model();
+        current.engine.unload_model();
         *guard = None;
     }
     *guard = Some(NativeParakeetRuntime {
@@ -133,7 +133,7 @@ pub(crate) fn unload_native_parakeet_runtime(reason: &str) -> Result<bool, Strin
         .map_err(|_| "Native Parakeet runtime lock poisoned.".to_string())?;
 
     if let Some(mut active) = guard.take() {
-        let _ = active.engine.unload_model();
+        active.engine.unload_model();
         info!(
             "[local.stt.parakeet.native] runtime unloaded reason={} model_key={}",
             clip_text(reason, 80),
@@ -201,7 +201,6 @@ pub(crate) fn transcribe_local_stt_parakeet_native(
 
     let params = ParakeetInferenceParams {
         timestamp_granularity: TimestampGranularity::Segment,
-        ..Default::default()
     };
     let result = active
         .engine
@@ -213,7 +212,7 @@ pub(crate) fn transcribe_local_stt_parakeet_native(
     }
 
     if unload_after_transcribe {
-        let _ = active.engine.unload_model();
+        active.engine.unload_model();
         *guard = None;
     }
     Ok((transcript, model_cached, unload_after_transcribe))

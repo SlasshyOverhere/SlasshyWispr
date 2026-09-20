@@ -132,9 +132,9 @@ pub fn windows_installer_score(name: &str, release_version: &str) -> i32 {
 }
 
 /// Select the best Windows installer asset from a GitHub release.
-pub fn select_windows_installer_asset<'a>(
-    release: &'a GithubLatestReleaseResponse,
-) -> Option<&'a GithubReleaseAsset> {
+pub fn select_windows_installer_asset(
+    release: &GithubLatestReleaseResponse,
+) -> Option<&GithubReleaseAsset> {
     release
         .assets
         .iter()
@@ -148,9 +148,9 @@ pub fn select_windows_installer_asset<'a>(
 }
 
 /// Select the latest stable (non-draft, non-prerelease) release from a list.
-pub fn select_latest_stable_release<'a>(
-    releases: &'a [GithubLatestReleaseResponse],
-) -> Option<&'a GithubLatestReleaseResponse> {
+pub fn select_latest_stable_release(
+    releases: &[GithubLatestReleaseResponse],
+) -> Option<&GithubLatestReleaseResponse> {
     releases
         .iter()
         .find(|release| !release.draft && !release.prerelease)
@@ -245,9 +245,7 @@ pub fn sanitize_installer_file_name(name: &str) -> Option<String> {
         return None;
     }
 
-    if windows_installer_kind_from_name(&sanitized).is_none() {
-        return None;
-    }
+    windows_installer_kind_from_name(&sanitized)?;
 
     Some(sanitized)
 }
@@ -1102,7 +1100,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let msi_path = temp_dir.path().join("package.msi");
         const MSI_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
-        std::fs::write(&msi_path, &MSI_MAGIC).expect("write msi");
+        std::fs::write(&msi_path, MSI_MAGIC).expect("write msi");
         assert!(validate_downloaded_installer_file(&msi_path, WindowsInstallerKind::Msi).is_ok());
 
         let bad_path = temp_dir.path().join("bad.msi");
