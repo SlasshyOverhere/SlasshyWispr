@@ -1,10 +1,35 @@
-import { useSettingsSnapshot, dispatchSettingsPatch } from '../../settings/settings-react-shim';
+import {
+  useMaxTokensBounds,
+  useSettingsSnapshot,
+  useSttTimeoutBounds,
+  useTemperatureBounds,
+  dispatchSettingsPatch,
+} from '../../settings/settings-react-shim';
 
 export function PipelineSettingsPane() {
   const settings = useSettingsSnapshot();
+  const sttTimeoutBounds = useSttTimeoutBounds();
+  const maxTokensBounds = useMaxTokensBounds();
+  const temperatureBounds = useTemperatureBounds();
 
   return (
     <section id="settingsPanePipeline" className="settings-pane" data-settings-pane="pipeline" hidden>
+
+      <h3 className="settings-section-title">Speech-to-Text</h3>
+
+      <label className="field" htmlFor="sttTimeoutSecondsInput">
+        <span className="field-label">Request Timeout (seconds)</span>
+        <input
+          id="sttTimeoutSecondsInput"
+          type="number"
+          min={sttTimeoutBounds.minSeconds}
+          max={sttTimeoutBounds.maxSeconds}
+          step="5"
+          value={settings.sttTimeoutSeconds}
+          onChange={(event) => dispatchSettingsPatch({ sttTimeoutSeconds: Number(event.target.value) })}
+        />
+      </label>
+      <p className="field-hint">How long one online transcription may run before it is abandoned. Longer recordings need a higher ceiling.</p>
 
       <h3 className="settings-section-title">Prompting</h3>
 
@@ -14,9 +39,14 @@ export function PipelineSettingsPane() {
           id="systemPromptInput"
           rows={4}
           spellCheck="false"
+          placeholder="Leave empty to use the built-in cleanup prompt."
           value={settings.systemPrompt}
           onChange={(event) => dispatchSettingsPatch({ systemPrompt: event.target.value })}
         ></textarea>
+        <span className="field-hint">
+          Empty means the app uses its built-in prompt, which is kept up to date with each
+          release. Anything you type here replaces it until you clear the field.
+        </span>
       </label>
 
       <label className="field" htmlFor="temperatureInput">
@@ -24,8 +54,8 @@ export function PipelineSettingsPane() {
         <input
           id="temperatureInput"
           type="range"
-          min="0"
-          max="1.2"
+          min={temperatureBounds.minTemperature}
+          max={temperatureBounds.maxTemperature}
           step="0.05"
           value={settings.temperature}
           onChange={(event) => dispatchSettingsPatch({ temperature: Number(event.target.value) })}
@@ -37,8 +67,8 @@ export function PipelineSettingsPane() {
         <input
           id="maxTokensInput"
           type="number"
-          min="64"
-          max="1024"
+          min={maxTokensBounds.minTokens}
+          max={maxTokensBounds.maxTokens}
           step="16"
           value={settings.maxTokens}
           onChange={(event) => dispatchSettingsPatch({ maxTokens: Number(event.target.value) })}
@@ -62,7 +92,8 @@ export function PipelineSettingsPane() {
         <dt>Total</dt><dd id="totalLatency">-</dd>
       </dl>
 
-      <p id="noticeText" className="field-hint">Ready.</p>
+      {/* Filled imperatively: the rows are created and dismissed by the shell. */}
+      <div id="noticeStack" className="notice-stack" aria-live="polite" />
 
       <label className="field" htmlFor="assistantAudio">
         <span className="field-label">Voice Preview</span>

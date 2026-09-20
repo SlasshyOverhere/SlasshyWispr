@@ -5,7 +5,6 @@ import {
   DEFAULT_HOTKEY,
   DEFAULT_COMMAND_HOTKEY,
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
-  DEFAULT_MAX_TOKENS,
   DEFAULT_PIPER_EMOTION,
   DEFAULT_PIPER_QUALITY,
   DEFAULT_PIPER_SPEED,
@@ -18,13 +17,16 @@ import {
   DEFAULT_AI_MODEL_NAME,
   DEFAULT_STT_MODEL_NAME,
   DEFAULT_STYLE_PROFILE,
-  DEFAULT_SYSTEM_PROMPT,
-  DEFAULT_TEMPERATURE,
+  // No temperature or token defaults here: the backend owns those (see *-bounds).
   DEFAULT_TTS_ENGINE,
   DICTATION_LANGUAGE_LABELS,
   SETTINGS_STORAGE_KEY,
 } from "../constants";
+import { maxTokensBounds } from "../settings/max-tokens-bounds";
+import { sttTimeoutBounds } from "../settings/stt-timeout-bounds";
+import { temperatureBounds } from "../settings/temperature-bounds";
 import type {
+  CaptureBackend,
   DictationLanguageMode,
   PersistedSettings,
   PiperEmotion,
@@ -62,6 +64,26 @@ export function coerceBoolean(value: unknown, fallback: boolean): boolean {
     return value;
   }
   return fallback;
+}
+
+/**
+ * The default prompt this app shipped in TypeScript until it was removed.
+ *
+ * Installations that predate the removal persisted a copy of it, which would
+ * otherwise read as a deliberate customization and keep those users on a text
+ * the backend no longer treats as the default. Recognising it here is the
+ * migration: the setting becomes empty, i.e. "use the built-in prompt".
+ */
+const LEGACY_DEFAULT_SYSTEM_PROMPT =
+  "You are SlasshyWispr, a helpful desktop voice assistant. Keep replies concise and easy to speak aloud.";
+
+/** Empty means "use the built-in prompt", which only the backend defines. */
+export function coerceSystemPrompt(value: unknown, fallback: string): string {
+  if (value === undefined) {
+    return fallback;
+  }
+  const prompt = String(value);
+  return prompt.trim() === LEGACY_DEFAULT_SYSTEM_PROMPT ? "" : prompt;
 }
 
 /**
@@ -112,6 +134,10 @@ export function asStyleProfile(value: unknown): StyleProfile {
     return value;
   }
   return DEFAULT_STYLE_PROFILE;
+}
+
+export function asCaptureBackend(value: unknown): CaptureBackend {
+  return value === "native" ? "native" : "webview";
 }
 
 export function asThemeMode(value: unknown): ThemeMode {
@@ -216,9 +242,10 @@ export function defaultSettings(): PersistedSettings {
     dictationLanguageMode: DEFAULT_DICTATION_LANGUAGE_MODE,
     dictationLanguageAllowList: [],
     styleProfile: DEFAULT_STYLE_PROFILE,
-    systemPrompt: DEFAULT_SYSTEM_PROMPT,
-    temperature: DEFAULT_TEMPERATURE,
-    maxTokens: DEFAULT_MAX_TOKENS,
+    systemPrompt: "",
+    temperature: temperatureBounds().defaultTemperature,
+    maxTokens: maxTokensBounds().defaultTokens,
+    sttTimeoutSeconds: sttTimeoutBounds().defaultSeconds,
     launchAtLogin: true,
     showFlowBar: false,
     showDockAlways: false,
@@ -238,6 +265,7 @@ export function defaultSettings(): PersistedSettings {
     autoPunctuation: true,
     numberedLists: true,
     noiseSuppression: false,
+    captureBackend: "webview",
     ttsEngine: DEFAULT_TTS_ENGINE,
     piperSpeed: DEFAULT_PIPER_SPEED,
     piperQuality: DEFAULT_PIPER_QUALITY,
@@ -246,6 +274,7 @@ export function defaultSettings(): PersistedSettings {
     pushToTalkEndSound: DEFAULT_PUSH_TO_TALK_END_SOUND,
     pushToTalkSoundVolume: DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
     saveRecordings: DEFAULT_SAVE_RECORDINGS,
+    shellIntegration: false,
   };
 }
 
@@ -284,6 +313,9 @@ export function readRawPersistedSettings(): Partial<PersistedSettings> & { local
 
 export function loadSettings(): PersistedSettings {
   const defaults = defaultSettings();
+  // Read once: the bounds are backend-owned and can change after boot.
+  const sttBounds = sttTimeoutBounds();
+  const tokenBounds = maxTokensBounds();
 
   const rawCurrent = localStorage.getItem(SETTINGS_STORAGE_KEY);
   const raw = rawCurrent;
@@ -343,10 +375,25 @@ export function loadSettings(): PersistedSettings {
       dictationLanguageMode,
       dictationLanguageAllowList,
       styleProfile: asStyleProfile(parsed.styleProfile),
-      systemPrompt:
-        parsed.systemPrompt !== undefined ? String(parsed.systemPrompt) : defaults.systemPrompt,
-      temperature: coerceNumber(parsed.temperature, defaults.temperature, 0, 1.2),
-      maxTokens: coerceInteger(parsed.maxTokens, defaults.maxTokens, 64, 4096),
+      systemPrompt: coerceSystemPrompt(parsed.systemPrompt, defaults.systemPrompt),
+      temperature: coerceNumber(
+        parsed.temperature,
+        defaults.temperature,
+        temperatureBounds().minTemperature,
+        temperatureBounds().maxTemperature,
+      ),
+      maxTokens: coerceInteger(
+        parsed.maxTokens,
+        defaults.maxTokens,
+        tokenBounds.minTokens,
+        tokenBounds.maxTokens,
+      ),
+      sttTimeoutSeconds: coerceInteger(
+        parsed.sttTimeoutSeconds,
+        defaults.sttTimeoutSeconds,
+        sttBounds.minSeconds,
+        sttBounds.maxSeconds,
+      ),
       launchAtLogin: coerceBoolean(parsed.launchAtLogin, defaults.launchAtLogin),
       showFlowBar: fromLegacyOnly
         ? false
@@ -375,6 +422,7 @@ export function loadSettings(): PersistedSettings {
       autoPunctuation: coerceBoolean(parsed.autoPunctuation, defaults.autoPunctuation),
       numberedLists: coerceBoolean(parsed.numberedLists, defaults.numberedLists),
       noiseSuppression: coerceBoolean(parsed.noiseSuppression, defaults.noiseSuppression),
+      captureBackend: asCaptureBackend(parsed.captureBackend),
       ttsEngine: asTtsEngine(parsed.ttsEngine),
       piperSpeed: coerceNumber(parsed.piperSpeed, defaults.piperSpeed, 0.5, 2),
       piperQuality: asPiperQuality(parsed.piperQuality),
@@ -383,6 +431,7 @@ export function loadSettings(): PersistedSettings {
       pushToTalkEndSound: String(parsed.pushToTalkEndSound ?? defaults.pushToTalkEndSound),
       pushToTalkSoundVolume: coerceNumber(parsed.pushToTalkSoundVolume, defaults.pushToTalkSoundVolume, 0, 1),
       saveRecordings: coerceBoolean(parsed.saveRecordings, defaults.saveRecordings),
+      shellIntegration: coerceBoolean(parsed.shellIntegration, defaults.shellIntegration),
     };
   } catch {
     return defaults;

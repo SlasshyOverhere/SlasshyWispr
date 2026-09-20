@@ -399,7 +399,7 @@ fn stop_idle_local_stt_native_parakeet_runtime() {
     }
 
     if let Some(mut active) = guard.take() {
-        let _ = active.engine.unload_model();
+        active.engine.unload_model();
         info!(
             "[local.stt.parakeet.native] trimmed idle model cache key={} unload_after_secs={}",
             clip_text(&active.model_key, 220),

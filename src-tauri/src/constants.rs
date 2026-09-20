@@ -33,6 +33,19 @@ pub const TRAY_MENU_COPY_LAST_RESPONSE_ID: &str = "copy-last-response";
 pub const TRAY_MENU_DASHBOARD_ID: &str = "dashboard";
 pub const TRAY_MENU_QUIT_ID: &str = "quit";
 pub const STARTUP_ARG_START_IN_TRAY: &str = "--start-in-tray";
+/// Per-user hive; Explorer verbs here need no elevation.
+pub const SHELL_VERB_REGISTRY_ROOT: &str = "Software\\Classes";
+/// Explorer passes the chosen file after this flag.
+pub const SHELL_TRANSCRIBE_ARG: &str = "--transcribe-file";
+/// Emitted when a second launch asks the running instance to transcribe a file.
+pub const APP_EVENT_TRANSCRIBE_FILE: &str = "slasshywispr://transcribe-file";
+/// Audio files above this are refused rather than read into memory.
+pub const MAX_TRANSCRIBE_FILE_BYTES: u64 = 200 * 1024 * 1024;
+/// Extensions Explorer offers "Transcribe with SlasshyWispr" for. Kept as one
+/// list so the verb registration and the MIME map cannot drift apart.
+pub const TRANSCRIBE_FILE_EXTENSIONS: &[&str] = &[
+    "wav", "mp3", "m4a", "mp4", "ogg", "oga", "opus", "flac", "webm", "aac", "aiff", "aif",
+];
 pub const APP_EVENT_MAIN_WINDOW_VISIBILITY: &str = "slasshywispr://main-window-visibility";
 pub const APP_EVENT_UPDATE_INSTALL_PROGRESS: &str = "slasshywispr://update-install-progress";
 pub const TRAY_MENU_UPDATE_AVAILABLE_ID: &str = "update-available";
@@ -64,6 +77,11 @@ pub const UPDATE_REPOSITORY_NAME: &str = "SlasshyWispr";
 pub const UPDATE_REPOSITORY_OWNER_ENV: &str = "SLASSHYWISPR_UPDATE_REPOSITORY_OWNER";
 pub const UPDATE_REPOSITORY_NAME_ENV: &str = "SLASSHYWISPR_UPDATE_REPOSITORY_NAME";
 pub const UPDATE_GITHUB_TOKEN_ENV: &str = "SLASSHYWISPR_UPDATE_GITHUB_TOKEN";
+/// Minisign public key (base64) trusted to sign release installers.
+/// Empty means unprovisioned, and the updater then refuses to execute any
+/// installer rather than running one it cannot verify.
+pub const UPDATE_SIGNING_PUBKEY: &str = "";
+pub const UPDATE_SIGNING_PUBKEY_ENV: &str = "SLASSHYWISPR_UPDATE_SIGNING_PUBKEY";
 pub const UPDATE_HTTP_USER_AGENT: &str = "SlasshyWispr-Updater";
 pub const PERSISTED_SETTINGS_DIR_NAME: &str = "SlasshyWisprData";
 pub const PERSISTED_SETTINGS_FILE_NAME: &str = "settings.json";

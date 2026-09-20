@@ -1,3 +1,46 @@
+/**
+ * Frontend types.
+ *
+ * Everything the IPC boundary carries is generated from the Rust structs into
+ * ./generated/ipc-wire-types.ts and re-exported below, so a payload field is
+ * declared once, in Rust, and cannot drift. Edit those in Rust and run
+ * `npm run generate:wire-types`; this file only holds what the frontend owns
+ * alone. (Two generated shapes are named differently from their Rust structs:
+ * `NativeCaptureInfo` and `NativeCapturedAudio` are `CaptureInfo` and
+ * `CapturedAudio` in src-tauri/src/audio/capture.rs.)
+ */
+export type {
+  AppUpdateCheckResponse,
+  AppUpdateInstallProgressEvent,
+  AssistantInfoResponse,
+  AssistantPipelineResponse,
+  AudioFilePayload,
+  ForegroundInputBlockStatus,
+  InstallAppUpdateRequest,
+  LocalSttDeactivateResponse,
+  LocalSttDeleteResponse,
+  LocalSttDownloadResponse,
+  LocalSttDownloadStatusResponse,
+  LocalSttHardwareAdviceResponse,
+  LocalSttModelStatusResponse,
+  LocalSttOpenPathResponse,
+  LocalSttRuntimeStateResponse,
+  LocalSttWarmupResponse,
+  MaxTokensBoundsResponse,
+  NativeCapturedAudio,
+  NativeCaptureInfo,
+  OllamaPullResponse,
+  OllamaStatusResponse,
+  PiperValidationResponse,
+  ProviderModelsResponse,
+  RecordingsStats,
+  RuntimeSetupResponse,
+  SttTimeoutBoundsResponse,
+  TemperatureBoundsResponse,
+  TtsSetupStatusResponse,
+  VoiceInstallResponse,
+} from "./generated/ipc-wire-types";
+
 export type Stage = "idle" | "recording" | "processing" | "speaking" | "error";
 export type CaptureMode = "single-tap" | "push-to-talk";
 export type ThemeMode = "system" | "dark" | "light" | "mono";
@@ -9,6 +52,10 @@ export type SettingsPane =
   | "update-security"
   | "pipeline";
 export type TtsEngine = "piper";
+
+// "webview" keeps MediaRecorder in the WebView; "native" captures in Rust.
+export type CaptureBackend = "webview" | "native";
+
 export type RuntimeMode = "online" | "local";
 export type DictationLanguageMode = "single" | "multiple";
 export type PiperQuality = "fast" | "balanced" | "high";
@@ -17,195 +64,6 @@ export type TtsProfilePane = "piper";
 export type HoldSource = "notes-button" | "hotkey";
 
 export type LocalSttHardwareAdvisorChoice = "suggestion" | "selected" | "cancel";
-
-export interface AssistantInfoResponse {
-  appVersion: string;
-  baseUrl: string;
-  sttModel: string;
-  aiModel: string;
-  piperInstalled: boolean;
-  piperPath: string;
-  voiceInstalled: boolean;
-  voiceModelPath: string;
-}
-
-export interface RuntimeSetupResponse {
-  piperPath: string;
-  voiceModelPath: string;
-}
-
-export interface VoiceInstallResponse {
-  modelPath: string;
-}
-
-export interface PiperValidationResponse {
-  ok: boolean;
-  details: string;
-}
-
-export interface ProviderModelsResponse {
-  baseUrl: string;
-  models: string[];
-}
-
-export interface OllamaPullResponse {
-  baseUrl: string;
-  model: string;
-  ok: boolean;
-  status: string;
-}
-
-export interface OllamaStatusResponse {
-  installed: boolean;
-  running: boolean;
-  version: string;
-  details: string;
-}
-
-export interface LocalSttDownloadResponse {
-  model: string;
-  provider: string;
-  method: string;
-  localPath: string;
-  details: string;
-}
-
-export interface LocalSttDeleteResponse {
-  model: string;
-  repoId: string;
-  removed: boolean;
-  localPath: string;
-  details: string;
-}
-
-export interface LocalSttOpenPathResponse {
-  model: string;
-  repoId: string;
-  localPath: string;
-  opened: boolean;
-  details: string;
-}
-
-export interface LocalSttModelStatusResponse {
-  model: string;
-  provider: string;
-  repoId: string;
-  localPath: string;
-  exists: boolean;
-  details: string;
-}
-
-export interface LocalSttWarmupResponse {
-  model: string;
-  provider: string;
-  warmed: boolean;
-  details: string;
-}
-
-export interface LocalSttDeactivateResponse {
-  model: string;
-  provider: string;
-  deactivated: boolean;
-  details: string;
-}
-
-export interface LocalSttRuntimeStateResponse {
-  loaded: boolean;
-  daemonCount: number;
-  loadedDaemonCount: number;
-  details: string;
-}
-
-export interface LocalSttHardwareAdviceResponse {
-  cpuName: string;
-  logicalCores: number;
-  totalRamGb: number;
-  nvidiaGpuDetected: boolean;
-  gpuName: string;
-  gpuVramGb: number;
-  performanceTier: string;
-  slasshywisprSuggestionModel: string;
-  suggestedModels: string[];
-  cautionModels: string[];
-  selectedModelWarning: string;
-  details: string;
-}
-
-export interface LocalSttDownloadStatusResponse {
-  active: boolean;
-  completed: boolean;
-  success: boolean;
-  model: string;
-  repoId: string;
-  stage: string;
-  message: string;
-  currentFile: string;
-  downloadedBytes: number;
-  totalBytes: number;
-  filesCompleted: number;
-  filesTotal: number;
-  progressPercent: number;
-  updatedAtMs: number;
-}
-
-export interface TtsSetupStatusResponse {
-  running: boolean;
-  completed: boolean;
-  success: boolean;
-  stage: string;
-  logs: string[];
-}
-
-export interface AssistantPipelineResponse {
-  mode: "assistant" | "dictation";
-  selectionRewrite: boolean;
-  selectionPending: boolean;
-  selectionContextCleared: boolean;
-  selectionContextUsed: boolean;
-  transcript: string;
-  assistantResponse: string;
-  audioBase64: string;
-  sttLatencyMs: number;
-  aiLatencyMs: number;
-  ttsLatencyMs: number;
-  totalLatencyMs: number;
-  /** F-009 contract: echoed run identity, minted backend-side when omitted. */
-  pipelineRunId?: string;
-  /** F-011 contract: "disabled" | "skipped" | "synthesized" | "failed". */
-  ttsStatus?: string;
-  /** F-011: error text when tts_status is "failed"; never a silent empty. */
-  ttsError?: string;
-}
-
-export interface AppUpdateCheckResponse {
-  currentVersion: string;
-  latestVersion: string;
-  available: boolean;
-  releaseName: string;
-  releaseNotes: string;
-  publishedAt: string;
-  releaseUrl: string;
-  installerDownloadUrl: string;
-  installerAssetName: string;
-  expectedSha256: string;
-}
-
-export interface InstallAppUpdateRequest {
-  downloadUrl: string;
-  assetName?: string;
-  silent?: boolean;
-  expectedSha256?: string;
-}
-
-export interface AppUpdateInstallProgressEvent {
-  stage: string;
-  message: string;
-  downloadedBytes: number;
-  totalBytes: number;
-  progressPercent: number;
-  completed: boolean;
-  success: boolean;
-}
 
 export interface PersistedSettings {
   apiKey: string;
@@ -231,6 +89,8 @@ export interface PersistedSettings {
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
+  /** How long a single online transcription may take before it is abandoned. */
+  sttTimeoutSeconds: number;
   launchAtLogin: boolean;
   showFlowBar: boolean;
   showDockAlways: boolean;
@@ -250,6 +110,7 @@ export interface PersistedSettings {
   autoPunctuation: boolean;
   numberedLists: boolean;
   noiseSuppression: boolean;
+  captureBackend: CaptureBackend;
   ttsEngine: TtsEngine;
   piperSpeed: number;
   piperQuality: PiperQuality;
@@ -258,11 +119,7 @@ export interface PersistedSettings {
   pushToTalkEndSound: string;
   pushToTalkSoundVolume: number;
   saveRecordings: boolean;
-}
-
-export interface RecordingsStats {
-  fileCount: number;
-  totalBytes: number;
+  shellIntegration: boolean;
 }
 
 export interface HotkeySpec {
@@ -331,13 +188,6 @@ export interface AchievementState {
 export interface DockLayout {
   x: number;
   y: number;
-}
-
-export interface ForegroundInputBlockStatus {
-  blocked: boolean;
-  processName: string;
-  reason: string;
-  fullscreen: boolean;
 }
 
 export interface HomeHistoryEntry {

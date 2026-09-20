@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { IPC_COMMANDS } from "./commands";
 import type {
   AppUpdateCheckResponse,
+  AudioFilePayload,
   AssistantInfoResponse,
   AssistantPipelineResponse,
   ForegroundInputBlockStatus,
@@ -15,12 +16,17 @@ import type {
   LocalSttOpenPathResponse,
   LocalSttRuntimeStateResponse,
   LocalSttWarmupResponse,
+  NativeCapturedAudio,
+  MaxTokensBoundsResponse,
+  NativeCaptureInfo,
   OllamaPullResponse,
   OllamaStatusResponse,
   PiperValidationResponse,
   ProviderModelsResponse,
   RecordingsStats,
   RuntimeSetupResponse,
+  SttTimeoutBoundsResponse,
+  TemperatureBoundsResponse,
   TtsSetupStatusResponse,
   VoiceInstallResponse,
 } from "../types";
@@ -68,6 +74,47 @@ export function checkForAppUpdate(): Promise<AppUpdateCheckResponse> {
 
 export function downloadAndInstallAppUpdate(request: InstallAppUpdateRequest): Promise<void> {
   return invoke(IPC_COMMANDS.downloadAndInstallAppUpdate, { request });
+}
+
+// ===== Audio files =====
+
+/** Path parked by Explorer's transcribe verb during a cold start. */
+export function takePendingTranscribeFile(): Promise<string | null> {
+  return invoke<string | null>(IPC_COMMANDS.takePendingTranscribeFile);
+}
+
+export function readAudioFileBase64(path: string): Promise<AudioFilePayload> {
+  return invoke<AudioFilePayload>(IPC_COMMANDS.readAudioFileBase64, { path });
+}
+
+// ===== Native capture =====
+
+export function startNativeCapture(deviceId: string): Promise<NativeCaptureInfo> {
+  return invoke<NativeCaptureInfo>(IPC_COMMANDS.startNativeCapture, {
+    deviceId: deviceId || null,
+  });
+}
+
+export function stopNativeCapture(): Promise<NativeCapturedAudio> {
+  return invoke<NativeCapturedAudio>(IPC_COMMANDS.stopNativeCapture);
+}
+
+export function cancelNativeCapture(): Promise<void> {
+  return invoke(IPC_COMMANDS.cancelNativeCapture);
+}
+
+export function nativeCaptureLevel(): Promise<number> {
+  return invoke<number>(IPC_COMMANDS.nativeCaptureLevel);
+}
+
+// ===== Shell integration =====
+
+export function configureShellIntegration(enabled: boolean): Promise<void> {
+  return invoke(IPC_COMMANDS.configureShellIntegration, { enabled });
+}
+
+export function shellIntegrationStatus(): Promise<boolean> {
+  return invoke<boolean>(IPC_COMMANDS.shellIntegrationStatus);
 }
 
 // ===== Settings =====
@@ -151,6 +198,18 @@ export function launchAtLoginStatus(): Promise<{
 
 export function logClientEvent(message: string): Promise<void> {
   return invoke(IPC_COMMANDS.logClientEvent, { message });
+}
+
+export function sttTimeoutBounds(): Promise<SttTimeoutBoundsResponse> {
+  return invoke(IPC_COMMANDS.sttTimeoutBounds);
+}
+
+export function maxTokensBounds(): Promise<MaxTokensBoundsResponse> {
+  return invoke(IPC_COMMANDS.maxTokensBounds);
+}
+
+export function temperatureBounds(): Promise<TemperatureBoundsResponse> {
+  return invoke(IPC_COMMANDS.temperatureBounds);
 }
 
 // ===== Providers / Ollama =====

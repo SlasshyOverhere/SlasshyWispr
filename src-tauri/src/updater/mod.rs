@@ -132,9 +132,9 @@ pub fn windows_installer_score(name: &str, release_version: &str) -> i32 {
 }
 
 /// Select the best Windows installer asset from a GitHub release.
-pub fn select_windows_installer_asset<'a>(
-    release: &'a GithubLatestReleaseResponse,
-) -> Option<&'a GithubReleaseAsset> {
+pub fn select_windows_installer_asset(
+    release: &GithubLatestReleaseResponse,
+) -> Option<&GithubReleaseAsset> {
     release
         .assets
         .iter()
@@ -148,9 +148,9 @@ pub fn select_windows_installer_asset<'a>(
 }
 
 /// Select the latest stable (non-draft, non-prerelease) release from a list.
-pub fn select_latest_stable_release<'a>(
-    releases: &'a [GithubLatestReleaseResponse],
-) -> Option<&'a GithubLatestReleaseResponse> {
+pub fn select_latest_stable_release(
+    releases: &[GithubLatestReleaseResponse],
+) -> Option<&GithubLatestReleaseResponse> {
     releases
         .iter()
         .find(|release| !release.draft && !release.prerelease)
@@ -245,9 +245,7 @@ pub fn sanitize_installer_file_name(name: &str) -> Option<String> {
         return None;
     }
 
-    if windows_installer_kind_from_name(&sanitized).is_none() {
-        return None;
-    }
+    windows_installer_kind_from_name(&sanitized)?;
 
     Some(sanitized)
 }
@@ -316,13 +314,93 @@ pub fn resolve_update_repository() -> (String, String) {
     )
 }
 
-/// Minisign-style pubkey verify stub (F-001). Returns Ok(()) ONLY when a real
-/// signature check passes. Until a signing key ships, every non-empty payload
-/// fails closed: no installer executes on a verify bypass.
-/// ponytail: replace the body with ed25519 verify (e.g. `ed25519-dalek`)
-/// against a baked-in pubkey + `.minisig` sidecar; ceiling = real sig verify.
-pub fn verify_installer_signature(_installer_bytes: &[u8], _signature: &str) -> Result<(), String> {
-    Err("installer signature verification is not yet provisioned: refusing to execute".to_string())
+/// Resolve the minisign public key trusted to sign release installers.
+/// Debug builds honor the env override for local testing; release builds pin
+/// the compiled constant so a planted env var cannot swap the trusted key.
+pub fn resolve_update_signing_pubkey() -> String {
+    if cfg!(debug_assertions) {
+        if let Ok(value) = std::env::var(UPDATE_SIGNING_PUBKEY_ENV) {
+            let trimmed = value.trim().to_string();
+            if !trimmed.is_empty() {
+                return trimmed;
+            }
+        }
+    }
+    UPDATE_SIGNING_PUBKEY.trim().to_string()
+}
+
+/// Signature sidecar URLs for an installer download URL, in preference order.
+/// GitHub release assets are addressed by filename suffix, so appending is
+/// both sufficient and safe — the URL still has to pass `is_safe_update_url`.
+pub fn signature_download_url_candidates(installer_download_url: &str) -> [String; 2] {
+    [
+        format!("{installer_download_url}.minisig"),
+        format!("{installer_download_url}.sig"),
+    ]
+}
+
+/// Candidate signature sidecar names for an installer, in preference order.
+pub fn installer_signature_asset_candidates(installer_name: &str) -> [String; 2] {
+    [
+        format!("{installer_name}.minisig"),
+        format!("{installer_name}.sig"),
+    ]
+}
+
+/// Find the signature sidecar published next to an installer asset.
+pub fn select_installer_signature_asset<'a>(
+    release: &'a GithubLatestReleaseResponse,
+    installer_name: &str,
+) -> Option<&'a GithubReleaseAsset> {
+    installer_signature_asset_candidates(installer_name)
+        .iter()
+        .find_map(|candidate| {
+            release
+                .assets
+                .iter()
+                .find(|asset| asset.name.eq_ignore_ascii_case(candidate))
+        })
+}
+
+/// Verify the minisign signature published alongside a release installer (F-001).
+///
+/// Fails closed: with no trusted pubkey provisioned, or no signature published,
+/// the installer is refused rather than executed unverified. Prehashed (`ED`)
+/// signatures are required, matching modern minisign output.
+pub fn verify_installer_signature(installer_bytes: &[u8], signature: &str) -> Result<(), String> {
+    verify_installer_signature_with_pubkey(
+        installer_bytes,
+        signature,
+        &resolve_update_signing_pubkey(),
+    )
+}
+
+fn verify_installer_signature_with_pubkey(
+    installer_bytes: &[u8],
+    signature: &str,
+    pubkey_b64: &str,
+) -> Result<(), String> {
+    if pubkey_b64.trim().is_empty() {
+        return Err(
+            "installer signature verification is not provisioned: refusing to execute".to_string(),
+        );
+    }
+
+    if signature.trim().is_empty() {
+        return Err("release published no installer signature: refusing to execute".to_string());
+    }
+
+    let public_key = minisign_verify::PublicKey::from_base64(pubkey_b64.trim())
+        .map_err(|error| format!("invalid update signing public key: {error}"))?;
+    let decoded = minisign_verify::Signature::decode(signature)
+        .map_err(|error| format!("malformed installer signature: {error}"))?;
+
+    public_key
+        .verify(installer_bytes, &decoded, false)
+        .map_err(|error| match error {
+            minisign_verify::Error::UnexpectedAlgorithm => "installer signature verification failed: legacy non-prehashed signature; re-sign with a current minisign".to_string(),
+            other => format!("installer signature verification failed: {other}"),
+        })
 }
 
 /// Whether the given URL is a safe update download from the trusted repository.
@@ -461,10 +539,142 @@ mod tests {
         }
     }
 
+    // ===== Installer signature verification (F-001) =====
+    //
+    // Fixture pair generated from a test-only Ed25519 key (seed = 0..32,
+    // key id 1122334455667788). It exists to prove a real signature verifies
+    // and that tampering does not — it signs nothing in production.
+
+    const TEST_UPDATE_PUBKEY: &str = "RWQRIjNEVWZ3iAOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4";
+    const TEST_INSTALLER_SIGNATURE: &str = "untrusted comment: signature from minisign secret key\nRUQRIjNEVWZ3iFe2gX+qPsTw+2IciTA9bYsjZAxwkkkTFGvCi2dzbARyy2Dt0+8Tgh1RdCav1niWPRSy7xoyLeXEypGpQWKCZQA=\ntrusted comment: timestamp:1700000000\tfile:SlasshyWispr-setup.exe\tprehashed\nP2ZqCqaevHC3LxRnZsijouM7wPFC5ePpC2iGogLhEP2dmQAvkOsuj0EvqARjJd/+TmPwRr3mdIupno3OHMtlDQ==";
+
+    /// The exact 64 bytes signed by [`TEST_INSTALLER_SIGNATURE`].
+    fn signed_installer_bytes() -> Vec<u8> {
+        let mut bytes = vec![0_u8; 64];
+        bytes[0] = b'M';
+        bytes[1] = b'Z';
+        bytes
+    }
+
     #[test]
-    fn installer_signature_stub_fails_closed() {
-        let err = verify_installer_signature(b"MZ-fake", "").expect_err("stub must fail closed");
-        assert!(err.contains("refusing"), "{err}");
+    fn refuses_installer_when_signing_key_not_provisioned() {
+        let error = verify_installer_signature_with_pubkey(
+            &signed_installer_bytes(),
+            TEST_INSTALLER_SIGNATURE,
+            "",
+        )
+        .expect_err("unprovisioned key must fail closed");
+        assert!(error.contains("refusing"), "{error}");
+    }
+
+    #[test]
+    fn refuses_installer_when_release_publishes_no_signature() {
+        let error = verify_installer_signature_with_pubkey(
+            &signed_installer_bytes(),
+            "",
+            TEST_UPDATE_PUBKEY,
+        )
+        .expect_err("missing signature must fail closed");
+        assert!(error.contains("no installer signature"), "{error}");
+    }
+
+    #[test]
+    fn accepts_validly_signed_installer() {
+        verify_installer_signature_with_pubkey(
+            &signed_installer_bytes(),
+            TEST_INSTALLER_SIGNATURE,
+            TEST_UPDATE_PUBKEY,
+        )
+        .expect("a correctly signed installer must verify");
+    }
+
+    #[test]
+    fn rejects_tampered_installer() {
+        let mut tampered = signed_installer_bytes();
+        tampered[0] = b'X';
+        let error = verify_installer_signature_with_pubkey(
+            &tampered,
+            TEST_INSTALLER_SIGNATURE,
+            TEST_UPDATE_PUBKEY,
+        )
+        .expect_err("tampered bytes must not verify");
+        assert!(error.contains("verification failed"), "{error}");
+    }
+
+    #[test]
+    fn rejects_signature_from_a_different_key() {
+        // Same key id, different key material, so the key-id check alone must
+        // not be what rejects a foreign signature.
+        let mut foreign = TEST_UPDATE_PUBKEY.to_string();
+        foreign.pop();
+        foreign.push('A');
+        verify_installer_signature_with_pubkey(
+            &signed_installer_bytes(),
+            TEST_INSTALLER_SIGNATURE,
+            &foreign,
+        )
+        .expect_err("foreign signature must not verify");
+    }
+
+    #[test]
+    fn rejects_malformed_signature() {
+        let error = verify_installer_signature_with_pubkey(
+            &signed_installer_bytes(),
+            "not a minisign signature",
+            TEST_UPDATE_PUBKEY,
+        )
+        .expect_err("malformed signature must fail");
+        assert!(error.contains("malformed"), "{error}");
+    }
+
+    #[test]
+    fn signature_download_urls_append_sidecar_suffix() {
+        let candidates =
+            signature_download_url_candidates("https://github.com/o/r/releases/download/v1/s.exe");
+        assert_eq!(
+            candidates[0],
+            "https://github.com/o/r/releases/download/v1/s.exe.minisig"
+        );
+        assert_eq!(
+            candidates[1],
+            "https://github.com/o/r/releases/download/v1/s.exe.sig"
+        );
+    }
+
+    #[test]
+    fn signature_asset_candidates_prefer_minisig() {
+        let candidates = installer_signature_asset_candidates("setup.exe");
+        assert_eq!(candidates[0], "setup.exe.minisig");
+        assert_eq!(candidates[1], "setup.exe.sig");
+    }
+
+    #[test]
+    fn selects_minisig_sidecar_next_to_installer() {
+        let installer = "SlasshyWispr_1.0.0_x64-setup.exe";
+        let release = GithubLatestReleaseResponse {
+            tag_name: "v1.0.0".to_string(),
+            name: None,
+            body: None,
+            draft: false,
+            prerelease: false,
+            published_at: None,
+            html_url: None,
+            assets: vec![
+                GithubReleaseAsset {
+                    name: installer.to_string(),
+                    browser_download_url: "https://example.com/setup.exe".to_string(),
+                },
+                GithubReleaseAsset {
+                    name: format!("{installer}.minisig"),
+                    browser_download_url: "https://example.com/setup.exe.minisig".to_string(),
+                },
+            ],
+        };
+
+        let selected = select_installer_signature_asset(&release, installer)
+            .expect("sidecar must be discovered");
+        assert_eq!(selected.name, format!("{installer}.minisig"));
+        assert!(select_installer_signature_asset(&release, "other.exe").is_none());
     }
 
     // ===== Version comparison =====
@@ -890,7 +1100,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let msi_path = temp_dir.path().join("package.msi");
         const MSI_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
-        std::fs::write(&msi_path, &MSI_MAGIC).expect("write msi");
+        std::fs::write(&msi_path, MSI_MAGIC).expect("write msi");
         assert!(validate_downloaded_installer_file(&msi_path, WindowsInstallerKind::Msi).is_ok());
 
         let bad_path = temp_dir.path().join("bad.msi");

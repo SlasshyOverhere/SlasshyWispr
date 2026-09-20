@@ -12,6 +12,9 @@ export const IPC_COMMANDS = {
   // Settings
   loadPersistedLocalSettings: "load_persisted_local_settings",
   savePersistedLocalSettings: "save_persisted_local_settings",
+  sttTimeoutBounds: "stt_timeout_bounds",
+  maxTokensBounds: "max_tokens_bounds",
+  temperatureBounds: "temperature_bounds",
   // Recordings
   listDictationRecordingIds: "list_dictation_recording_ids",
   listDictationRecordingsStats: "list_dictation_recordings_stats",
@@ -58,6 +61,17 @@ export const IPC_COMMANDS = {
   runAssistantPipeline: "run_assistant_pipeline",
   // Windows
   toggleMainWindowVisibility: "toggle_main_window_visibility",
+  // Shell integration
+  configureShellIntegration: "configure_shell_integration",
+  shellIntegrationStatus: "shell_integration_status",
+  // Audio files
+  takePendingTranscribeFile: "take_pending_transcribe_file",
+  readAudioFileBase64: "read_audio_file_base64",
+  // Native capture
+  startNativeCapture: "start_native_capture",
+  stopNativeCapture: "stop_native_capture",
+  cancelNativeCapture: "cancel_native_capture",
+  nativeCaptureLevel: "native_capture_level",
 } as const;
 
 export type IpcCommandName = (typeof IPC_COMMANDS)[keyof typeof IPC_COMMANDS];

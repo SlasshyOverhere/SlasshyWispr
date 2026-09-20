@@ -209,6 +209,74 @@ describe("runPipeline local-STT gating", () => {
   });
 });
 
+describe("runPipeline capture-gate release", () => {
+  it("marks idle and clears pipeline-running before the paste tail settles", async () => {
+    const order: string[] = [];
+    let runningAtPasteTime: boolean | null = null;
+    const { initPipelineClient: initClient, runPipeline: run } = await import("./pipeline-client");
+    const settings = {
+      ...makeDefaultSettings(),
+      sttRuntimeMode: "online" as const,
+      aiRuntimeMode: "online" as const,
+      apiKey: "test-key",
+      autoPasteDictation: true,
+      copyToClipboard: true,
+    };
+
+    initClient(
+      { localSttModelInput: fakeElement(), localSttModelCatalogSelect: fakeElement() },
+      {
+        readSettings: () => settings,
+        getStage: () => "processing",
+        markIdle: () => {
+          order.push("markIdle");
+        },
+        transition: () => {},
+        syncAvailability: () => {},
+        setPipelineRunning: (running: boolean) => {
+          order.push(`pipelineRunning=${running}`);
+        },
+        notify: () => {},
+        log: () => {},
+        getLocalSttCatalog: () => [],
+        commitFormSettings: () => {},
+        checkModelFileExists: async () => true,
+        localSttModelLabel: (model) => model,
+        refreshLocalSttRuntimeState: async () => {},
+        warmupActiveLocalSttModel: async () => null,
+        isSelectedLocalSttModelLoaded: () => true,
+        getLocalSttRuntimeLoaded: () => true,
+        getLastWarmedLocalSttModel: () => "",
+        setLastWarmedLocalSttModel: () => {},
+        ensureLocalOllamaModelSelected: async () => "",
+        getDictionaryTerms: () => [],
+        getSnippets: () => [],
+        nextSelectionPopupToken: () => 1,
+        dismissSelectionPopup: async () => {},
+        showSelectionAssistantPopup: async () => false,
+        triggerAutoPaste: async () => {
+          runningAtPasteTime = order.includes("pipelineRunning=false");
+          order.push("paste");
+          return true;
+        },
+        copyToClipboard: async () => true,
+        openSettings: () => {},
+        setActiveSettingsPane: () => {},
+        refreshAssistantInfo: async () => {
+          order.push("refresh");
+        },
+      },
+    );
+
+    invokeResult = fakeResponse({ mode: "dictation" });
+    await run(new Blob(["hello-audio"]), "audio/webm");
+
+    expect(runningAtPasteTime).toBe(true);
+    expect(order.indexOf("markIdle")).toBeLessThan(order.indexOf("paste"));
+    expect(order.indexOf("pipelineRunning=false")).toBeLessThan(order.indexOf("paste"));
+  });
+});
+
 describe("runPipeline invoke shape", () => {
   it("sends the camelCase contract with prompt and command flags", async () => {
     wireHarness({ sttMode: "online", response: fakeResponse({ mode: "assistant" }) });

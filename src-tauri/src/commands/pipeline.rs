@@ -41,8 +41,8 @@ use crate::pipeline::tts::{
 use crate::pipeline::wake::extract_wake_command;
 use crate::services::pipeline_service::resolve_pipeline_mode;
 use crate::services::{
-    resolve_piper_assets, sync_orchestrator_pending_rewrite_to_app_state, sync_selection_context,
-    transcribe_audio, transcribe_audio_local,
+    resolve_piper_assets, resolve_stt_timeout, sync_orchestrator_pending_rewrite_to_app_state,
+    sync_selection_context, transcribe_audio, transcribe_audio_local, SttRequest,
 };
 use crate::state::AppState;
 
@@ -61,6 +61,9 @@ pub(crate) struct AssistantPipelineRequest {
     pub(crate) piper_path: Option<String>,
     pub(crate) audio_base64: String,
     pub(crate) audio_mime_type: String,
+    /// Clamped by `resolve_stt_timeout`; the frontend's bound is a hint, not a
+    /// guarantee, since this arrives over IPC.
+    pub(crate) stt_timeout_seconds: Option<u64>,
     pub(crate) language: Option<String>,
     pub(crate) allowed_languages: Option<Vec<String>>,
     pub(crate) system_prompt: Option<String>,
@@ -104,6 +107,7 @@ pub(crate) struct SnippetEntryRequest {
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AssistantPipelineResponse {
+    /// Which stage handled the turn: "assistant" or "dictation".
     pub(crate) mode: String,
     pub(crate) selection_rewrite: bool,
     pub(crate) selection_pending: bool,
@@ -122,6 +126,51 @@ pub(crate) struct AssistantPipelineResponse {
     #[serde(flatten, default)]
     pub(crate) outcome: PipelineRunOutcome,
 }
+/// Bounds for the assistant's sampling temperature. The frontend renders these
+/// and the backend enforces them, so they are stated once, here.
+pub(crate) const TEMPERATURE_DEFAULT: f64 = 0.35;
+pub(crate) const TEMPERATURE_MIN: f64 = 0.0;
+pub(crate) const TEMPERATURE_MAX: f64 = 1.2;
+
+/// Clamp a user-set temperature to the range the settings pane offers. Above
+/// the maximum replies wander away from the dictation; at zero they stop
+/// varying at all.
+pub(crate) fn resolve_temperature(requested: Option<f32>) -> f32 {
+    let value = requested.map_or(TEMPERATURE_DEFAULT, f64::from);
+    value.clamp(TEMPERATURE_MIN, TEMPERATURE_MAX) as f32
+}
+
+/// Bounds for one assistant reply. The frontend renders these and the backend
+/// enforces them, so they are stated once, here.
+pub(crate) const MAX_TOKENS_DEFAULT: u32 = 320;
+pub(crate) const MAX_TOKENS_MIN: u32 = 64;
+pub(crate) const MAX_TOKENS_MAX: u32 = 1024;
+
+/// Clamp a user-set token ceiling. Below the minimum a reply is cut off
+/// mid-sentence; above the maximum one dictation can hold the pipeline open.
+pub(crate) fn resolve_max_tokens(requested: Option<u32>) -> u32 {
+    match requested {
+        Some(tokens) => tokens.clamp(MAX_TOKENS_MIN, MAX_TOKENS_MAX),
+        None => MAX_TOKENS_DEFAULT,
+    }
+}
+
+/// The prompt the AI stages run with, given whatever the frontend sent.
+///
+/// An absent or empty setting means "use the built-in prompt". The frontend
+/// ships no copy of it, so clearing the field cannot switch behaviour to some
+/// second text — this is the only definition of the default, and the only
+/// thing that changes if it is rewritten.
+fn resolve_system_prompt(requested: Option<&str>) -> &str {
+    match requested.map(str::trim).filter(|prompt| !prompt.is_empty()) {
+        Some(prompt) => prompt,
+        None => {
+            info!("[pipeline] no system prompt set — using the built-in one");
+            DEFAULT_SYSTEM_PROMPT
+        }
+    }
+}
+
 #[tauri::command]
 pub(crate) async fn run_assistant_pipeline(
     app: AppHandle,
@@ -207,14 +256,15 @@ pub(crate) async fn run_assistant_pipeline(
     };
 
     info!(
-        "[pipeline] start mode={} engine={} audio_bytes={} mime={} stt_base_url={} stt_model={} ai_model={}",
+        "[pipeline] start mode={} engine={} audio_bytes={} mime={} stt_base_url={} stt_model={} ai_model={} stt_timeout_seconds={}",
         pipeline_label,
         if use_coqui { "coqui" } else { "piper" },
         audio_bytes.len(),
         request.audio_mime_type,
         clip_text(&stt_base_url_for_log, 180),
         clip_text(&stt_model_for_log, 120),
-        clip_text(&ai_model_for_log, 120)
+        clip_text(&ai_model_for_log, 120),
+        resolve_stt_timeout(request.stt_timeout_seconds).as_secs()
     );
 
     let overall_start = Instant::now();
@@ -234,12 +284,11 @@ pub(crate) async fn run_assistant_pipeline(
         } => {
             transcribe_audio(
                 &state.http,
-                api_key,
-                api_base_url,
-                stt_model,
-                &audio_bytes,
-                request.audio_mime_type.trim(),
-                request.language.as_deref(),
+                SttRequest::new(api_base_url, stt_model, &audio_bytes, "online")
+                    .api_key(Some(api_key.as_str()))
+                    .audio_mime_type(request.audio_mime_type.trim())
+                    .language(request.language.as_deref())
+                    .timeout(resolve_stt_timeout(request.stt_timeout_seconds)),
                 request.allowed_languages.as_deref(),
             )
             .await?
@@ -452,14 +501,9 @@ pub(crate) async fn run_assistant_pipeline(
         selected_chars
     );
     // --- Delegate decision logic to the orchestrator ---
-    let system_prompt = request
-        .system_prompt
-        .as_deref()
-        .map(str::trim)
-        .filter(|prompt| !prompt.is_empty())
-        .unwrap_or(DEFAULT_SYSTEM_PROMPT);
-    let temperature = request.temperature.unwrap_or(0.35).clamp(0.0, 1.2);
-    let max_tokens = request.max_tokens.unwrap_or(320).clamp(64, 1024);
+    let system_prompt = resolve_system_prompt(request.system_prompt.as_deref());
+    let temperature = resolve_temperature(request.temperature);
+    let max_tokens = resolve_max_tokens(request.max_tokens);
 
     let orch_state = crate::pipeline::orchestration::PipelineState::new();
     // Seed orchestrator state with any existing pending rewrite
@@ -642,7 +686,7 @@ pub(crate) async fn run_assistant_pipeline(
                 &instruction,
                 &selected_text,
                 &orch_state,
-                &assistant_name,
+                assistant_name,
             );
             assistant_response = edit_result.assistant_response;
             selection_rewrite = edit_result.selection_rewrite;
@@ -795,6 +839,29 @@ mod tests {
     use crate::pipeline::tts::PiperPipelineRequest;
 
     #[test]
+    fn an_absent_or_blank_system_prompt_falls_back_to_the_built_in_one() {
+        assert_eq!(resolve_system_prompt(None), DEFAULT_SYSTEM_PROMPT);
+        assert_eq!(resolve_system_prompt(Some("")), DEFAULT_SYSTEM_PROMPT);
+        assert_eq!(
+            resolve_system_prompt(Some("  \n\t ")),
+            DEFAULT_SYSTEM_PROMPT
+        );
+    }
+
+    #[test]
+    fn a_custom_system_prompt_is_used_trimmed() {
+        assert_eq!(resolve_system_prompt(Some("  Be terse.  ")), "Be terse.");
+    }
+
+    #[test]
+    fn the_built_in_prompt_explains_what_the_ai_stage_should_do() {
+        // Nothing on the frontend repeats these, so losing them would quietly
+        // change how a transcript is refined rather than fail anything.
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("cleanup"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("Output only final content"));
+    }
+
+    #[test]
     fn ipc_request_serializes_with_camel_case() {
         let request = AssistantPipelineRequest {
             api_key: "sk-test".to_string(),
@@ -809,6 +876,7 @@ mod tests {
             piper_path: Some("/path/to/piper".to_string()),
             audio_base64: "dGVzdA==".to_string(),
             audio_mime_type: "audio/wav".to_string(),
+            stt_timeout_seconds: None,
             language: Some("en".to_string()),
             allowed_languages: Some(vec!["en".to_string(), "es".to_string()]),
             system_prompt: Some("You are helpful.".to_string()),
@@ -988,6 +1056,7 @@ mod tests {
             piper_path: None,
             audio_base64: String::new(),
             audio_mime_type: String::new(),
+            stt_timeout_seconds: None,
             language: None,
             allowed_languages: None,
             system_prompt: None,
@@ -1100,6 +1169,30 @@ mod tests {
     }
 
     #[test]
+    fn ipc_stt_timeout_deserializes_and_is_clamped_at_the_boundary() {
+        let request: AssistantPipelineRequest = serde_json::from_str(
+            r#"{"apiKey":"k","audioBase64":"","audioMimeType":"audio/wav","sttTimeoutSeconds":15}"#,
+        )
+        .expect("should deserialize a stt timeout");
+        assert_eq!(request.stt_timeout_seconds, Some(15));
+        assert_eq!(
+            resolve_stt_timeout(request.stt_timeout_seconds),
+            std::time::Duration::from_secs(15)
+        );
+
+        // The frontend's bound is a hint; this arrives over IPC, so an
+        // out-of-range value is clamped rather than trusted.
+        let hostile: AssistantPipelineRequest = serde_json::from_str(
+            r#"{"apiKey":"k","audioBase64":"","audioMimeType":"audio/wav","sttTimeoutSeconds":999999}"#,
+        )
+        .expect("should deserialize an out-of-range stt timeout");
+        assert_eq!(
+            resolve_stt_timeout(hostile.stt_timeout_seconds),
+            std::time::Duration::from_secs(600)
+        );
+    }
+
+    #[test]
     fn ipc_nested_entry_requests_serialize_correctly() {
         let request = AssistantPipelineRequest {
             api_key: "key".to_string(),
@@ -1114,6 +1207,7 @@ mod tests {
             piper_path: None,
             audio_base64: String::new(),
             audio_mime_type: "audio/wav".to_string(),
+            stt_timeout_seconds: None,
             language: None,
             allowed_languages: None,
             system_prompt: None,
@@ -1214,6 +1308,7 @@ mod tests {
         assert!(request.local_stt_model.is_none());
         assert!(request.temperature.is_none());
         assert!(request.max_tokens.is_none());
+        assert!(request.stt_timeout_seconds.is_none());
         assert!(request.system_prompt.is_none());
         assert!(request.dictionary_entries.is_none());
         assert!(request.piper.is_none());

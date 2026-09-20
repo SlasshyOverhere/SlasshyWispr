@@ -345,8 +345,8 @@ async fn ensure_piper_binary_in(runtime_dir: PathBuf, client: &Client) -> Result
         extract_zip_archive(&archive_path, &runtime_dir)?;
         let _ = fs::remove_file(&archive_path);
 
-        return find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)?
-            .ok_or_else(|| "Piper archive was extracted but piper.exe was not found".to_string());
+        find_file_by_name(&runtime_dir, PIPER_BINARY_NAME)?
+            .ok_or_else(|| "Piper archive was extracted but piper.exe was not found".to_string())
     }
 
     #[cfg(not(target_os = "windows"))]

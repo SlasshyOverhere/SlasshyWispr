@@ -36,8 +36,9 @@ use crate::updater::{
     exe_installer_supports_silent_mode, extract_version_from_download_url, is_newer_version,
     is_safe_update_url, normalize_release_version, resolve_installer_file_name,
     resolve_update_repository, select_latest_stable_release, select_windows_installer_asset,
-    validate_downloaded_installer_file, verify_installer_signature,
-    windows_installer_kind_from_name, GithubLatestReleaseResponse, WindowsInstallerKind,
+    signature_download_url_candidates, validate_downloaded_installer_file,
+    verify_installer_signature, windows_installer_kind_from_name, GithubLatestReleaseResponse,
+    WindowsInstallerKind,
 };
 
 #[derive(Debug, Serialize)]
@@ -263,6 +264,46 @@ Consider setting {UPDATE_GITHUB_TOKEN_ENV} for a higher limit."
 }
 
 // is_safe_update_url has been moved to updater::
+
+/// Fetch the minisign sidecar published next to an installer asset.
+/// Tries `.minisig` then `.sig`, and reports why every candidate failed so a
+/// missing sidecar is distinguishable from a network error.
+async fn fetch_installer_signature(
+    client: &reqwest::Client,
+    installer_download_url: &str,
+) -> Result<String, String> {
+    let mut last_error = "release published no installer signature sidecar".to_string();
+
+    for candidate in signature_download_url_candidates(installer_download_url) {
+        if !is_safe_update_url(&candidate) {
+            continue;
+        }
+
+        let response = match client
+            .get(&candidate)
+            .header(USER_AGENT, UPDATE_HTTP_USER_AGENT)
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                last_error = format!("failed to download installer signature: {error}");
+                continue;
+            }
+        };
+
+        if !response.status().is_success() {
+            continue;
+        }
+
+        let text = response.text().await.unwrap_or_default();
+        if !text.trim().is_empty() {
+            return Ok(text);
+        }
+    }
+
+    Err(last_error)
+}
 
 #[tauri::command]
 pub(crate) async fn download_and_install_app_update(
@@ -542,33 +583,28 @@ pub(crate) async fn download_and_install_app_update(
         // Verify SHA256 if manifest hash was provided
         let computed_hash = format!("{:x}", hasher.finalize());
         if let Some(ref expected) = request.expected_sha256 {
-            if !expected.is_empty() {
-                if !computed_hash.eq_ignore_ascii_case(expected) {
-                    let message = format!(
-                        "Installer SHA256 mismatch (expected={expected} computed={computed_hash})"
-                    );
-                    emit_update_install_progress(
-                        &app,
-                        "error",
-                        &message,
-                        downloaded_bytes,
-                        total_bytes.max(downloaded_bytes),
-                        true,
-                        false,
-                    );
-                    let _ = fs::remove_file(&installer_path);
-                    return Err(message);
-                }
+            if !expected.is_empty() && !computed_hash.eq_ignore_ascii_case(expected) {
+                let message = format!(
+                    "Installer SHA256 mismatch (expected={expected} computed={computed_hash})"
+                );
+                emit_update_install_progress(
+                    &app,
+                    "error",
+                    &message,
+                    downloaded_bytes,
+                    total_bytes.max(downloaded_bytes),
+                    true,
+                    false,
+                );
+                let _ = fs::remove_file(&installer_path);
+                return Err(message);
             }
         }
         // Enforce SHA256: fail if hash is missing (None or empty) when asset is known
         let hash_missing =
             request.expected_sha256.is_none() || request.expected_sha256.as_deref() == Some("");
         if hash_missing {
-            let has_asset = request
-                .asset_name
-                .as_deref()
-                .map_or(false, |n| !n.is_empty());
+            let has_asset = request.asset_name.as_deref().is_some_and(|n| !n.is_empty());
             if has_asset {
                 let message =
                     "Update installer manifest is missing SHA256 hash. Cannot verify installer integrity.".to_string();
@@ -620,8 +656,8 @@ pub(crate) async fn download_and_install_app_update(
             return Err(error);
         }
 
-        // Signature gate: no exec until verify passes. Currently fails closed
-        // (see verify_installer_signature stub); remove_file + error below.
+        // Signature gate (F-001): the installer must carry a valid minisign
+        // signature published next to it, or it is never executed.
         let installer_bytes = fs::read(&installer_path).map_err(|error| {
             let message = format!("Failed to read installer for signature check: {error}");
             emit_update_install_progress(
@@ -635,7 +671,24 @@ pub(crate) async fn download_and_install_app_update(
             );
             message
         })?;
-        if let Err(error) = verify_installer_signature(&installer_bytes, "") {
+        let signature_text = match fetch_installer_signature(&state.http, download_url).await {
+            Ok(text) => text,
+            Err(error) => {
+                let message = format!("Installer signature check failed: {error}");
+                emit_update_install_progress(
+                    &app,
+                    "error",
+                    &message,
+                    downloaded_bytes,
+                    total_bytes.max(downloaded_bytes),
+                    true,
+                    false,
+                );
+                let _ = fs::remove_file(&installer_path);
+                return Err(message);
+            }
+        };
+        if let Err(error) = verify_installer_signature(&installer_bytes, &signature_text) {
             let message = format!("Installer signature check failed: {error}");
             emit_update_install_progress(
                 &app,
@@ -771,7 +824,7 @@ pub(crate) async fn download_and_install_app_update(
             std::thread::sleep(Duration::from_millis(1000));
             app_for_exit.exit(0);
         });
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]

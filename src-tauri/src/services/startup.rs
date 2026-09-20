@@ -167,7 +167,6 @@ pub(crate) fn start_local_stt_boot_warmup(app: AppHandle) {
 
 /// Thin adapter that converts an IPC request into a pure routing input
 /// and delegates to `pipeline::routing::resolve_pipeline_mode`.
-
 pub(crate) fn read_launch_at_login_preference(app: &AppHandle) -> bool {
     let path = match crate::services::settings_store::persisted_settings_path(app) {
         Ok(p) => p,
@@ -220,17 +219,17 @@ mod launch_at_login_preference_tests {
 
     #[test]
     fn defaults_to_true_when_missing() {
-        assert_eq!(preference_from_json("{}"), true);
+        assert!(preference_from_json("{}"));
     }
 
     #[test]
     fn reflects_explicit_false() {
-        assert_eq!(preference_from_json(r#"{"launchAtLogin": false}"#), false);
+        assert!(!preference_from_json(r#"{"launchAtLogin": false}"#));
     }
 
     #[test]
     fn reflects_explicit_true() {
-        assert_eq!(preference_from_json(r#"{"launchAtLogin": true}"#), true);
+        assert!(preference_from_json(r#"{"launchAtLogin": true}"#));
     }
 
     #[test]
@@ -240,7 +239,7 @@ mod launch_at_login_preference_tests {
         // read_launch_at_login_preference expects settings.json to not exist.
         // Since we can't mock AppHandle easily here, verify the fallback at the
         // preference-extraction layer: a missing key defaults to true.
-        assert_eq!(preference_from_json("{}"), true);
+        assert!(preference_from_json("{}"));
         let _ = dir;
     }
 }

@@ -18,6 +18,7 @@ import type {
 } from "../types";
 import { newlyUnlockedAchievements } from "../analytics/analytics-service";
 import { formatHotkeyForDisplay } from "../hotkeys/hotkey-service";
+import { coerceInteger, coerceNumber } from "../state/settings-store";
 import {
   hydrateSettingsFromNativeStorage as hydrateSettingsFromNativeStoragePipeline,
   type SettingsHydrateDeps,
@@ -28,6 +29,9 @@ import {
   type SettingsHandleEffects,
 } from "./settings-handle";
 import { buildShortcutSyncSignature, summarizeSettingsForDiagnostics } from "./settings-signatures";
+import { maxTokensBounds } from "./max-tokens-bounds";
+import { sttTimeoutBounds } from "./stt-timeout-bounds";
+import { temperatureBounds } from "./temperature-bounds";
 import type { SettingsFormRefs } from "./settings-form-refs";
 import type { SettingsCoreDeps } from "./settings-wiring";
 
@@ -62,6 +66,7 @@ export interface SettingsChangeDeps {
   setCatalogSelects: (next: PersistedSettings, catalogs: SettingsCatalogs) => void;
   requestGlobalShortcutSync: () => void;
   requestLaunchAtLoginSync: (enabled: boolean) => void;
+  requestShellIntegrationSync: (enabled: boolean) => void;
   interruptTtsPlayback: () => void;
   notice: (message: string, isError?: boolean) => void;
   requestLocalSttRuntimeSyncForMode: (
@@ -140,6 +145,148 @@ export async function hydrateSettingsFromNativeStorage(): Promise<void> {
   }
 }
 
+/// A stored STT timeout that had to be moved back inside the backend's bounds.
+///
+/// Returned rather than announced so the caller decides how to surface it.
+export interface SttTimeoutCorrection {
+  previousSeconds: number;
+  seconds: number;
+  minSeconds: number;
+  maxSeconds: number;
+}
+
+export function describeSttTimeoutCorrection(correction: SttTimeoutCorrection): string {
+  return `Request Timeout ${correction.previousSeconds}s is outside the supported ${correction.minSeconds}-${correction.maxSeconds}s range; set to ${correction.seconds}s. Change it in Settings > Pipeline.`;
+}
+
+/// A stored token ceiling that had to be moved back inside the backend's bounds.
+export interface MaxTokensCorrection {
+  previousTokens: number;
+  tokens: number;
+  minTokens: number;
+  maxTokens: number;
+}
+
+export function describeMaxTokensCorrection(correction: MaxTokensCorrection): string {
+  return `Max Tokens ${correction.previousTokens} is outside the supported ${correction.minTokens}-${correction.maxTokens} range; set to ${correction.tokens}. Change it in Settings > Pipeline.`;
+}
+
+/// A stored temperature that had to be moved back inside the backend's bounds.
+export interface TemperatureCorrection {
+  previousTemperature: number;
+  temperature: number;
+  minTemperature: number;
+  maxTemperature: number;
+}
+
+export function describeTemperatureCorrection(correction: TemperatureCorrection): string {
+  return `Temperature ${correction.previousTemperature} is outside the supported ${correction.minTemperature}-${correction.maxTemperature} range; set to ${correction.temperature}. Change it in Settings > Pipeline.`;
+}
+
+/**
+ * Bring a stored STT timeout back inside the backend's bounds.
+ *
+ * Settings load before bootstrap can ask the backend for its bounds, so a value
+ * persisted under an older, wider range would otherwise stay on screen — and be
+ * silently clamped on every request — until the user next edited a field.
+ *
+ * Correcting persists the new value, so this fires at most once per stale value
+ * rather than on every launch.
+ */
+export function reconcileSttTimeoutWithBounds(): SttTimeoutCorrection | null {
+  const current = changeDeps.getSettings();
+  const { defaultSeconds, minSeconds, maxSeconds } = sttTimeoutBounds();
+  const reconciled = coerceInteger(
+    current.sttTimeoutSeconds,
+    defaultSeconds,
+    minSeconds,
+    maxSeconds,
+  );
+  if (reconciled === current.sttTimeoutSeconds) {
+    return null;
+  }
+
+  const next: PersistedSettings = { ...current, sttTimeoutSeconds: reconciled };
+  changeDeps.setSettings(next);
+  changeDeps.applySettingsToForm(changeDeps.getFormRefs(), changeCoreDeps, next);
+  changeDeps.commitSettingsSnapshot(next);
+  changeDeps.warn(
+    `[settings] stt timeout ${current.sttTimeoutSeconds}s was outside the backend bounds ${minSeconds}-${maxSeconds}s; corrected to ${reconciled}s`,
+  );
+  if (changeDeps.isTauri()) {
+    changeDeps.persist(next);
+  }
+  return {
+    previousSeconds: current.sttTimeoutSeconds,
+    seconds: reconciled,
+    minSeconds,
+    maxSeconds,
+  };
+}
+
+/// Same shape as the STT-timeout reconcile, and the same reason: the backend
+/// validator accepted up to 2.0 while the request path clamped to 1.2, so a
+/// stored value in between was accepted, displayed and then silently changed.
+export function reconcileTemperatureWithBounds(): TemperatureCorrection | null {
+  const current = changeDeps.getSettings();
+  const { defaultTemperature, minTemperature, maxTemperature } = temperatureBounds();
+  const reconciled = coerceNumber(
+    current.temperature,
+    defaultTemperature,
+    minTemperature,
+    maxTemperature,
+  );
+  if (reconciled === current.temperature) {
+    return null;
+  }
+
+  const next: PersistedSettings = { ...current, temperature: reconciled };
+  changeDeps.setSettings(next);
+  changeDeps.applySettingsToForm(changeDeps.getFormRefs(), changeCoreDeps, next);
+  changeDeps.commitSettingsSnapshot(next);
+  changeDeps.warn(
+    `[settings] temperature ${current.temperature} was outside the backend bounds ${minTemperature}-${maxTemperature}; corrected to ${reconciled}`,
+  );
+  if (changeDeps.isTauri()) {
+    changeDeps.persist(next);
+  }
+  return {
+    previousTemperature: current.temperature,
+    temperature: reconciled,
+    minTemperature,
+    maxTemperature,
+  };
+}
+
+/// Same shape as the STT-timeout reconcile, and the same reason: settings load
+/// before bootstrap can ask the backend for its bounds, so a value stored under
+/// an older, wider range would otherwise stay on screen and be clamped silently.
+export function reconcileMaxTokensWithBounds(): MaxTokensCorrection | null {
+  const current = changeDeps.getSettings();
+  const { defaultTokens, minTokens, maxTokens } = maxTokensBounds();
+  const reconciled = coerceInteger(current.maxTokens, defaultTokens, minTokens, maxTokens);
+  if (reconciled === current.maxTokens) {
+    return null;
+  }
+
+  const next: PersistedSettings = { ...current, maxTokens: reconciled };
+  changeDeps.setSettings(next);
+  changeDeps.applySettingsToForm(changeDeps.getFormRefs(), changeCoreDeps, next);
+  changeDeps.commitSettingsSnapshot(next);
+  changeDeps.warn(
+    `[settings] max tokens ${current.maxTokens} was outside the backend bounds ${minTokens}-${maxTokens}; corrected to ${reconciled}`,
+  );
+  if (changeDeps.isTauri()) {
+    changeDeps.persist(next);
+  }
+  return {
+    previousTokens: current.maxTokens,
+    tokens: reconciled,
+    minTokens,
+    maxTokens,
+  };
+}
+
 export async function handleSettingsChange(): Promise<void> {
   const previousSettings = { ...changeDeps.getSettings() };
 
@@ -188,6 +335,7 @@ export const settingsHandleEffects: SettingsHandleEffects = {
     const previousMicrophoneDeviceId = previous.microphoneDeviceId;
     const previousShowFlowBar = previous.showFlowBar;
     const previousLaunchAtLogin = previous.launchAtLogin;
+    const previousShellIntegration = previous.shellIntegration;
     const previousTtsEngine = previous.ttsEngine;
     const previousSttRuntimeMode = previous.sttRuntimeMode;
     const previousAiRuntimeMode = previous.aiRuntimeMode;
@@ -203,6 +351,9 @@ export const settingsHandleEffects: SettingsHandleEffects = {
     }
     if (previousLaunchAtLogin !== next.launchAtLogin) {
       changeDeps.requestLaunchAtLoginSync(next.launchAtLogin);
+    }
+    if (previousShellIntegration !== next.shellIntegration) {
+      changeDeps.requestShellIntegrationSync(next.shellIntegration);
     }
     if (previousTtsEngine !== next.ttsEngine) {
       changeDeps.interruptTtsPlayback();

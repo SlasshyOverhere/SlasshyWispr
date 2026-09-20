@@ -212,7 +212,7 @@ mod tests {
         let result = resample_mono_linear(&samples, 44100, 48000);
         assert!(!result.is_empty());
         // Should produce approximately one output sample
-        assert!(result.len() >= 1);
+        assert!(!result.is_empty());
     }
 
     // ===== resample_linear =====
@@ -235,7 +235,7 @@ mod tests {
         // 6 samples at 300Hz → ~2 samples at 100Hz (3x ratio)
         let samples = vec![0.0, 0.2, 0.4, 0.6, 0.8, 1.0];
         let result = resample_linear(&samples, 300, 100);
-        assert!(result.len() >= 1 && result.len() <= 3);
+        assert!(!result.is_empty() && result.len() <= 3);
     }
 
     // ===== decode_wav_audio_to_mono_f32 =====

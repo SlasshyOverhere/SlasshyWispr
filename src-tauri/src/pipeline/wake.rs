@@ -4,23 +4,41 @@
 //! phrases (with tolerant matching for misspellings, filler words, and
 //! phonetic variants) and extracts the trailing command. No Tauri, no
 //! AppState, no I/O.
+//!
+//! Matching is Unicode-aware: tokens are NFKD-folded and lowercased, edit
+//! distance is measured in chars, so accented and non-Latin assistant names
+//! match as well as ASCII ones.
 
-fn wake_name_tokens(raw_name: &str) -> Vec<String> {
-    raw_name
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .map(str::trim)
-        .filter(|token| !token.is_empty())
-        .map(|token| token.to_ascii_lowercase())
+use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
+
+/// Comparison form: NFKD, combining marks dropped, lowercased.
+fn fold_for_match(raw: &str) -> String {
+    raw.nfkd()
+        .filter(|character| !is_combining_mark(*character))
+        .flat_map(|character| character.to_lowercase())
         .collect()
 }
 
-fn skip_non_alphanumeric(input: &str, mut index: usize) -> usize {
+// Combining marks count as token chars so decomposed diacritics
+// ("cafe\u{301}") stay inside one token and fold away cleanly.
+fn is_token_char(character: char) -> bool {
+    character.is_alphanumeric() || is_combining_mark(character)
+}
+
+fn wake_name_tokens(raw_name: &str) -> Vec<String> {
+    fold_for_match(raw_name)
+        .split(|character: char| !is_token_char(character))
+        .filter(|token| !token.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn skip_non_token_chars(input: &str, mut index: usize) -> usize {
     while index < input.len() {
-        let mut iterator = input[index..].chars();
-        let Some(character) = iterator.next() else {
+        let Some(character) = input[index..].chars().next() else {
             break;
         };
-        if character.is_ascii_alphanumeric() {
+        if is_token_char(character) {
             break;
         }
         index += character.len_utf8();
@@ -28,50 +46,47 @@ fn skip_non_alphanumeric(input: &str, mut index: usize) -> usize {
     index
 }
 
-fn consume_next_ascii_token(input: &str, index: usize) -> Option<(String, usize)> {
-    let mut cursor = skip_non_alphanumeric(input, index);
-    if cursor >= input.len() {
-        return None;
-    }
-
-    let mut token = String::new();
-    while cursor < input.len() {
-        let mut iterator = input[cursor..].chars();
-        let current = iterator.next()?;
-        if !current.is_ascii_alphanumeric() {
-            break;
+fn consume_next_token(input: &str, index: usize) -> Option<(String, usize)> {
+    let mut cursor = index;
+    loop {
+        let start = skip_non_token_chars(input, cursor);
+        if start >= input.len() {
+            return None;
         }
-        token.push(current.to_ascii_lowercase());
-        cursor += current.len_utf8();
-    }
 
-    if token.is_empty() {
-        return None;
-    }
+        cursor = start;
+        while cursor < input.len() {
+            let current = input[cursor..].chars().next()?;
+            if !is_token_char(current) {
+                break;
+            }
+            cursor += current.len_utf8();
+        }
 
-    Some((token, cursor))
+        let folded = fold_for_match(&input[start..cursor]);
+        if !folded.is_empty() {
+            return Some((folded, cursor));
+        }
+        // Token was pure combining marks; keep scanning from `cursor`.
+    }
 }
 
-fn within_one_edit_ascii(a: &str, b: &str) -> bool {
-    if a.eq_ignore_ascii_case(b) {
+fn within_one_edit(a: &str, b: &str) -> bool {
+    if a == b {
         return true;
     }
 
-    let a = a.to_ascii_lowercase();
-    let b = b.to_ascii_lowercase();
-    let a_bytes = a.as_bytes();
-    let b_bytes = b.as_bytes();
-    let a_len = a_bytes.len();
-    let b_len = b_bytes.len();
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
 
-    if a_len.abs_diff(b_len) > 1 {
+    if a.len().abs_diff(b.len()) > 1 {
         return false;
     }
 
-    if a_len == b_len {
+    if a.len() == b.len() {
         let mut mismatches = 0usize;
-        for index in 0..a_len {
-            if a_bytes[index] != b_bytes[index] {
+        for (left, right) in a.iter().zip(b.iter()) {
+            if left != right {
                 mismatches += 1;
                 if mismatches > 1 {
                     return false;
@@ -81,10 +96,10 @@ fn within_one_edit_ascii(a: &str, b: &str) -> bool {
         return mismatches <= 1;
     }
 
-    let (shorter, longer) = if a_len < b_len {
-        (a_bytes, b_bytes)
+    let (shorter, longer) = if a.len() < b.len() {
+        (&a, &b)
     } else {
-        (b_bytes, a_bytes)
+        (&b, &a)
     };
 
     let mut short_index = 0usize;
@@ -106,29 +121,25 @@ fn within_one_edit_ascii(a: &str, b: &str) -> bool {
     true
 }
 
-fn within_n_edits_ascii(a: &str, b: &str, max_edits: usize) -> bool {
-    if a.eq_ignore_ascii_case(b) {
+fn within_n_edits(a: &str, b: &str, max_edits: usize) -> bool {
+    if a == b {
         return true;
     }
 
-    let a = a.to_ascii_lowercase();
-    let b = b.to_ascii_lowercase();
-    let a_bytes = a.as_bytes();
-    let b_bytes = b.as_bytes();
-    let a_len = a_bytes.len();
-    let b_len = b_bytes.len();
-    if a_len.abs_diff(b_len) > max_edits {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    if a.len().abs_diff(b.len()) > max_edits {
         return false;
     }
 
-    let mut previous: Vec<usize> = (0..=b_len).collect();
-    let mut current: Vec<usize> = vec![0; b_len + 1];
+    let mut previous: Vec<usize> = (0..=b.len()).collect();
+    let mut current: Vec<usize> = vec![0; b.len() + 1];
 
-    for (row_index, a_byte) in a_bytes.iter().enumerate() {
+    for (row_index, a_char) in a.iter().enumerate() {
         current[0] = row_index + 1;
         let mut row_min = current[0];
-        for (col_index, b_byte) in b_bytes.iter().enumerate() {
-            let substitution_cost = if a_byte == b_byte { 0 } else { 1 };
+        for (col_index, b_char) in b.iter().enumerate() {
+            let substitution_cost = if a_char == b_char { 0 } else { 1 };
             let deletion = previous[col_index + 1] + 1;
             let insertion = current[col_index] + 1;
             let substitution = previous[col_index] + substitution_cost;
@@ -142,57 +153,59 @@ fn within_n_edits_ascii(a: &str, b: &str, max_edits: usize) -> bool {
         std::mem::swap(&mut previous, &mut current);
     }
 
-    previous[b_len] <= max_edits
+    previous[b.len()] <= max_edits
 }
 
-fn ascii_consonant_signature(raw: &str) -> String {
+/// Consonant skeleton used for phonetic fallback matching.
+///
+/// Latin vowels are dropped (they carry little consonant signal); every other
+/// script keeps all its letters, since vowel stripping is not defined there.
+fn consonant_signature(raw: &str) -> String {
     let mut output = String::new();
     let mut last: Option<char> = None;
-    for character in raw.chars() {
-        if !character.is_ascii_alphabetic() {
+    for character in fold_for_match(raw).chars() {
+        if !character.is_alphabetic() {
             continue;
         }
-        let lowered = character.to_ascii_lowercase();
-        if matches!(lowered, 'a' | 'e' | 'i' | 'o' | 'u') {
+        if character.is_ascii() && matches!(character, 'a' | 'e' | 'i' | 'o' | 'u') {
             continue;
         }
-        if Some(lowered) == last {
+        if Some(character) == last {
             continue;
         }
-        output.push(lowered);
-        last = Some(lowered);
+        output.push(character);
+        last = Some(character);
     }
     output
 }
 
 fn assistant_name_token_matches(expected: &str, actual: &str) -> bool {
-    if expected.eq_ignore_ascii_case(actual) {
+    let expected = fold_for_match(expected);
+    let actual = fold_for_match(actual);
+
+    if expected == actual {
         return true;
     }
 
-    if expected.len() < 3 || actual.len() < 3 {
+    if expected.chars().count() < 3 || actual.chars().count() < 3 {
         return false;
     }
 
-    if within_one_edit_ascii(expected, actual) {
+    if within_one_edit(&expected, &actual) {
         return true;
     }
 
-    let expected_normalized = expected.to_ascii_lowercase();
-    let actual_normalized = actual.to_ascii_lowercase();
-    if expected_normalized.len() <= 5
-        && within_n_edits_ascii(&expected_normalized, &actual_normalized, 2)
-    {
+    if expected.chars().count() <= 5 && within_n_edits(&expected, &actual, 2) {
         return true;
     }
 
-    if let Some(tail) = actual_normalized.strip_prefix('h') {
-        if !tail.is_empty() && within_n_edits_ascii(&expected_normalized, tail, 2) {
+    if let Some(tail) = actual.strip_prefix('h') {
+        if !tail.is_empty() && within_n_edits(&expected, tail, 2) {
             return true;
         }
 
-        let expected_signature = ascii_consonant_signature(&expected_normalized);
-        let tail_signature = ascii_consonant_signature(tail);
+        let expected_signature = consonant_signature(&expected);
+        let tail_signature = consonant_signature(tail);
         if !expected_signature.is_empty() && !tail_signature.is_empty() {
             let starts_alike = expected_signature
                 .chars()
@@ -200,7 +213,7 @@ fn assistant_name_token_matches(expected: &str, actual: &str) -> bool {
                 .zip(tail_signature.chars().next())
                 .map(|(left, right)| left == right)
                 .unwrap_or(false);
-            if starts_alike && within_n_edits_ascii(&expected_signature, &tail_signature, 1) {
+            if starts_alike && within_n_edits(&expected_signature, &tail_signature, 1) {
                 return true;
             }
         }
@@ -210,7 +223,7 @@ fn assistant_name_token_matches(expected: &str, actual: &str) -> bool {
 }
 
 fn consume_assistant_name_token(input: &str, index: usize, expected: &str) -> Option<usize> {
-    let (actual, next_cursor) = consume_next_ascii_token(input, index)?;
+    let (actual, next_cursor) = consume_next_token(input, index)?;
     if assistant_name_token_matches(expected, &actual) {
         Some(next_cursor)
     } else {
@@ -219,21 +232,18 @@ fn consume_assistant_name_token(input: &str, index: usize, expected: &str) -> Op
 }
 
 fn wake_prefix_token_matches(expected: &str, actual: &str) -> bool {
-    if expected.eq_ignore_ascii_case(actual) {
+    let expected = fold_for_match(expected);
+    let actual = fold_for_match(actual);
+
+    if expected == actual {
         return true;
     }
 
-    let expected_normalized = expected.to_ascii_lowercase();
-    let actual_normalized = actual.to_ascii_lowercase();
-    if (expected_normalized == "ok" && actual_normalized == "okay")
-        || (expected_normalized == "okay" && actual_normalized == "ok")
-    {
+    if (expected == "ok" && actual == "okay") || (expected == "okay" && actual == "ok") {
         return true;
     }
 
-    if expected_normalized.len() >= 3
-        && within_one_edit_ascii(&expected_normalized, &actual_normalized)
-    {
+    if expected.chars().count() >= 3 && within_one_edit(&expected, &actual) {
         return true;
     }
 
@@ -259,7 +269,7 @@ pub(crate) fn extract_wake_command(transcript: &str, assistant_name: &str) -> Op
     let mut candidate_cursors = vec![start_cursor];
     let mut filler_cursor = start_cursor;
     for _ in 0..3 {
-        let Some((token, next_cursor)) = consume_next_ascii_token(transcript, filler_cursor) else {
+        let Some((token, next_cursor)) = consume_next_token(transcript, filler_cursor) else {
             break;
         };
         if !is_optional_wake_leading_filler(&token) {
@@ -275,8 +285,7 @@ pub(crate) fn extract_wake_command(transcript: &str, assistant_name: &str) -> Op
             let mut matched = true;
 
             for token in prefix {
-                let Some((actual, next_cursor)) = consume_next_ascii_token(transcript, cursor)
-                else {
+                let Some((actual, next_cursor)) = consume_next_token(transcript, cursor) else {
                     matched = false;
                     break;
                 };
@@ -431,5 +440,57 @@ mod tests {
         let input = format!("Hey Lily {long_command}");
         let command = extract_wake_command(&input, "Lily").unwrap_or_default();
         assert_eq!(command, long_command);
+    }
+
+    // ===== Unicode assistant names =====
+
+    #[test]
+    fn matches_accented_latin_name() {
+        let command = extract_wake_command("Hey José summarize this", "José").unwrap_or_default();
+        assert_eq!(command, "summarize this");
+    }
+
+    #[test]
+    fn matches_accented_name_written_without_diacritics() {
+        let command = extract_wake_command("Hey Jose summarize this", "José").unwrap_or_default();
+        assert_eq!(command, "summarize this");
+    }
+
+    #[test]
+    fn matches_name_with_decomposed_diacritics() {
+        // "cafe\u{301}" is NFKD-decomposed "café"; folding must reunite them.
+        let command =
+            extract_wake_command("Hey cafe\u{301} open settings", "café").unwrap_or_default();
+        assert_eq!(command, "open settings");
+    }
+
+    #[test]
+    fn matches_cyrillic_name() {
+        let command = extract_wake_command("Hey Нова summarise this", "Нова").unwrap_or_default();
+        assert_eq!(command, "summarise this");
+    }
+
+    #[test]
+    fn matches_devanagari_name() {
+        let command = extract_wake_command("Hey नोवा open settings", "नोवा").unwrap_or_default();
+        assert_eq!(command, "open settings");
+    }
+
+    #[test]
+    fn matches_cjk_name() {
+        let command = extract_wake_command("Hey 小美 summarize this", "小美").unwrap_or_default();
+        assert_eq!(command, "summarize this");
+    }
+
+    #[test]
+    fn rejects_different_cyrillic_name() {
+        assert!(extract_wake_command("Hey Анна open settings", "Нова").is_none());
+    }
+
+    #[test]
+    fn unicode_name_does_not_leak_ascii_only_assumptions() {
+        // A non-Latin name must not be silently treated as empty and fall back
+        // to the "lily" default.
+        assert!(extract_wake_command("Hey Lily open settings", "Нова").is_none());
     }
 }

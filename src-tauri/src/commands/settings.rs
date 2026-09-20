@@ -10,11 +10,48 @@ use log::info;
 use serde_json::Value;
 use tauri::AppHandle;
 
+use crate::commands::ipc_types::{
+    MaxTokensBoundsResponse, SttTimeoutBoundsResponse, TemperatureBoundsResponse,
+};
+use crate::commands::pipeline::{
+    MAX_TOKENS_DEFAULT, MAX_TOKENS_MAX, MAX_TOKENS_MIN, TEMPERATURE_DEFAULT, TEMPERATURE_MAX,
+    TEMPERATURE_MIN,
+};
 use crate::pipeline::routing::{validate_api_base_url, validate_local_ollama_base_url};
 use crate::security;
 use crate::services::settings_store::{
     persisted_settings_path, restore_settings_payload, secure_settings_payload,
 };
+use crate::services::transcribe::{
+    STT_TIMEOUT_DEFAULT, STT_TIMEOUT_MAX_SECS, STT_TIMEOUT_MIN_SECS,
+};
+#[tauri::command]
+pub(crate) fn stt_timeout_bounds() -> SttTimeoutBoundsResponse {
+    SttTimeoutBoundsResponse {
+        default_seconds: STT_TIMEOUT_DEFAULT.as_secs(),
+        min_seconds: STT_TIMEOUT_MIN_SECS,
+        max_seconds: STT_TIMEOUT_MAX_SECS,
+    }
+}
+
+#[tauri::command]
+pub(crate) fn temperature_bounds() -> TemperatureBoundsResponse {
+    TemperatureBoundsResponse {
+        default_temperature: TEMPERATURE_DEFAULT,
+        min_temperature: TEMPERATURE_MIN,
+        max_temperature: TEMPERATURE_MAX,
+    }
+}
+
+#[tauri::command]
+pub(crate) fn max_tokens_bounds() -> MaxTokensBoundsResponse {
+    MaxTokensBoundsResponse {
+        default_tokens: MAX_TOKENS_DEFAULT,
+        min_tokens: MAX_TOKENS_MIN,
+        max_tokens: MAX_TOKENS_MAX,
+    }
+}
+
 #[tauri::command]
 pub(crate) async fn load_persisted_local_settings(app: AppHandle) -> Result<String, String> {
     let settings_path = persisted_settings_path(&app)?;
@@ -131,13 +168,22 @@ pub(crate) fn validate_settings_payload(parsed: &serde_json::Value) -> Result<()
     )?;
 
     if let Some(temperature) = obj.get("temperature").and_then(|v| v.as_f64()) {
-        if !(0.0..=2.0).contains(&temperature) {
-            return Err("Invalid temperature: must be between 0 and 2.".to_string());
+        // The same range the request path clamps to, so a stored value cannot be
+        // accepted here and quietly changed on the way to the model.
+        if !(TEMPERATURE_MIN..=TEMPERATURE_MAX).contains(&temperature) {
+            return Err(format!(
+                "Invalid temperature: must be between {TEMPERATURE_MIN} and {TEMPERATURE_MAX}."
+            ));
         }
     }
     if let Some(max_tokens) = obj.get("maxTokens").and_then(|v| v.as_u64()) {
         if max_tokens == 0 || max_tokens > 128_000 {
             return Err("Invalid maxTokens: must be between 1 and 128000.".to_string());
+        }
+    }
+    if let Some(stt_timeout_secs) = obj.get("sttTimeoutSeconds").and_then(|v| v.as_u64()) {
+        if stt_timeout_secs == 0 || stt_timeout_secs > 86_400 {
+            return Err("Invalid sttTimeoutSeconds: must be between 1 and 86400.".to_string());
         }
     }
 
@@ -168,7 +214,70 @@ pub(crate) fn validate_settings_payload(parsed: &serde_json::Value) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    use super::validate_settings_payload;
+    use super::{
+        max_tokens_bounds, stt_timeout_bounds, temperature_bounds, validate_settings_payload,
+    };
+    use crate::commands::pipeline::{resolve_max_tokens, resolve_temperature};
+    use crate::services::transcribe::resolve_stt_timeout;
+
+    #[test]
+    fn advertised_stt_timeout_bounds_match_the_clamp() {
+        // The frontend renders these numbers and the backend enforces them, so
+        // they have to come from the same constants or the UI lies.
+        let bounds = stt_timeout_bounds();
+        assert_eq!(
+            resolve_stt_timeout(None).as_secs(),
+            bounds.default_seconds,
+            "the advertised default must be the one the clamp applies"
+        );
+        assert_eq!(
+            resolve_stt_timeout(Some(bounds.min_seconds)).as_secs(),
+            bounds.min_seconds
+        );
+        assert_eq!(
+            resolve_stt_timeout(Some(bounds.max_seconds)).as_secs(),
+            bounds.max_seconds
+        );
+        assert!(bounds.min_seconds < bounds.max_seconds);
+    }
+
+    #[test]
+    fn advertised_temperature_bounds_match_the_clamp() {
+        let bounds = temperature_bounds();
+        assert_eq!(
+            resolve_temperature(None),
+            bounds.default_temperature as f32,
+            "the advertised default must be the one the clamp applies"
+        );
+        assert_eq!(
+            resolve_temperature(Some(-1.0)),
+            bounds.min_temperature as f32
+        );
+        assert_eq!(
+            resolve_temperature(Some(9.0)),
+            bounds.max_temperature as f32
+        );
+        assert!(bounds.min_temperature < bounds.max_temperature);
+    }
+
+    #[test]
+    fn advertised_max_tokens_bounds_match_the_clamp() {
+        let bounds = max_tokens_bounds();
+        assert_eq!(
+            resolve_max_tokens(None),
+            bounds.default_tokens,
+            "the advertised default must be the one the clamp applies"
+        );
+        assert_eq!(
+            resolve_max_tokens(Some(bounds.min_tokens)),
+            bounds.min_tokens
+        );
+        assert_eq!(
+            resolve_max_tokens(Some(bounds.max_tokens)),
+            bounds.max_tokens
+        );
+        assert!(bounds.min_tokens < bounds.max_tokens);
+    }
 
     fn payload(json: serde_json::Value) -> serde_json::Value {
         json
@@ -207,13 +316,23 @@ mod tests {
     }
 
     #[test]
+    fn rejects_zero_stt_timeout() {
+        let err = validate_settings_payload(&payload(serde_json::json!({
+            "sttTimeoutSeconds": 0
+        })))
+        .expect_err("a zero stt timeout must fail");
+        assert!(err.contains("sttTimeoutSeconds"), "{err}");
+    }
+
+    #[test]
     fn accepts_valid_payload() {
         validate_settings_payload(&payload(serde_json::json!({
             "apiBaseUrl": "https://api.example.com/v1",
             "localOllamaBaseUrl": "http://127.0.0.1:11434",
             "ttsEngine": "piper",
             "temperature": 0.7,
-            "maxTokens": 800
+            "maxTokens": 800,
+            "sttTimeoutSeconds": 120
         })))
         .expect("valid payload passes");
     }

@@ -23,11 +23,13 @@ tempfile = "3"
 [dependencies]
 arboard = "3"
 base64 = "0.22"
+cpal = "0.15"
 flate2 = "1"
 hound = "3.5"
 hmac = "0.12"
 keyring = "3"
 log = "0.4"
+minisign-verify = "0.2"
 ndarray = "0.16"
 nnnoiseless = "0.5"
 ort = "=2.0.0-rc.10"
@@ -37,6 +39,7 @@ serde_json = "1.0"
 sha2 = "0.10"
 tar = "0.4"
 tauri = { version = "2.10.0", features = ["tray-icon"] }
+unicode-normalization = "0.1"
 tauri-plugin-log = "2"
 tauri-plugin-window-state = "2"
 transcribe-rs = { version = "0.2.5", features = ["parakeet"] }
@@ -52,7 +55,11 @@ tauri-plugin-single-instance = "2"
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_Media_Audio",
+    "Win32_Security",
     "Win32_Security_Cryptography",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
     "Win32_System_Registry",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",

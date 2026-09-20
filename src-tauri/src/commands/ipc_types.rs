@@ -84,6 +84,34 @@ pub(crate) struct ProviderModelsResponse {
     pub(crate) models: Vec<String>,
 }
 
+/// Bounds the frontend renders and clamps with, so its limits come from the
+/// same constants the backend enforces instead of being restated in TypeScript.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SttTimeoutBoundsResponse {
+    pub(crate) default_seconds: u64,
+    pub(crate) min_seconds: u64,
+    pub(crate) max_seconds: u64,
+}
+
+/// Same contract for the assistant's sampling temperature.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TemperatureBoundsResponse {
+    pub(crate) default_temperature: f64,
+    pub(crate) min_temperature: f64,
+    pub(crate) max_temperature: f64,
+}
+
+/// Same contract for the assistant's token ceiling.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MaxTokensBoundsResponse {
+    pub(crate) default_tokens: u32,
+    pub(crate) min_tokens: u32,
+    pub(crate) max_tokens: u32,
+}
+
 // ===== DAY-1 pipeline run contract (shared with commands::pipeline + TS) =====
 // Flatten these into the pipeline request/response so the JSON shape has one
 // source of truth. All fields defaulted: old frontends that omit them keep
@@ -105,8 +133,10 @@ pub(crate) struct PipelineRunIdentity {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PipelineRunOutcome {
+    /// Echoed run identity; backend mints one when the request omits it.
     #[serde(default)]
     pub(crate) pipeline_run_id: String,
+    /// Never silent on TTS: "disabled"|"skipped"|"synthesized"|"failed".
     #[serde(default)]
     pub(crate) tts_status: String,
 }

@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use log::{info, warn};
 use reqwest::{multipart, Client};
@@ -620,7 +620,7 @@ pub(crate) fn open_path_in_file_explorer(path: &Path) -> Result<(), String> {
                 path.display()
             )
         })?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "macos")]
@@ -666,31 +666,104 @@ pub(crate) fn mime_to_extension(mime: &str) -> &'static str {
 pub(crate) fn transcript_candidate_score(input: &str) -> usize {
     input.chars().filter(|ch| ch.is_alphanumeric()).count()
 }
+
+/// Ceiling for one online transcription. The shared HTTP client's 150s default
+/// is sized for model downloads, so STT bounds its own requests.
+pub(crate) const STT_TIMEOUT_DEFAULT: Duration = Duration::from_secs(60);
+pub(crate) const STT_TIMEOUT_MIN_SECS: u64 = 10;
+pub(crate) const STT_TIMEOUT_MAX_SECS: u64 = 600;
+
+/// Clamp a user-set timeout. A bad setting must not be able to make every
+/// transcription fail instantly or hold the pipeline for hours.
+pub(crate) fn resolve_stt_timeout(requested_secs: Option<u64>) -> Duration {
+    match requested_secs {
+        Some(secs) => Duration::from_secs(secs.clamp(STT_TIMEOUT_MIN_SECS, STT_TIMEOUT_MAX_SECS)),
+        None => STT_TIMEOUT_DEFAULT,
+    }
+}
+
+/// One transcription request against an OpenAI-compatible STT endpoint.
+///
+/// Required inputs are named in [`SttRequest::new`] and every other option
+/// starts at a default, so adding one (timeouts, vocabulary hints, diarization)
+/// only needs a default here and a setter below — existing call sites keep
+/// working untouched.
+#[derive(Clone, Copy)]
+pub(crate) struct SttRequest<'a> {
+    api_key: Option<&'a str>,
+    api_base_url: &'a str,
+    stt_model: &'a str,
+    audio_bytes: &'a [u8],
+    audio_mime_type: &'a str,
+    language: Option<&'a str>,
+    /// Identifies the caller in logs and error messages. Required rather than
+    /// defaulted: a wrong label misattributes every log line downstream.
+    source_label: &'a str,
+    timeout: Duration,
+}
+
+impl<'a> SttRequest<'a> {
+    pub(crate) fn new(
+        api_base_url: &'a str,
+        stt_model: &'a str,
+        audio_bytes: &'a [u8],
+        source_label: &'a str,
+    ) -> Self {
+        Self {
+            api_key: None,
+            api_base_url,
+            stt_model,
+            audio_bytes,
+            audio_mime_type: "",
+            language: None,
+            source_label,
+            timeout: STT_TIMEOUT_DEFAULT,
+        }
+    }
+
+    pub(crate) fn api_key(self, api_key: Option<&'a str>) -> Self {
+        Self { api_key, ..self }
+    }
+
+    /// An empty MIME type sends the audio with no Content-Type, leaving the
+    /// endpoint to infer the format from the file name.
+    pub(crate) fn audio_mime_type(self, audio_mime_type: &'a str) -> Self {
+        Self {
+            audio_mime_type,
+            ..self
+        }
+    }
+
+    /// Retargets a copy of the request, which is how the multi-language retry
+    /// loop drives one language per attempt.
+    pub(crate) fn language(self, language: Option<&'a str>) -> Self {
+        Self { language, ..self }
+    }
+
+    /// Per-request ceiling for this transcription.
+    pub(crate) fn timeout(self, timeout: Duration) -> Self {
+        Self { timeout, ..self }
+    }
+}
+
 pub(crate) async fn transcribe_audio(
     client: &Client,
-    api_key: &str,
-    api_base_url: &str,
-    stt_model: &str,
-    audio_bytes: &[u8],
-    audio_mime_type: &str,
-    language: Option<&str>,
+    request: SttRequest<'_>,
     allowed_languages: Option<&[String]>,
 ) -> Result<String, String> {
     let normalized_allowed_languages = normalize_stt_allowed_languages(allowed_languages);
-    let effective_language = normalize_stt_language_hint(language)
+    let effective_language = normalize_stt_language_hint(request.language)
         .or_else(|| normalized_allowed_languages.first().cloned());
-    let whisper_family = stt_model.trim().to_ascii_lowercase().contains("whisper");
+    let whisper_family = request
+        .stt_model
+        .trim()
+        .to_ascii_lowercase()
+        .contains("whisper");
 
     if whisper_family {
         let transcript = transcribe_audio_openai_compatible(
             client,
-            Some(api_key),
-            api_base_url,
-            stt_model,
-            audio_bytes,
-            audio_mime_type,
-            effective_language.as_deref(),
-            "online",
+            request.language(effective_language.as_deref()),
         )
         .await?;
 
@@ -710,13 +783,7 @@ pub(crate) async fn transcribe_audio(
         for candidate_language in &normalized_allowed_languages {
             match transcribe_audio_openai_compatible(
                 client,
-                Some(api_key),
-                api_base_url,
-                stt_model,
-                audio_bytes,
-                audio_mime_type,
-                Some(candidate_language.as_str()),
-                "online",
+                request.language(Some(candidate_language.as_str())),
             )
             .await
             {
@@ -750,17 +817,8 @@ pub(crate) async fn transcribe_audio(
         }
     }
 
-    transcribe_audio_openai_compatible(
-        client,
-        Some(api_key),
-        api_base_url,
-        stt_model,
-        audio_bytes,
-        audio_mime_type,
-        effective_language.as_deref(),
-        "online",
-    )
-    .await
+    transcribe_audio_openai_compatible(client, request.language(effective_language.as_deref()))
+        .await
 }
 
 pub(crate) async fn transcribe_audio_local(
@@ -971,14 +1029,18 @@ pub(crate) fn apply_optional_bearer_auth(
 
 pub(crate) async fn transcribe_audio_openai_compatible(
     client: &Client,
-    api_key: Option<&str>,
-    api_base_url: &str,
-    stt_model: &str,
-    audio_bytes: &[u8],
-    audio_mime_type: &str,
-    language: Option<&str>,
-    source_label: &str,
+    request: SttRequest<'_>,
 ) -> Result<String, String> {
+    let SttRequest {
+        api_key,
+        api_base_url,
+        stt_model,
+        audio_bytes,
+        audio_mime_type,
+        language,
+        source_label,
+        timeout,
+    } = request;
     let request_start = Instant::now();
     let extension = mime_to_extension(audio_mime_type);
     let file_name = format!("recording.{extension}");
@@ -1001,12 +1063,11 @@ pub(crate) async fn transcribe_audio_openai_compatible(
         form = form.text("language", language.to_string());
     }
 
-    // F-010: STT gets a 60s ceiling. The shared client's 150s default is sized
-    // for model downloads, so a hung transcription would otherwise hold the
-    // pipeline (and the mic indicator) for two and a half minutes.
+    // F-010: a hung transcription must not hold the pipeline (and the mic
+    // indicator) open on the shared client's 150s model-download default.
     let request_builder = client
         .post(format!("{api_base_url}/audio/transcriptions"))
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(timeout)
         .multipart(form);
     let response = apply_optional_bearer_auth(request_builder, api_key)
         .send()
@@ -1056,6 +1117,65 @@ pub(crate) async fn transcribe_audio_openai_compatible(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stt_request_new_leaves_the_optional_inputs_at_their_defaults() {
+        let audio = [1u8, 2, 3];
+        let request = SttRequest::new("https://example.test/v1", "whisper-1", &audio, "online");
+        assert_eq!(request.api_key, None);
+        // Empty means "send no Content-Type", not "send an empty one".
+        assert_eq!(request.audio_mime_type, "");
+        assert_eq!(request.language, None);
+        assert_eq!(request.source_label, "online");
+        assert_eq!(request.audio_bytes, &audio[..]);
+    }
+
+    #[test]
+    fn stt_request_new_bounds_the_request_by_default() {
+        let audio = [0u8];
+        let request = SttRequest::new("https://example.test/v1", "whisper-1", &audio, "online");
+        assert_eq!(request.timeout, STT_TIMEOUT_DEFAULT);
+    }
+
+    #[test]
+    fn resolve_stt_timeout_falls_back_to_the_default() {
+        assert_eq!(resolve_stt_timeout(None), STT_TIMEOUT_DEFAULT);
+    }
+
+    #[test]
+    fn resolve_stt_timeout_clamps_a_bad_setting_into_range() {
+        // Zero would abort every request instantly; a day would hold the mic
+        // indicator open until the app restarts.
+        assert_eq!(resolve_stt_timeout(Some(0)), Duration::from_secs(10));
+        assert_eq!(resolve_stt_timeout(Some(1)), Duration::from_secs(10));
+        assert_eq!(resolve_stt_timeout(Some(86_400)), Duration::from_secs(600));
+        assert_eq!(resolve_stt_timeout(Some(45)), Duration::from_secs(45));
+        assert_eq!(resolve_stt_timeout(Some(600)), Duration::from_secs(600));
+    }
+
+    #[test]
+    fn stt_request_setters_retarget_a_copy() {
+        let audio = [0u8];
+        let base = SttRequest::new("https://example.test/v1", "whisper-1", &audio, "online");
+        let retargeted = base
+            .language(Some("fr"))
+            .api_key(Some("secret"))
+            .audio_mime_type("audio/wav");
+
+        // The retry loop reuses one request across attempts, so a retarget must
+        // not mutate the request it came from.
+        assert_eq!(base.language, None);
+        assert_eq!(base.api_key, None);
+        assert_eq!(base.audio_mime_type, "");
+        assert_eq!(retargeted.language, Some("fr"));
+        assert_eq!(retargeted.api_key, Some("secret"));
+        assert_eq!(retargeted.audio_mime_type, "audio/wav");
+
+        // A per-request timeout is an override on the copy, not on the source.
+        let impatient = base.timeout(Duration::from_secs(15));
+        assert_eq!(base.timeout, STT_TIMEOUT_DEFAULT);
+        assert_eq!(impatient.timeout, Duration::from_secs(15));
+    }
 
     #[test]
     fn mime_to_extension_handles_common_types() {

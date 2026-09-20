@@ -25,6 +25,10 @@ pub(crate) struct AppState {
     /// an older token is a superseded rewrite and must not replace the
     /// selection. Zero means none seen yet, so the first token always passes.
     last_replace_token: Mutex<u64>,
+    /// File handed over by Explorer's "Transcribe with SlasshyWispr" verb.
+    /// Held until the frontend is loaded enough to run a pipeline, because a
+    /// cold launch has no listener registered yet.
+    pending_transcribe_file: Mutex<Option<String>>,
     pub(crate) window_visibility: Mutex<WindowVisibilityState>,
 }
 
@@ -47,8 +51,24 @@ impl AppState {
             local_stt_download_status: Mutex::new(LocalSttDownloadStatusResponse::default()),
             local_stt_runtime_loaded: Mutex::new(false),
             last_replace_token: Mutex::new(0),
+            pending_transcribe_file: Mutex::new(None),
             window_visibility: Mutex::new(WindowVisibilityState::default()),
         })
+    }
+
+    pub(crate) fn set_pending_transcribe_file(&self, path: String) {
+        match self.pending_transcribe_file.lock() {
+            Ok(mut slot) => *slot = Some(path),
+            Err(_) => log::warn!("[shell] pending transcribe file lock poisoned; dropping request"),
+        }
+    }
+
+    /// Take the pending path, if any. Single-shot so a retry cannot loop.
+    pub(crate) fn take_pending_transcribe_file(&self) -> Option<String> {
+        self.pending_transcribe_file
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take())
     }
 
     fn lock_pending_selection_rewrite(

@@ -15,6 +15,9 @@ export const SELECTION_POPUP_MAX_HEIGHT = 560;
 export const SELECTION_POPUP_CHARS_PER_LINE = 68;
 
 export const SETTINGS_STORAGE_KEY = "slasshywispr-settings-v4";
+
+/** Emitted by Rust when a second launch asks for a file to be transcribed. */
+export const APP_EVENT_TRANSCRIBE_FILE = "slasshywispr://transcribe-file";
 export const DICTIONARY_STORAGE_KEY = "slasshywispr-dictionary-v1";
 export const SNIPPETS_STORAGE_KEY = "slasshywispr-snippets-v1";
 export const NOTES_STORAGE_KEY = "slasshywispr-notes-v1";
@@ -32,10 +35,9 @@ export const ANALYTICS_SESSIONS_KEY = "slasshywispr-analytics-sessions-v1";
 export const ACHIEVEMENTS_STATE_KEY = "slasshywispr-achievements-state-v1";
 export const ACTIVE_PAGE_STORAGE_KEY = "slasshywispr-active-page-v1";
 export const EMPTY_HISTORY_HINT = "No turns yet. Start dictating to see your recent activity.";
-export const DEFAULT_SYSTEM_PROMPT =
-  "You are SlasshyWispr, a helpful desktop voice assistant. Keep replies concise and easy to speak aloud.";
-export const DEFAULT_TEMPERATURE = 0.35;
-export const DEFAULT_MAX_TOKENS = 320;
+// No DEFAULT_SYSTEM_PROMPT here on purpose: the built-in prompt is owned by the
+// backend (src-tauri/src/constants.rs) and an empty setting means "use it".
+
 export const DEFAULT_API_BASE_URL = "";
 export const DEFAULT_STT_MODEL_NAME = "";
 export const DEFAULT_AI_MODEL_NAME = "";

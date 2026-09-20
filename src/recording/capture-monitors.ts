@@ -104,6 +104,42 @@ export function startAmplitudeMonitoring(stream: MediaStream): void {
   amplitudeFrameId = window.requestAnimationFrame(tick);
 }
 
+/**
+ * Native capture reports its level over IPC instead of exposing a MediaStream.
+ * Same smoothing and ~30fps throttle as the Web Audio path so the meter reads
+ * identically whichever backend is active.
+ */
+export function startNativeAmplitudeMonitoring(readLevel: () => Promise<number>): void {
+  stopAmplitudeMonitoring(false);
+  monitorDeps.setAmplitude(0);
+  lastAmplitudePublishAt = 0;
+  monitorDeps.publishDockState();
+
+  let pollInFlight = false;
+  const tick = (now: number): void => {
+    if (now - lastAmplitudePublishAt >= 33 && !pollInFlight) {
+      pollInFlight = true;
+      lastAmplitudePublishAt = now;
+      void readLevel()
+        .then((level) => {
+          const normalized = Math.min(1, Math.max(0, (level - 0.008) * 11.5));
+          monitorDeps.setAmplitude(monitorDeps.getAmplitude() * 0.52 + normalized * 0.48);
+          monitorDeps.publishDockState();
+        })
+        .catch(() => {
+          // Level is cosmetic; a failed poll must never break recording.
+        })
+        .finally(() => {
+          pollInFlight = false;
+        });
+    }
+
+    amplitudeFrameId = window.requestAnimationFrame(tick);
+  };
+
+  amplitudeFrameId = window.requestAnimationFrame(tick);
+}
+
 export function stopAmplitudeMonitoring(resetLevel = true): void {
   if (amplitudeFrameId !== null) {
     window.cancelAnimationFrame(amplitudeFrameId);

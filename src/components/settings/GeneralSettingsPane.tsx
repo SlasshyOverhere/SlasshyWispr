@@ -99,6 +99,31 @@ export function GeneralSettingsPane() {
         </select>
       </div>
 
+      <div className="s-row">
+        <span className="s-row-label" id="captureBackendLabel">Audio capture</span>
+        <select
+          id="captureBackendSelect"
+          aria-labelledby="captureBackendLabel"
+          className="mini-select"
+          value={settings.captureBackend}
+          onChange={(event) => dispatchSettingsPatch({ captureBackend: event.target.value as typeof settings.captureBackend })}
+        >
+          <option value="webview">WebView (compatible)</option>
+          <option value="native">Native (lower latency)</option>
+        </select>
+      </div>
+
+      <label className="s-row" htmlFor="shellIntegrationToggle">
+        <span className="s-row-label">Transcribe from Explorer</span>
+        <input
+          id="shellIntegrationToggle"
+          className="switch-input"
+          type="checkbox"
+          checked={settings.shellIntegration}
+          onChange={(event) => dispatchSettingsPatch({ shellIntegration: event.target.checked })}
+        />
+      </label>
+
       <div className="theme-picker" role="radiogroup" aria-labelledby="themeLabel">
         <label className="theme-card" data-theme-target="dark">
           <input

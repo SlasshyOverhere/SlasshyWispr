@@ -227,7 +227,7 @@ pub(crate) fn sync_orchestrator_pending_rewrite_to_app_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::routing::{AiModeConfig, SttModeConfig};
+    use crate::pipeline::routing::AiModeConfig;
 
     fn pipeline_mode_request_template() -> crate::commands::pipeline::AssistantPipelineRequest {
         crate::commands::pipeline::AssistantPipelineRequest {

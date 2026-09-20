@@ -13,6 +13,8 @@ use log::{info, warn};
 
 use crate::constants::{STARTUP_ARG_START_IN_TRAY, STARTUP_RUN_VALUE_NAME};
 use crate::pipeline::log::{clip_text, single_line};
+#[cfg(target_os = "windows")]
+use crate::platform::clipboard_render::{self, ClipboardRestore, ConsumptionOutcome};
 use crate::platform::windows_native::{
     capture_selected_text_windows, native_set_clipboard_text, probe_foreground_window_windows,
     simulate_ctrl_combo,
@@ -31,7 +33,7 @@ pub(crate) async fn capture_selected_text() -> Result<String, String> {
             "[client] captured selected text chars={}",
             text.chars().count()
         );
-        return Ok(text);
+        Ok(text)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -46,7 +48,7 @@ pub(crate) async fn set_clipboard_text(text: String) -> Result<(), String> {
     {
         set_clipboard_text_windows(&text)?;
         info!("[client] clipboard updated chars={}", text.chars().count());
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -91,7 +93,7 @@ pub(crate) async fn configure_launch_at_login(enabled: bool) -> Result<(), Strin
             run_key.delete_value(STARTUP_RUN_VALUE_NAME).ok(); // ignore if not present
             info!("[startup] launch at login disabled");
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -185,7 +187,7 @@ pub(crate) async fn paste_clipboard_text() -> Result<(), String> {
         ensure_paste_focus(target, "Auto-paste").await?;
         simulate_ctrl_combo(0x56).map_err(|e| format!("Auto-paste failed: {e}"))?; // Ctrl+V
         info!("[client] auto-paste triggered");
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -195,10 +197,28 @@ pub(crate) async fn paste_clipboard_text() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub(crate) async fn configure_shell_integration(enabled: bool) -> Result<(), String> {
+    let exe = std::env::current_exe()
+        .map_err(|error| format!("Failed to resolve the application path: {error}"))?;
+    if enabled {
+        crate::platform::shell_integration::register_shell_integration(&exe)
+    } else {
+        crate::platform::shell_integration::unregister_shell_integration()
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn shell_integration_status() -> Result<bool, String> {
+    let exe = std::env::current_exe()
+        .map_err(|error| format!("Failed to resolve the application path: {error}"))?;
+    Ok(crate::platform::shell_integration::shell_integration_is_registered(&exe))
+}
+
+#[tauri::command]
 pub(crate) async fn note_paste_target() -> Result<i64, String> {
     #[cfg(target_os = "windows")]
     {
-        return Ok(crate::platform::windows_native::note_paste_target_windows());
+        Ok(crate::platform::windows_native::note_paste_target_windows())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -239,25 +259,93 @@ async fn ensure_paste_focus(target: Option<(isize, u32)>, label: &str) -> Result
 pub(crate) async fn paste_text_via_clipboard(text: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        // F-002: snapshot the clipboard so a failed paste cannot destroy what
-        // the user had copied; restored below on the abort path.
-        let previous_clipboard = crate::platform::windows_native::native_get_clipboard_text().ok();
-        native_set_clipboard_text(&text)?;
         let target = crate::platform::windows_native::noted_paste_target();
-        paste_settle_sleep(90).await;
+
+        // UIPI blocks injection into a higher-integrity window. Publish the text
+        // as ordinary clipboard data so the user can paste it manually — a
+        // delayed render would disappear with this process.
+        let target_elevated = target
+            .and_then(|(_, pid)| crate::platform::windows_native::process_is_elevated(pid))
+            .unwrap_or(false);
+        let self_elevated =
+            crate::platform::windows_native::current_process_is_elevated().unwrap_or(false);
+        if let Some(reason) =
+            crate::platform::input::elevation::paste_block_reason(target_elevated, self_elevated)
+        {
+            native_set_clipboard_text(&text)?;
+            warn!("[client] dictation paste blocked: {}", reason.message());
+            return Err(reason.message().to_string());
+        }
+
+        // F-002: snapshot so the user's clipboard survives the paste.
+        let previous_clipboard = crate::platform::windows_native::native_get_clipboard_text().ok();
+
+        // Publish as a delayed render: the target's read of the clipboard tells
+        // us when to put the previous clipboard back, instead of a fixed sleep.
+        let publisher = match clipboard_render::publish_delayed(&text, target.map(|(_, pid)| pid)) {
+            Ok(publisher) => Some(publisher),
+            Err(error) => {
+                warn!("[client] delayed-render clipboard unavailable ({error}); writing directly");
+                native_set_clipboard_text(&text)?;
+                None
+            }
+        };
+
         if let Err(error) = ensure_paste_focus(target, "Dictation paste").await {
-            if let Some(previous) = previous_clipboard {
-                let _ = native_set_clipboard_text(&previous);
+            match publisher {
+                Some(publisher) => publisher.materialize(),
+                None => {
+                    if let Some(previous) = &previous_clipboard {
+                        let _ = native_set_clipboard_text(previous);
+                    }
+                }
             }
             warn!("[client] dictation paste aborted: {error}");
             return Err(error);
         }
+
         simulate_ctrl_combo(0x56).map_err(|e| format!("Dictation paste failed: {e}"))?; // Ctrl+V
-        info!(
-            "[client] dictation clipboard+paste triggered chars={}",
-            text.chars().count()
-        );
-        return Ok(());
+
+        let Some(publisher) = publisher else {
+            info!(
+                "[client] dictation clipboard+paste triggered chars={}",
+                text.chars().count()
+            );
+            return Ok(());
+        };
+
+        // Waiting can burn the whole timeout, so keep it off the async workers.
+        let outcome = tauri::async_runtime::spawn_blocking(move || {
+            publisher.wait_for_consumption(clipboard_render::CONSUMPTION_TIMEOUT)
+        })
+        .await
+        .unwrap_or(ConsumptionOutcome::TimedOut);
+
+        match clipboard_render::restore_action(outcome, previous_clipboard.as_deref()) {
+            ClipboardRestore::Restore(previous) => {
+                publisher.stop_rendering();
+                if native_set_clipboard_text(&previous).is_err() {
+                    // Never leave a delayed render that can no longer be pulled.
+                    let _ = native_set_clipboard_text(&text);
+                }
+                info!(
+                    "[client] dictation pasted and clipboard restored chars={}",
+                    text.chars().count()
+                );
+            }
+            ClipboardRestore::KeepTranscription => {
+                publisher.materialize();
+                info!(
+                    "[client] dictation text left on the clipboard chars={}",
+                    text.chars().count()
+                );
+            }
+            ClipboardRestore::LeaveAlone => {
+                publisher.stop_rendering();
+                warn!("[client] clipboard taken over during dictation paste; left untouched");
+            }
+        }
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -276,7 +364,7 @@ pub(crate) async fn control_media_playback(action: String) -> Result<(), String>
             "[client] media playback action={}",
             action.trim().to_ascii_lowercase()
         );
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -291,7 +379,7 @@ pub(crate) async fn mute_system_audio(mute: bool) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         crate::platform::windows_native::set_system_mute(mute);
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -314,12 +402,12 @@ pub(crate) async fn get_foreground_input_block_status() -> Result<ForegroundInpu
             &probe.window_title,
             probe.fullscreen,
         );
-        return Ok(ForegroundInputBlockStatus {
+        Ok(ForegroundInputBlockStatus {
             blocked: reason.is_some(),
             process_name: probe.process_name,
             reason: reason.unwrap_or_default().to_string(),
             fullscreen: probe.fullscreen,
-        });
+        })
     }
 
     #[cfg(not(target_os = "windows"))]

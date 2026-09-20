@@ -11,6 +11,9 @@ import {
   captureSelectedText as ipcCaptureSelectedText,
   getAssistantInfo as ipcGetAssistantInfo,
   loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
+  maxTokensBounds as ipcMaxTokensBounds,
+  sttTimeoutBounds as ipcSttTimeoutBounds,
+  temperatureBounds as ipcTemperatureBounds,
   listDictationRecordingIds as ipcListDictationRecordingIds,
   notePasteTarget as ipcNotePasteTarget,
   saveDictationRecording as ipcSaveDictationRecording,
@@ -64,6 +67,7 @@ import {
   wireSettingsFormInputs as wireSettingsFormInputsService,
 } from "./settings/settings-service";
 import { querySettingsFormRefs } from "./settings/settings-form-refs";
+import { refreshSttTimeoutBounds } from "./settings/stt-timeout-bounds";
 import {
   SETTINGS_PATCH_EVENT,
   initSettingsState,
@@ -73,12 +77,20 @@ import {
 } from "./settings/settings-state";
 import {
   backfillAchievementsFromUsageStats as backfillAchievementsFromUsageStatsService,
+  describeMaxTokensCorrection,
+  describeSttTimeoutCorrection,
+  describeTemperatureCorrection,
   getCachedHotkeyDisplay as getCachedHotkeyDisplayService,
   getSettingsCoreDeps as getSettingsCoreDepsService,
   handleSettingsChange as handleSettingsChangeService,
   hydrateSettingsFromNativeStorage as hydrateSettingsFromNativeStorageChangeService,
   initSettingsChange,
+  reconcileMaxTokensWithBounds as reconcileMaxTokensWithBoundsService,
+  reconcileSttTimeoutWithBounds as reconcileSttTimeoutWithBoundsService,
+  reconcileTemperatureWithBounds as reconcileTemperatureWithBoundsService,
 } from "./settings/settings-change";
+import { refreshMaxTokensBounds as refreshMaxTokensBoundsService } from "./settings/max-tokens-bounds";
+import { refreshTemperatureBounds as refreshTemperatureBoundsService } from "./settings/temperature-bounds";
 import { APP_UPDATE_AUTO_CHECK_CHANGED_EVENT } from "./updater/updater-client-shim";
 import {
   initializeUpdaterPanel as initializeUpdaterPanelService,
@@ -104,6 +116,12 @@ import {
   initPipelineClient,
   runPipeline as runPipelineService,
 } from "./pipeline/pipeline-client";
+import { initFileTranscription } from "./recording/file-transcription";
+import {
+  onTranscribeRequest,
+  readAudioFile,
+  takePendingFile,
+} from "./shell/transcribe-requests";
 import {
   initPlayback,
   interruptTtsPlaybackForCaptureIntent as interruptTtsPlaybackService,
@@ -177,6 +195,7 @@ import {
 import {
   initDiagnostics,
   logClientEvent as logClientEventService,
+  queueNotice as queueNoticeService,
   setNotice as setNoticeService,
 } from "./shell/diagnostics";
 import {
@@ -225,10 +244,14 @@ import {
   initSidebar,
 } from "./shell/sidebar";
 import {
+  describeLaunchAtLoginCorrection,
+  describeShellIntegrationCorrection,
   isTauriEnvironment,
   openInSystemBrowser,
   setupCustomWindowControls,
+  reconcileShellIntegrationWithOs,
   requestLaunchAtLoginSync,
+  requestShellIntegrationSync,
   reconcileLaunchAtLoginWithOs,
   initTauriShell,
 } from "./shell/tauri-shell";
@@ -504,7 +527,7 @@ const sidebarLabeledButtons = Array.from(
 
 const statusPill = requiredElement<HTMLDivElement>("#statusPill");
 const statusDetail = requiredElement<HTMLParagraphElement>("#statusDetail");
-const noticeText = requiredElement<HTMLParagraphElement>("#noticeText");
+const noticeStack = requiredElement<HTMLElement>("#noticeStack");
 const metricWords = requiredElement<HTMLElement>("#metricWords");
 const metricSpeakingTime = requiredElement<HTMLElement>("#metricSpeakingTime");
 const metricSessions = requiredElement<HTMLElement>("#metricSessions");
@@ -1101,7 +1124,17 @@ initLocalSttClient(
     isSettingsOpen: () => isSettingsOpenService(),
   },
 );
-initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
+initDiagnostics(noticeStack, { isTauri: isTauriEnvironment });
+void initFileTranscription({
+  isTauri: isTauriEnvironment,
+  isPipelineRunning: () => pipelineRunning,
+  runPipeline: (blob, mimeType) => runPipelineService(blob, mimeType),
+  log: (message) => logClientEventService(message),
+  notify: (message, isError) => setNoticeService(message, isError),
+  readAudioFile,
+  takePendingFile,
+  onRequest: onTranscribeRequest,
+});
 initNavigation(
   {
     pageNavButtons,
@@ -1131,6 +1164,7 @@ initTauriShell(
   {
     isTauri: isTauriEnvironment,
     getLaunchAtLogin: () => settings.launchAtLogin,
+    getShellIntegration: () => settings.shellIntegration,
     notify: (message, isError) => setNoticeService(message, isError),
     log: (message) => logClientEventService(message),
   },
@@ -1537,6 +1571,7 @@ initSettingsChange({
   },
   requestGlobalShortcutSync: () => requestGlobalShortcutSyncService(),
   requestLaunchAtLoginSync: (enabled) => requestLaunchAtLoginSync(enabled),
+  requestShellIntegrationSync: (enabled) => requestShellIntegrationSync(enabled),
   interruptTtsPlayback: () => interruptTtsPlaybackService(),
   notice: (message, isError) => setNoticeService(message, isError),
   requestLocalSttRuntimeSyncForMode: (mode, options) =>
@@ -1647,7 +1682,17 @@ void initializeTrayBackgroundLifecycleService();
 hotkeyInput.readOnly = true;
 commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
-void reconcileLaunchAtLoginWithOs();
+void reconcileLaunchAtLoginWithOs().then((correction) => {
+  if (correction) {
+    queueNoticeService(describeLaunchAtLoginCorrection(correction));
+  }
+});
+requestShellIntegrationSync(settings.shellIntegration);
+void reconcileShellIntegrationWithOs().then((correction) => {
+  if (correction) {
+    queueNoticeService(describeShellIntegrationCorrection(correction));
+  }
+});
 startBlockedAppShortcutSuppressionMonitorService();
 applyPersistedSidebarCollapsedService();
 
@@ -2093,7 +2138,24 @@ initUsageTracker({
 });
 async function bootstrap(): Promise<void> {
   logClientEventService("[bootstrap] start");
+  // Before the hydrate below: it clamps stored values against these bounds.
+  await refreshSttTimeoutBounds(() => ipcSttTimeoutBounds());
+  await refreshMaxTokensBoundsService(() => ipcMaxTokensBounds());
+  await refreshTemperatureBoundsService(() => ipcTemperatureBounds());
   await hydrateSettingsFromNativeStorageChangeService();
+  // The hydrate can restore a value stored under an older, wider range.
+  const sttTimeoutCorrection = reconcileSttTimeoutWithBoundsService();
+  if (sttTimeoutCorrection) {
+    queueNoticeService(describeSttTimeoutCorrection(sttTimeoutCorrection));
+  }
+  const maxTokensCorrection = reconcileMaxTokensWithBoundsService();
+  if (maxTokensCorrection) {
+    queueNoticeService(describeMaxTokensCorrection(maxTokensCorrection));
+  }
+  const temperatureCorrection = reconcileTemperatureWithBoundsService();
+  if (temperatureCorrection) {
+    queueNoticeService(describeTemperatureCorrection(temperatureCorrection));
+  }
   logClientEventService(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
 
   // Register global hotkeys immediately — user should be able to press the
@@ -2109,15 +2171,15 @@ async function bootstrap(): Promise<void> {
     renderAssistantInfoService(info);
 
     if (info.piperInstalled && info.voiceInstalled) {
-      setNoticeService("Piper runtime is ready.");
+      queueNoticeService("Piper runtime is ready.");
       setStageService("idle", "Ready for voice input.");
     } else {
-      setNoticeService("Piper runtime incomplete. Open Settings > Models and complete runtime setup.");
+      queueNoticeService("Piper runtime incomplete. Open Settings > Models and complete runtime setup.");
       setStageService("idle", "Setup required.");
     }
   } catch (error) {
     const message = asErrorMessage(error);
-    setNoticeService(`Failed to load assistant metadata: ${message}`, true);
+    queueNoticeService(`Failed to load assistant metadata: ${message}`, true);
     setStageService("error", "Metadata load failed.");
   }
 
@@ -2133,7 +2195,7 @@ async function bootstrap(): Promise<void> {
   try {
     await syncLocalSttRuntimeForModeService(settings.sttRuntimeMode);
   } catch (error) {
-    setNoticeService(`Unable to initialize local STT runtime: ${asErrorMessage(error)}`, true);
+    queueNoticeService(`Unable to initialize local STT runtime: ${asErrorMessage(error)}`, true);
   }
   try {
     await pollTtsSetupStatusOnceService();

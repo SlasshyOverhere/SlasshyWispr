@@ -9,16 +9,15 @@ import {
   DEFAULT_COMMAND_HOTKEY,
   DEFAULT_HOTKEY,
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
-  DEFAULT_MAX_TOKENS,
   DEFAULT_PIPER_SPEED,
   DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
-  DEFAULT_TEMPERATURE,
 } from "../constants";
 import type { PersistedSettings } from "../types";
 import {
   asPiperEmotion,
   asPiperQuality,
   asStyleProfile,
+  asCaptureBackend,
   asThemeMode,
   coerceInteger,
   coerceNumber,
@@ -29,6 +28,9 @@ import type { DictationLanguageMode, TtsEngine } from "../types";
 import { captureModeLabel } from "../utils";
 import { formatHotkeyForDisplay, parseHotkey } from "../hotkeys/hotkey-service";
 import type { SettingsFormRefs } from "./settings-form-refs";
+import { maxTokensBounds } from "./max-tokens-bounds";
+import { sttTimeoutBounds } from "./stt-timeout-bounds";
+import { temperatureBounds } from "./temperature-bounds";
 import {
   applyDictationLanguageSettingsToForm,
   applyTheme,
@@ -101,8 +103,24 @@ export function readSettingsFromForm(
     dictationLanguageAllowList,
     styleProfile: asStyleProfile(refs.styleProfileSelect.value),
     systemPrompt: refs.systemPromptInput.value,
-    temperature: coerceNumber(Number(refs.temperatureInput.value), DEFAULT_TEMPERATURE, 0, 1.2),
-    maxTokens: coerceInteger(Number(refs.maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 4096),
+    temperature: coerceNumber(
+      Number(refs.temperatureInput.value),
+      temperatureBounds().defaultTemperature,
+      temperatureBounds().minTemperature,
+      temperatureBounds().maxTemperature,
+    ),
+    maxTokens: coerceInteger(
+      Number(refs.maxTokensInput.value),
+      maxTokensBounds().defaultTokens,
+      maxTokensBounds().minTokens,
+      maxTokensBounds().maxTokens,
+    ),
+    sttTimeoutSeconds: coerceInteger(
+      Number(refs.sttTimeoutSecondsInput.value),
+      sttTimeoutBounds().defaultSeconds,
+      sttTimeoutBounds().minSeconds,
+      sttTimeoutBounds().maxSeconds,
+    ),
     launchAtLogin: refs.launchAtLoginToggle.checked,
     showFlowBar: refs.showFlowBarToggle.checked,
     showDockAlways: refs.showDockAlwaysToggle.checked,
@@ -114,6 +132,8 @@ export function readSettingsFromForm(
     copyToClipboard: refs.copyToClipboardToggle.checked,
     incognitoMode: refs.incognitoModeToggle.checked,
     themeMode: asThemeMode(refs.themeModeSelect.value),
+    captureBackend: asCaptureBackend(refs.captureBackendSelect.value),
+    shellIntegration: refs.shellIntegrationToggle.checked,
     dictationSoundEffects: refs.dictationSoundEffectsToggle.checked,
     muteMusicWhileDictating: refs.muteMusicWhileDictatingToggle.checked,
     rawMode: refs.rawModeToggle.checked,
@@ -139,6 +159,8 @@ export function refreshGeneralDisplayFromSettings(
   next: PersistedSettings,
 ): void {
   refs.themeModeSelect.value = next.themeMode;
+  refs.captureBackendSelect.value = next.captureBackend;
+  refs.shellIntegrationToggle.checked = next.shellIntegration;
   updateWakePhrasePreview(refs, next.assistantName);
   refs.hotkeyHint.textContent = formatHotkeyForDisplay(next.pushToTalkHotkey);
   refs.captureModeHint.textContent = captureModeLabel(next.captureMode);
@@ -181,6 +203,7 @@ export function applySettingsToForm(
   refs.systemPromptInput.value = next.systemPrompt;
   refs.temperatureInput.value = next.temperature.toFixed(2);
   refs.maxTokensInput.value = String(next.maxTokens);
+  refs.sttTimeoutSecondsInput.value = String(next.sttTimeoutSeconds);
   refs.captureModeSingleInput.checked = next.captureMode === "single-tap";
   refs.captureModePushToTalkInput.checked = next.captureMode === "push-to-talk";
   refs.launchAtLoginToggle.checked = next.launchAtLogin;
@@ -246,6 +269,9 @@ export function applySettingsPatchToForm(
   if (patch.systemPrompt !== undefined) refs.systemPromptInput.value = patch.systemPrompt;
   if (patch.temperature !== undefined) refs.temperatureInput.value = String(patch.temperature);
   if (patch.maxTokens !== undefined) refs.maxTokensInput.value = String(patch.maxTokens);
+  if (patch.sttTimeoutSeconds !== undefined) {
+    refs.sttTimeoutSecondsInput.value = String(patch.sttTimeoutSeconds);
+  }
   if (patch.apiKey !== undefined) refs.apiKeyInput.value = patch.apiKey;
   if (patch.apiBaseUrl !== undefined) refs.apiBaseUrlInput.value = patch.apiBaseUrl;
   if (patch.sttModelName !== undefined) refs.sttModelInput.value = patch.sttModelName;
@@ -275,6 +301,8 @@ export function applySettingsPatchToForm(
       input.checked = input.value === patch.themeMode;
     }
   }
+  if (patch.captureBackend !== undefined) refs.captureBackendSelect.value = patch.captureBackend;
+  if (patch.shellIntegration !== undefined) refs.shellIntegrationToggle.checked = patch.shellIntegration;
   if (patch.dictationLanguage !== undefined) refs.dictationLanguageSelect.value = patch.dictationLanguage;
   if (patch.dictationLanguageMode !== undefined) {
     refs.dictationLanguageModeSingleInput.checked = patch.dictationLanguageMode === "single";

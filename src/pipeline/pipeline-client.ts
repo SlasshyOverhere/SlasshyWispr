@@ -94,7 +94,11 @@ export function initPipelineClient(
   clientDeps = deps;
 }
 
-export async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void> {
+export async function runPipeline(
+  audioBlob: Blob,
+  audioMimeType: string,
+  precomputed?: { rawPcmBase64: string },
+): Promise<void> {
   const activeSettings = clientDeps.readSettings();
   const pipelineInvokeStartedAt = performance.now();
 
@@ -104,8 +108,10 @@ export async function runPipeline(audioBlob: Blob, audioMimeType: string): Promi
   try {
     let pipelineAudioBlob = audioBlob;
     let pipelineAudioMimeType = audioMimeType;
-    let rawPcmBase64: string | null = null;
-    if (activeSettings.noiseSuppression) {
+    // Native capture already holds the PCM in the pipeline's exact shape, so
+    // skip decoding the blob back into samples.
+    let rawPcmBase64: string | null = precomputed?.rawPcmBase64 ?? null;
+    if (!rawPcmBase64 && activeSettings.noiseSuppression) {
       // Fast path: decode WebM → raw f32 PCM, send directly to Rust (skip WAV roundtrip)
       try {
         const decoded = await decodeAudioSample(audioBlob);
@@ -265,6 +271,7 @@ export async function runPipeline(audioBlob: Blob, audioMimeType: string): Promi
         piperPath: activeSettings.piperPath || null,
         audioBase64,
         audioMimeType: pipelineAudioMimeType,
+        sttTimeoutSeconds: activeSettings.sttTimeoutSeconds,
         language: sttLanguageConfig.language,
         allowedLanguages: sttLanguageConfig.allowedLanguages,
         systemPrompt,
@@ -304,6 +311,21 @@ export async function runPipeline(audioBlob: Blob, audioMimeType: string): Promi
         response.aiLatencyMs,
       )} ttsMs=${Math.round(response.ttsLatencyMs)} endToEndMs=${Math.round(response.totalLatencyMs)}`,
     );
+
+    // Dictation only: release the capture gate the moment the transcript is
+    // back, before the delivery tail (paste/clipboard/refresh). The paste
+    // path can block ~1.5s+ (consumption wait) while holding nothing the next
+    // recording needs, so the next hotkey press must not wait for it. Order
+    // matters: clear the flag before markIdle so the record button renders
+    // idle, not "Processing...". Assistant mode keeps the gate until playback
+    // finishes (barge-in stays a deliberate product decision, not a side effect).
+    if (response.mode === "dictation") {
+      clientDeps.setPipelineRunning(false);
+      clientDeps.syncAvailability();
+      if (clientDeps.getStage() !== "recording") {
+        clientDeps.markIdle("Ready for next request.");
+      }
+    }
 
     const resolvedResponse =
       response.mode === "dictation"
@@ -377,8 +399,14 @@ export async function runPipeline(audioBlob: Blob, audioMimeType: string): Promi
     clientDeps.notify(`Pipeline failed: ${asErrorMessage(error)}`, true);
     clientDeps.transition({ type: "pipeline-failed", reason: `Pipeline failed: ${asErrorMessage(error)}` });
   } finally {
+    // The flag is already cleared up front on the success path; keep this as
+    // the error/blocked-path safety net. refreshAssistantInfo stays off the
+    // ready path — it only re-renders settings chrome, so a slow fetch must
+    // not hold capture availability.
     clientDeps.setPipelineRunning(false);
-    await clientDeps.refreshAssistantInfo();
     clientDeps.syncAvailability();
+    void clientDeps.refreshAssistantInfo().catch(() => {
+      // refreshAssistantInfoSafely already notifies; nothing more to do here.
+    });
   }
 }
