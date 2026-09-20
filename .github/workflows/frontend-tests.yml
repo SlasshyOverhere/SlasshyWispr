@@ -1,10 +1,14 @@
 name: Frontend Tests
 
+# src-tauri is listed because contract tests under src/ read Rust sources
+# (e.g. the STT timeout bounds pin). A Rust-only change has to run this job or
+# the contract can drift unnoticed, which is the exact failure they exist for.
 on:
   push:
     branches: [main, master, beta]
     paths:
       - "src/**"
+      - "src-tauri/**"
       - "package.json"
       - "package-lock.json"
       - "bunfig.toml"
@@ -16,6 +20,7 @@ on:
     branches: [main, master, beta]
     paths:
       - "src/**"
+      - "src-tauri/**"
       - "package.json"
       - "package-lock.json"
       - "bunfig.toml"
