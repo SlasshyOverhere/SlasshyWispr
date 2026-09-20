@@ -75,6 +75,7 @@ import {
 } from "./settings/settings-state";
 import {
   backfillAchievementsFromUsageStats as backfillAchievementsFromUsageStatsService,
+  describeSttTimeoutCorrection,
   getCachedHotkeyDisplay as getCachedHotkeyDisplayService,
   getSettingsCoreDeps as getSettingsCoreDepsService,
   handleSettingsChange as handleSettingsChangeService,
@@ -186,6 +187,7 @@ import {
 import {
   initDiagnostics,
   logClientEvent as logClientEventService,
+  queueNotice as queueNoticeService,
   setNotice as setNoticeService,
 } from "./shell/diagnostics";
 import {
@@ -234,6 +236,8 @@ import {
   initSidebar,
 } from "./shell/sidebar";
 import {
+  describeLaunchAtLoginCorrection,
+  describeShellIntegrationCorrection,
   isTauriEnvironment,
   openInSystemBrowser,
   setupCustomWindowControls,
@@ -1670,9 +1674,17 @@ void initializeTrayBackgroundLifecycleService();
 hotkeyInput.readOnly = true;
 commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
-void reconcileLaunchAtLoginWithOs();
+void reconcileLaunchAtLoginWithOs().then((correction) => {
+  if (correction) {
+    queueNoticeService(describeLaunchAtLoginCorrection(correction));
+  }
+});
 requestShellIntegrationSync(settings.shellIntegration);
-void reconcileShellIntegrationWithOs();
+void reconcileShellIntegrationWithOs().then((correction) => {
+  if (correction) {
+    queueNoticeService(describeShellIntegrationCorrection(correction));
+  }
+});
 startBlockedAppShortcutSuppressionMonitorService();
 applyPersistedSidebarCollapsedService();
 
@@ -2121,10 +2133,11 @@ async function bootstrap(): Promise<void> {
   // Before the hydrate below: it clamps stored values against these bounds.
   await refreshSttTimeoutBounds(() => ipcSttTimeoutBounds());
   await hydrateSettingsFromNativeStorageChangeService();
-  // The hydrate can restore a value stored under an older, wider range. Reported
-  // at the end of bootstrap: the notice surface is one text slot and the steps
-  // below set their own.
+  // The hydrate can restore a value stored under an older, wider range.
   const sttTimeoutCorrection = reconcileSttTimeoutWithBoundsService();
+  if (sttTimeoutCorrection) {
+    queueNoticeService(describeSttTimeoutCorrection(sttTimeoutCorrection));
+  }
   logClientEventService(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
 
   // Register global hotkeys immediately — user should be able to press the
@@ -2140,15 +2153,15 @@ async function bootstrap(): Promise<void> {
     renderAssistantInfoService(info);
 
     if (info.piperInstalled && info.voiceInstalled) {
-      setNoticeService("Piper runtime is ready.");
+      queueNoticeService("Piper runtime is ready.");
       setStageService("idle", "Ready for voice input.");
     } else {
-      setNoticeService("Piper runtime incomplete. Open Settings > Models and complete runtime setup.");
+      queueNoticeService("Piper runtime incomplete. Open Settings > Models and complete runtime setup.");
       setStageService("idle", "Setup required.");
     }
   } catch (error) {
     const message = asErrorMessage(error);
-    setNoticeService(`Failed to load assistant metadata: ${message}`, true);
+    queueNoticeService(`Failed to load assistant metadata: ${message}`, true);
     setStageService("error", "Metadata load failed.");
   }
 
@@ -2164,7 +2177,7 @@ async function bootstrap(): Promise<void> {
   try {
     await syncLocalSttRuntimeForModeService(settings.sttRuntimeMode);
   } catch (error) {
-    setNoticeService(`Unable to initialize local STT runtime: ${asErrorMessage(error)}`, true);
+    queueNoticeService(`Unable to initialize local STT runtime: ${asErrorMessage(error)}`, true);
   }
   try {
     await pollTtsSetupStatusOnceService();
@@ -2174,11 +2187,6 @@ async function bootstrap(): Promise<void> {
   syncActionAvailabilityService();
   startAutomaticUpdateChecksService();
   backfillAchievementsFromUsageStatsService();
-  if (sttTimeoutCorrection) {
-    setNoticeService(
-      `Request Timeout ${sttTimeoutCorrection.previousSeconds}s is outside the supported ${sttTimeoutCorrection.minSeconds}-${sttTimeoutCorrection.maxSeconds}s range; set to ${sttTimeoutCorrection.seconds}s. Change it in Settings > Pipeline.`,
-    );
-  }
   logClientEventService("[bootstrap] completed");
 }
 

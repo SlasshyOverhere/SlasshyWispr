@@ -145,14 +145,16 @@ export async function hydrateSettingsFromNativeStorage(): Promise<void> {
 
 /// A stored STT timeout that had to be moved back inside the backend's bounds.
 ///
-/// Returned rather than announced: bootstrap sets its own notices moments later,
-/// and the notice surface is a single text slot, so the caller has to report this
-/// last for it to be seen.
+/// Returned rather than announced so the caller decides how to surface it.
 export interface SttTimeoutCorrection {
   previousSeconds: number;
   seconds: number;
   minSeconds: number;
   maxSeconds: number;
+}
+
+export function describeSttTimeoutCorrection(correction: SttTimeoutCorrection): string {
+  return `Request Timeout ${correction.previousSeconds}s is outside the supported ${correction.minSeconds}-${correction.maxSeconds}s range; set to ${correction.seconds}s. Change it in Settings > Pipeline.`;
 }
 
 /**

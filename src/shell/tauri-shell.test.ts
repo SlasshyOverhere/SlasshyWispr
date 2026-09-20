@@ -71,7 +71,9 @@ function fakeButton(): HTMLButtonElement {
   } as unknown as HTMLButtonElement;
 }
 
-function wireHarness(options: { tauri?: boolean; launchAtLogin?: boolean } = {}) {
+function wireHarness(
+  options: { tauri?: boolean; launchAtLogin?: boolean; shellIntegration?: boolean } = {},
+) {
   const windowMinimizeBtn = fakeButton();
   const windowCloseBtn = fakeButton();
   const notices: Array<{ message: string; isError?: boolean }> = [];
@@ -81,6 +83,7 @@ function wireHarness(options: { tauri?: boolean; launchAtLogin?: boolean } = {})
     {
       isTauri: () => options.tauri ?? true,
       getLaunchAtLogin: () => options.launchAtLogin ?? false,
+      getShellIntegration: () => options.shellIntegration ?? false,
       notify: (message, isError) => {
         notices.push({ message, isError });
       },
@@ -157,5 +160,80 @@ describe("reconcileLaunchAtLoginWithOs", () => {
     await shell.reconcileLaunchAtLoginWithOs();
     expect(harness.logs.some((line) => line.includes("cleaning up"))).toBe(true);
     expect(invokeCalls.some((call) => JSON.stringify(call.args) === '{"enabled":false}')).toBe(true);
+  });
+
+  it("reports what it repaired so the caller can surface it", async () => {
+    wireHarness({ tauri: true, launchAtLogin: true });
+    invokeImpl = async () => ({
+      enabled: true,
+      path_matches: false,
+      stored_value: "C:\\old\\app.exe",
+    });
+    expect(await shell.reconcileLaunchAtLoginWithOs()).toEqual({
+      action: "reapplied",
+      storedValue: "C:\\old\\app.exe",
+    });
+  });
+
+  it("reports nothing when the registry already matches", async () => {
+    wireHarness({ tauri: true, launchAtLogin: true });
+    invokeImpl = async () => ({ enabled: true, path_matches: true, stored_value: "ok" });
+    expect(await shell.reconcileLaunchAtLoginWithOs()).toBeNull();
+  });
+
+  it("reports nothing outside Tauri or when the status call fails", async () => {
+    wireHarness({ tauri: false, launchAtLogin: true });
+    expect(await shell.reconcileLaunchAtLoginWithOs()).toBeNull();
+
+    wireHarness({ tauri: true, launchAtLogin: true });
+    invokeImpl = async () => {
+      throw new Error("ipc down");
+    };
+    expect(await shell.reconcileLaunchAtLoginWithOs()).toBeNull();
+  });
+});
+
+describe("reconcileShellIntegrationWithOs", () => {
+  it("reports a re-registration when the preference is on but nothing is registered", async () => {
+    wireHarness({ tauri: true, shellIntegration: true });
+    invokeImpl = async () => false;
+    expect(await shell.reconcileShellIntegrationWithOs()).toEqual({ action: "registered" });
+  });
+
+  it("reports a cleanup when registered but unwanted", async () => {
+    wireHarness({ tauri: true, shellIntegration: false });
+    invokeImpl = async () => true;
+    expect(await shell.reconcileShellIntegrationWithOs()).toEqual({ action: "removed" });
+  });
+
+  it("reports nothing when registration already matches the preference", async () => {
+    wireHarness({ tauri: true, shellIntegration: true });
+    invokeImpl = async () => true;
+    expect(await shell.reconcileShellIntegrationWithOs()).toBeNull();
+  });
+});
+
+describe("correction descriptions", () => {
+  it("names the stale path and where to change the setting", () => {
+    const text = shell.describeLaunchAtLoginCorrection({
+      action: "reapplied",
+      storedValue: "C:\\old\\app.exe",
+    });
+    expect(text).toContain("C:\\old\\app.exe");
+    expect(text).toContain("Settings > General");
+  });
+
+  it("still explains a missing stored path", () => {
+    const text = shell.describeLaunchAtLoginCorrection({ action: "reapplied", storedValue: null });
+    expect(text).not.toContain("null");
+    expect(text).toContain("Settings > General");
+  });
+
+  it("has copy for both shell integration repairs", () => {
+    for (const action of ["registered", "removed"] as const) {
+      const text = shell.describeShellIntegrationCorrection({ action });
+      expect(text.length).toBeGreaterThan(0);
+      expect(text).not.toContain("undefined");
+    }
   });
 });
