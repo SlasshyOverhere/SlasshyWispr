@@ -244,6 +244,22 @@ pub(crate) async fn paste_text_via_clipboard(text: String) -> Result<(), String>
         let previous_clipboard = crate::platform::windows_native::native_get_clipboard_text().ok();
         native_set_clipboard_text(&text)?;
         let target = crate::platform::windows_native::noted_paste_target();
+
+        // UIPI blocks injection into a higher-integrity window. Leave the text
+        // on the clipboard so the user can paste it manually rather than
+        // restoring their old clipboard over the transcription.
+        let target_elevated = target
+            .and_then(|(_, pid)| crate::platform::windows_native::process_is_elevated(pid))
+            .unwrap_or(false);
+        let self_elevated =
+            crate::platform::windows_native::current_process_is_elevated().unwrap_or(false);
+        if let Some(reason) =
+            crate::platform::input::elevation::paste_block_reason(target_elevated, self_elevated)
+        {
+            warn!("[client] dictation paste blocked: {}", reason.message());
+            return Err(reason.message().to_string());
+        }
+
         paste_settle_sleep(90).await;
         if let Err(error) = ensure_paste_focus(target, "Dictation paste").await {
             if let Some(previous) = previous_clipboard {

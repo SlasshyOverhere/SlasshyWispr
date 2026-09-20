@@ -4,6 +4,7 @@
 //! primitives live in `super::windows_native`, shared types in
 //! `super::windows_types`.
 
+pub mod elevation;
 pub mod policy;
 
 pub(crate) use policy::foreground_input_block_reason;

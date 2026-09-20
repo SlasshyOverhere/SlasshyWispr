@@ -45,6 +45,16 @@ pub(crate) mod win32_native {
         pub fn GetMonitorInfoW(hMonitor: isize, lpmi: *mut MONITORINFO) -> i32;
         pub fn MonitorFromWindow(hwnd: isize, dwFlags: u32) -> isize;
     }
+
+    // windows-sys 0.59 does not expose OpenProcessToken, so declare it here.
+    #[link(name = "advapi32")]
+    extern "system" {
+        pub fn OpenProcessToken(
+            ProcessHandle: windows_sys::Win32::Foundation::HANDLE,
+            DesiredAccess: u32,
+            TokenHandle: *mut windows_sys::Win32::Foundation::HANDLE,
+        ) -> i32;
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -114,6 +124,54 @@ pub(crate) fn get_process_name_from_pid(pid: u32) -> String {
             .to_string_lossy()
             .to_ascii_lowercase()
     }
+}
+
+/// Whether `pid` runs with an elevated token. `None` when the process or its
+/// token cannot be opened (protected process, exited target, access denied).
+#[cfg(target_os = "windows")]
+pub(crate) fn process_is_elevated(pid: u32) -> Option<bool> {
+    use self::win32_native::OpenProcessToken;
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+
+    unsafe {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process.is_null() {
+            return None;
+        }
+
+        let mut token: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(process, TOKEN_QUERY, &mut token) == 0 {
+            CloseHandle(process);
+            return None;
+        }
+
+        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+        let mut returned = 0_u32;
+        let ok = GetTokenInformation(
+            token,
+            TokenElevation,
+            std::ptr::addr_of_mut!(elevation).cast(),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut returned,
+        );
+
+        CloseHandle(token);
+        CloseHandle(process);
+
+        if ok == 0 {
+            return None;
+        }
+        Some(elevation.TokenIsElevated != 0)
+    }
+}
+
+/// Whether this process runs elevated.
+#[cfg(target_os = "windows")]
+pub(crate) fn current_process_is_elevated() -> Option<bool> {
+    process_is_elevated(std::process::id())
 }
 
 #[cfg(target_os = "windows")]
