@@ -51,15 +51,20 @@ export interface AssistantInfoResponse {
   piperPath: string;
   voiceInstalled: boolean;
   voiceModelPath: string;
+  voiceConfigPath: string;
+  coquiInstalled: boolean;
+  coquiPythonPath: string;
 }
 
 export interface RuntimeSetupResponse {
   piperPath: string;
   voiceModelPath: string;
+  voiceConfigPath: string;
 }
 
 export interface VoiceInstallResponse {
   modelPath: string;
+  configPath: string;
 }
 
 export interface PiperValidationResponse {
@@ -219,6 +224,8 @@ export interface InstallAppUpdateRequest {
   assetName?: string;
   silent?: boolean;
   expectedSha256?: string;
+  /** Version the check step advertised; re-checked before install (downgrade guard). */
+  expectedVersion?: string;
 }
 
 export interface AppUpdateInstallProgressEvent {
