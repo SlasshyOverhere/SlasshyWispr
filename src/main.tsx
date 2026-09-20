@@ -104,6 +104,12 @@ import {
   initPipelineClient,
   runPipeline as runPipelineService,
 } from "./pipeline/pipeline-client";
+import { initFileTranscription } from "./recording/file-transcription";
+import {
+  onTranscribeRequest,
+  readAudioFile,
+  takePendingFile,
+} from "./shell/transcribe-requests";
 import {
   initPlayback,
   interruptTtsPlaybackForCaptureIntent as interruptTtsPlaybackService,
@@ -1102,6 +1108,16 @@ initLocalSttClient(
   },
 );
 initDiagnostics(noticeText, { isTauri: isTauriEnvironment });
+void initFileTranscription({
+  isTauri: isTauriEnvironment,
+  isPipelineRunning: () => pipelineRunning,
+  runPipeline: (blob, mimeType) => runPipelineService(blob, mimeType),
+  log: (message) => logClientEventService(message),
+  notify: (message, isError) => setNoticeService(message, isError),
+  readAudioFile,
+  takePendingFile,
+  onRequest: onTranscribeRequest,
+});
 initNavigation(
   {
     pageNavButtons,

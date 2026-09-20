@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { IPC_COMMANDS } from "./commands";
 import type {
   AppUpdateCheckResponse,
+  AudioFilePayload,
   AssistantInfoResponse,
   AssistantPipelineResponse,
   ForegroundInputBlockStatus,
@@ -70,6 +71,17 @@ export function checkForAppUpdate(): Promise<AppUpdateCheckResponse> {
 
 export function downloadAndInstallAppUpdate(request: InstallAppUpdateRequest): Promise<void> {
   return invoke(IPC_COMMANDS.downloadAndInstallAppUpdate, { request });
+}
+
+// ===== Audio files =====
+
+/** Path parked by Explorer's transcribe verb during a cold start. */
+export function takePendingTranscribeFile(): Promise<string | null> {
+  return invoke<string | null>(IPC_COMMANDS.takePendingTranscribeFile);
+}
+
+export function readAudioFileBase64(path: string): Promise<AudioFilePayload> {
+  return invoke<AudioFilePayload>(IPC_COMMANDS.readAudioFileBase64, { path });
 }
 
 // ===== Native capture =====

@@ -4,6 +4,7 @@
 //! services happens in Phase 7. Re-exports keep generate_handler! paths short.
 
 pub mod capture;
+pub mod files;
 pub mod input;
 pub mod ipc_types;
 pub mod local_stt;
@@ -18,6 +19,7 @@ pub mod windows;
 pub(crate) use capture::{
     cancel_native_capture, native_capture_level, start_native_capture, stop_native_capture,
 };
+pub(crate) use files::{read_audio_file_base64, take_pending_transcribe_file};
 pub(crate) use input::{
     capture_selected_text, configure_launch_at_login, configure_shell_integration,
     control_media_playback, get_foreground_input_block_status, launch_at_login_status,

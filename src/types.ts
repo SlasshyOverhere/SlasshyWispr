@@ -19,6 +19,13 @@ export interface NativeCaptureInfo {
   fallbackUsed: boolean;
 }
 
+export interface AudioFilePayload {
+  fileName: string;
+  mimeType: string;
+  base64: string;
+  byteLength: number;
+}
+
 export interface NativeCapturedAudio {
   rawPcmBase64: string;
   wavBase64: string;

@@ -61,6 +61,9 @@ export const IPC_COMMANDS = {
   // Shell integration
   configureShellIntegration: "configure_shell_integration",
   shellIntegrationStatus: "shell_integration_status",
+  // Audio files
+  takePendingTranscribeFile: "take_pending_transcribe_file",
+  readAudioFileBase64: "read_audio_file_base64",
   // Native capture
   startNativeCapture: "start_native_capture",
   stopNativeCapture: "stop_native_capture",
