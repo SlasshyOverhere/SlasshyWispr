@@ -33,7 +33,7 @@ Single-instance enforcement (per spec `2026-07-07-tray-window-toggle-and-single-
 - `src/**/*.test.ts` is excluded from type checking.
 - Path alias `@/` maps to `./src/*`.
 - `pretauri:dev` (`scripts/ensure-valid-dev-exe.mjs`) deletes corrupted Windows dev binaries (`app.exe`/`app.pdb`) before `tauri dev`.
-- `prebuild` (`scripts/check-stt-timeout-fallback.mjs`) fails the build if the TS STT timeout fallback stops being superseded by the backend answer — the one thing that stops those constants becoming a second source of truth. Static, because the backend's bounds currently equal the fallback and no value comparison could tell them apart.
+- `prebuild` (`scripts/check-backend-bounds-fallbacks.mjs`) fails the build if any TS bounds fallback (`stt-timeout-bounds.ts`, `max-tokens-bounds.ts`) stops being superseded by the backend answer over IPC — the one thing that stops those constants becoming a second source of truth. Static, because the backend's bounds currently equal the fallbacks and no value comparison could tell them apart.
 - Tauri v2 dev URL `http://localhost:1421` is hardcoded in `vite.config.ts`.
 - Window is non-resizable, non-maximizable, non-minimizable, with a custom titlebar (`decorations: false`).
 

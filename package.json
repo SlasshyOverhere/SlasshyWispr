@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/check-stt-timeout-fallback.mjs",
+    "prebuild": "node scripts/check-backend-bounds-fallbacks.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "pretauri:dev": "node scripts/ensure-valid-dev-exe.mjs",

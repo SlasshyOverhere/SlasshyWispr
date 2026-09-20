@@ -63,8 +63,8 @@ jobs:
 
       # Runs in `prebuild` too, but this job never builds, and the guard is
       # only worth having if it fails before merge rather than at release.
-      - name: STT timeout fallback gate
-        run: node scripts/check-stt-timeout-fallback.mjs
+      - name: Backend bounds fallback gate
+        run: node scripts/check-backend-bounds-fallbacks.mjs
 
       - name: Typecheck
         run: npx tsc --noEmit
