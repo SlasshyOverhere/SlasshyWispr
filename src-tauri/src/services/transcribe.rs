@@ -666,32 +666,40 @@ pub(crate) fn mime_to_extension(mime: &str) -> &'static str {
 pub(crate) fn transcript_candidate_score(input: &str) -> usize {
     input.chars().filter(|ch| ch.is_alphanumeric()).count()
 }
-#[allow(clippy::too_many_arguments)]
+/// One transcription request against an OpenAI-compatible STT endpoint.
+#[derive(Clone, Copy)]
+pub(crate) struct SttRequest<'a> {
+    pub(crate) api_key: Option<&'a str>,
+    pub(crate) api_base_url: &'a str,
+    pub(crate) stt_model: &'a str,
+    pub(crate) audio_bytes: &'a [u8],
+    pub(crate) audio_mime_type: &'a str,
+    pub(crate) language: Option<&'a str>,
+    /// Identifies the caller in logs and error messages.
+    pub(crate) source_label: &'a str,
+}
+
 pub(crate) async fn transcribe_audio(
     client: &Client,
-    api_key: &str,
-    api_base_url: &str,
-    stt_model: &str,
-    audio_bytes: &[u8],
-    audio_mime_type: &str,
-    language: Option<&str>,
+    request: SttRequest<'_>,
     allowed_languages: Option<&[String]>,
 ) -> Result<String, String> {
     let normalized_allowed_languages = normalize_stt_allowed_languages(allowed_languages);
-    let effective_language = normalize_stt_language_hint(language)
+    let effective_language = normalize_stt_language_hint(request.language)
         .or_else(|| normalized_allowed_languages.first().cloned());
-    let whisper_family = stt_model.trim().to_ascii_lowercase().contains("whisper");
+    let whisper_family = request
+        .stt_model
+        .trim()
+        .to_ascii_lowercase()
+        .contains("whisper");
 
     if whisper_family {
         let transcript = transcribe_audio_openai_compatible(
             client,
-            Some(api_key),
-            api_base_url,
-            stt_model,
-            audio_bytes,
-            audio_mime_type,
-            effective_language.as_deref(),
-            "online",
+            SttRequest {
+                language: effective_language.as_deref(),
+                ..request
+            },
         )
         .await?;
 
@@ -711,13 +719,10 @@ pub(crate) async fn transcribe_audio(
         for candidate_language in &normalized_allowed_languages {
             match transcribe_audio_openai_compatible(
                 client,
-                Some(api_key),
-                api_base_url,
-                stt_model,
-                audio_bytes,
-                audio_mime_type,
-                Some(candidate_language.as_str()),
-                "online",
+                SttRequest {
+                    language: Some(candidate_language.as_str()),
+                    ..request
+                },
             )
             .await
             {
@@ -753,13 +758,10 @@ pub(crate) async fn transcribe_audio(
 
     transcribe_audio_openai_compatible(
         client,
-        Some(api_key),
-        api_base_url,
-        stt_model,
-        audio_bytes,
-        audio_mime_type,
-        effective_language.as_deref(),
-        "online",
+        SttRequest {
+            language: effective_language.as_deref(),
+            ..request
+        },
     )
     .await
 }
@@ -970,17 +972,19 @@ pub(crate) fn apply_optional_bearer_auth(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn transcribe_audio_openai_compatible(
     client: &Client,
-    api_key: Option<&str>,
-    api_base_url: &str,
-    stt_model: &str,
-    audio_bytes: &[u8],
-    audio_mime_type: &str,
-    language: Option<&str>,
-    source_label: &str,
+    request: SttRequest<'_>,
 ) -> Result<String, String> {
+    let SttRequest {
+        api_key,
+        api_base_url,
+        stt_model,
+        audio_bytes,
+        audio_mime_type,
+        language,
+        source_label,
+    } = request;
     let request_start = Instant::now();
     let extension = mime_to_extension(audio_mime_type);
     let file_name = format!("recording.{extension}");

@@ -42,7 +42,7 @@ use crate::pipeline::wake::extract_wake_command;
 use crate::services::pipeline_service::resolve_pipeline_mode;
 use crate::services::{
     resolve_piper_assets, sync_orchestrator_pending_rewrite_to_app_state, sync_selection_context,
-    transcribe_audio, transcribe_audio_local,
+    transcribe_audio, transcribe_audio_local, SttRequest,
 };
 use crate::state::AppState;
 
@@ -234,12 +234,15 @@ pub(crate) async fn run_assistant_pipeline(
         } => {
             transcribe_audio(
                 &state.http,
-                api_key,
-                api_base_url,
-                stt_model,
-                &audio_bytes,
-                request.audio_mime_type.trim(),
-                request.language.as_deref(),
+                SttRequest {
+                    api_key: Some(api_key.as_str()),
+                    api_base_url,
+                    stt_model,
+                    audio_bytes: &audio_bytes,
+                    audio_mime_type: request.audio_mime_type.trim(),
+                    language: request.language.as_deref(),
+                    source_label: "online",
+                },
                 request.allowed_languages.as_deref(),
             )
             .await?

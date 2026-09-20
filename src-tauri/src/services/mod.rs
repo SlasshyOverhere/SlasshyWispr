@@ -13,4 +13,4 @@ pub mod transcribe;
 pub(crate) use pipeline_service::{
     resolve_piper_assets, sync_orchestrator_pending_rewrite_to_app_state, sync_selection_context,
 };
-pub(crate) use transcribe::{transcribe_audio, transcribe_audio_local};
+pub(crate) use transcribe::{transcribe_audio, transcribe_audio_local, SttRequest};

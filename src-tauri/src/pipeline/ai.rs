@@ -121,13 +121,15 @@ pub async fn generate_assistant_response(
         } => {
             generate_assistant_response_online(
                 client,
-                api_key,
-                api_base_url,
-                ai_model,
-                transcript,
-                system_prompt,
-                temperature,
-                max_tokens,
+                AssistantCompletionRequest {
+                    api_key,
+                    api_base_url,
+                    ai_model,
+                    transcript,
+                    system_prompt,
+                    temperature,
+                    max_tokens,
+                },
             )
             .await
         }
@@ -147,17 +149,30 @@ pub async fn generate_assistant_response(
 
 // ===== Online backend =====
 
-#[allow(clippy::too_many_arguments)]
-async fn generate_assistant_response_online(
-    client: &Client,
-    api_key: &str,
-    api_base_url: &str,
-    ai_model: &str,
-    transcript: &str,
-    system_prompt: &str,
+/// One completion request against an OpenAI-compatible chat endpoint.
+struct AssistantCompletionRequest<'a> {
+    api_key: &'a str,
+    api_base_url: &'a str,
+    ai_model: &'a str,
+    transcript: &'a str,
+    system_prompt: &'a str,
     temperature: f32,
     max_tokens: u32,
+}
+
+async fn generate_assistant_response_online(
+    client: &Client,
+    request: AssistantCompletionRequest<'_>,
 ) -> Result<String, String> {
+    let AssistantCompletionRequest {
+        api_key,
+        api_base_url,
+        ai_model,
+        transcript,
+        system_prompt,
+        temperature,
+        max_tokens,
+    } = request;
     let mut payload = json!({
       "model": ai_model,
       "temperature": temperature,
