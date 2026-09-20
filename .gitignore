@@ -17,6 +17,8 @@ dist/
 dist-ssr/
 release-assets/
 src-tauri/target/
+__pycache__/
+*.pyc
 tmp-voices/
 prompts/
 *.local
