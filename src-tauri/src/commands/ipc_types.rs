@@ -124,8 +124,10 @@ pub(crate) struct PipelineRunIdentity {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PipelineRunOutcome {
+    /// Echoed run identity; backend mints one when the request omits it.
     #[serde(default)]
     pub(crate) pipeline_run_id: String,
+    /// Never silent on TTS: "disabled"|"skipped"|"synthesized"|"failed".
     #[serde(default)]
     pub(crate) tts_status: String,
 }

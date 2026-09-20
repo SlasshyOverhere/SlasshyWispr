@@ -107,6 +107,7 @@ pub(crate) struct SnippetEntryRequest {
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AssistantPipelineResponse {
+    /// Which stage handled the turn: "assistant" or "dictation".
     pub(crate) mode: String,
     pub(crate) selection_rewrite: bool,
     pub(crate) selection_pending: bool,
