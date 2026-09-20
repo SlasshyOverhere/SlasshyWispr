@@ -234,7 +234,9 @@ import {
   isTauriEnvironment,
   openInSystemBrowser,
   setupCustomWindowControls,
+  reconcileShellIntegrationWithOs,
   requestLaunchAtLoginSync,
+  requestShellIntegrationSync,
   reconcileLaunchAtLoginWithOs,
   initTauriShell,
 } from "./shell/tauri-shell";
@@ -1147,6 +1149,7 @@ initTauriShell(
   {
     isTauri: isTauriEnvironment,
     getLaunchAtLogin: () => settings.launchAtLogin,
+    getShellIntegration: () => settings.shellIntegration,
     notify: (message, isError) => setNoticeService(message, isError),
     log: (message) => logClientEventService(message),
   },
@@ -1553,6 +1556,7 @@ initSettingsChange({
   },
   requestGlobalShortcutSync: () => requestGlobalShortcutSyncService(),
   requestLaunchAtLoginSync: (enabled) => requestLaunchAtLoginSync(enabled),
+  requestShellIntegrationSync: (enabled) => requestShellIntegrationSync(enabled),
   interruptTtsPlayback: () => interruptTtsPlaybackService(),
   notice: (message, isError) => setNoticeService(message, isError),
   requestLocalSttRuntimeSyncForMode: (mode, options) =>
@@ -1664,6 +1668,8 @@ hotkeyInput.readOnly = true;
 commandHotkeyInput.readOnly = true;
 requestLaunchAtLoginSync(settings.launchAtLogin);
 void reconcileLaunchAtLoginWithOs();
+requestShellIntegrationSync(settings.shellIntegration);
+void reconcileShellIntegrationWithOs();
 startBlockedAppShortcutSuppressionMonitorService();
 applyPersistedSidebarCollapsedService();
 

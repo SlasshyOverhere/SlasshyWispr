@@ -283,6 +283,7 @@ export interface PersistedSettings {
   pushToTalkEndSound: string;
   pushToTalkSoundVolume: number;
   saveRecordings: boolean;
+  shellIntegration: boolean;
 }
 
 export interface RecordingsStats {

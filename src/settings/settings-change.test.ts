@@ -104,6 +104,7 @@ function fakeRefs() {
     saveRecordingsToggle: fakeInput(),
     themeModeSelect: fakeSelect("dark"),
     captureBackendSelect: fakeSelect("webview"),
+    shellIntegrationToggle: fakeInput(),
     dictationSoundEffectsToggle: fakeInput(),
     muteMusicWhileDictatingToggle: fakeInput(),
     pushToTalkSoundSelect: fakeSelect("beep-start"),

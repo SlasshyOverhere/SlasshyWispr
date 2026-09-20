@@ -116,6 +116,7 @@ export function readSettingsFromForm(
     incognitoMode: refs.incognitoModeToggle.checked,
     themeMode: asThemeMode(refs.themeModeSelect.value),
     captureBackend: asCaptureBackend(refs.captureBackendSelect.value),
+    shellIntegration: refs.shellIntegrationToggle.checked,
     dictationSoundEffects: refs.dictationSoundEffectsToggle.checked,
     muteMusicWhileDictating: refs.muteMusicWhileDictatingToggle.checked,
     rawMode: refs.rawModeToggle.checked,
@@ -142,6 +143,7 @@ export function refreshGeneralDisplayFromSettings(
 ): void {
   refs.themeModeSelect.value = next.themeMode;
   refs.captureBackendSelect.value = next.captureBackend;
+  refs.shellIntegrationToggle.checked = next.shellIntegration;
   updateWakePhrasePreview(refs, next.assistantName);
   refs.hotkeyHint.textContent = formatHotkeyForDisplay(next.pushToTalkHotkey);
   refs.captureModeHint.textContent = captureModeLabel(next.captureMode);
@@ -279,6 +281,7 @@ export function applySettingsPatchToForm(
     }
   }
   if (patch.captureBackend !== undefined) refs.captureBackendSelect.value = patch.captureBackend;
+  if (patch.shellIntegration !== undefined) refs.shellIntegrationToggle.checked = patch.shellIntegration;
   if (patch.dictationLanguage !== undefined) refs.dictationLanguageSelect.value = patch.dictationLanguage;
   if (patch.dictationLanguageMode !== undefined) {
     refs.dictationLanguageModeSingleInput.checked = patch.dictationLanguageMode === "single";

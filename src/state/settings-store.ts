@@ -252,6 +252,7 @@ export function defaultSettings(): PersistedSettings {
     pushToTalkEndSound: DEFAULT_PUSH_TO_TALK_END_SOUND,
     pushToTalkSoundVolume: DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
     saveRecordings: DEFAULT_SAVE_RECORDINGS,
+    shellIntegration: false,
   };
 }
 
@@ -390,6 +391,7 @@ export function loadSettings(): PersistedSettings {
       pushToTalkEndSound: String(parsed.pushToTalkEndSound ?? defaults.pushToTalkEndSound),
       pushToTalkSoundVolume: coerceNumber(parsed.pushToTalkSoundVolume, defaults.pushToTalkSoundVolume, 0, 1),
       saveRecordings: coerceBoolean(parsed.saveRecordings, defaults.saveRecordings),
+      shellIntegration: coerceBoolean(parsed.shellIntegration, defaults.shellIntegration),
     };
   } catch {
     return defaults;

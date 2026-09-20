@@ -95,6 +95,7 @@ function fakeRefs(): SettingsFormRefs {
     recordingsStorageHintWeb: fakePara(),
     themeModeSelect: fakeSelect("dark"),
     captureBackendSelect: fakeSelect("webview"),
+    shellIntegrationToggle: fakeInput(),
     dictationSoundEffectsToggle: fakeInput(),
     muteMusicWhileDictatingToggle: fakeInput(),
     pushToTalkSoundSelect: fakeSelect("beep-start"),

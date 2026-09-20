@@ -75,6 +75,7 @@ export interface SettingsFormRefs {
   clearRecordingsBtn: HTMLButtonElement;
   themeModeSelect: HTMLSelectElement;
   captureBackendSelect: HTMLSelectElement;
+  shellIntegrationToggle: HTMLInputElement;
   dictationSoundEffectsToggle: HTMLInputElement;
   muteMusicWhileDictatingToggle: HTMLInputElement;
   pushToTalkSoundSelect: HTMLSelectElement;
@@ -162,6 +163,7 @@ export function querySettingsFormRefs(): SettingsFormRefs {
     clearRecordingsBtn: requiredElement<HTMLButtonElement>("#clearRecordingsBtn"),
     themeModeSelect: requiredElement<HTMLSelectElement>("#themeModeSelect"),
     captureBackendSelect: requiredElement<HTMLSelectElement>("#captureBackendSelect"),
+    shellIntegrationToggle: requiredElement<HTMLInputElement>("#shellIntegrationToggle"),
     dictationSoundEffectsToggle: requiredElement<HTMLInputElement>("#dictationSoundEffectsToggle"),
     muteMusicWhileDictatingToggle: requiredElement<HTMLInputElement>(
       "#muteMusicWhileDictatingToggle",

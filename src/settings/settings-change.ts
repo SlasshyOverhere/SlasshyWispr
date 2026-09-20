@@ -62,6 +62,7 @@ export interface SettingsChangeDeps {
   setCatalogSelects: (next: PersistedSettings, catalogs: SettingsCatalogs) => void;
   requestGlobalShortcutSync: () => void;
   requestLaunchAtLoginSync: (enabled: boolean) => void;
+  requestShellIntegrationSync: (enabled: boolean) => void;
   interruptTtsPlayback: () => void;
   notice: (message: string, isError?: boolean) => void;
   requestLocalSttRuntimeSyncForMode: (
@@ -188,6 +189,7 @@ export const settingsHandleEffects: SettingsHandleEffects = {
     const previousMicrophoneDeviceId = previous.microphoneDeviceId;
     const previousShowFlowBar = previous.showFlowBar;
     const previousLaunchAtLogin = previous.launchAtLogin;
+    const previousShellIntegration = previous.shellIntegration;
     const previousTtsEngine = previous.ttsEngine;
     const previousSttRuntimeMode = previous.sttRuntimeMode;
     const previousAiRuntimeMode = previous.aiRuntimeMode;
@@ -203,6 +205,9 @@ export const settingsHandleEffects: SettingsHandleEffects = {
     }
     if (previousLaunchAtLogin !== next.launchAtLogin) {
       changeDeps.requestLaunchAtLoginSync(next.launchAtLogin);
+    }
+    if (previousShellIntegration !== next.shellIntegration) {
+      changeDeps.requestShellIntegrationSync(next.shellIntegration);
     }
     if (previousTtsEngine !== next.ttsEngine) {
       changeDeps.interruptTtsPlayback();

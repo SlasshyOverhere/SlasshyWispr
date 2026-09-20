@@ -113,6 +113,17 @@ export function GeneralSettingsPane() {
         </select>
       </div>
 
+      <label className="s-row" htmlFor="shellIntegrationToggle">
+        <span className="s-row-label">Transcribe from Explorer</span>
+        <input
+          id="shellIntegrationToggle"
+          className="switch-input"
+          type="checkbox"
+          checked={settings.shellIntegration}
+          onChange={(event) => dispatchSettingsPatch({ shellIntegration: event.target.checked })}
+        />
+      </label>
+
       <div className="theme-picker" role="radiogroup" aria-labelledby="themeLabel">
         <label className="theme-card" data-theme-target="dark">
           <input
