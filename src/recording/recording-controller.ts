@@ -11,14 +11,28 @@
 import type { CaptureMode, PersistedSettings } from "../types";
 import { asErrorMessage, boolFlag } from "../utils";
 import {
+  base64ToBytes,
   blobToBase64,
   invalidRuntimeCombinationReason,
   missingApiKeyForOnlineRuntime,
   pickBestRecorderMimeType,
   resolvePreferredOnlineSttBitrate,
 } from "./audio-utils";
-import { startAmplitudeMonitoring, stopRecordingTicker, releaseMicrophone } from "./capture-monitors";
+import {
+  beginRecordingTicker,
+  releaseMicrophone,
+  startAmplitudeMonitoring,
+  startNativeAmplitudeMonitoring,
+  stopAmplitudeMonitoring,
+  stopRecordingTicker,
+} from "./capture-monitors";
 import { openMicrophoneStream } from "./mic-stream";
+import {
+  cancelNativeCapture,
+  nativeCaptureLevel,
+  startNativeCapture,
+  stopNativeCapture,
+} from "../ipc/client";
 
 export interface StopRecordingOptions {
   cancelPipeline?: boolean;
@@ -60,7 +74,11 @@ export interface RecordingControllerDeps {
   isTauri: () => boolean;
   now: () => number;
   performanceNow: () => number;
-  runPipeline: (blob: Blob, mimeType: string) => Promise<void>;
+  runPipeline: (
+    blob: Blob,
+    mimeType: string,
+    precomputed?: { rawPcmBase64: string },
+  ) => Promise<void>;
   createId: () => string;
   /** Snapshot the paste target at capture intent (best-effort, never blocks recording). */
   notePasteTarget?: () => void;
@@ -95,6 +113,9 @@ let controllerState!: RecordingControllerState;
 // generation always wins, even if the state machine has not flipped yet, and
 // a finalize whose generation was superseded never reaches the pipeline.
 let activePipelineGen = 0;
+
+/// True while the in-flight capture is owned by the Rust backend.
+let activeCaptureNative = false;
 
 export function getActivePipelineGen(): number {
   return activePipelineGen;
@@ -192,6 +213,59 @@ export async function startRecording(): Promise<void> {
     return;
   }
 
+  // Which backend produced the in-flight capture. Read once at start so a
+  // setting change mid-recording cannot strand the other backend's teardown.
+  const useNativeCapture =
+    activeSettings.captureBackend === "native" && controllerDeps.isTauri();
+
+  const completeStart = (): void => {
+    controllerDeps.transition({ type: "recording-ready" });
+    if (controllerDeps.getCaptureIntentStartedAt() > 0) {
+      controllerDeps.log(
+        `[record.intent.ready] source=${controllerDeps.getCaptureIntentLabel() || "unknown"} totalMs=${Math.round(
+          controllerDeps.performanceNow() - controllerDeps.getCaptureIntentStartedAt(),
+        )}`,
+      );
+      controllerDeps.clearCaptureIntent();
+    }
+    if (controllerDeps.getCaptureMode() === "push-to-talk") {
+      controllerDeps.setNotice("Recording started. Release the hotkey or mic button to stop.");
+    } else {
+      controllerDeps.setNotice("Recording started. Tap again to stop.");
+    }
+    controllerDeps.syncAvailability();
+  };
+
+  if (useNativeCapture) {
+    try {
+      const captureStartedAt = controllerDeps.performanceNow();
+      const info = await startNativeCapture(activeSettings.microphoneDeviceId);
+      activeCaptureNative = true;
+      controllerState.setMediaRecorder(null);
+      controllerState.setRecordedChunks([]);
+      controllerState.setRecorderMimeType("audio/wav");
+      controllerDeps.setMicrophonePermissionGranted(true);
+      startNativeAmplitudeMonitoring(nativeCaptureLevel);
+      beginRecordingTicker();
+      controllerDeps.log(
+        `[record.start] native capture device='${info.deviceName}' rate=${info.sampleRate} fallback=${boolFlag(
+          info.fallbackUsed,
+        )} openMs=${Math.round(controllerDeps.performanceNow() - captureStartedAt)}`,
+      );
+      completeStart();
+    } catch (error) {
+      activeCaptureNative = false;
+      controllerDeps.log(`[record.start] native capture failed: ${asErrorMessage(error)}`);
+      controllerDeps.clearCaptureIntent();
+      controllerDeps.transition({
+        type: "recording-failed",
+        reason: `Microphone access failed: ${asErrorMessage(error)}`,
+      });
+      controllerDeps.syncAvailability();
+    }
+    return;
+  }
+
   const recorderOptions: MediaRecorderOptions = {};
 
   const preferredMimeType = pickBestRecorderMimeType();
@@ -247,21 +321,7 @@ export async function startRecording(): Promise<void> {
         controllerDeps.performanceNow() - recorderInitStartedAt,
       )} readyMs=${recordingReadyLatencyMs}`,
     );
-    controllerDeps.transition({ type: "recording-ready" });
-    if (controllerDeps.getCaptureIntentStartedAt() > 0) {
-      controllerDeps.log(
-        `[record.intent.ready] source=${controllerDeps.getCaptureIntentLabel() || "unknown"} totalMs=${Math.round(
-          controllerDeps.performanceNow() - controllerDeps.getCaptureIntentStartedAt(),
-        )}`,
-      );
-      controllerDeps.clearCaptureIntent();
-    }
-    if (controllerDeps.getCaptureMode() === "push-to-talk") {
-      controllerDeps.setNotice("Recording started. Release the hotkey or mic button to stop.");
-    } else {
-      controllerDeps.setNotice("Recording started. Tap again to stop.");
-    }
-    controllerDeps.syncAvailability();
+    completeStart();
   } catch (error) {
     controllerDeps.log(`[record.start] failed to open microphone: ${asErrorMessage(error)}`);
     controllerDeps.clearCaptureIntent();
@@ -278,6 +338,26 @@ export function stopRecording(options: StopRecordingOptions = {}): void {
     `[record.stop] requested stage=${controllerDeps.getStage()} recorderState=${mediaRecorder?.state || "none"}`,
   );
   controllerDeps.clearPushToTalkHolds();
+
+  if (activeCaptureNative) {
+    controllerState.setSkipPipeline(cancelPipeline);
+    controllerState.setSkipNotice(cancelPipeline ? cancelNotice || "" : "");
+    if (cancelPipeline) {
+      // Cancelled: discard in Rust. Otherwise finalizeRecording stops the
+      // capture, because stopping is what yields the audio.
+      activeCaptureNative = false;
+      void cancelNativeCapture().catch((error) => {
+        controllerDeps.log(`[record.stop] native cancel failed: ${asErrorMessage(error)}`);
+      });
+    }
+    stopRecordingTicker();
+    stopAmplitudeMonitoring(true);
+    controllerDeps.transition(
+      cancelPipeline ? { type: "stop-recording", cancelPipeline: true } : { type: "stop-recording" },
+    );
+    controllerDeps.syncAvailability();
+    return;
+  }
 
   if (!mediaRecorder) {
     controllerState.setSkipPipeline(false);
@@ -322,9 +402,32 @@ export async function finalizeRecording(): Promise<void> {
     return;
   }
 
-  const blob = new Blob(controllerState.getRecordedChunks(), { type: controllerState.getRecorderMimeType() });
-  controllerState.setRecordedChunks([]);
-  controllerDeps.log(`[record.finalize] blobSize=${blob.size} mime=${controllerState.getRecorderMimeType()}`);
+  let blob: Blob;
+  let mimeType: string;
+  let nativePcmBase64: string | null = null;
+
+  if (activeCaptureNative) {
+    activeCaptureNative = false;
+    try {
+      const captured = await stopNativeCapture();
+      nativePcmBase64 = captured.rawPcmBase64;
+      mimeType = "audio/wav";
+      blob = new Blob([base64ToBytes(captured.wavBase64)], { type: mimeType });
+      controllerDeps.log(
+        `[record.finalize.native] wavBytes=${blob.size} samples=${captured.sampleCount} sampleRate=${captured.sampleRate} durationMs=${captured.durationMs}`,
+      );
+    } catch (error) {
+      controllerDeps.log(`[record.finalize.native] failed: ${asErrorMessage(error)}`);
+      controllerDeps.transition({ type: "audio-empty" });
+      controllerDeps.syncAvailability();
+      return;
+    }
+  } else {
+    mimeType = controllerState.getRecorderMimeType();
+    blob = new Blob(controllerState.getRecordedChunks(), { type: mimeType });
+    controllerState.setRecordedChunks([]);
+    controllerDeps.log(`[record.finalize] blobSize=${blob.size} mime=${mimeType}`);
+  }
 
   if (blob.size === 0) {
     controllerDeps.log("[record.finalize] blocked because captured blob is empty");
@@ -348,13 +451,17 @@ export async function finalizeRecording(): Promise<void> {
   const saveRecordingsEnabled = liveSettings.saveRecordings && controllerDeps.isTauri();
   if (saveRecordingsEnabled) {
     try {
-      await saveDictationAudio(blob, controllerState.getRecorderMimeType());
+      await saveDictationAudio(blob, mimeType);
     } catch (error) {
       controllerDeps.log(`[record.finalize.save] failed: ${asErrorMessage(error)}`);
     }
   }
 
-  await controllerDeps.runPipeline(blob, controllerState.getRecorderMimeType());
+  await controllerDeps.runPipeline(
+    blob,
+    mimeType,
+    nativePcmBase64 ? { rawPcmBase64: nativePcmBase64 } : undefined,
+  );
 }
 
 export async function saveDictationAudio(

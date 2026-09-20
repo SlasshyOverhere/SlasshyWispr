@@ -15,6 +15,8 @@ import type {
   LocalSttOpenPathResponse,
   LocalSttRuntimeStateResponse,
   LocalSttWarmupResponse,
+  NativeCapturedAudio,
+  NativeCaptureInfo,
   OllamaPullResponse,
   OllamaStatusResponse,
   PiperValidationResponse,
@@ -68,6 +70,26 @@ export function checkForAppUpdate(): Promise<AppUpdateCheckResponse> {
 
 export function downloadAndInstallAppUpdate(request: InstallAppUpdateRequest): Promise<void> {
   return invoke(IPC_COMMANDS.downloadAndInstallAppUpdate, { request });
+}
+
+// ===== Native capture =====
+
+export function startNativeCapture(deviceId: string): Promise<NativeCaptureInfo> {
+  return invoke<NativeCaptureInfo>(IPC_COMMANDS.startNativeCapture, {
+    deviceId: deviceId || null,
+  });
+}
+
+export function stopNativeCapture(): Promise<NativeCapturedAudio> {
+  return invoke<NativeCapturedAudio>(IPC_COMMANDS.stopNativeCapture);
+}
+
+export function cancelNativeCapture(): Promise<void> {
+  return invoke(IPC_COMMANDS.cancelNativeCapture);
+}
+
+export function nativeCaptureLevel(): Promise<number> {
+  return invoke<number>(IPC_COMMANDS.nativeCaptureLevel);
 }
 
 // ===== Shell integration =====

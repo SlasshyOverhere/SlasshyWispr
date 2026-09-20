@@ -9,6 +9,23 @@ export type SettingsPane =
   | "update-security"
   | "pipeline";
 export type TtsEngine = "piper";
+
+// "webview" keeps MediaRecorder in the WebView; "native" captures in Rust.
+export type CaptureBackend = "webview" | "native";
+
+export interface NativeCaptureInfo {
+  deviceName: string;
+  sampleRate: number;
+  fallbackUsed: boolean;
+}
+
+export interface NativeCapturedAudio {
+  rawPcmBase64: string;
+  wavBase64: string;
+  sampleRate: number;
+  sampleCount: number;
+  durationMs: number;
+}
 export type RuntimeMode = "online" | "local";
 export type DictationLanguageMode = "single" | "multiple";
 export type PiperQuality = "fast" | "balanced" | "high";
@@ -250,6 +267,7 @@ export interface PersistedSettings {
   autoPunctuation: boolean;
   numberedLists: boolean;
   noiseSuppression: boolean;
+  captureBackend: CaptureBackend;
   ttsEngine: TtsEngine;
   piperSpeed: number;
   piperQuality: PiperQuality;

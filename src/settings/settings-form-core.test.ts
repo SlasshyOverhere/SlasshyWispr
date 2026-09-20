@@ -94,6 +94,7 @@ function fakeRefs(): SettingsFormRefs {
     recordingsStorageHint: { textContent: "" } as unknown as HTMLElement,
     recordingsStorageHintWeb: fakePara(),
     themeModeSelect: fakeSelect("dark"),
+    captureBackendSelect: fakeSelect("webview"),
     dictationSoundEffectsToggle: fakeInput(),
     muteMusicWhileDictatingToggle: fakeInput(),
     pushToTalkSoundSelect: fakeSelect("beep-start"),

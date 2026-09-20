@@ -19,6 +19,7 @@ import {
   asPiperEmotion,
   asPiperQuality,
   asStyleProfile,
+  asCaptureBackend,
   asThemeMode,
   coerceInteger,
   coerceNumber,
@@ -114,6 +115,7 @@ export function readSettingsFromForm(
     copyToClipboard: refs.copyToClipboardToggle.checked,
     incognitoMode: refs.incognitoModeToggle.checked,
     themeMode: asThemeMode(refs.themeModeSelect.value),
+    captureBackend: asCaptureBackend(refs.captureBackendSelect.value),
     dictationSoundEffects: refs.dictationSoundEffectsToggle.checked,
     muteMusicWhileDictating: refs.muteMusicWhileDictatingToggle.checked,
     rawMode: refs.rawModeToggle.checked,
@@ -139,6 +141,7 @@ export function refreshGeneralDisplayFromSettings(
   next: PersistedSettings,
 ): void {
   refs.themeModeSelect.value = next.themeMode;
+  refs.captureBackendSelect.value = next.captureBackend;
   updateWakePhrasePreview(refs, next.assistantName);
   refs.hotkeyHint.textContent = formatHotkeyForDisplay(next.pushToTalkHotkey);
   refs.captureModeHint.textContent = captureModeLabel(next.captureMode);
@@ -275,6 +278,7 @@ export function applySettingsPatchToForm(
       input.checked = input.value === patch.themeMode;
     }
   }
+  if (patch.captureBackend !== undefined) refs.captureBackendSelect.value = patch.captureBackend;
   if (patch.dictationLanguage !== undefined) refs.dictationLanguageSelect.value = patch.dictationLanguage;
   if (patch.dictationLanguageMode !== undefined) {
     refs.dictationLanguageModeSingleInput.checked = patch.dictationLanguageMode === "single";

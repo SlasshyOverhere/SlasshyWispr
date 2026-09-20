@@ -103,6 +103,7 @@ function fakeRefs() {
     incognitoModeToggle: fakeInput(),
     saveRecordingsToggle: fakeInput(),
     themeModeSelect: fakeSelect("dark"),
+    captureBackendSelect: fakeSelect("webview"),
     dictationSoundEffectsToggle: fakeInput(),
     muteMusicWhileDictatingToggle: fakeInput(),
     pushToTalkSoundSelect: fakeSelect("beep-start"),

@@ -25,6 +25,7 @@ import {
   SETTINGS_STORAGE_KEY,
 } from "../constants";
 import type {
+  CaptureBackend,
   DictationLanguageMode,
   PersistedSettings,
   PiperEmotion,
@@ -112,6 +113,10 @@ export function asStyleProfile(value: unknown): StyleProfile {
     return value;
   }
   return DEFAULT_STYLE_PROFILE;
+}
+
+export function asCaptureBackend(value: unknown): CaptureBackend {
+  return value === "native" ? "native" : "webview";
 }
 
 export function asThemeMode(value: unknown): ThemeMode {
@@ -238,6 +243,7 @@ export function defaultSettings(): PersistedSettings {
     autoPunctuation: true,
     numberedLists: true,
     noiseSuppression: false,
+    captureBackend: "webview",
     ttsEngine: DEFAULT_TTS_ENGINE,
     piperSpeed: DEFAULT_PIPER_SPEED,
     piperQuality: DEFAULT_PIPER_QUALITY,
@@ -375,6 +381,7 @@ export function loadSettings(): PersistedSettings {
       autoPunctuation: coerceBoolean(parsed.autoPunctuation, defaults.autoPunctuation),
       numberedLists: coerceBoolean(parsed.numberedLists, defaults.numberedLists),
       noiseSuppression: coerceBoolean(parsed.noiseSuppression, defaults.noiseSuppression),
+      captureBackend: asCaptureBackend(parsed.captureBackend),
       ttsEngine: asTtsEngine(parsed.ttsEngine),
       piperSpeed: coerceNumber(parsed.piperSpeed, defaults.piperSpeed, 0.5, 2),
       piperQuality: asPiperQuality(parsed.piperQuality),

@@ -94,7 +94,11 @@ export function initPipelineClient(
   clientDeps = deps;
 }
 
-export async function runPipeline(audioBlob: Blob, audioMimeType: string): Promise<void> {
+export async function runPipeline(
+  audioBlob: Blob,
+  audioMimeType: string,
+  precomputed?: { rawPcmBase64: string },
+): Promise<void> {
   const activeSettings = clientDeps.readSettings();
   const pipelineInvokeStartedAt = performance.now();
 
@@ -104,8 +108,10 @@ export async function runPipeline(audioBlob: Blob, audioMimeType: string): Promi
   try {
     let pipelineAudioBlob = audioBlob;
     let pipelineAudioMimeType = audioMimeType;
-    let rawPcmBase64: string | null = null;
-    if (activeSettings.noiseSuppression) {
+    // Native capture already holds the PCM in the pipeline's exact shape, so
+    // skip decoding the blob back into samples.
+    let rawPcmBase64: string | null = precomputed?.rawPcmBase64 ?? null;
+    if (!rawPcmBase64 && activeSettings.noiseSuppression) {
       // Fast path: decode WebM → raw f32 PCM, send directly to Rust (skip WAV roundtrip)
       try {
         const decoded = await decodeAudioSample(audioBlob);

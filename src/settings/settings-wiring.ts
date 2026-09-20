@@ -79,6 +79,7 @@ export function wireSettingsFormInputs(wiring: SettingsPaneWiring): void {
     refs.incognitoModeToggle.addEventListener("change", change);
     refs.saveRecordingsToggle.addEventListener("change", change);
     refs.themeModeSelect.addEventListener("change", change);
+    refs.captureBackendSelect.addEventListener("change", change);
     for (const cardInput of refs.themeCardInputs) {
       cardInput.addEventListener("change", () => {
         if (!cardInput.checked) {

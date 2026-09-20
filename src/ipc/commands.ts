@@ -61,6 +61,11 @@ export const IPC_COMMANDS = {
   // Shell integration
   configureShellIntegration: "configure_shell_integration",
   shellIntegrationStatus: "shell_integration_status",
+  // Native capture
+  startNativeCapture: "start_native_capture",
+  stopNativeCapture: "stop_native_capture",
+  cancelNativeCapture: "cancel_native_capture",
+  nativeCaptureLevel: "native_capture_level",
 } as const;
 
 export type IpcCommandName = (typeof IPC_COMMANDS)[keyof typeof IPC_COMMANDS];

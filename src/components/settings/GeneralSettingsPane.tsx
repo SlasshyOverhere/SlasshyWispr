@@ -99,6 +99,20 @@ export function GeneralSettingsPane() {
         </select>
       </div>
 
+      <div className="s-row">
+        <span className="s-row-label" id="captureBackendLabel">Audio capture</span>
+        <select
+          id="captureBackendSelect"
+          aria-labelledby="captureBackendLabel"
+          className="mini-select"
+          value={settings.captureBackend}
+          onChange={(event) => dispatchSettingsPatch({ captureBackend: event.target.value as typeof settings.captureBackend })}
+        >
+          <option value="webview">WebView (compatible)</option>
+          <option value="native">Native (lower latency)</option>
+        </select>
+      </div>
+
       <div className="theme-picker" role="radiogroup" aria-labelledby="themeLabel">
         <label className="theme-card" data-theme-target="dark">
           <input
