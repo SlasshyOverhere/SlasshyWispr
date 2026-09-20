@@ -18,6 +18,9 @@ import {
   handleSettingsChange,
   hydrateSettingsFromNativeStorage,
   initSettingsChange,
+  describeMaxTokensCorrection,
+  describeSttTimeoutCorrection,
+  reconcileMaxTokensWithBounds,
   reconcileSttTimeoutWithBounds,
   settingsHandleEffects,
   type SettingsChangeDeps,
@@ -27,6 +30,11 @@ import {
   setSttTimeoutBounds,
   sttTimeoutBounds,
 } from "./stt-timeout-bounds";
+import {
+  maxTokensBounds,
+  resetMaxTokensBoundsForTests,
+  setMaxTokensBounds,
+} from "./max-tokens-bounds";
 
 // The pipeline touches real DOM APIs (setCustomValidity, document theme
 // root, classList on panels); stub them at module scope.
@@ -305,6 +313,7 @@ function wireHarness(overrides: {
 
 beforeEach(() => {
   // Reset first: defaultSettings() reads these bounds.
+  resetMaxTokensBoundsForTests();
   resetSttTimeoutBoundsForTests();
   wireHarness();
 });
@@ -419,6 +428,86 @@ describe("settingsHandleEffects.afterPersist", () => {
     const next = { ...defaultSettings(), microphoneDeviceId: "mic-2" };
     settingsHandleEffects.afterPersist(previous, next, "idle");
     expect(harness.calls).toContain("prime");
+  });
+});
+
+describe("reconcileMaxTokensWithBounds", () => {
+  it("lowers a stored ceiling above the backend maximum", () => {
+    // The value the frontend used to allow (4096) survived its own coercion and
+    // was clamped to 1024 on every request, so the setting was displayed and
+    // ignored. That is what this reconcile now repairs and reports.
+    setMaxTokensBounds({ defaultTokens: 320, minTokens: 64, maxTokens: 1024 });
+    const harness = wireHarness({
+      settings: { ...defaultSettings(), maxTokens: 4096 },
+    });
+
+    expect(reconcileMaxTokensWithBounds()).toEqual({
+      previousTokens: 4096,
+      tokens: 1024,
+      minTokens: 64,
+      maxTokens: 1024,
+    });
+    expect(harness.getSettings().maxTokens).toBe(1024);
+    expect(harness.snapshots()).toBe(1);
+    expect(harness.persists()).toBe(1);
+  });
+
+  it("raises a stored ceiling below the backend minimum", () => {
+    setMaxTokensBounds({ defaultTokens: 320, minTokens: 256, maxTokens: 1024 });
+    const harness = wireHarness({
+      settings: { ...defaultSettings(), maxTokens: 64 },
+    });
+
+    expect(reconcileMaxTokensWithBounds()?.tokens).toBe(256);
+    expect(harness.getSettings().maxTokens).toBe(256);
+  });
+
+  it("leaves an in-range ceiling untouched", () => {
+    const harness = wireHarness({
+      settings: { ...defaultSettings(), maxTokens: 512 },
+    });
+
+    // null, not a no-op descriptor: nothing happened and nothing is reported.
+    expect(reconcileMaxTokensWithBounds()).toBeNull();
+    // No write, so a normal boot does not churn the settings file.
+    expect(harness.snapshots()).toBe(0);
+    expect(harness.persists()).toBe(0);
+  });
+
+  it("repairs a non-numeric stored value", () => {
+    const harness = wireHarness({
+      settings: { ...defaultSettings(), maxTokens: Number.NaN },
+    });
+
+    expect(reconcileMaxTokensWithBounds()?.tokens).toBe(maxTokensBounds().defaultTokens);
+    expect(harness.getSettings().maxTokens).toBe(maxTokensBounds().defaultTokens);
+  });
+});
+
+describe("bounds correction notices", () => {
+  it("names the previous value, the range, and the corrected value", () => {
+    // A silent correction is the thing being fixed here, so the copy has to
+    // carry enough to act on: what it was, what it is now, and where to change it.
+    expect(
+      describeSttTimeoutCorrection({
+        previousSeconds: 900,
+        seconds: 600,
+        minSeconds: 10,
+        maxSeconds: 600,
+      }),
+    ).toBe(
+      "Request Timeout 900s is outside the supported 10-600s range; set to 600s. Change it in Settings > Pipeline.",
+    );
+    expect(
+      describeMaxTokensCorrection({
+        previousTokens: 4096,
+        tokens: 1024,
+        minTokens: 64,
+        maxTokens: 1024,
+      }),
+    ).toBe(
+      "Max Tokens 4096 is outside the supported 64-1024 range; set to 1024. Change it in Settings > Pipeline.",
+    );
   });
 });
 
