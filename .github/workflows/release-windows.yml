@@ -112,6 +112,42 @@ jobs:
           } | ConvertTo-Json -Depth 5
           Set-Content -Path "release-assets/updater-manifest.json" -Value $manifest -Encoding UTF8
 
+      - name: Sign installer with minisign
+        shell: pwsh
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if ([string]::IsNullOrWhiteSpace($env:MINISIGN_SECRET_KEY)) {
+            throw "MINISIGN_SECRET_KEY is not set; refusing to publish an unverifiable release."
+          }
+
+          # The updater only accepts prehashed ("ED") signatures, which is what
+          # current minisign emits by default.
+          choco install minisign -y --no-progress
+
+          $keyPath = Join-Path $env:RUNNER_TEMP "minisign.key"
+          Set-Content -Path $keyPath -Value $env:MINISIGN_SECRET_KEY -NoNewline -Encoding ascii
+
+          $installer = Get-ChildItem "release-assets/*.exe" |
+            Sort-Object Length -Descending |
+            Select-Object -First 1
+          if (-not $installer) {
+            throw "No installer found in release-assets to sign."
+          }
+
+          minisign -S -s $keyPath -m $installer.FullName
+          if ($LASTEXITCODE -ne 0) {
+            throw "minisign failed to sign $($installer.Name)."
+          }
+
+          $signature = Get-ChildItem "$($installer.FullName).minisig"
+          Copy-Item $signature.FullName "release-assets/$($installer.Name).minisig" -Force
+          Remove-Item $keyPath -Force
+
+          Write-Host "Signed $($installer.Name)"
+
       - name: Generate release notes
         uses: actions/github-script@v7
         env:
@@ -282,5 +318,6 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             release-assets/*.exe
+            release-assets/*.minisig
             release-assets/checksums.txt
             release-assets/updater-manifest.json
