@@ -329,7 +329,14 @@ describe("reconcileSttTimeoutWithBounds", () => {
       settings: { ...defaultSettings(), sttTimeoutSeconds: 30 },
     });
 
-    expect(reconcileSttTimeoutWithBounds()).toBe(true);
+    // The descriptor is what bootstrap shows the user, so it has to carry the
+    // real numbers rather than just a flag.
+    expect(reconcileSttTimeoutWithBounds()).toEqual({
+      previousSeconds: 30,
+      seconds: 120,
+      minSeconds: 120,
+      maxSeconds: 600,
+    });
     expect(harness.getSettings().sttTimeoutSeconds).toBe(120);
     expect(harness.snapshots()).toBe(1);
     expect(harness.persists()).toBe(1);
@@ -341,7 +348,12 @@ describe("reconcileSttTimeoutWithBounds", () => {
       settings: { ...defaultSettings(), sttTimeoutSeconds: 900 },
     });
 
-    expect(reconcileSttTimeoutWithBounds()).toBe(true);
+    expect(reconcileSttTimeoutWithBounds()).toEqual({
+      previousSeconds: 900,
+      seconds: 120,
+      minSeconds: 10,
+      maxSeconds: 120,
+    });
     expect(harness.getSettings().sttTimeoutSeconds).toBe(120);
   });
 
@@ -350,7 +362,8 @@ describe("reconcileSttTimeoutWithBounds", () => {
       settings: { ...defaultSettings(), sttTimeoutSeconds: 120 },
     });
 
-    expect(reconcileSttTimeoutWithBounds()).toBe(false);
+    // null, not a no-op descriptor: nothing happened and nothing is reported.
+    expect(reconcileSttTimeoutWithBounds()).toBeNull();
     expect(harness.getSettings().sttTimeoutSeconds).toBe(120);
     // No write, so a normal boot does not churn the settings file.
     expect(harness.snapshots()).toBe(0);
@@ -362,10 +375,20 @@ describe("reconcileSttTimeoutWithBounds", () => {
       settings: { ...defaultSettings(), sttTimeoutSeconds: Number.NaN },
     });
 
-    expect(reconcileSttTimeoutWithBounds()).toBe(true);
+    const correction = reconcileSttTimeoutWithBounds();
+    expect(correction?.seconds).toBe(sttTimeoutBounds().defaultSeconds);
     expect(harness.getSettings().sttTimeoutSeconds).toBe(
       sttTimeoutBounds().defaultSeconds,
     );
+  });
+
+  it("reports each stale value once, because correcting it persists the fix", () => {
+    setSttTimeoutBounds({ defaultSeconds: 60, minSeconds: 120, maxSeconds: 600 });
+    wireHarness({ settings: { ...defaultSettings(), sttTimeoutSeconds: 5 } });
+
+    expect(reconcileSttTimeoutWithBounds()).not.toBeNull();
+    // Persisted, so the next launch has nothing to correct and nothing to say.
+    expect(reconcileSttTimeoutWithBounds()).toBeNull();
   });
 });
 

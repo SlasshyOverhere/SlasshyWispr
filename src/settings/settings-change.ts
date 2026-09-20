@@ -143,6 +143,18 @@ export async function hydrateSettingsFromNativeStorage(): Promise<void> {
   }
 }
 
+/// A stored STT timeout that had to be moved back inside the backend's bounds.
+///
+/// Returned rather than announced: bootstrap sets its own notices moments later,
+/// and the notice surface is a single text slot, so the caller has to report this
+/// last for it to be seen.
+export interface SttTimeoutCorrection {
+  previousSeconds: number;
+  seconds: number;
+  minSeconds: number;
+  maxSeconds: number;
+}
+
 /**
  * Bring a stored STT timeout back inside the backend's bounds.
  *
@@ -150,9 +162,10 @@ export async function hydrateSettingsFromNativeStorage(): Promise<void> {
  * persisted under an older, wider range would otherwise stay on screen — and be
  * silently clamped on every request — until the user next edited a field.
  *
- * Returns whether it corrected anything.
+ * Correcting persists the new value, so this fires at most once per stale value
+ * rather than on every launch.
  */
-export function reconcileSttTimeoutWithBounds(): boolean {
+export function reconcileSttTimeoutWithBounds(): SttTimeoutCorrection | null {
   const current = changeDeps.getSettings();
   const { defaultSeconds, minSeconds, maxSeconds } = sttTimeoutBounds();
   const reconciled = coerceInteger(
@@ -162,7 +175,7 @@ export function reconcileSttTimeoutWithBounds(): boolean {
     maxSeconds,
   );
   if (reconciled === current.sttTimeoutSeconds) {
-    return false;
+    return null;
   }
 
   const next: PersistedSettings = { ...current, sttTimeoutSeconds: reconciled };
@@ -175,7 +188,12 @@ export function reconcileSttTimeoutWithBounds(): boolean {
   if (changeDeps.isTauri()) {
     changeDeps.persist(next);
   }
-  return true;
+  return {
+    previousSeconds: current.sttTimeoutSeconds,
+    seconds: reconciled,
+    minSeconds,
+    maxSeconds,
+  };
 }
 
 export async function handleSettingsChange(): Promise<void> {

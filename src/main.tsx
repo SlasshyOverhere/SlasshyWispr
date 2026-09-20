@@ -2121,8 +2121,10 @@ async function bootstrap(): Promise<void> {
   // Before the hydrate below: it clamps stored values against these bounds.
   await refreshSttTimeoutBounds(() => ipcSttTimeoutBounds());
   await hydrateSettingsFromNativeStorageChangeService();
-  // The hydrate can restore a value stored under an older, wider range.
-  reconcileSttTimeoutWithBoundsService();
+  // The hydrate can restore a value stored under an older, wider range. Reported
+  // at the end of bootstrap: the notice surface is one text slot and the steps
+  // below set their own.
+  const sttTimeoutCorrection = reconcileSttTimeoutWithBoundsService();
   logClientEventService(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
 
   // Register global hotkeys immediately — user should be able to press the
@@ -2172,6 +2174,11 @@ async function bootstrap(): Promise<void> {
   syncActionAvailabilityService();
   startAutomaticUpdateChecksService();
   backfillAchievementsFromUsageStatsService();
+  if (sttTimeoutCorrection) {
+    setNoticeService(
+      `Request Timeout ${sttTimeoutCorrection.previousSeconds}s is outside the supported ${sttTimeoutCorrection.minSeconds}-${sttTimeoutCorrection.maxSeconds}s range; set to ${sttTimeoutCorrection.seconds}s. Change it in Settings > Pipeline.`,
+    );
+  }
   logClientEventService("[bootstrap] completed");
 }
 
