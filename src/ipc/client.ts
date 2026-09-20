@@ -26,6 +26,7 @@ import type {
   RecordingsStats,
   RuntimeSetupResponse,
   SttTimeoutBoundsResponse,
+  TemperatureBoundsResponse,
   TtsSetupStatusResponse,
   VoiceInstallResponse,
 } from "../types";
@@ -205,6 +206,10 @@ export function sttTimeoutBounds(): Promise<SttTimeoutBoundsResponse> {
 
 export function maxTokensBounds(): Promise<MaxTokensBoundsResponse> {
   return invoke(IPC_COMMANDS.maxTokensBounds);
+}
+
+export function temperatureBounds(): Promise<TemperatureBoundsResponse> {
+  return invoke(IPC_COMMANDS.temperatureBounds);
 }
 
 // ===== Providers / Ollama =====

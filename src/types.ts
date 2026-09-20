@@ -36,6 +36,7 @@ export type {
   RecordingsStats,
   RuntimeSetupResponse,
   SttTimeoutBoundsResponse,
+  TemperatureBoundsResponse,
   TtsSetupStatusResponse,
   VoiceInstallResponse,
 } from "./generated/ipc-wire-types";

@@ -277,6 +277,14 @@ export interface SttTimeoutBoundsResponse {
   maxSeconds: number;
 }
 
+// src-tauri/src/commands/ipc_types.rs
+/** Same contract for the assistant's sampling temperature. */
+export interface TemperatureBoundsResponse {
+  defaultTemperature: number;
+  minTemperature: number;
+  maxTemperature: number;
+}
+
 // src-tauri/src/commands/tts.rs
 export interface TtsSetupStatusResponse {
   running: boolean;

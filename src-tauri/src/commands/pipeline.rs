@@ -126,6 +126,20 @@ pub(crate) struct AssistantPipelineResponse {
     #[serde(flatten, default)]
     pub(crate) outcome: PipelineRunOutcome,
 }
+/// Bounds for the assistant's sampling temperature. The frontend renders these
+/// and the backend enforces them, so they are stated once, here.
+pub(crate) const TEMPERATURE_DEFAULT: f64 = 0.35;
+pub(crate) const TEMPERATURE_MIN: f64 = 0.0;
+pub(crate) const TEMPERATURE_MAX: f64 = 1.2;
+
+/// Clamp a user-set temperature to the range the settings pane offers. Above
+/// the maximum replies wander away from the dictation; at zero they stop
+/// varying at all.
+pub(crate) fn resolve_temperature(requested: Option<f32>) -> f32 {
+    let value = requested.map_or(TEMPERATURE_DEFAULT, f64::from);
+    value.clamp(TEMPERATURE_MIN, TEMPERATURE_MAX) as f32
+}
+
 /// Bounds for one assistant reply. The frontend renders these and the backend
 /// enforces them, so they are stated once, here.
 pub(crate) const MAX_TOKENS_DEFAULT: u32 = 320;
@@ -488,7 +502,7 @@ pub(crate) async fn run_assistant_pipeline(
     );
     // --- Delegate decision logic to the orchestrator ---
     let system_prompt = resolve_system_prompt(request.system_prompt.as_deref());
-    let temperature = request.temperature.unwrap_or(0.35).clamp(0.0, 1.2);
+    let temperature = resolve_temperature(request.temperature);
     let max_tokens = resolve_max_tokens(request.max_tokens);
 
     let orch_state = crate::pipeline::orchestration::PipelineState::new();

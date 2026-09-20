@@ -43,7 +43,7 @@ pub(crate) use recordings::{
 };
 pub(crate) use settings::{
     load_persisted_local_settings, max_tokens_bounds, save_persisted_local_settings,
-    stt_timeout_bounds,
+    stt_timeout_bounds, temperature_bounds,
 };
 pub(crate) use tts::{
     clone_coqui_voice, ensure_voice_model, get_coqui_status, get_tts_runtime_setup_status,

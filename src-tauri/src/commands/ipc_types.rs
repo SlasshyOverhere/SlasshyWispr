@@ -94,6 +94,15 @@ pub(crate) struct SttTimeoutBoundsResponse {
     pub(crate) max_seconds: u64,
 }
 
+/// Same contract for the assistant's sampling temperature.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TemperatureBoundsResponse {
+    pub(crate) default_temperature: f64,
+    pub(crate) min_temperature: f64,
+    pub(crate) max_temperature: f64,
+}
+
 /// Same contract for the assistant's token ceiling.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

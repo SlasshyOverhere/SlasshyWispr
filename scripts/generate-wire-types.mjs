@@ -50,6 +50,7 @@ const WIRE_TYPES = [
   "RecordingsStats",
   "RuntimeSetupResponse",
   "SttTimeoutBoundsResponse",
+  "TemperatureBoundsResponse",
   "TtsSetupStatusResponse",
   "VoiceInstallResponse",
 ];
