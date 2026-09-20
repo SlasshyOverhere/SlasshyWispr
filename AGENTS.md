@@ -7,7 +7,7 @@ Desktop voice dictation. Tauri v2 (Rust) + React 19 + Vite 8 + Tailwind CSS 4.
 | Command | What it does |
 |---------|-------------|
 | `npm run dev` | Vite dev server only |
-| `npm run build` | `tsc && vite build` (typecheck then bundle) |
+| `npm run build` | `prebuild` gate, then `tsc && vite build` (typecheck then bundle) |
 | `npm run tauri:dev` | Full Tauri dev — runs `pretauri:dev`, then `tauri dev --config src-tauri/tauri.conf.dev.json`. Uses identifier `online.slasshy.slasshywispr.dev` and window title "SlasshyWispr Dev", so it runs independently of the installed production build. |
 | `npm run tauri:build` | Production build (NSIS installer on Windows), using the default `tauri.conf.json`. |
 | `npm run test` | `bun test` (NOT vitest/jest) |
@@ -33,6 +33,7 @@ Single-instance enforcement (per spec `2026-07-07-tray-window-toggle-and-single-
 - `src/**/*.test.ts` is excluded from type checking.
 - Path alias `@/` maps to `./src/*`.
 - `pretauri:dev` (`scripts/ensure-valid-dev-exe.mjs`) deletes corrupted Windows dev binaries (`app.exe`/`app.pdb`) before `tauri dev`.
+- `prebuild` (`scripts/check-stt-timeout-fallback.mjs`) fails the build if the TS STT timeout fallback stops being superseded by the backend answer — the one thing that stops those constants becoming a second source of truth. Static, because the backend's bounds currently equal the fallback and no value comparison could tell them apart.
 - Tauri v2 dev URL `http://localhost:1421` is hardcoded in `vite.config.ts`.
 - Window is non-resizable, non-maximizable, non-minimizable, with a custom titlebar (`decorations: false`).
 
@@ -40,7 +41,7 @@ Single-instance enforcement (per spec `2026-07-07-tray-window-toggle-and-single-
 
 - **`release-windows.yml`** — triggered by `v*.*.*` tags. Validates the version matches across `tauri.conf.json` and `Cargo.toml` before building, and generates release notes from conventional commit messages. Only Windows NSIS builds are supported.
 - **`rust-tests.yml`** — `cargo check` + `cargo test` on Windows, plus a production CSP gate and a debug-redaction gate. Only triggers on `src-tauri/**` changes.
-- **`frontend-tests.yml`** — `bun test` + `tsc --noEmit`. The TS suite runs nowhere else.
+- **`frontend-tests.yml`** — `bun test` + `tsc --noEmit`, plus the STT timeout fallback gate. The TS suite runs nowhere else. Also triggers on `src-tauri/**` because contract tests under `src/` read Rust sources.
 
 ## Code comments
 
