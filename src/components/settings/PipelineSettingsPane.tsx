@@ -35,9 +35,14 @@ export function PipelineSettingsPane() {
           id="systemPromptInput"
           rows={4}
           spellCheck="false"
+          placeholder="Leave empty to use the built-in cleanup prompt."
           value={settings.systemPrompt}
           onChange={(event) => dispatchSettingsPatch({ systemPrompt: event.target.value })}
         ></textarea>
+        <span className="field-hint">
+          Empty means the app uses its built-in prompt, which is kept up to date with each
+          release. Anything you type here replaces it until you clear the field.
+        </span>
       </label>
 
       <label className="field" htmlFor="temperatureInput">

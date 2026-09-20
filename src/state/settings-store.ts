@@ -18,7 +18,6 @@ import {
   DEFAULT_AI_MODEL_NAME,
   DEFAULT_STT_MODEL_NAME,
   DEFAULT_STYLE_PROFILE,
-  DEFAULT_SYSTEM_PROMPT,
   DEFAULT_TEMPERATURE,
   DEFAULT_TTS_ENGINE,
   DICTATION_LANGUAGE_LABELS,
@@ -64,6 +63,26 @@ export function coerceBoolean(value: unknown, fallback: boolean): boolean {
     return value;
   }
   return fallback;
+}
+
+/**
+ * The default prompt this app shipped in TypeScript until it was removed.
+ *
+ * Installations that predate the removal persisted a copy of it, which would
+ * otherwise read as a deliberate customization and keep those users on a text
+ * the backend no longer treats as the default. Recognising it here is the
+ * migration: the setting becomes empty, i.e. "use the built-in prompt".
+ */
+const LEGACY_DEFAULT_SYSTEM_PROMPT =
+  "You are SlasshyWispr, a helpful desktop voice assistant. Keep replies concise and easy to speak aloud.";
+
+/** Empty means "use the built-in prompt", which only the backend defines. */
+export function coerceSystemPrompt(value: unknown, fallback: string): string {
+  if (value === undefined) {
+    return fallback;
+  }
+  const prompt = String(value);
+  return prompt.trim() === LEGACY_DEFAULT_SYSTEM_PROMPT ? "" : prompt;
 }
 
 /**
@@ -222,7 +241,7 @@ export function defaultSettings(): PersistedSettings {
     dictationLanguageMode: DEFAULT_DICTATION_LANGUAGE_MODE,
     dictationLanguageAllowList: [],
     styleProfile: DEFAULT_STYLE_PROFILE,
-    systemPrompt: DEFAULT_SYSTEM_PROMPT,
+    systemPrompt: "",
     temperature: DEFAULT_TEMPERATURE,
     maxTokens: DEFAULT_MAX_TOKENS,
     sttTimeoutSeconds: sttTimeoutBounds().defaultSeconds,
@@ -354,8 +373,7 @@ export function loadSettings(): PersistedSettings {
       dictationLanguageMode,
       dictationLanguageAllowList,
       styleProfile: asStyleProfile(parsed.styleProfile),
-      systemPrompt:
-        parsed.systemPrompt !== undefined ? String(parsed.systemPrompt) : defaults.systemPrompt,
+      systemPrompt: coerceSystemPrompt(parsed.systemPrompt, defaults.systemPrompt),
       temperature: coerceNumber(parsed.temperature, defaults.temperature, 0, 1.2),
       maxTokens: coerceInteger(parsed.maxTokens, defaults.maxTokens, 64, 4096),
       sttTimeoutSeconds: coerceInteger(

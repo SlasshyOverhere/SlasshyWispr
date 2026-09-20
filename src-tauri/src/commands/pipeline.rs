@@ -125,6 +125,22 @@ pub(crate) struct AssistantPipelineResponse {
     #[serde(flatten, default)]
     pub(crate) outcome: PipelineRunOutcome,
 }
+/// The prompt the AI stages run with, given whatever the frontend sent.
+///
+/// An absent or empty setting means "use the built-in prompt". The frontend
+/// ships no copy of it, so clearing the field cannot switch behaviour to some
+/// second text — this is the only definition of the default, and the only
+/// thing that changes if it is rewritten.
+fn resolve_system_prompt(requested: Option<&str>) -> &str {
+    match requested.map(str::trim).filter(|prompt| !prompt.is_empty()) {
+        Some(prompt) => prompt,
+        None => {
+            info!("[pipeline] no system prompt set — using the built-in one");
+            DEFAULT_SYSTEM_PROMPT
+        }
+    }
+}
+
 #[tauri::command]
 pub(crate) async fn run_assistant_pipeline(
     app: AppHandle,
@@ -455,12 +471,7 @@ pub(crate) async fn run_assistant_pipeline(
         selected_chars
     );
     // --- Delegate decision logic to the orchestrator ---
-    let system_prompt = request
-        .system_prompt
-        .as_deref()
-        .map(str::trim)
-        .filter(|prompt| !prompt.is_empty())
-        .unwrap_or(DEFAULT_SYSTEM_PROMPT);
+    let system_prompt = resolve_system_prompt(request.system_prompt.as_deref());
     let temperature = request.temperature.unwrap_or(0.35).clamp(0.0, 1.2);
     let max_tokens = request.max_tokens.unwrap_or(320).clamp(64, 1024);
 
@@ -796,6 +807,29 @@ pub(crate) async fn run_assistant_pipeline(
 mod tests {
     use super::*;
     use crate::pipeline::tts::PiperPipelineRequest;
+
+    #[test]
+    fn an_absent_or_blank_system_prompt_falls_back_to_the_built_in_one() {
+        assert_eq!(resolve_system_prompt(None), DEFAULT_SYSTEM_PROMPT);
+        assert_eq!(resolve_system_prompt(Some("")), DEFAULT_SYSTEM_PROMPT);
+        assert_eq!(
+            resolve_system_prompt(Some("  \n\t ")),
+            DEFAULT_SYSTEM_PROMPT
+        );
+    }
+
+    #[test]
+    fn a_custom_system_prompt_is_used_trimmed() {
+        assert_eq!(resolve_system_prompt(Some("  Be terse.  ")), "Be terse.");
+    }
+
+    #[test]
+    fn the_built_in_prompt_explains_what_the_ai_stage_should_do() {
+        // Nothing on the frontend repeats these, so losing them would quietly
+        // change how a transcript is refined rather than fail anything.
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("cleanup"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("Output only final content"));
+    }
 
     #[test]
     fn ipc_request_serializes_with_camel_case() {

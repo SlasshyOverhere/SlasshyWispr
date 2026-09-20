@@ -35,8 +35,8 @@ export const ANALYTICS_SESSIONS_KEY = "slasshywispr-analytics-sessions-v1";
 export const ACHIEVEMENTS_STATE_KEY = "slasshywispr-achievements-state-v1";
 export const ACTIVE_PAGE_STORAGE_KEY = "slasshywispr-active-page-v1";
 export const EMPTY_HISTORY_HINT = "No turns yet. Start dictating to see your recent activity.";
-export const DEFAULT_SYSTEM_PROMPT =
-  "You are SlasshyWispr, a helpful desktop voice assistant. Keep replies concise and easy to speak aloud.";
+// No DEFAULT_SYSTEM_PROMPT here on purpose: the built-in prompt is owned by the
+// backend (src-tauri/src/constants.rs) and an empty setting means "use it".
 export const DEFAULT_TEMPERATURE = 0.35;
 export const DEFAULT_MAX_TOKENS = 320;
 export const DEFAULT_API_BASE_URL = "";
