@@ -91,6 +91,7 @@ function fakeRefs() {
     systemPromptInput: { value: "prompt" },
     temperatureInput: fakeInput("0.35"),
     maxTokensInput: fakeInput("320"),
+    sttTimeoutSecondsInput: fakeInput("60"),
     launchAtLoginToggle: fakeInput(),
     showFlowBarToggle: fakeInput(),
     showDockAlwaysToggle: fakeInput(),

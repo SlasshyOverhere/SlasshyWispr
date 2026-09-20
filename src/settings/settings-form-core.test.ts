@@ -76,6 +76,7 @@ function fakeRefs(): SettingsFormRefs {
     temperatureInput: fakeInput("0.35"),
     temperatureValue: { textContent: "" } as unknown as HTMLElement,
     maxTokensInput: fakeInput("320"),
+    sttTimeoutSecondsInput: fakeInput("60"),
     launchAtLoginToggle: fakeInput(),
     showFlowBarToggle: fakeInput(),
     showDockAlwaysToggle: fakeInput(),

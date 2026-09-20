@@ -271,6 +271,7 @@ export async function runPipeline(
         piperPath: activeSettings.piperPath || null,
         audioBase64,
         audioMimeType: pipelineAudioMimeType,
+        sttTimeoutSeconds: activeSettings.sttTimeoutSeconds,
         language: sttLanguageConfig.language,
         allowedLanguages: sttLanguageConfig.allowedLanguages,
         systemPrompt,

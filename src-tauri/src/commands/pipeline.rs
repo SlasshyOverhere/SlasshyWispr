@@ -41,8 +41,8 @@ use crate::pipeline::tts::{
 use crate::pipeline::wake::extract_wake_command;
 use crate::services::pipeline_service::resolve_pipeline_mode;
 use crate::services::{
-    resolve_piper_assets, sync_orchestrator_pending_rewrite_to_app_state, sync_selection_context,
-    transcribe_audio, transcribe_audio_local, SttRequest,
+    resolve_piper_assets, resolve_stt_timeout, sync_orchestrator_pending_rewrite_to_app_state,
+    sync_selection_context, transcribe_audio, transcribe_audio_local, SttRequest,
 };
 use crate::state::AppState;
 
@@ -61,6 +61,9 @@ pub(crate) struct AssistantPipelineRequest {
     pub(crate) piper_path: Option<String>,
     pub(crate) audio_base64: String,
     pub(crate) audio_mime_type: String,
+    /// Clamped by `resolve_stt_timeout`; the frontend's bound is a hint, not a
+    /// guarantee, since this arrives over IPC.
+    pub(crate) stt_timeout_seconds: Option<u64>,
     pub(crate) language: Option<String>,
     pub(crate) allowed_languages: Option<Vec<String>>,
     pub(crate) system_prompt: Option<String>,
@@ -207,14 +210,15 @@ pub(crate) async fn run_assistant_pipeline(
     };
 
     info!(
-        "[pipeline] start mode={} engine={} audio_bytes={} mime={} stt_base_url={} stt_model={} ai_model={}",
+        "[pipeline] start mode={} engine={} audio_bytes={} mime={} stt_base_url={} stt_model={} ai_model={} stt_timeout_seconds={}",
         pipeline_label,
         if use_coqui { "coqui" } else { "piper" },
         audio_bytes.len(),
         request.audio_mime_type,
         clip_text(&stt_base_url_for_log, 180),
         clip_text(&stt_model_for_log, 120),
-        clip_text(&ai_model_for_log, 120)
+        clip_text(&ai_model_for_log, 120),
+        resolve_stt_timeout(request.stt_timeout_seconds).as_secs()
     );
 
     let overall_start = Instant::now();
@@ -237,7 +241,8 @@ pub(crate) async fn run_assistant_pipeline(
                 SttRequest::new(api_base_url, stt_model, &audio_bytes, "online")
                     .api_key(Some(api_key.as_str()))
                     .audio_mime_type(request.audio_mime_type.trim())
-                    .language(request.language.as_deref()),
+                    .language(request.language.as_deref())
+                    .timeout(resolve_stt_timeout(request.stt_timeout_seconds)),
                 request.allowed_languages.as_deref(),
             )
             .await?
@@ -807,6 +812,7 @@ mod tests {
             piper_path: Some("/path/to/piper".to_string()),
             audio_base64: "dGVzdA==".to_string(),
             audio_mime_type: "audio/wav".to_string(),
+            stt_timeout_seconds: None,
             language: Some("en".to_string()),
             allowed_languages: Some(vec!["en".to_string(), "es".to_string()]),
             system_prompt: Some("You are helpful.".to_string()),
@@ -986,6 +992,7 @@ mod tests {
             piper_path: None,
             audio_base64: String::new(),
             audio_mime_type: String::new(),
+            stt_timeout_seconds: None,
             language: None,
             allowed_languages: None,
             system_prompt: None,
@@ -1098,6 +1105,30 @@ mod tests {
     }
 
     #[test]
+    fn ipc_stt_timeout_deserializes_and_is_clamped_at_the_boundary() {
+        let request: AssistantPipelineRequest = serde_json::from_str(
+            r#"{"apiKey":"k","audioBase64":"","audioMimeType":"audio/wav","sttTimeoutSeconds":15}"#,
+        )
+        .expect("should deserialize a stt timeout");
+        assert_eq!(request.stt_timeout_seconds, Some(15));
+        assert_eq!(
+            resolve_stt_timeout(request.stt_timeout_seconds),
+            std::time::Duration::from_secs(15)
+        );
+
+        // The frontend's bound is a hint; this arrives over IPC, so an
+        // out-of-range value is clamped rather than trusted.
+        let hostile: AssistantPipelineRequest = serde_json::from_str(
+            r#"{"apiKey":"k","audioBase64":"","audioMimeType":"audio/wav","sttTimeoutSeconds":999999}"#,
+        )
+        .expect("should deserialize an out-of-range stt timeout");
+        assert_eq!(
+            resolve_stt_timeout(hostile.stt_timeout_seconds),
+            std::time::Duration::from_secs(600)
+        );
+    }
+
+    #[test]
     fn ipc_nested_entry_requests_serialize_correctly() {
         let request = AssistantPipelineRequest {
             api_key: "key".to_string(),
@@ -1112,6 +1143,7 @@ mod tests {
             piper_path: None,
             audio_base64: String::new(),
             audio_mime_type: "audio/wav".to_string(),
+            stt_timeout_seconds: None,
             language: None,
             allowed_languages: None,
             system_prompt: None,
@@ -1212,6 +1244,7 @@ mod tests {
         assert!(request.local_stt_model.is_none());
         assert!(request.temperature.is_none());
         assert!(request.max_tokens.is_none());
+        assert!(request.stt_timeout_seconds.is_none());
         assert!(request.system_prompt.is_none());
         assert!(request.dictionary_entries.is_none());
         assert!(request.piper.is_none());

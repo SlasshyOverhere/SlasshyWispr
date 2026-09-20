@@ -10,6 +10,9 @@ import {
   DEFAULT_HOTKEY,
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
   DEFAULT_MAX_TOKENS,
+  DEFAULT_STT_TIMEOUT_SECONDS,
+  MIN_STT_TIMEOUT_SECONDS,
+  MAX_STT_TIMEOUT_SECONDS,
   DEFAULT_PIPER_SPEED,
   DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
   DEFAULT_TEMPERATURE,
@@ -104,6 +107,12 @@ export function readSettingsFromForm(
     systemPrompt: refs.systemPromptInput.value,
     temperature: coerceNumber(Number(refs.temperatureInput.value), DEFAULT_TEMPERATURE, 0, 1.2),
     maxTokens: coerceInteger(Number(refs.maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 4096),
+    sttTimeoutSeconds: coerceInteger(
+      Number(refs.sttTimeoutSecondsInput.value),
+      DEFAULT_STT_TIMEOUT_SECONDS,
+      MIN_STT_TIMEOUT_SECONDS,
+      MAX_STT_TIMEOUT_SECONDS,
+    ),
     launchAtLogin: refs.launchAtLoginToggle.checked,
     showFlowBar: refs.showFlowBarToggle.checked,
     showDockAlways: refs.showDockAlwaysToggle.checked,
@@ -186,6 +195,7 @@ export function applySettingsToForm(
   refs.systemPromptInput.value = next.systemPrompt;
   refs.temperatureInput.value = next.temperature.toFixed(2);
   refs.maxTokensInput.value = String(next.maxTokens);
+  refs.sttTimeoutSecondsInput.value = String(next.sttTimeoutSeconds);
   refs.captureModeSingleInput.checked = next.captureMode === "single-tap";
   refs.captureModePushToTalkInput.checked = next.captureMode === "push-to-talk";
   refs.launchAtLoginToggle.checked = next.launchAtLogin;
@@ -251,6 +261,9 @@ export function applySettingsPatchToForm(
   if (patch.systemPrompt !== undefined) refs.systemPromptInput.value = patch.systemPrompt;
   if (patch.temperature !== undefined) refs.temperatureInput.value = String(patch.temperature);
   if (patch.maxTokens !== undefined) refs.maxTokensInput.value = String(patch.maxTokens);
+  if (patch.sttTimeoutSeconds !== undefined) {
+    refs.sttTimeoutSecondsInput.value = String(patch.sttTimeoutSeconds);
+  }
   if (patch.apiKey !== undefined) refs.apiKeyInput.value = patch.apiKey;
   if (patch.apiBaseUrl !== undefined) refs.apiBaseUrlInput.value = patch.apiBaseUrl;
   if (patch.sttModelName !== undefined) refs.sttModelInput.value = patch.sttModelName;

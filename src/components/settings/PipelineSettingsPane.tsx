@@ -1,3 +1,7 @@
+import {
+  MAX_STT_TIMEOUT_SECONDS,
+  MIN_STT_TIMEOUT_SECONDS,
+} from '../../constants';
 import { useSettingsSnapshot, dispatchSettingsPatch } from '../../settings/settings-react-shim';
 
 export function PipelineSettingsPane() {
@@ -5,6 +9,22 @@ export function PipelineSettingsPane() {
 
   return (
     <section id="settingsPanePipeline" className="settings-pane" data-settings-pane="pipeline" hidden>
+
+      <h3 className="settings-section-title">Speech-to-Text</h3>
+
+      <label className="field" htmlFor="sttTimeoutSecondsInput">
+        <span className="field-label">Request Timeout (seconds)</span>
+        <input
+          id="sttTimeoutSecondsInput"
+          type="number"
+          min={MIN_STT_TIMEOUT_SECONDS}
+          max={MAX_STT_TIMEOUT_SECONDS}
+          step="5"
+          value={settings.sttTimeoutSeconds}
+          onChange={(event) => dispatchSettingsPatch({ sttTimeoutSeconds: Number(event.target.value) })}
+        />
+      </label>
+      <p className="field-hint">How long one online transcription may run before it is abandoned. Longer recordings need a higher ceiling.</p>
 
       <h3 className="settings-section-title">Prompting</h3>
 

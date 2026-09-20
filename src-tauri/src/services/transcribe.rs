@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use log::{info, warn};
 use reqwest::{multipart, Client};
@@ -667,6 +667,21 @@ pub(crate) fn transcript_candidate_score(input: &str) -> usize {
     input.chars().filter(|ch| ch.is_alphanumeric()).count()
 }
 
+/// Ceiling for one online transcription. The shared HTTP client's 150s default
+/// is sized for model downloads, so STT bounds its own requests.
+pub(crate) const STT_TIMEOUT_DEFAULT: Duration = Duration::from_secs(60);
+pub(crate) const STT_TIMEOUT_MIN_SECS: u64 = 10;
+pub(crate) const STT_TIMEOUT_MAX_SECS: u64 = 600;
+
+/// Clamp a user-set timeout. A bad setting must not be able to make every
+/// transcription fail instantly or hold the pipeline for hours.
+pub(crate) fn resolve_stt_timeout(requested_secs: Option<u64>) -> Duration {
+    match requested_secs {
+        Some(secs) => Duration::from_secs(secs.clamp(STT_TIMEOUT_MIN_SECS, STT_TIMEOUT_MAX_SECS)),
+        None => STT_TIMEOUT_DEFAULT,
+    }
+}
+
 /// One transcription request against an OpenAI-compatible STT endpoint.
 ///
 /// Required inputs are named in [`SttRequest::new`] and every other option
@@ -684,6 +699,7 @@ pub(crate) struct SttRequest<'a> {
     /// Identifies the caller in logs and error messages. Required rather than
     /// defaulted: a wrong label misattributes every log line downstream.
     source_label: &'a str,
+    timeout: Duration,
 }
 
 impl<'a> SttRequest<'a> {
@@ -701,6 +717,7 @@ impl<'a> SttRequest<'a> {
             audio_mime_type: "",
             language: None,
             source_label,
+            timeout: STT_TIMEOUT_DEFAULT,
         }
     }
 
@@ -721,6 +738,11 @@ impl<'a> SttRequest<'a> {
     /// loop drives one language per attempt.
     pub(crate) fn language(self, language: Option<&'a str>) -> Self {
         Self { language, ..self }
+    }
+
+    /// Per-request ceiling for this transcription.
+    pub(crate) fn timeout(self, timeout: Duration) -> Self {
+        Self { timeout, ..self }
     }
 }
 
@@ -1017,6 +1039,7 @@ pub(crate) async fn transcribe_audio_openai_compatible(
         audio_mime_type,
         language,
         source_label,
+        timeout,
     } = request;
     let request_start = Instant::now();
     let extension = mime_to_extension(audio_mime_type);
@@ -1040,12 +1063,11 @@ pub(crate) async fn transcribe_audio_openai_compatible(
         form = form.text("language", language.to_string());
     }
 
-    // F-010: STT gets a 60s ceiling. The shared client's 150s default is sized
-    // for model downloads, so a hung transcription would otherwise hold the
-    // pipeline (and the mic indicator) for two and a half minutes.
+    // F-010: a hung transcription must not hold the pipeline (and the mic
+    // indicator) open on the shared client's 150s model-download default.
     let request_builder = client
         .post(format!("{api_base_url}/audio/transcriptions"))
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(timeout)
         .multipart(form);
     let response = apply_optional_bearer_auth(request_builder, api_key)
         .send()
@@ -1109,6 +1131,29 @@ mod tests {
     }
 
     #[test]
+    fn stt_request_new_bounds_the_request_by_default() {
+        let audio = [0u8];
+        let request = SttRequest::new("https://example.test/v1", "whisper-1", &audio, "online");
+        assert_eq!(request.timeout, STT_TIMEOUT_DEFAULT);
+    }
+
+    #[test]
+    fn resolve_stt_timeout_falls_back_to_the_default() {
+        assert_eq!(resolve_stt_timeout(None), STT_TIMEOUT_DEFAULT);
+    }
+
+    #[test]
+    fn resolve_stt_timeout_clamps_a_bad_setting_into_range() {
+        // Zero would abort every request instantly; a day would hold the mic
+        // indicator open until the app restarts.
+        assert_eq!(resolve_stt_timeout(Some(0)), Duration::from_secs(10));
+        assert_eq!(resolve_stt_timeout(Some(1)), Duration::from_secs(10));
+        assert_eq!(resolve_stt_timeout(Some(86_400)), Duration::from_secs(600));
+        assert_eq!(resolve_stt_timeout(Some(45)), Duration::from_secs(45));
+        assert_eq!(resolve_stt_timeout(Some(600)), Duration::from_secs(600));
+    }
+
+    #[test]
     fn stt_request_setters_retarget_a_copy() {
         let audio = [0u8];
         let base = SttRequest::new("https://example.test/v1", "whisper-1", &audio, "online");
@@ -1125,6 +1170,11 @@ mod tests {
         assert_eq!(retargeted.language, Some("fr"));
         assert_eq!(retargeted.api_key, Some("secret"));
         assert_eq!(retargeted.audio_mime_type, "audio/wav");
+
+        // A per-request timeout is an override on the copy, not on the source.
+        let impatient = base.timeout(Duration::from_secs(15));
+        assert_eq!(base.timeout, STT_TIMEOUT_DEFAULT);
+        assert_eq!(impatient.timeout, Duration::from_secs(15));
     }
 
     #[test]

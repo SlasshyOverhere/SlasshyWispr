@@ -6,6 +6,9 @@ import {
   DEFAULT_COMMAND_HOTKEY,
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
   DEFAULT_MAX_TOKENS,
+  DEFAULT_STT_TIMEOUT_SECONDS,
+  MIN_STT_TIMEOUT_SECONDS,
+  MAX_STT_TIMEOUT_SECONDS,
   DEFAULT_PIPER_EMOTION,
   DEFAULT_PIPER_QUALITY,
   DEFAULT_PIPER_SPEED,
@@ -224,6 +227,7 @@ export function defaultSettings(): PersistedSettings {
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     temperature: DEFAULT_TEMPERATURE,
     maxTokens: DEFAULT_MAX_TOKENS,
+    sttTimeoutSeconds: DEFAULT_STT_TIMEOUT_SECONDS,
     launchAtLogin: true,
     showFlowBar: false,
     showDockAlways: false,
@@ -354,6 +358,12 @@ export function loadSettings(): PersistedSettings {
         parsed.systemPrompt !== undefined ? String(parsed.systemPrompt) : defaults.systemPrompt,
       temperature: coerceNumber(parsed.temperature, defaults.temperature, 0, 1.2),
       maxTokens: coerceInteger(parsed.maxTokens, defaults.maxTokens, 64, 4096),
+      sttTimeoutSeconds: coerceInteger(
+        parsed.sttTimeoutSeconds,
+        defaults.sttTimeoutSeconds,
+        MIN_STT_TIMEOUT_SECONDS,
+        MAX_STT_TIMEOUT_SECONDS,
+      ),
       launchAtLogin: coerceBoolean(parsed.launchAtLogin, defaults.launchAtLogin),
       showFlowBar: fromLegacyOnly
         ? false

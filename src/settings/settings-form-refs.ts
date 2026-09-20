@@ -55,6 +55,7 @@ export interface SettingsFormRefs {
   temperatureInput: HTMLInputElement;
   temperatureValue: HTMLElement;
   maxTokensInput: HTMLInputElement;
+  sttTimeoutSecondsInput: HTMLInputElement;
   launchAtLoginToggle: HTMLInputElement;
   showFlowBarToggle: HTMLInputElement;
   showDockAlwaysToggle: HTMLInputElement;
@@ -143,6 +144,7 @@ export function querySettingsFormRefs(): SettingsFormRefs {
     temperatureInput: requiredElement<HTMLInputElement>("#temperatureInput"),
     temperatureValue: requiredElement<HTMLElement>("#temperatureValue"),
     maxTokensInput: requiredElement<HTMLInputElement>("#maxTokensInput"),
+    sttTimeoutSecondsInput: requiredElement<HTMLInputElement>("#sttTimeoutSecondsInput"),
     launchAtLoginToggle: requiredElement<HTMLInputElement>("#launchAtLoginToggle"),
     showFlowBarToggle: requiredElement<HTMLInputElement>("#showFlowBarToggle"),
     showDockAlwaysToggle: requiredElement<HTMLInputElement>("#showDockAlwaysToggle"),

@@ -140,6 +140,11 @@ pub(crate) fn validate_settings_payload(parsed: &serde_json::Value) -> Result<()
             return Err("Invalid maxTokens: must be between 1 and 128000.".to_string());
         }
     }
+    if let Some(stt_timeout_secs) = obj.get("sttTimeoutSeconds").and_then(|v| v.as_u64()) {
+        if stt_timeout_secs == 0 || stt_timeout_secs > 86_400 {
+            return Err("Invalid sttTimeoutSeconds: must be between 1 and 86400.".to_string());
+        }
+    }
 
     if obj
         .get("apiBaseUrl")
@@ -207,13 +212,23 @@ mod tests {
     }
 
     #[test]
+    fn rejects_zero_stt_timeout() {
+        let err = validate_settings_payload(&payload(serde_json::json!({
+            "sttTimeoutSeconds": 0
+        })))
+        .expect_err("a zero stt timeout must fail");
+        assert!(err.contains("sttTimeoutSeconds"), "{err}");
+    }
+
+    #[test]
     fn accepts_valid_payload() {
         validate_settings_payload(&payload(serde_json::json!({
             "apiBaseUrl": "https://api.example.com/v1",
             "localOllamaBaseUrl": "http://127.0.0.1:11434",
             "ttsEngine": "piper",
             "temperature": 0.7,
-            "maxTokens": 800
+            "maxTokens": 800,
+            "sttTimeoutSeconds": 120
         })))
         .expect("valid payload passes");
     }

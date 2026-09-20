@@ -255,6 +255,8 @@ export interface PersistedSettings {
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
+  /** How long a single online transcription may take before it is abandoned. */
+  sttTimeoutSeconds: number;
   launchAtLogin: boolean;
   showFlowBar: boolean;
   showDockAlways: boolean;
