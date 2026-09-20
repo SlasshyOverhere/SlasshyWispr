@@ -256,7 +256,8 @@ mod tests {
     fn decode_wav_roundtrip_mono() {
         let original = vec![0.0, 0.5, -0.5, 1.0, -1.0];
         let wav_bytes = encode_mono_f32_to_wav(&original, 16000).expect("encode should succeed");
-        let (decoded, sr) = decode_wav_audio_to_mono_f32(&wav_bytes).expect("decode should succeed");
+        let (decoded, sr) =
+            decode_wav_audio_to_mono_f32(&wav_bytes).expect("decode should succeed");
         assert_eq!(sr, 16000);
         assert_eq!(decoded.len(), original.len());
         // Allow small quantization error from int16 encoding

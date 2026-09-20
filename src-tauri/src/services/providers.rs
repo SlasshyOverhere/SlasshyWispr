@@ -124,4 +124,3 @@ pub(crate) fn run_ollama_installer_windows(installer_path: &Path) -> Result<(), 
 pub(crate) fn update_github_token() -> Option<String> {
     non_empty_env_var(UPDATE_GITHUB_TOKEN_ENV)
 }
-

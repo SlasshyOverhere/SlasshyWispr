@@ -14,18 +14,11 @@ pub mod archive;
 pub mod progress;
 pub mod resolve;
 pub mod transport;
+pub mod verify;
 
 pub(crate) use adapt::AppStateSink;
 
-pub(crate) use archive::find_local_parakeet_model_root;
-pub(crate) use progress::{
-    calculate_local_stt_progress_percent, now_unix_ms, LocalSttDownloadStatusResponse,
-    SharedStatus,
-};
-pub(crate) use resolve::{
-    legacy_huggingface_repo_id_for_model, resolve_huggingface_repo_id,
-    sanitize_model_cache_dir_name,
-};
+pub(crate) use progress::SharedStatus;
 
 use std::fs;
 use std::io::Write;
@@ -41,11 +34,11 @@ use serde_json::Value;
 use crate::pipeline::fs::file_exists_with_content;
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::stt_download::archive::local_parakeet_archive_source;
-use crate::pipeline::stt_download::transport::download_prepacked_parakeet_model;
 use crate::pipeline::stt_download::resolve::{
     normalize_huggingface_relative_path, select_huggingface_stt_download_entries,
     should_download_huggingface_stt_file,
 };
+use crate::pipeline::stt_download::transport::download_prepacked_parakeet_model;
 
 /// Download a HuggingFace snapshot (or prepacked archive) into `target_dir`.
 ///
@@ -61,11 +54,7 @@ pub(crate) async fn download_huggingface_stt_model(
     if local_parakeet_archive_source(repo_id).is_some() {
         let details =
             download_prepacked_parakeet_model(client, repo_id, target_dir, status).await?;
-        return Ok(DownloadSummary {
-            details,
-            files_downloaded: 1,
-            total_bytes: status.snapshot().total_bytes,
-        });
+        return Ok(DownloadSummary { details });
     }
 
     let token = huggingface_token
@@ -171,8 +160,6 @@ pub(crate) async fn download_huggingface_stt_model(
                 "Model '{repo_id}' is already cached at '{}'.",
                 target_dir.display()
             ),
-            files_downloaded: 0,
-            total_bytes,
         });
     }
 
@@ -200,10 +187,10 @@ pub(crate) async fn download_huggingface_stt_model(
                 })?;
             }
 
-            let mut download_url = Url::parse(&format!(
-                "https://huggingface.co/{repo_id}/resolve/main/"
-            ))
-            .map_err(|error| format!("Invalid HuggingFace download URL for '{repo_id}': {error}"))?;
+            let mut download_url =
+                Url::parse(&format!("https://huggingface.co/{repo_id}/resolve/main/")).map_err(
+                    |error| format!("Invalid HuggingFace download URL for '{repo_id}': {error}"),
+                )?;
             {
                 let mut segments = download_url
                     .path_segments_mut()
@@ -287,6 +274,13 @@ pub(crate) async fn download_huggingface_stt_model(
                 ));
             }
 
+            // ponytail: ceiling is hash-table lookup only when Agent 1 lands MODEL_SHA256S in constants.rs; unverified files still download (TOFU) so offline setup never blocks.
+            if let Some(expected) = verify::expected_sha256_for_repo(repo_id.as_str()) {
+                if let Err(error) = verify::verify_file_sha256(&temp_path, expected) {
+                    let _ = fs::remove_file(&temp_path);
+                    return Err(error);
+                }
+            }
             if output_path.exists() {
                 fs::remove_file(&output_path).map_err(|error| {
                     format!(
@@ -393,8 +387,6 @@ pub(crate) async fn download_huggingface_stt_model(
                 "Model '{repo_id}' is already cached at '{}'.",
                 target_dir.display()
             ),
-            files_downloaded: 0,
-            total_bytes,
         });
     }
 
@@ -410,16 +402,13 @@ pub(crate) async fn download_huggingface_stt_model(
             target_dir.display(),
             skipped_suffix
         ),
-        files_downloaded: downloaded_files,
-        total_bytes,
     })
 }
 
-/// Summary of a completed model download.
+/// Summary of a completed model download. Only the human-readable detail is
+/// consumed (callers render it); per-file/byte counts live on the status sink.
 pub(crate) struct DownloadSummary {
     pub(crate) details: String,
-    pub(crate) files_downloaded: usize,
-    pub(crate) total_bytes: u64,
 }
 
 /// Apply a Bearer token to a request builder when provided.

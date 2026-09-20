@@ -35,6 +35,22 @@ export interface GlobalShortcutDispatchDeps {
 
 let dispatchDeps!: GlobalShortcutDispatchDeps;
 
+// F-007/F-interface: hotkey intents are ALSO broadcast as DOM events so Agent 3
+// wiring (main.tsx) + Agent 2 controller can consume them without this module
+// touching main.tsx globals or calling Rust paste directly (never do that here).
+export type HotkeyIntentEvent =
+  | { type: "record-toggle"; source: "hotkey" }
+  | { type: "ptt-engage"; source: "hotkey" }
+  | { type: "ptt-release"; source: "hotkey" };
+
+export function emitHotkeyIntent(intent: HotkeyIntentEvent): void {
+  try {
+    window.dispatchEvent(new CustomEvent(`slasshywispr:${intent.type}`, { detail: intent }));
+  } catch {
+    // Non-DOM test envs: no-op.
+  }
+}
+
 export function initGlobalShortcutDispatch(deps: GlobalShortcutDispatchDeps): void {
   dispatchDeps = deps;
 }
@@ -88,14 +104,17 @@ export function handleGlobalShortcutEvent(event: ShortcutEvent): void {
           dispatchDeps.log("[hotkey.global.push] ignored repeated press because hold is already active");
           return;
         }
+        emitHotkeyIntent({ type: "ptt-engage", source: "hotkey" });
         void dispatchDeps.engagePushToTalk("hotkey");
       } else {
+        emitHotkeyIntent({ type: "record-toggle", source: "hotkey" });
         void dispatchDeps.handleRecordToggle();
       }
     }
     if (released && (settings.captureMode === "push-to-talk" || dispatchDeps.hasPushToTalkHold("hotkey"))) {
       dispatchDeps.markHandled(shortcut, "released");
       dispatchDeps.log("[hotkey.global.push] released -> release push-to-talk hold");
+      emitHotkeyIntent({ type: "ptt-release", source: "hotkey" });
       dispatchDeps.releasePushToTalk("hotkey");
     }
     return;

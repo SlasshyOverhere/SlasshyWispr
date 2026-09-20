@@ -258,85 +258,127 @@ pub(crate) fn foreground_input_block_reason(
 
 #[cfg(test)]
 mod tests {
-// ===== FOREGROUND INPUT BLOCKING POLICY =====
+    // ===== FOREGROUND INPUT BLOCKING POLICY =====
 
-#[test]
-fn blocks_known_game_processes() {
-    assert_eq!(super::foreground_input_block_reason("cs2", "", false), Some("game-process"));
-    assert_eq!(super::foreground_input_block_reason("valorant", "", false), Some("game-process"));
-    assert_eq!(super::foreground_input_block_reason("fortniteclient-win64-shipping", "", false), Some("game-process"));
-    assert_eq!(super::foreground_input_block_reason("gta5", "", false), Some("game-process"));
-}
+    #[test]
+    fn blocks_known_game_processes() {
+        assert_eq!(
+            super::foreground_input_block_reason("cs2", "", false),
+            Some("game-process")
+        );
+        assert_eq!(
+            super::foreground_input_block_reason("valorant", "", false),
+            Some("game-process")
+        );
+        assert_eq!(
+            super::foreground_input_block_reason("fortniteclient-win64-shipping", "", false),
+            Some("game-process")
+        );
+        assert_eq!(
+            super::foreground_input_block_reason("gta5", "", false),
+            Some("game-process")
+        );
+    }
 
-#[test]
-fn blocks_game_prefixes() {
-    assert_eq!(super::foreground_input_block_reason("cyberpunk2077", "", false), Some("game-process"));
-    assert_eq!(super::foreground_input_block_reason("cod_ghosts", "", false), Some("game-process"));
-    assert_eq!(super::foreground_input_block_reason("eldenring", "", false), Some("game-process"));
-}
+    #[test]
+    fn blocks_game_prefixes() {
+        assert_eq!(
+            super::foreground_input_block_reason("cyberpunk2077", "", false),
+            Some("game-process")
+        );
+        assert_eq!(
+            super::foreground_input_block_reason("cod_ghosts", "", false),
+            Some("game-process")
+        );
+        assert_eq!(
+            super::foreground_input_block_reason("eldenring", "", false),
+            Some("game-process")
+        );
+    }
 
-#[test]
-fn blocks_terminal_processes() {
-    assert_eq!(super::foreground_input_block_reason("cmd", "", false), Some("terminal-process"));
-    assert_eq!(super::foreground_input_block_reason("powershell", "", false), Some("terminal-process"));
-    assert_eq!(super::foreground_input_block_reason("windowsterminal", "", false), Some("terminal-process"));
-    assert_eq!(super::foreground_input_block_reason("mintty", "", false), Some("terminal-process"));
-}
+    #[test]
+    fn blocks_terminal_processes() {
+        assert_eq!(
+            super::foreground_input_block_reason("cmd", "", false),
+            Some("terminal-process")
+        );
+        assert_eq!(
+            super::foreground_input_block_reason("powershell", "", false),
+            Some("terminal-process")
+        );
+        assert_eq!(
+            super::foreground_input_block_reason("windowsterminal", "", false),
+            Some("terminal-process")
+        );
+        assert_eq!(
+            super::foreground_input_block_reason("mintty", "", false),
+            Some("terminal-process")
+        );
+    }
 
-#[test]
-fn blocks_ide_terminal_tabs() {
-    assert_eq!(
-        super::foreground_input_block_reason("code", "My Project — terminal", false),
-        Some("ide-terminal")
-    );
-    assert_eq!(
-        super::foreground_input_block_reason("cursor", "main.rs — PowerShell", false),
-        Some("ide-terminal")
-    );
-}
+    #[test]
+    fn blocks_ide_terminal_tabs() {
+        assert_eq!(
+            super::foreground_input_block_reason("code", "My Project — terminal", false),
+            Some("ide-terminal")
+        );
+        assert_eq!(
+            super::foreground_input_block_reason("cursor", "main.rs — PowerShell", false),
+            Some("ide-terminal")
+        );
+    }
 
-#[test]
-fn does_not_block_normal_processes() {
-    assert_eq!(super::foreground_input_block_reason("chrome", "", false), None);
-    assert_eq!(super::foreground_input_block_reason("slack", "", false), None);
-    assert_eq!(super::foreground_input_block_reason("explorer", "", false), None);
-    assert_eq!(super::foreground_input_block_reason("app", "", false), None);
-}
+    #[test]
+    fn does_not_block_normal_processes() {
+        assert_eq!(
+            super::foreground_input_block_reason("chrome", "", false),
+            None
+        );
+        assert_eq!(
+            super::foreground_input_block_reason("slack", "", false),
+            None
+        );
+        assert_eq!(
+            super::foreground_input_block_reason("explorer", "", false),
+            None
+        );
+        assert_eq!(super::foreground_input_block_reason("app", "", false), None);
+    }
 
-#[test]
-fn does_not_block_ide_with_non_terminal_tab() {
-    assert_eq!(
-        super::foreground_input_block_reason("code", "main.rs — Visual Studio Code", false),
-        None
-    );
-}
+    #[test]
+    fn does_not_block_ide_with_non_terminal_tab() {
+        assert_eq!(
+            super::foreground_input_block_reason("code", "main.rs — Visual Studio Code", false),
+            None
+        );
+    }
 
-#[test]
-fn blocks_fullscreen_game_heuristic() {
-    assert_eq!(
-        super::foreground_input_block_reason("unknown_game", "My Game", true),
-        Some("fullscreen-game-heuristic")
-    );
-}
+    #[test]
+    fn blocks_fullscreen_game_heuristic() {
+        assert_eq!(
+            super::foreground_input_block_reason("unknown_game", "My Game", true),
+            Some("fullscreen-game-heuristic")
+        );
+    }
 
-#[test]
-fn does_not_block_fullscreen_allowed_processes() {
-    assert_eq!(
-        super::foreground_input_block_reason("chrome", "YouTube", true),
-        None
-    );
-}
+    #[test]
+    fn does_not_block_fullscreen_allowed_processes() {
+        assert_eq!(
+            super::foreground_input_block_reason("chrome", "YouTube", true),
+            None
+        );
+    }
 
-#[test]
-fn does_not_block_fullscreen_video_content() {
-    assert_eq!(
-        super::foreground_input_block_reason("vlc", "youtube.com/video", true),
-        None
-    );
-}
+    #[test]
+    fn does_not_block_fullscreen_video_content() {
+        assert_eq!(
+            super::foreground_input_block_reason("vlc", "youtube.com/video", true),
+            None
+        );
+    }
 
-#[test]
-fn empty_process_name_not_blocked() {
-    assert_eq!(super::foreground_input_block_reason("", "", false), None);
-}
+    #[test]
+    fn empty_process_name_not_blocked() {
+        assert_eq!(super::foreground_input_block_reason("", "", false), None);
+    }
 }

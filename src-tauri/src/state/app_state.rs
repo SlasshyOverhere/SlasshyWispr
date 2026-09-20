@@ -6,14 +6,12 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use reqwest::Client;
-use crate::constants::{
-    PENDING_SELECTION_REWRITE_TTL_SECS, RECENT_SELECTION_CONTEXT_TTL_SECS,
-};
+use super::window::WindowVisibilityState;
+use crate::constants::{PENDING_SELECTION_REWRITE_TTL_SECS, RECENT_SELECTION_CONTEXT_TTL_SECS};
 use crate::pipeline::stt_download::progress::{
     calculate_local_stt_progress_percent, now_unix_ms, LocalSttDownloadStatusResponse,
 };
-use super::window::WindowVisibilityState;
+use reqwest::Client;
 
 pub(crate) struct AppState {
     pub(crate) http: Client,
@@ -23,6 +21,10 @@ pub(crate) struct AppState {
     last_assistant_response: Mutex<String>,
     local_stt_download_status: Mutex<LocalSttDownloadStatusResponse>,
     local_stt_runtime_loaded: Mutex<bool>,
+    /// F-009: highest replace-selection token accepted so far. A run carrying
+    /// an older token is a superseded rewrite and must not replace the
+    /// selection. Zero means none seen yet, so the first token always passes.
+    last_replace_token: Mutex<u64>,
     pub(crate) window_visibility: Mutex<WindowVisibilityState>,
 }
 
@@ -44,6 +46,7 @@ impl AppState {
             last_assistant_response: Mutex::new(String::new()),
             local_stt_download_status: Mutex::new(LocalSttDownloadStatusResponse::default()),
             local_stt_runtime_loaded: Mutex::new(false),
+            last_replace_token: Mutex::new(0),
             window_visibility: Mutex::new(WindowVisibilityState::default()),
         })
     }
@@ -185,7 +188,9 @@ impl AppState {
             .map_err(|_| "Local STT download status lock poisoned.".to_string())
     }
 
-    pub(crate) fn snapshot_local_stt_download_status(&self) -> Result<LocalSttDownloadStatusResponse, String> {
+    pub(crate) fn snapshot_local_stt_download_status(
+        &self,
+    ) -> Result<LocalSttDownloadStatusResponse, String> {
         self.local_stt_download_status
             .lock()
             .map(|value| value.clone())
@@ -218,8 +223,32 @@ impl AppState {
         *slot = loaded;
         Ok(())
     }
-}
 
+    /// F-009: accept a replace-selection token only if it is at least as new
+    /// as the last one seen. Returns false for a stale (superseded) run, and
+    /// an empty token always passes (no token = not a selection replace).
+    pub(crate) fn accept_replace_token(&self, token: &str) -> Result<bool, String> {
+        let trimmed = token.trim();
+        if trimmed.is_empty() {
+            return Ok(true);
+        }
+        let parsed: u64 = match trimmed.parse() {
+            Ok(value) => value,
+            // Non-numeric tokens cannot be ordered; accept rather than block
+            // a legitimate run on a format we do not recognise.
+            Err(_) => return Ok(true),
+        };
+        let mut slot = self
+            .last_replace_token
+            .lock()
+            .map_err(|_| "Replace-token state lock poisoned.".to_string())?;
+        if parsed < *slot {
+            return Ok(false);
+        }
+        *slot = parsed;
+        Ok(true)
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct PendingSelectionRewrite {
@@ -232,4 +261,3 @@ pub(crate) struct RecentSelectionContext {
     text: String,
     created_at: Instant,
 }
-

@@ -12,6 +12,7 @@ import type { CaptureMode, PersistedSettings } from "../types";
 import { asErrorMessage, boolFlag } from "../utils";
 import {
   blobToBase64,
+  invalidRuntimeCombinationReason,
   missingApiKeyForOnlineRuntime,
   pickBestRecorderMimeType,
   resolvePreferredOnlineSttBitrate,
@@ -61,6 +62,8 @@ export interface RecordingControllerDeps {
   performanceNow: () => number;
   runPipeline: (blob: Blob, mimeType: string) => Promise<void>;
   createId: () => string;
+  /** Snapshot the paste target at capture intent (best-effort, never blocks recording). */
+  notePasteTarget?: () => void;
   saveDictationRecording: (args: {
     recordingId: string;
     mimeType: string;
@@ -88,6 +91,35 @@ export interface RecordingControllerState {
 let controllerDeps!: RecordingControllerDeps;
 let controllerState!: RecordingControllerState;
 
+// F-007: every capture gets a generation. A cancel targeting a specific
+// generation always wins, even if the state machine has not flipped yet, and
+// a finalize whose generation was superseded never reaches the pipeline.
+let activePipelineGen = 0;
+
+export function getActivePipelineGen(): number {
+  return activePipelineGen;
+}
+
+/**
+ * Cancel the pipeline for a specific capture generation (F-007). Returns true
+ * when the cancel applied to the live generation; a stale gen is a no-op so a
+ * late release cannot kill the next recording.
+ */
+export function cancelPipeline(gen: number): boolean {
+  if (gen !== activePipelineGen) {
+    return false;
+  }
+  controllerDeps.log(`[record.cancel] canceled generation=${gen}`);
+  controllerState.setSkipPipeline(true);
+  controllerState.setSkipNotice("Canceled.");
+  if (controllerDeps.getStage() === "recording") {
+    stopRecording({ cancelPipeline: true });
+  } else {
+    controllerDeps.transition({ type: "stop-recording", cancelPipeline: true });
+  }
+  return true;
+}
+
 export function initRecordingController(
   deps: RecordingControllerDeps,
   state: RecordingControllerState,
@@ -98,6 +130,14 @@ export function initRecordingController(
 
 export async function startRecording(): Promise<void> {
   const startRequestedAt = controllerDeps.performanceNow();
+  activePipelineGen += 1;
+  // Capture the paste target now, while focus is still where the user was
+  // working. By paste time (seconds later) focus may sit in our own window.
+  try {
+    controllerDeps.notePasteTarget?.();
+  } catch {
+    // Best-effort only; the paste path falls back to invoke-time focus.
+  }
   controllerDeps.log(
     `[record.start] requested stage=${controllerDeps.getStage()} pipelineRunning=${boolFlag(
       controllerDeps.isPipelineRunning(),
@@ -138,6 +178,17 @@ export async function startRecording(): Promise<void> {
     controllerDeps.clearCaptureIntent();
     controllerDeps.clearPushToTalkHolds();
     controllerDeps.showMissingApiKeyNotice("record-start");
+    return;
+  }
+
+  // F-029: refuse an unusable runtime combination before opening the mic, so
+  // the user is not asked to speak into a pipeline that cannot run.
+  const invalidCombination = invalidRuntimeCombinationReason(activeSettings);
+  if (invalidCombination) {
+    controllerDeps.log(`[record.start.blocked] invalid-runtime-combination: ${invalidCombination}`);
+    controllerDeps.clearCaptureIntent();
+    controllerDeps.clearPushToTalkHolds();
+    controllerDeps.setNotice(invalidCombination, true);
     return;
   }
 
@@ -257,6 +308,7 @@ export function stopRecording(options: StopRecordingOptions = {}): void {
 export async function finalizeRecording(): Promise<void> {
   const skipPipeline = controllerState.getSkipPipeline();
   const skipNotice = controllerState.getSkipNotice();
+  const finalizeGen = activePipelineGen;
   controllerState.setSkipPipeline(false);
   controllerState.setSkipNotice("");
 
@@ -277,6 +329,17 @@ export async function finalizeRecording(): Promise<void> {
   if (blob.size === 0) {
     controllerDeps.log("[record.finalize] blocked because captured blob is empty");
     controllerDeps.transition({ type: "audio-empty" });
+    controllerDeps.syncAvailability();
+    return;
+  }
+
+  // F-007: a newer capture started while this one was finalizing; do not feed
+  // the pipeline from a superseded generation (it would paste stale audio).
+  if (finalizeGen !== activePipelineGen) {
+    controllerDeps.log(
+      `[record.finalize] dropping superseded generation=${finalizeGen} active=${activePipelineGen}`,
+    );
+    controllerDeps.transition({ type: "recording-stopped", cancelPipeline: true });
     controllerDeps.syncAvailability();
     return;
   }

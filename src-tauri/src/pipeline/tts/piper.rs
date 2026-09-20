@@ -36,7 +36,7 @@ pub(crate) fn piper_tuning_support() -> &'static Mutex<Option<bool>> {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct PiperPipelineRequest {
+pub struct PiperPipelineRequest {
     pub(crate) speed: Option<f32>,
     pub(crate) quality: Option<String>,
     pub(crate) emotion: Option<String>,
@@ -276,7 +276,6 @@ async fn ensure_voice_files_in(
     config_path: PathBuf,
     client: &Client,
 ) -> Result<(PathBuf, PathBuf), String> {
-
     if !file_exists_with_content(&model_path) {
         download_file(client, VOICE_MODEL_URL, &model_path).await?;
     }
@@ -359,4 +358,3 @@ async fn ensure_piper_binary_in(runtime_dir: PathBuf, client: &Client) -> Result
         )
     }
 }
-

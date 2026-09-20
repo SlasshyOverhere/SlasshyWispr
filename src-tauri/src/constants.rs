@@ -98,3 +98,35 @@ pub const SILERO_VAD_SAMPLE_RATE: u32 = 16_000;
 pub const SILERO_VAD_THRESHOLD: f64 = 0.5;
 pub const SILERO_VAD_MIN_SPEECH_FRAMES: usize = 3;
 pub const SILERO_VAD_MIN_SILENCE_FRAMES: usize = 6;
+
+pub const INSECURE_HTTP_HOSTS_ENV: &str = "SLASSHYWISPR_ALLOW_INSECURE_HTTP_HOSTS";
+pub const API_KEY_FINGERPRINT_HMAC_SECRET_ENV: &str = "SLASSHYWISPR_FINGERPRINT_HMAC_SECRET";
+pub const API_KEY_FINGERPRINT_HMAC_SECRET_DEFAULT: &str = "SlasshyWispr-local-fingerprint-v1";
+
+pub const LOCAL_STT_MODEL_EXPECTED_SHA256: &[(&str, &str)] = &[
+    ("nvidia/parakeet-tdt-0.6b-v3", ""),
+    ("nvidia/parakeet-tdt_ctc-110m", ""),
+];
+
+pub fn local_stt_model_expected_sha256(model: &str) -> Option<&'static str> {
+    let canonical = model.trim();
+    LOCAL_STT_MODEL_EXPECTED_SHA256
+        .iter()
+        .find(|(known, _)| *known == canonical)
+        .map(|(_, hash)| *hash)
+        .filter(|hash| !hash.is_empty())
+}
+
+pub const SILERO_VAD_MODEL_EXPECTED_SHA256: &str = "";
+pub const SILERO_VAD_PINNED_COMMIT: &str = "";
+
+pub fn silero_vad_model_url() -> String {
+    if SILERO_VAD_PINNED_COMMIT.trim().is_empty() {
+        SILERO_VAD_MODEL_URL.to_string()
+    } else {
+        format!(
+            "https://github.com/snakers4/silero-vad/raw/{}/files/silero_vad.onnx",
+            SILERO_VAD_PINNED_COMMIT.trim()
+        )
+    }
+}

@@ -12,9 +12,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::commands::recordings::StartupLocalSttWarmupTarget;
 use crate::pipeline::log::{clip_text, single_line};
-use crate::pipeline::routing::{
-    canonical_local_stt_model_id, infer_local_stt_provider_from_model,
-};
+use crate::pipeline::routing::{canonical_local_stt_model_id, infer_local_stt_provider_from_model};
 use crate::state::AppState;
 
 pub(crate) fn load_startup_local_stt_warmup_target(app: &AppHandle) -> StartupLocalSttWarmupTarget {
@@ -84,7 +82,9 @@ pub(crate) fn start_local_stt_boot_warmup(app: AppHandle) {
         };
 
         let provider = infer_local_stt_provider_from_model(&model);
-        let (repo_id, model_dir) = match crate::services::transcribe::resolve_local_stt_repo_and_dir(&app, &provider, &model) {
+        let (repo_id, model_dir) = match crate::services::transcribe::resolve_local_stt_repo_and_dir(
+            &app, &provider, &model,
+        ) {
             Ok(result) => result,
             Err(error) => {
                 warn!(
@@ -116,16 +116,27 @@ pub(crate) fn start_local_stt_boot_warmup(app: AppHandle) {
         let app_for_worker = app.clone();
         let model_for_worker = model.clone();
         let provider_for_worker = provider.clone();
-        let warmup_result = tauri::async_runtime::spawn_blocking(move || match provider_for_worker.as_str() {
-            "parakeet" => {
-                crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(&app_for_worker, "", &model_for_worker)
-            }
+        let warmup_result = tauri::async_runtime::spawn_blocking(move || match provider_for_worker
+            .as_str()
+        {
+            "parakeet" => crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(
+                &app_for_worker,
+                "",
+                &model_for_worker,
+            ),
             "whisper" | "moonshine" | "sensevoice" => {
                 if crate::pipeline::routing::zero_python_mode_enabled() {
                     return Err(crate::constants::ZERO_PYTHON_STT_NOTICE.to_string());
                 }
-                let python_path = crate::services::transcribe::setup_local_stt_runtime_blocking(&app_for_worker, "python")?;
-                crate::services::transcribe::warmup_local_stt_hf_model_blocking(&app_for_worker, &python_path, &model_for_worker)
+                let python_path = crate::services::transcribe::setup_local_stt_runtime_blocking(
+                    &app_for_worker,
+                    "python",
+                )?;
+                crate::services::transcribe::warmup_local_stt_hf_model_blocking(
+                    &app_for_worker,
+                    &python_path,
+                    &model_for_worker,
+                )
             }
             _ => Ok("Warmup skipped (unsupported provider).".to_string()),
         })
@@ -214,10 +225,7 @@ mod launch_at_login_preference_tests {
 
     #[test]
     fn reflects_explicit_false() {
-        assert_eq!(
-            preference_from_json(r#"{"launchAtLogin": false}"#),
-            false
-        );
+        assert_eq!(preference_from_json(r#"{"launchAtLogin": false}"#), false);
     }
 
     #[test]
@@ -236,4 +244,3 @@ mod launch_at_login_preference_tests {
         let _ = dir;
     }
 }
-

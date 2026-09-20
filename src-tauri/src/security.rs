@@ -94,6 +94,40 @@ pub fn sha256_hash(data: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+/// Verifies a downloaded file against an expected SHA-256 hex digest.
+/// Empty expected digest = no pin published yet -> caller decides (warn, not pass).
+/// Returns Ok(()) only on exact match. Streams the file (no whole-file read).
+pub fn verify_file_sha256(path: &Path, expected_hex: &str) -> Result<(), String> {
+    use std::io::Read;
+    let expected = expected_hex.trim().to_ascii_lowercase();
+    if expected.is_empty() {
+        return Err("no expected SHA-256 pin published for this artifact".to_string());
+    }
+    if expected.len() != 64 || !expected.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("expected SHA-256 pin is malformed (want 64 hex chars)".to_string());
+    }
+    let mut file =
+        fs::File::open(path).map_err(|e| format!("cannot open file for hash verify: {e}"))?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 65536];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("cannot read file for hash verify: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    let computed = format!("{:x}", hasher.finalize());
+    if computed != expected {
+        return Err(format!(
+            "SHA-256 mismatch (expected={expected} computed={computed})"
+        ));
+    }
+    Ok(())
+}
+
 /// Validates input length and content
 pub fn validate_text_input(
     text: &str,
@@ -288,6 +322,20 @@ mod tests {
         assert!(result.is_ok());
         // Should be 64 hex chars for SHA-256
         assert_eq!(result.unwrap().len(), 64);
+    }
+
+    #[test]
+    fn corrupted_file_hash_rejected() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("model.bin");
+        fs::write(&file, b"genuine-bytes").unwrap();
+        let good = sha256_hash("genuine-bytes");
+        assert!(verify_file_sha256(&file, &good).is_ok());
+        fs::write(&file, b"tampered-bytes").unwrap();
+        let err = verify_file_sha256(&file, &good).expect_err("tamper must fail");
+        assert!(err.contains("mismatch"), "{err}");
+        assert!(verify_file_sha256(&file, "").is_err());
+        assert!(verify_file_sha256(&file, "xyz").is_err());
     }
 
     #[test]

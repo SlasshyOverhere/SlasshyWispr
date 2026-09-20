@@ -12,6 +12,7 @@ import {
   getAssistantInfo as ipcGetAssistantInfo,
   loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
   listDictationRecordingIds as ipcListDictationRecordingIds,
+  notePasteTarget as ipcNotePasteTarget,
   saveDictationRecording as ipcSaveDictationRecording,
 } from "./ipc/client";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -43,6 +44,7 @@ import {
   persistAchievementStates as persistAchievementStatesService,
   persistHomeHistory as persistHomeHistoryService,
   persistUsageStats as persistUsageStatsService,
+  flushPendingWrites as flushPendingWritesService,
   updateAndPersistDockLayout as updateAndPersistDockLayoutService,
   persistDockPositionFromWindow as persistDockPositionFromWindowService,
 } from "./state/persist";
@@ -337,11 +339,13 @@ import {
   isHotkeyCaptureActive,
 } from "./hotkeys/hotkey-capture";
 import {
+  drainPendingRemap as drainPendingRemapService,
   getNormalizedRegisteredShortcuts,
   initHotkeySync,
   isGlobalShortcutsActive,
   isShortcutSuppressionActive,
   markGlobalShortcutHandled as markGlobalShortcutHandledService,
+  noteLocalShortcutPressed as noteLocalShortcutPressedService,
   requestGlobalShortcutSync as requestGlobalShortcutSyncService,
   setShortcutSuppressionActive,
   shouldBypassLocalShortcutHandling as shouldBypassLocalShortcutHandlingService,
@@ -695,6 +699,19 @@ initShellPersist({
 });
 
 setPersistErrorReporter((message) => setNoticeService(message, true));
+
+/**
+ * Store-update fan-out. React's uiStore re-reads every list from
+ * localStorage on this event, while writers persist through a 300ms
+ * debounce — so pending writes must land BEFORE the dispatch, otherwise
+ * the UI re-renders the pre-write snapshot and stays one entry behind
+ * until the next run notifies again.
+ */
+function notifyStoreUpdated(): void {
+  flushPendingWritesService();
+  window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
+}
+
 initPipelinePrompt({ getRecentTurns: () => recentTurns });
 initPipelineRender(
   { sttLatency, aiLatency, ttsLatency, totalLatency },
@@ -711,9 +728,7 @@ initPipelineRender(
       homeHistoryEntries = entries;
     },
     persistHomeHistory: () => persistHomeHistoryService(),
-    notifyStoreUpdated: () => {
-      window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
-    },
+    notifyStoreUpdated,
     getRecentTurns: () => recentTurns,
   },
 );
@@ -822,6 +837,14 @@ initRecordingController(
     runPipeline: (blob, mimeType) => runPipelineService(blob, mimeType),
     createId: () => createId(),
     saveDictationRecording: (args) => ipcSaveDictationRecording(args),
+    notePasteTarget: () => {
+      if (!isTauriEnvironment()) {
+        return;
+      }
+      void ipcNotePasteTarget().catch(() => {
+        // Best-effort snapshot; the paste path falls back to invoke-time focus.
+      });
+    },
   },
   {
     getMediaRecorder: () => mediaRecorder,
@@ -932,6 +955,8 @@ initForegroundPolicy({
 });
 initTrayLifecycle({
   isTauri: isTauriEnvironment,
+  // F-028: first close-to-tray hide explains how to get the window back.
+  notify: (message, isError) => setNoticeService(message, isError),
   isTtsSetupRunning: () => ttsSetupRunning,
   isLocalSttDownloadActive: () => localSttDownloadActive,
   stopTtsSetupPolling: () => stopTtsSetupPollingService(),
@@ -1017,6 +1042,14 @@ initSelectionPopup(
     nextToken: () => {
       selectionPopupTokenCounter += 1;
       return selectionPopupTokenCounter;
+    },
+    // F-030/F-009: only the newest issued token is live; any older payload
+    // (a superseded run) no-ops on show/copy/replace instead of pasting stale text.
+    isTokenStale: (token) => token !== selectionPopupTokenCounter,
+    focusMainWindow: async () => {
+      const win = getCurrentWindow();
+      await win.show();
+      await win.setFocus();
     },
   },
   selectionPopupChannel,
@@ -1300,9 +1333,7 @@ initRecordings(
     isTauri: isTauriEnvironment,
     notify: (message, isError) => setNoticeService(message, isError),
     log: (message) => logClientEventService(message),
-    notifyStoreUpdated: () => {
-      window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
-    },
+    notifyStoreUpdated,
   },
 );
 async function refreshRecordingsStorageHint(): Promise<void> {
@@ -1526,9 +1557,7 @@ initSettingsChange({
     }
   },
   persist: (next) => persistSettings(next),
-  notifyStoreUpdated: () => {
-    window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
-  },
+  notifyStoreUpdated,
   readSettingsFromForm: (refs, coreDeps) => readSettingsFromFormService(refs, coreDeps),
   applySettingsToForm: (refs, coreDeps, next) => applySettingsToFormService(refs, coreDeps, next),
   getUsageStats: () => usageStats,
@@ -1735,6 +1764,8 @@ initHotkeyCapture(
 
 initHotkeySync({
   isTauri: isTauriEnvironment,
+  // F-007: remaps requested mid-hold are parked until the PTT release drains them.
+  isHoldActive: () => hasPushToTalkHold("hotkey"),
   getSettings: getSettingsSnapshot,
   notify: (message, isError) => setNoticeService(message, isError),
   log: (message) => logClientEventService(message),
@@ -1801,6 +1832,8 @@ initLocalShortcuts(
         shouldBypassLocalShortcutHandlingService(token),
       shouldIgnoreLocalShortcutFromRecentGlobal: (token, state) =>
         shouldIgnoreLocalShortcutFromRecentGlobalService(token, state),
+      noteLocalPressed: (token) => noteLocalShortcutPressedService(token),
+      drainPendingRemap: () => drainPendingRemapService(),
     },
   },
 );
@@ -1943,6 +1976,12 @@ applyModelToSttBtn.addEventListener("click", () => {
 });
 
 
+/* F-007: a global PTT release already ends the hold via the dispatch deps;
+   this only drains a hotkey remap that was parked while the hold was active. */
+window.addEventListener("slasshywispr:ptt-release", () => {
+  drainPendingRemapService();
+});
+
 /* Home tab search-button → switch to History and focus the search
    input. rAF ensures the React tree has time to mount the History
    section before the input exists in the DOM. */
@@ -1999,9 +2038,7 @@ initHistoryView(
       homeHistoryEntries = entries;
     },
     persistHomeHistory: () => persistHomeHistoryService(),
-    notifyStoreUpdated: () => {
-      window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
-    },
+    notifyStoreUpdated,
     clearRecentTurns: () => {
       recentTurns.length = 0;
     },
@@ -2032,6 +2069,9 @@ document.addEventListener("visibilitychange", () => {
 });
 
 initUsageTracker({
+  // F-003: reads the live settings object so toggling incognito takes effect
+  // on the next dictation without a reload.
+  isIncognito: () => settings.incognitoMode,
   getStats: () => usageStats,
   setStats: (stats) => {
     usageStats = stats;
@@ -2049,9 +2089,7 @@ initUsageTracker({
   persistSessions: () => persistAnalyticsSessionDetailsService(),
   persistAchievements: () => persistAchievementStatesService(),
   renderMetrics: () => updateUsageMetricsService(),
-  notifyStoreUpdated: () => {
-    window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
-  },
+  notifyStoreUpdated,
 });
 async function bootstrap(): Promise<void> {
   logClientEventService("[bootstrap] start");
@@ -2139,7 +2177,7 @@ async function backfillHistoryRecordingIds(): Promise<void> {
     });
     if (patched > 0) {
       persistHomeHistoryService();
-      window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
+      notifyStoreUpdated();
       logClientEventService(`[recordings.backfill] attached=${patched} of ${matches.length}`);
     }
   } catch (error) {

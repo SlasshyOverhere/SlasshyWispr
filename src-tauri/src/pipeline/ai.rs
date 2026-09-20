@@ -199,7 +199,11 @@ async fn generate_assistant_response_online(
                         "[pipeline] online ai transport error; retrying: {}",
                         clip_text(&single_line(&last_error), 280)
                     );
-                    tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(350))).await.map_err(|error| format!("AI retry delay failed: {error}"))?;
+                    tauri::async_runtime::spawn_blocking(|| {
+                        std::thread::sleep(std::time::Duration::from_millis(350))
+                    })
+                    .await
+                    .map_err(|error| format!("AI retry delay failed: {error}"))?;
                     continue;
                 }
                 log::warn!(
@@ -228,7 +232,11 @@ async fn generate_assistant_response_online(
                     clip_text(&single_line(&body), 220)
                 );
                 last_error = message;
-                tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(450))).await.map_err(|error| format!("AI retry delay failed: {error}"))?;
+                tauri::async_runtime::spawn_blocking(|| {
+                    std::thread::sleep(std::time::Duration::from_millis(450))
+                })
+                .await
+                .map_err(|error| format!("AI retry delay failed: {error}"))?;
                 continue;
             }
             log::warn!(
@@ -265,7 +273,11 @@ async fn generate_assistant_response_online(
                 clip_text(&single_line(&body), 360)
             );
             last_error = missing_content_error;
-            tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(350))).await.map_err(|error| format!("AI retry delay failed: {error}"))?;
+            tauri::async_runtime::spawn_blocking(|| {
+                std::thread::sleep(std::time::Duration::from_millis(350))
+            })
+            .await
+            .map_err(|error| format!("AI retry delay failed: {error}"))?;
             continue;
         }
         log::warn!(
@@ -326,7 +338,15 @@ async fn generate_assistant_response_ollama(
 
     let mut last_error = String::new();
     for attempt in 0..2 {
-        let response = match client.post(&endpoint).json(&payload).send().await {
+        // F-010: Ollama gets a 90s ceiling (local inference can be slow on
+        // CPU, but never unbounded). The retry below doubles the worst case.
+        let response = match client
+            .post(&endpoint)
+            .json(&payload)
+            .timeout(std::time::Duration::from_secs(90))
+            .send()
+            .await
+        {
             Ok(response) => response,
             Err(error) => {
                 last_error = format!("Failed to call local Ollama endpoint: {error}");
@@ -335,7 +355,11 @@ async fn generate_assistant_response_ollama(
                         "[pipeline] local ollama request transport error; retrying: {}",
                         clip_text(&single_line(&last_error), 280)
                     );
-                    tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(350))).await.map_err(|error| format!("AI retry delay failed: {error}"))?;
+                    tauri::async_runtime::spawn_blocking(|| {
+                        std::thread::sleep(std::time::Duration::from_millis(350))
+                    })
+                    .await
+                    .map_err(|error| format!("AI retry delay failed: {error}"))?;
                     continue;
                 }
                 return Err(last_error);
@@ -360,7 +384,11 @@ async fn generate_assistant_response_ollama(
                     clip_text(&single_line(&body), 220)
                 );
                 last_error = message;
-                tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(450))).await.map_err(|error| format!("AI retry delay failed: {error}"))?;
+                tauri::async_runtime::spawn_blocking(|| {
+                    std::thread::sleep(std::time::Duration::from_millis(450))
+                })
+                .await
+                .map_err(|error| format!("AI retry delay failed: {error}"))?;
                 continue;
             }
             return Err(message);
@@ -495,7 +523,10 @@ mod tests {
     #[test]
     fn single_line_collapses_whitespace() {
         assert_eq!(single_line("hello  world\n\t  foo"), "hello world foo");
-        assert_eq!(single_line("  leading and trailing  "), "leading and trailing");
+        assert_eq!(
+            single_line("  leading and trailing  "),
+            "leading and trailing"
+        );
         assert_eq!(single_line(""), "");
     }
 

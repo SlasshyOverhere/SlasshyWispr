@@ -11,8 +11,33 @@
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
+export const TRAY_COACHMARK_STORAGE_KEY = "slasshywispr-tray-coachmark-v1";
+
+// F-028: first-hide coachmark copy. Show/Quit stay in the Rust tray menu
+// (commands/windows.rs); these hints describe them so the menu needs no change.
+export const TRAY_FIRST_HIDE_COACHMARK =
+  "SlasshyWispr keeps running in the tray. Right-click the tray icon to Show, or Quit to exit.";
+
+export function shouldShowTrayCoachmark(storage: Pick<Storage, "getItem">): boolean {
+  try {
+    return storage.getItem(TRAY_COACHMARK_STORAGE_KEY) !== "seen";
+  } catch {
+    return false;
+  }
+}
+
+export function markTrayCoachmarkSeen(storage: Pick<Storage, "setItem">): void {
+  try {
+    storage.setItem(TRAY_COACHMARK_STORAGE_KEY, "seen");
+  } catch {
+    // Private-mode storage: coachmark may repeat; harmless.
+  }
+}
+
 export interface TrayLifecycleDeps {
   isTauri: () => boolean;
+  /** F-028: one-line hint surface (toast/notice). Absent = silent. */
+  notify?: (message: string, isError?: boolean) => void;
   isTtsSetupRunning: () => boolean;
   isLocalSttDownloadActive: () => boolean;
   stopTtsSetupPolling: () => void;
@@ -62,6 +87,17 @@ export async function applyMainWindowTrayVisibility(hidden: boolean): Promise<vo
 
   stopNonEssentialUiPollingForTray();
   await trayDeps.closeSelectionAssistantWindow();
+  // F-028 close-to-tray discoverability: first hide explains Show/Quit once.
+  // ponytail: if this needs richer UI than a notice line, add a settings
+  // toggle via NEEDS->Agent 3 (close-to-tray vs quit) instead of growing this.
+  try {
+    if (typeof localStorage !== "undefined" && shouldShowTrayCoachmark(localStorage)) {
+      markTrayCoachmarkSeen(localStorage);
+      trayDeps.notify?.(TRAY_FIRST_HIDE_COACHMARK);
+    }
+  } catch {
+    // Coachmark is best-effort; never break tray hide.
+  }
   // Keep the floating dock alive when minimizing to tray — only close it
   // if the user explicitly disabled the dock via showFlowBar setting.
   // Previously this destroyed the dock window which made it disappear

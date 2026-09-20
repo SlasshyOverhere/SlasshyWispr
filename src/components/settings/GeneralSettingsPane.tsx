@@ -337,6 +337,19 @@ export function GeneralSettingsPane() {
         <span className="s-row-label">Incognito mode <span className="switch-desc">(no history)</span></span>
         <input id="incognitoModeToggle" className="switch-input" type="checkbox" checked={settings.incognitoMode} onChange={(event) => dispatchSettingsPatch({ incognitoMode: event.target.checked })} />
       </label>
+      {/* F-003: state exactly what is suppressed, so "no history" is provable
+          rather than a claim. Rendered only while incognito is on. */}
+      {settings.incognitoMode && (
+        <div className="privacy-suppressed" role="note" aria-label="What incognito suppresses">
+          <p className="s-group-label">While incognito is on</p>
+          <ul className="privacy-suppressed-list">
+            <li>Transcript turns are not written to History</li>
+            <li>Usage stats and analytics sessions are not updated</li>
+            <li>Quick notes are not created</li>
+            <li>Achievements do not unlock from this session</li>
+          </ul>
+        </div>
+      )}
 
       <div className="s-divider" />
       <p className="s-group-label">Recordings</p>

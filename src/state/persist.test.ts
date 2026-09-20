@@ -22,6 +22,7 @@ import type {
   UsageStats,
 } from "../types";
 import {
+  flushPendingWrites,
   initShellPersist,
   loadAchievementStates,
   loadDockLayout,
@@ -127,6 +128,9 @@ describe("writers round-trip through localStorage", () => {
     persistHomeHistory();
     persistAchievementStates();
     persistAnalyticsSessionDetails();
+    // F-024: stats/history/sessions are debounced; the flush is what makes
+    // them durable (window hide/unload calls the same path).
+    flushPendingWrites();
     expect(loadUsageStats().words).toBe(42);
     expect(loadAchievementStates()).toEqual([{ id: "words-1k", unlockedAt: 2 }]);
     expect(
@@ -135,6 +139,15 @@ describe("writers round-trip through localStorage", () => {
     expect(
       JSON.parse(localStorage.getItem(ANALYTICS_SESSIONS_KEY) ?? "[]"),
     ).toEqual([]);
+  });
+
+  it("does not write debounced keys until the flush", () => {
+    const harness = wireHarness();
+    harness.setStats({ ...baseStats(), words: 7 });
+    persistUsageStats();
+    expect(localStorage.getItem(USAGE_STORAGE_KEY)).toBeNull();
+    flushPendingWrites();
+    expect(JSON.parse(localStorage.getItem(USAGE_STORAGE_KEY) ?? "{}").words).toBe(7);
   });
 });
 

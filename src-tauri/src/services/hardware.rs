@@ -12,8 +12,8 @@ use std::process::{Command, Stdio};
 
 use crate::pipeline::process::apply_no_window;
 use crate::pipeline::routing::{
-    built_in_local_stt_model_catalog, canonical_local_stt_model_id,
-    local_stt_model_display_label, local_stt_model_size_gb, normalize_model_name,
+    built_in_local_stt_model_catalog, canonical_local_stt_model_id, local_stt_model_display_label,
+    local_stt_model_size_gb, normalize_model_name,
 };
 
 #[cfg(target_os = "windows")]
@@ -69,9 +69,10 @@ pub(crate) fn probe_windows_local_stt_hardware(probe: &mut LocalSttHardwareProbe
     use winreg::RegKey;
 
     // CPU name from registry
-    if let Ok(hklm) = RegKey::predef(HKEY_LOCAL_MACHINE)
-        .open_subkey_with_flags("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", KEY_READ)
-    {
+    if let Ok(hklm) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(
+        "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+        KEY_READ,
+    ) {
         if let Ok(name) = hklm.get_value::<String, _>("ProcessorNameString") {
             let trimmed = name.trim().to_string();
             if !trimmed.is_empty() {
@@ -271,7 +272,10 @@ pub(crate) fn local_stt_models_for_tier(
     match tier {
         "performance" => (
             "nvidia/parakeet-tdt-0.6b-v3",
-            vec!["nvidia/parakeet-tdt-0.6b-v3", "nvidia/parakeet-tdt_ctc-110m"],
+            vec![
+                "nvidia/parakeet-tdt-0.6b-v3",
+                "nvidia/parakeet-tdt_ctc-110m",
+            ],
             vec![],
         ),
         "balanced" => (
@@ -453,13 +457,22 @@ mod tests {
 
     // ===== HARDWARE TIER CLASSIFICATION =====
 
-    fn make_probe(logical_cores: usize, ram_bytes: u64, nvidia: bool, vram_mb: u64) -> super::LocalSttHardwareProbe {
+    fn make_probe(
+        logical_cores: usize,
+        ram_bytes: u64,
+        nvidia: bool,
+        vram_mb: u64,
+    ) -> super::LocalSttHardwareProbe {
         super::LocalSttHardwareProbe {
             cpu_name: "Test CPU".to_string(),
             logical_cores,
             total_ram_bytes: ram_bytes,
             nvidia_gpu_detected: nvidia,
-            gpu_name: if nvidia { "NVIDIA GPU".to_string() } else { String::new() },
+            gpu_name: if nvidia {
+                "NVIDIA GPU".to_string()
+            } else {
+                String::new()
+            },
             gpu_vram_mb: vram_mb,
         }
     }
@@ -468,7 +481,10 @@ mod tests {
     fn tier_performance_with_strong_gpu_and_ram() {
         // 8+ cores, 16+ GB RAM, 8+ GB VRAM → performance
         let probe = make_probe(12, 32 * 1024 * 1024 * 1024, true, 12 * 1024);
-        assert_eq!(super::local_stt_performance_tier(&probe, 32.0, 12.0), "performance");
+        assert_eq!(
+            super::local_stt_performance_tier(&probe, 32.0, 12.0),
+            "performance"
+        );
     }
 
     #[test]
@@ -481,14 +497,19 @@ mod tests {
     fn tier_balanced_with_mid_gpu() {
         // 4+ GB VRAM + 12+ GB RAM → balanced
         let probe = make_probe(6, 16 * 1024 * 1024 * 1024, true, 6 * 1024);
-        assert_eq!(super::local_stt_performance_tier(&probe, 16.0, 6.0), "balanced");
+        assert_eq!(
+            super::local_stt_performance_tier(&probe, 16.0, 6.0),
+            "balanced"
+        );
     }
 
     #[test]
     fn tier_balanced_with_ample_ram_and_strong_cpu() {
         // 16+ GB RAM + 8+ cores → balanced (no GPU)
         let probe = make_probe(8, 16 * 1024 * 1024 * 1024, false, 0);
-        assert_eq!(super::local_stt_performance_tier(&probe, 16.0, 0.0), "balanced");
+        assert_eq!(
+            super::local_stt_performance_tier(&probe, 16.0, 0.0),
+            "balanced"
+        );
     }
-
 }

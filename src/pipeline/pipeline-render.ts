@@ -152,6 +152,13 @@ export function renderPipelineResponse(response: AssistantPipelineResponse): voi
     }
   }
 
+  // F-003: incognito suppresses the history etc. above; usage, sessions and
+  // notes are the same promise, so they are gated here too (trackUsage also
+  // guards, but the notes write has no other check).
+  if (renderDeps.isIncognito()) {
+    return;
+  }
+
   renderDeps.trackUsage(response.transcript);
   if (renderDeps.getLastCaptureIntentLabel() === "notes-button") {
     renderDeps.addQuickNote(response.transcript);

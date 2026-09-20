@@ -49,7 +49,14 @@ fn send_coqui_daemon_request(
     action: &str,
     payload: &Value,
 ) -> Result<Value, String> {
-    send_bridge_request("Coqui", "Coqui", daemon, action, payload, "Coqui bridge failed")
+    send_bridge_request(
+        "Coqui",
+        "Coqui",
+        daemon,
+        action,
+        payload,
+        "Coqui bridge failed",
+    )
 }
 
 pub fn run_coqui_bridge_via_daemon(
@@ -123,7 +130,14 @@ pub fn parse_coqui_bridge_response(
     stdout_text: &str,
     stderr_text: &str,
 ) -> Result<Value, String> {
-    parse_bridge_response("Coqui", "coqui", action, status_ok, stdout_text, stderr_text)
+    parse_bridge_response(
+        "Coqui",
+        "coqui",
+        action,
+        status_ok,
+        stdout_text,
+        stderr_text,
+    )
 }
 
 pub fn stop_all_coqui_bridge_daemons() {

@@ -127,6 +127,28 @@ export function missingApiKeyForOnlineRuntime(activeSettings: PersistedSettings)
   return anyOnlineRuntime && !apiKeyPresent;
 }
 
+/**
+ * F-029: local STT needs a model, local AI needs an Ollama model. Catching
+ * this before the recorder opens avoids capturing audio that cannot be
+ * transcribed. Returns a user-facing reason, or null when the combination is
+ * usable.
+ */
+export function invalidRuntimeCombinationReason(settings: PersistedSettings): string | null {
+  if (missingApiKeyForOnlineRuntime(settings)) {
+    return "Add an API key in Settings > Models before recording with an online runtime.";
+  }
+  if (settings.sttRuntimeMode === "local" && !settings.localSttModel.trim()) {
+    return "Local STT needs a downloaded model. Open Settings > Models and pick one.";
+  }
+  if (settings.aiRuntimeMode === "local" && !settings.localOllamaModel.trim()) {
+    return "Local AI needs an Ollama model. Open Settings > Models and pull one.";
+  }
+  if (settings.aiRuntimeMode === "local" && !settings.localOllamaBaseUrl.trim()) {
+    return "Local AI needs an Ollama base URL. Open Settings > Models and set it.";
+  }
+  return null;
+}
+
 export function pickBestRecorderMimeType(): string {
   const candidates = [
     "audio/webm;codecs=opus",

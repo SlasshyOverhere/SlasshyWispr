@@ -5,8 +5,7 @@
 
 use super::{
     apply_selection_edit_result, normalize_and_validate_response, orchestrate_post_stt,
-    post_ai_processing, AiAction, OrchestratorInput, OrchestratorResult, PipelineConfig,
-    PipelineState, PostAiAction,
+    post_ai_processing, AiAction, OrchestratorInput, PipelineConfig, PipelineState, PostAiAction,
 };
 use crate::pipeline::selection::SelectionEditAction;
 
@@ -98,7 +97,10 @@ fn command_mode_no_selection_routes_to_ai() {
     });
 
     // command_mode + no selection → command mode request path → GenerateResponse
-    assert!(matches!(result.ai_action, AiAction::GenerateResponse { .. }));
+    assert!(matches!(
+        result.ai_action,
+        AiAction::GenerateResponse { .. }
+    ));
     assert_eq!(result.decision.mode, "assistant");
 }
 
@@ -133,7 +135,10 @@ fn normal_command_routes_to_ai() {
         state: &state,
     });
 
-    assert!(matches!(result.ai_action, AiAction::GenerateResponse { .. }));
+    assert!(matches!(
+        result.ai_action,
+        AiAction::GenerateResponse { .. }
+    ));
     assert!(!result.decision.skip_tts);
     assert_eq!(result.decision.mode, "assistant");
 }
@@ -268,7 +273,10 @@ fn selection_with_command_uses_command_as_instruction() {
         state: &state,
     });
 
-    if let AiAction::GenerateSelectionEditDecision { ref instruction, .. } = result.ai_action {
+    if let AiAction::GenerateSelectionEditDecision {
+        ref instruction, ..
+    } = result.ai_action
+    {
         assert!(instruction.contains("formal"));
     } else {
         panic!("Expected GenerateSelectionEditDecision");
@@ -502,9 +510,7 @@ fn unrecognized_confirmation_keeps_pending() {
 
 #[test]
 fn normalize_latex_conversion() {
-    let result = normalize_and_validate_response(
-        r#"Some text with \[\frac{x}{2}\] inline"#,
-    );
+    let result = normalize_and_validate_response(r#"Some text with \[\frac{x}{2}\] inline"#);
     assert!(result.is_ok());
     let text = result.unwrap();
     assert!(text.contains("(x) / (2)") || text.contains("x / 2"));

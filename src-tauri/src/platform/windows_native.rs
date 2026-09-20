@@ -10,7 +10,7 @@ use std::path::Path;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use log::info;
+use log::{info, warn};
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::{CloseHandle, RECT};
@@ -25,8 +25,6 @@ use windows_sys::Win32::System::Threading::{
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
-
-
 
 use super::input::policy::is_blocked_terminal_process_name;
 use super::windows_types::ForegroundWindowProbeResult;
@@ -48,8 +46,6 @@ pub(crate) mod win32_native {
         pub fn MonitorFromWindow(hwnd: isize, dwFlags: u32) -> isize;
     }
 }
-
-
 
 #[cfg(target_os = "windows")]
 pub(crate) fn make_key_input(vk: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
@@ -120,10 +116,9 @@ pub(crate) fn get_process_name_from_pid(pid: u32) -> String {
     }
 }
 
-
 #[cfg(target_os = "windows")]
 pub(crate) fn probe_foreground_window_windows() -> Result<ForegroundWindowProbeResult, String> {
-    use self::win32_native::{GetMonitorInfoW, MONITORINFO, MonitorFromWindow};
+    use self::win32_native::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO};
 
     unsafe {
         let hwnd = GetForegroundWindow();
@@ -158,8 +153,7 @@ pub(crate) fn probe_foreground_window_windows() -> Result<ForegroundWindowProbeR
         let mut title_buf = [0u16; 512];
         let title_len = GetWindowTextW(hwnd, title_buf.as_mut_ptr(), title_buf.len() as i32);
         let window_title = if title_len > 0 {
-            String::from_utf16_lossy(&title_buf[..title_len as usize])
-                .to_ascii_lowercase()
+            String::from_utf16_lossy(&title_buf[..title_len as usize]).to_ascii_lowercase()
         } else {
             String::new()
         };
@@ -177,11 +171,10 @@ pub(crate) fn probe_foreground_window_windows() -> Result<ForegroundWindowProbeR
             };
             if GetMonitorInfoW(monitor, &mut info) != 0 {
                 let t = 2i32;
-                fullscreen =
-                    (rect.left - info.rcMonitor.left).abs() <= t &&
-                    (rect.top - info.rcMonitor.top).abs() <= t &&
-                    (rect.right - info.rcMonitor.right).abs() <= t &&
-                    (rect.bottom - info.rcMonitor.bottom).abs() <= t;
+                fullscreen = (rect.left - info.rcMonitor.left).abs() <= t
+                    && (rect.top - info.rcMonitor.top).abs() <= t
+                    && (rect.right - info.rcMonitor.right).abs() <= t
+                    && (rect.bottom - info.rcMonitor.bottom).abs() <= t;
             }
         }
 
@@ -239,9 +232,15 @@ pub(crate) fn capture_selected_text_windows() -> Result<String, String> {
         }
     }
 
-    // Restore previous clipboard
+    // Restore previous clipboard. F-008: a failed restore used to be silent,
+    // which leaves the user's clipboard holding our probe text; surface it.
     if let Some(ref prev_text) = prev {
-        native_set_clipboard_text(prev_text).ok();
+        if let Err(error) = native_set_clipboard_text(prev_text) {
+            warn!(
+                "[client] clipboard restore failed after selection capture: {}",
+                error
+            );
+        }
     }
 
     Ok(sel.replace("\r\n", "\n"))
@@ -317,8 +316,104 @@ pub(crate) fn set_clipboard_text_windows(text: &str) -> Result<(), String> {
     native_set_clipboard_text(text)
 }
 
-static SAVED_SYSTEM_AUDIO_VOLUME: std::sync::Mutex<Option<u32>> =
-    std::sync::Mutex::new(None);
+/// F-002: current foreground window as an opaque HWND value, or 0 when there
+/// is none. Compared before/after a paste so a focus steal aborts it.
+#[cfg(target_os = "windows")]
+pub(crate) fn foreground_window_handle() -> isize {
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_null() {
+            0
+        } else {
+            hwnd as isize
+        }
+    }
+}
+
+/// Paste-target snapshot: the foreground window at capture intent is where
+/// the user was working. Stored as (HWND, owning PID) so a recycled handle
+/// can never redirect a paste — the PID is re-validated before any refocus.
+#[cfg(target_os = "windows")]
+static PASTE_TARGET: std::sync::Mutex<Option<(isize, u32)>> = std::sync::Mutex::new(None);
+
+#[cfg(target_os = "windows")]
+fn window_owner_pid(hwnd: isize) -> u32 {
+    unsafe {
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd as _, &mut pid);
+        pid
+    }
+}
+
+/// Snapshot the current foreground window as the paste target. Called at
+/// capture intent (record start), when focus is still where the user was
+/// working. Returns the HWND as i64, or 0 when there is none.
+#[cfg(target_os = "windows")]
+pub(crate) fn note_paste_target_windows() -> i64 {
+    let hwnd = foreground_window_handle();
+    if hwnd == 0 {
+        if let Ok(mut guard) = PASTE_TARGET.lock() {
+            *guard = None;
+        }
+        return 0;
+    }
+    let pid = window_owner_pid(hwnd);
+    if let Ok(mut guard) = PASTE_TARGET.lock() {
+        *guard = Some((hwnd, pid));
+    }
+    info!("[client] paste target noted hwnd={} pid={}", hwnd, pid);
+    hwnd as i64
+}
+
+/// The snapshotted paste target, if any.
+#[cfg(target_os = "windows")]
+pub(crate) fn noted_paste_target() -> Option<(isize, u32)> {
+    PASTE_TARGET.lock().ok().and_then(|guard| guard.clone())
+}
+
+/// True when the window belongs to this process — one of our own windows
+/// (main, dock overlay, selection popup).
+#[cfg(target_os = "windows")]
+pub(crate) fn window_is_own_process(hwnd: isize) -> bool {
+    hwnd != 0 && window_owner_pid(hwnd) == std::process::id()
+}
+
+/// Refocus a previously snapshotted paste target. Rejects a dead handle
+/// (IsWindow) and a recycled one (owner PID changed), then foregrounds the
+/// window and verifies. Only invoked when one of our own windows currently
+/// holds focus — the case the foreground API permits, since a foreground
+/// app may pass focus onward.
+#[cfg(target_os = "windows")]
+pub(crate) async fn focus_noted_paste_target() -> Result<(), String> {
+    let (hwnd, pid) = noted_paste_target()
+        .ok_or_else(|| "No paste target was captured for this recording.".to_string())?;
+    unsafe {
+        if IsWindow(hwnd as _) == 0 {
+            if let Ok(mut guard) = PASTE_TARGET.lock() {
+                *guard = None;
+            }
+            return Err("Paste target window was closed before pasting.".to_string());
+        }
+        if window_owner_pid(hwnd) != pid {
+            if let Ok(mut guard) = PASTE_TARGET.lock() {
+                *guard = None;
+            }
+            return Err("Paste target window is no longer the same app.".to_string());
+        }
+        SetForegroundWindow(hwnd as _);
+    }
+    tauri::async_runtime::spawn_blocking(|| {
+        std::thread::sleep(std::time::Duration::from_millis(120));
+    })
+    .await
+    .ok();
+    if foreground_window_handle() != hwnd {
+        return Err("Could not return focus to the dictation target window.".to_string());
+    }
+    Ok(())
+}
+
+static SAVED_SYSTEM_AUDIO_VOLUME: std::sync::Mutex<Option<u32>> = std::sync::Mutex::new(None);
 
 /// Send a media play/pause app-command broadcast (moved verbatim from the
 /// `control_media_playback` command adapter).

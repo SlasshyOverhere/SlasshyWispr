@@ -120,11 +120,11 @@ describe("renderPipelineResponse", () => {
     expect(selection.getHistory().map((entry) => entry.speaker)).toEqual(["Selection"]);
   });
 
-  it("skips history in incognito but still tracks usage and notes", () => {
+  it("records nothing in incognito — no history, usage, or notes (F-003)", () => {
     const harness = wireHarness({ incognito: true, intentLabel: "notes-button" });
     renderPipelineResponse(fakeResponse());
     expect(harness.getHistory()).toEqual([]);
-    expect(harness.usage).toEqual(["hello world"]);
-    expect(harness.notes).toEqual(["hello world"]);
+    expect(harness.usage).toEqual([]);
+    expect(harness.notes).toEqual([]);
   });
 });

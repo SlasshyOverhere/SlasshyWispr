@@ -169,6 +169,12 @@ export interface AssistantPipelineResponse {
   aiLatencyMs: number;
   ttsLatencyMs: number;
   totalLatencyMs: number;
+  /** F-009 contract: echoed run identity, minted backend-side when omitted. */
+  pipelineRunId?: string;
+  /** F-011 contract: "disabled" | "skipped" | "synthesized" | "failed". */
+  ttsStatus?: string;
+  /** F-011: error text when tts_status is "failed"; never a silent empty. */
+  ttsError?: string;
 }
 
 export interface AppUpdateCheckResponse {

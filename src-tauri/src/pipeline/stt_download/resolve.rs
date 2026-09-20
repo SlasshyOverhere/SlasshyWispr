@@ -340,7 +340,10 @@ mod tests {
             faster_whisper_repo_alias_for_model("openai/whisper-large-v3"),
             Some("Systran/faster-whisper-large-v3")
         );
-        assert_eq!(faster_whisper_repo_alias_for_model("OPENAI/whisper-small"), Some("Systran/faster-whisper-small"));
+        assert_eq!(
+            faster_whisper_repo_alias_for_model("OPENAI/whisper-small"),
+            Some("Systran/faster-whisper-small")
+        );
         assert_eq!(faster_whisper_repo_alias_for_model("whisper-base"), None);
     }
 
@@ -413,10 +416,8 @@ mod tests {
             entry("parakeet-tdt-0.6b-v3.nemo"),
             entry("config.json"),
         ];
-        let selected = select_huggingface_stt_download_entries(
-            "nvidia/parakeet-tdt-0.6b-v3",
-            &entries,
-        );
+        let selected =
+            select_huggingface_stt_download_entries("nvidia/parakeet-tdt-0.6b-v3", &entries);
         let names: Vec<String> = selected
             .iter()
             .map(|(path, _)| path.file_name().unwrap().to_string_lossy().into_owned())

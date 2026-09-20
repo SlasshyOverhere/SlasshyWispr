@@ -1,7 +1,6 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { toggleMainWindowVisibility } from './ipc/client';
 import { SettingsModal } from './components/settings/SettingsModal';
-import { AnalyticsPage } from './components/analytics/AnalyticsPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import type { HomeHistoryEntry } from './types';
@@ -16,6 +15,15 @@ import { buildHomeList } from './app/rows/HomeEntryCard';
 import { PaceSparkline } from './app/rows/PaceSparkline';
 import { DictionaryRow, SnippetRow, NoteRow } from './app/rows/SmallRows';
 import { HistoryRow } from './app/rows/HistoryRow';
+
+/**
+ * F-023: analytics is the heaviest pane and is not on the default (Home) view,
+ * so it loads on demand. The Suspense fallback is a plain placeholder — never
+ * an animation gate, so the pane is always reachable.
+ */
+const AnalyticsPage = lazy(() =>
+  import('./components/analytics/AnalyticsPage').then((mod) => ({ default: mod.AnalyticsPage })),
+);
 
 export function App() {
   const state = useUIState();
@@ -567,7 +575,9 @@ export function App() {
             <section className={`flow-page ${state.activePage === 'analytics' ? 'is-active' : ''}`} data-page="analytics">
               <div className="flow-page-inner">
                 <ErrorBoundary>
-                  <AnalyticsPage usage={state.usage} analyticsSessions={state.analyticsSessions} achievementStates={state.achievementStates} />
+                  <Suspense fallback={<div className="empty-state"><p>Loading analytics…</p></div>}>
+                    <AnalyticsPage usage={state.usage} analyticsSessions={state.analyticsSessions} achievementStates={state.achievementStates} />
+                  </Suspense>
                 </ErrorBoundary>
               </div>
             </section>

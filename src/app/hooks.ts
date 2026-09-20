@@ -3,7 +3,8 @@ import { uiStore } from '../store';
 import type { UIState } from '../store';
 import { SETTINGS_STORAGE_KEY } from '../constants';
 import { parseJson } from '../state/storage';
-import type { AnalyticsSessionDetail, HomeHistoryEntry } from '../types';
+import type { AnalyticsSessionDetail } from '../types';
+import { type HistoryFilter, localDayKey } from './history-filter';
 
 /**
  * Canonical App-level hooks (Phase 3 extraction from App.tsx).
@@ -18,7 +19,8 @@ export function useUIState(): UIState {
   return state;
 }
 
-export type HistoryFilter = { filter: "all" | "day" | "week" | "month"; specificDate?: string };
+export type { HistoryFilter } from "./history-filter";
+export { filterHistory, localDayKey } from "./history-filter";
 
 export function useHistoryFilter(): HistoryFilter {
   const [hf, setHf] = useState<HistoryFilter>({ filter: "all" });
@@ -43,29 +45,6 @@ export function useHistorySearch(): string {
     return () => el.removeEventListener("input", handler);
   }, []);
   return query;
-}
-
-export function filterHistory(entries: HomeHistoryEntry[], hf: HistoryFilter): HomeHistoryEntry[] {
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  if (hf.specificDate) {
-    const parts = hf.specificDate.split("-");
-    const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    const end = start + 24 * 60 * 60 * 1000;
-    return entries.filter(e => e.timestamp >= start && e.timestamp < end);
-  }
-  if (hf.filter === "day") return entries.filter(e => e.timestamp >= todayStart);
-  if (hf.filter === "week") {
-    const dow = now.getDay();
-    const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow).getTime();
-    return entries.filter(e => e.timestamp >= weekStart);
-  }
-  if (hf.filter === "month") {
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    return entries.filter(e => e.timestamp >= monthStart);
-  }
-  return entries;
 }
 
 /* Reads the persisted push-to-talk hotkey so the rail's Quick start
@@ -104,19 +83,21 @@ export function useLastSevenDaysWords(
   sessions: AnalyticsSessionDetail[]
 ): { points: number[]; oldest: string } {
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
   const days: number[] = [0, 0, 0, 0, 0, 0, 0];
-  const dayMs = 24 * 60 * 60 * 1000;
-  const oldestStart = today.getTime() - 6 * dayMs;
+  // F-025: build the seven buckets by walking calendar days back from today,
+  // so a DST shift cannot put an extra (or missing) day in the window.
+  const bucketKeys: string[] = [];
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() - offset);
+    bucketKeys.push(localDayKey(day.getTime()));
+  }
   sessions.forEach((s) => {
-    const sessionDay = new Date(s.date);
-    sessionDay.setHours(0, 0, 0, 0);
-    const idx = Math.round((sessionDay.getTime() - oldestStart) / dayMs);
-    if (idx >= 0 && idx < 7) {
-      days[idx] = (days[idx] || 0) + (s.words || 0);
+    const idx = bucketKeys.indexOf(localDayKey(s.date));
+    if (idx >= 0) {
+      days[idx] += s.words || 0;
     }
   });
-  const oldestDate = new Date(oldestStart);
+  const oldestDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6);
   return {
     points: days,
     oldest: oldestDate.toLocaleDateString([], { month: "short", day: "numeric" }),

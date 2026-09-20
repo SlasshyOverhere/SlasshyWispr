@@ -12,16 +12,15 @@ use std::time::Duration;
 use log::{info, warn};
 
 use crate::constants::{STARTUP_ARG_START_IN_TRAY, STARTUP_RUN_VALUE_NAME};
+use crate::pipeline::log::{clip_text, single_line};
 use crate::platform::windows_native::{
-    capture_selected_text_windows, probe_foreground_window_windows,
-    simulate_ctrl_combo, native_set_clipboard_text,
+    capture_selected_text_windows, native_set_clipboard_text, probe_foreground_window_windows,
+    simulate_ctrl_combo,
 };
 use crate::platform::windows_types::ForegroundInputBlockStatus;
-use crate::pipeline::log::{clip_text, single_line};
 
 pub(crate) use crate::platform::input::foreground_input_block_reason;
 pub(crate) use crate::platform::windows_native::set_clipboard_text_windows;
-
 
 #[tauri::command]
 pub(crate) async fn capture_selected_text() -> Result<String, String> {
@@ -89,9 +88,7 @@ pub(crate) async fn configure_launch_at_login(enabled: bool) -> Result<(), Strin
                 clip_text(&single_line(&exe_text), 240)
             );
         } else {
-            run_key
-                .delete_value(STARTUP_RUN_VALUE_NAME)
-                .ok(); // ignore if not present
+            run_key.delete_value(STARTUP_RUN_VALUE_NAME).ok(); // ignore if not present
             info!("[startup] launch at login disabled");
         }
         return Ok(());
@@ -170,11 +167,22 @@ pub(crate) struct LaunchAtLoginStatus {
     pub stored_value: Option<String>,
 }
 
+/// F-014: async sleep so the paste commands yield instead of blocking a
+/// runtime worker for the settle delay.
+#[cfg(target_os = "windows")]
+async fn paste_settle_sleep(ms: u64) {
+    tauri::async_runtime::spawn_blocking(move || thread::sleep(Duration::from_millis(ms)))
+        .await
+        .ok();
+}
+
 #[tauri::command]
 pub(crate) async fn paste_clipboard_text() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        thread::sleep(Duration::from_millis(70));
+        let target = crate::platform::windows_native::noted_paste_target();
+        paste_settle_sleep(70).await;
+        ensure_paste_focus(target, "Auto-paste").await?;
         simulate_ctrl_combo(0x56).map_err(|e| format!("Auto-paste failed: {e}"))?; // Ctrl+V
         info!("[client] auto-paste triggered");
         return Ok(());
@@ -187,11 +195,63 @@ pub(crate) async fn paste_clipboard_text() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub(crate) async fn note_paste_target() -> Result<i64, String> {
+    #[cfg(target_os = "windows")]
+    {
+        return Ok(crate::platform::windows_native::note_paste_target_windows());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Paste target snapshot is currently implemented for Windows builds only.".to_string())
+    }
+}
+
+/// Decide whether Ctrl+V may fire for the snapshotted paste target.
+///
+/// - Focus already on the target: paste.
+/// - Focus in one of our own windows (user glanced at the app while the
+///   pipeline ran): hand focus back to the captured target, then paste.
+/// - Focus in a different foreign window (user switched away): abort so the
+///   dictation cannot land somewhere unexpected. The `label` picks the
+///   command-specific abort message.
+#[cfg(target_os = "windows")]
+async fn ensure_paste_focus(target: Option<(isize, u32)>, label: &str) -> Result<(), String> {
+    use crate::platform::windows_native as native;
+    let current = native::foreground_window_handle();
+    let wanted = target.map(|(hwnd, _)| hwnd).unwrap_or(current);
+    if current != 0 && current == wanted {
+        return Ok(());
+    }
+    if wanted != 0 && native::window_is_own_process(current) {
+        native::focus_noted_paste_target().await?;
+        info!("[client] paste focus returned to captured target");
+        return Ok(());
+    }
+    if wanted == 0 {
+        // No target captured and no focus to reason about; best effort.
+        return Ok(());
+    }
+    Err(format!("{label} aborted: the active window changed."))
+}
+
+#[tauri::command]
 pub(crate) async fn paste_text_via_clipboard(text: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
+        // F-002: snapshot the clipboard so a failed paste cannot destroy what
+        // the user had copied; restored below on the abort path.
+        let previous_clipboard = crate::platform::windows_native::native_get_clipboard_text().ok();
         native_set_clipboard_text(&text)?;
-        thread::sleep(Duration::from_millis(90));
+        let target = crate::platform::windows_native::noted_paste_target();
+        paste_settle_sleep(90).await;
+        if let Err(error) = ensure_paste_focus(target, "Dictation paste").await {
+            if let Some(previous) = previous_clipboard {
+                let _ = native_set_clipboard_text(&previous);
+            }
+            warn!("[client] dictation paste aborted: {error}");
+            return Err(error);
+        }
         simulate_ctrl_combo(0x56).map_err(|e| format!("Dictation paste failed: {e}"))?; // Ctrl+V
         info!(
             "[client] dictation clipboard+paste triggered chars={}",
@@ -212,7 +272,10 @@ pub(crate) async fn control_media_playback(action: String) -> Result<(), String>
     #[cfg(target_os = "windows")]
     {
         crate::platform::windows_native::send_media_app_command(&action)?;
-        info!("[client] media playback action={}", action.trim().to_ascii_lowercase());
+        info!(
+            "[client] media playback action={}",
+            action.trim().to_ascii_lowercase()
+        );
         return Ok(());
     }
 
@@ -234,14 +297,15 @@ pub(crate) async fn mute_system_audio(mute: bool) -> Result<(), String> {
     #[cfg(not(target_os = "windows"))]
     {
         let _ = mute;
-        return Err("System audio mute is currently implemented for Windows builds only.".to_string());
+        return Err(
+            "System audio mute is currently implemented for Windows builds only.".to_string(),
+        );
     }
-
-    Ok(())
 }
 
 #[tauri::command]
-pub(crate) async fn get_foreground_input_block_status() -> Result<ForegroundInputBlockStatus, String> {
+pub(crate) async fn get_foreground_input_block_status() -> Result<ForegroundInputBlockStatus, String>
+{
     #[cfg(target_os = "windows")]
     {
         let probe = probe_foreground_window_windows()?;
@@ -268,4 +332,3 @@ pub(crate) async fn get_foreground_input_block_status() -> Result<ForegroundInpu
         })
     }
 }
-

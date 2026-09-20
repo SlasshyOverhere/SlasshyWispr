@@ -226,6 +226,13 @@ export function startTtsSetupPolling(): void {
   }, 850);
 }
 
+/** One-line TTS latency line for the latency-budget UI (your surfaces only). */
+export function describeTtsLatency(ttsMs: number | undefined): string {
+  return Number.isFinite(ttsMs)
+    ? `TTS ${Math.max(0, Math.round(ttsMs as number))}ms (Piper, local)`
+    : "TTS n/a";
+}
+
 export async function handleSetupAllTts(): Promise<void> {
   if (ttsDeps.isBusy()) {
     return;

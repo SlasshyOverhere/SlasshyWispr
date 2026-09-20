@@ -15,7 +15,7 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tauri::{AppHandle, State};
 
 use crate::constants::{
@@ -32,9 +32,9 @@ use crate::pipeline::tts::{
     CoquiPipelineRequest,
 };
 
-use crate::state::AppState;
 use crate::services::coqui_setup::{list_coqui_voice_ids, setup_coqui_runtime_blocking};
 use crate::services::pipeline_service::resolve_piper_path;
+use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -436,11 +436,10 @@ async fn fetch_coqui_status(
       "voiceDir": voice_dir_for_worker.to_string_lossy().to_string(),
     });
 
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        run_coqui_bridge(&python_for_worker, payload)
-    })
-    .await
-    .map_err(|error| format!("Coqui status worker failed: {error}"))??;
+    let result =
+        tauri::async_runtime::spawn_blocking(move || run_coqui_bridge(&python_for_worker, payload))
+            .await
+            .map_err(|error| format!("Coqui status worker failed: {error}"))??;
 
     let available = result
         .get("available")
@@ -626,11 +625,10 @@ pub(crate) async fn list_coqui_models(
       "defaultModel": COQUI_DEFAULT_MODEL,
     });
 
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        run_coqui_bridge(&python_for_worker, payload)
-    })
-    .await
-    .map_err(|error| format!("Coqui model listing worker failed: {error}"))??;
+    let result =
+        tauri::async_runtime::spawn_blocking(move || run_coqui_bridge(&python_for_worker, payload))
+            .await
+            .map_err(|error| format!("Coqui model listing worker failed: {error}"))??;
 
     let models = value_string_array(result.get("models"));
     info!("[coqui.models] loaded {} models", models.len());
@@ -726,11 +724,10 @@ pub(crate) async fn clone_coqui_voice(
     });
 
     info!("[coqui.clone] invoking bridge");
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        run_coqui_bridge(&python_for_worker, payload)
-    })
-    .await
-    .map_err(|error| format!("Coqui clone worker failed: {error}"))??;
+    let result =
+        tauri::async_runtime::spawn_blocking(move || run_coqui_bridge(&python_for_worker, payload))
+            .await
+            .map_err(|error| format!("Coqui clone worker failed: {error}"))??;
 
     let duration_seconds = result
         .get("durationSeconds")
@@ -1013,4 +1010,3 @@ pub(crate) async fn get_tts_runtime_setup_status(
 ) -> Result<TtsSetupStatusResponse, String> {
     Ok(setup_state.snapshot())
 }
-

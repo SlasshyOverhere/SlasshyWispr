@@ -257,7 +257,12 @@ fn test_stt_noise_rule_parity_rust_vs_python_bridge() {
         // Agreement: short input trips neither (below both minimums).
         ("hello world", None, false, false),
         // Agreement: varied natural sentence trips neither.
-        ("The quick brown fox jumps over the lazy dog", None, false, false),
+        (
+            "The quick brown fox jumps over the lazy dog",
+            None,
+            false,
+            false,
+        ),
         // Agreement: 3-char cycle below the 0.70 dominance bar trips neither.
         ("abcabcabcabcabcabcabcabcabcabc", None, false, false),
     ];

@@ -14,6 +14,7 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { DockLayout, DockPlacementBounds } from "../types";
 import { asErrorMessage } from "../utils";
+import { prefersReducedMotion } from "./dock-geometry";
 
 export interface DockDeps {
   getStage: () => string;
@@ -310,10 +311,12 @@ export async function syncFloatingIndicatorWindow(): Promise<void> {
     return;
   }
 
+  // F-030: under prefers-reduced-motion there is no timed fade-out wait.
+  const hideDelayMs = prefersReducedMotion() ? 0 : 220;
   dockDeps.setHideTimerId(window.setTimeout(() => {
     dockDeps.setHideTimerId(null);
     void hideVoiceIndicatorWindow();
-  }, 220));
+  }, hideDelayMs));
 }
 
 export type { DockLayout, DockPlacementBounds };

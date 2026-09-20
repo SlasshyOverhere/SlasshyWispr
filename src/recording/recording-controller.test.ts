@@ -10,9 +10,12 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { defaultSettings } from "../state/settings-store";
 import {
+  cancelPipeline,
+  getActivePipelineGen,
   initRecordingController,
   finalizeRecording,
   saveDictationAudio,
+  startRecording,
   stopRecording,
   type RecordingControllerDeps,
 } from "./recording-controller";
@@ -234,6 +237,75 @@ describe("finalizeRecording", () => {
     expect(harness.getSavedId()).toBe(harness.saved[0].recordingId);
     expect(harness.getLastPipeline()).not.toBeNull();
     expect(harness.getLastPipeline()!.mime).toBe("audio/webm");
+  });
+});
+
+describe("startRecording runtime-combination gate (F-029)", () => {
+  it("blocks and notices when local STT has no model, before opening the mic", async () => {
+    // The media-API gate runs first; stub the environment so the combination
+    // gate is the one that decides.
+    (globalThis as unknown as { navigator: unknown }).navigator = {
+      mediaDevices: { getUserMedia: async () => ({ getAudioTracks: () => [] }) },
+    };
+    (globalThis as unknown as { MediaRecorder: unknown }).MediaRecorder = class {};
+
+    const harness = wireHarness({
+      readSettings: () => ({
+        ...defaultSettings,
+        // A key is present so the earlier missing-key gate does not fire and
+        // the runtime-combination gate is the one under test.
+        apiKey: "sk-test",
+        sttRuntimeMode: "local",
+        localSttModel: "",
+      }),
+    });
+    await startRecording();
+    expect(harness.logs.some((line) => line.includes("invalid-runtime-combination"))).toBe(true);
+    expect(harness.notices.some((n) => n.message.includes("Local STT needs a downloaded model"))).toBe(true);
+    expect(harness.transitions).toEqual([]);
+  });
+});
+
+describe("startRecording paste-target snapshot", () => {
+  it("notes the paste target at capture intent and survives a snapshot failure", async () => {
+    let notes = 0;
+    // No API key: recording blocks at the missing-key gate, but the paste
+    // target snapshot runs first, at capture intent.
+    const settings = { ...defaultSettings(), apiKey: "" };
+    const harness = wireHarness({
+      readSettings: () => settings,
+      notePasteTarget: () => {
+        notes += 1;
+      },
+    });
+    await startRecording();
+    expect(notes).toBe(1);
+    expect(harness.logs.some((line) => line.includes("missing-api-key"))).toBe(true);
+
+    const failing = wireHarness({
+      readSettings: () => settings,
+      notePasteTarget: () => {
+        throw new Error("ipc unavailable");
+      },
+    });
+    await startRecording();
+    // Snapshot is best-effort: recording still reaches the gate.
+    expect(failing.logs.some((line) => line.includes("missing-api-key"))).toBe(true);
+  });
+});
+
+describe("cancelPipeline (F-007 generation guard)", () => {
+  it("returns false for a stale generation and kills nothing", () => {
+    const harness = wireHarness();
+    const staleGen = getActivePipelineGen() - 1;
+    expect(cancelPipeline(staleGen)).toBe(false);
+    expect(harness.transitions).toEqual([]);
+  });
+
+  it("cancels the live generation and transitions to a canceled stop", () => {
+    const harness = wireHarness();
+    expect(cancelPipeline(getActivePipelineGen())).toBe(true);
+    expect(harness.transitions).toEqual([{ type: "stop-recording", cancelPipeline: true }]);
   });
 });
 

@@ -23,7 +23,7 @@ use super::paths::{coqui_voices_dir, resolve_coqui_python_path};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct CoquiPipelineRequest {
+pub struct CoquiPipelineRequest {
     pub(crate) python_path: Option<String>,
     pub(crate) model_name: Option<String>,
     pub(crate) language: Option<String>,
@@ -147,26 +147,24 @@ async fn synthesize_with_coqui_resolved(
         emotion,
         split_sentences
     );
-    tauri::async_runtime::spawn_blocking(move || {
-        run_coqui_bridge(&python_for_worker, payload)
-    })
-    .await
-    .map_err(|error| format!("Coqui synthesis worker failed: {error}"))?
-    .map(|result| {
-        let device = result
-            .get("device")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-        let model_cached = result
-            .get("modelCached")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        info!(
-            "[coqui.synthesize] bridge done device={} model_cached={}",
-            device, model_cached
-        );
-        result
-    })?;
+    tauri::async_runtime::spawn_blocking(move || run_coqui_bridge(&python_for_worker, payload))
+        .await
+        .map_err(|error| format!("Coqui synthesis worker failed: {error}"))?
+        .map(|result| {
+            let device = result
+                .get("device")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let model_cached = result
+                .get("modelCached")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            info!(
+                "[coqui.synthesize] bridge done device={} model_cached={}",
+                device, model_cached
+            );
+            result
+        })?;
 
     let wav_bytes = fs::read(&output_path)
         .map_err(|error| format!("Failed to read Coqui output WAV: {error}"))?;
@@ -180,4 +178,3 @@ async fn synthesize_with_coqui_resolved(
 
     Ok(wav_bytes)
 }
-

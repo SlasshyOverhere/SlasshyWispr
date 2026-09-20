@@ -11,15 +11,16 @@ use tauri::{
     AppHandle, Emitter, Manager, State,
 };
 
+use crate::constants::APP_EVENT_UPDATE_AVAILABLE;
 use crate::constants::{
-    APP_EVENT_MAIN_WINDOW_VISIBILITY, APP_EVENT_UPDATE_INSTALL_PROGRESS, MAIN_WINDOW_LABEL, TRAY_ID, TRAY_MENU_COPY_LAST_RESPONSE_ID,
-    TRAY_MENU_COPY_LAST_TRANSCRIPTION_ID, TRAY_MENU_DASHBOARD_ID, TRAY_MENU_QUIT_ID,
-    TRAY_MENU_UPDATE_AVAILABLE_ID,
+    APP_EVENT_MAIN_WINDOW_VISIBILITY, APP_EVENT_UPDATE_INSTALL_PROGRESS, MAIN_WINDOW_LABEL,
+    TRAY_ID, TRAY_MENU_COPY_LAST_RESPONSE_ID, TRAY_MENU_COPY_LAST_TRANSCRIPTION_ID,
+    TRAY_MENU_DASHBOARD_ID, TRAY_MENU_QUIT_ID, TRAY_MENU_UPDATE_AVAILABLE_ID,
 };
 use crate::pipeline::log::single_line;
+use crate::state::window::clamp_to_main_window_min;
 use crate::state::AppState;
-use crate::constants::APP_EVENT_UPDATE_AVAILABLE;
-use crate::state::{TRAY_UPDATE_ITEM, WindowRect};
+use crate::state::{WindowRect, TRAY_UPDATE_ITEM};
 
 pub(crate) fn emit_main_window_visibility(app: &AppHandle, hidden: bool) {
     let payload = json!({ "hidden": hidden });
@@ -61,13 +62,13 @@ pub(crate) fn emit_update_install_progress(
 }
 
 pub(crate) fn capture_rect(win: &tauri::WebviewWindow) -> WindowRect {
-    let position = win.outer_position().unwrap_or(tauri::PhysicalPosition { x: 0, y: 0 });
-    let size = win
-        .outer_size()
-        .unwrap_or(tauri::PhysicalSize {
-            width: 1280,
-            height: 832,
-        });
+    let position = win
+        .outer_position()
+        .unwrap_or(tauri::PhysicalPosition { x: 0, y: 0 });
+    let size = win.outer_size().unwrap_or(tauri::PhysicalSize {
+        width: 1280,
+        height: 832,
+    });
     WindowRect {
         position_x: position.x,
         position_y: position.y,
@@ -199,10 +200,9 @@ pub(crate) fn toggle_main_window_visibility(
             }) {
                 warn!("[tray] failed to set position on toggle restore: {error}");
             }
-            if let Err(error) = window.set_size(tauri::PhysicalSize {
-                width: r.width,
-                height: r.height,
-            }) {
+            // F-026: never restore below the 1024x640 floor.
+            let (width, height) = clamp_to_main_window_min(r.width, r.height);
+            if let Err(error) = window.set_size(tauri::PhysicalSize { width, height }) {
                 warn!("[tray] failed to set size on toggle restore: {error}");
             }
         }
@@ -231,7 +231,8 @@ pub(crate) fn copy_last_transcript_to_clipboard(app: &AppHandle) {
 
     #[cfg(target_os = "windows")]
     {
-        if let Err(error) = crate::platform::windows_native::set_clipboard_text_windows(&transcript) {
+        if let Err(error) = crate::platform::windows_native::set_clipboard_text_windows(&transcript)
+        {
             error!(
                 "[tray] failed to copy last transcript to clipboard: {}",
                 single_line(&error)
@@ -306,8 +307,13 @@ pub(crate) fn build_tray_icon(app: &AppHandle) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
-    let dashboard =
-        MenuItem::with_id(app, TRAY_MENU_DASHBOARD_ID, "Dashboard", true, None::<&str>)?;
+    let dashboard = MenuItem::with_id(
+        app,
+        TRAY_MENU_DASHBOARD_ID,
+        "Show SlasshyWispr",
+        true,
+        None::<&str>,
+    )?;
     let update_available = MenuItem::with_id(
         app,
         TRAY_MENU_UPDATE_AVAILABLE_ID,
@@ -316,7 +322,13 @@ pub(crate) fn build_tray_icon(app: &AppHandle) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let _ = TRAY_UPDATE_ITEM.set(update_available.clone());
-    let quit = MenuItem::with_id(app, TRAY_MENU_QUIT_ID, "Quit", true, None::<&str>)?;
+    let quit = MenuItem::with_id(
+        app,
+        TRAY_MENU_QUIT_ID,
+        "Quit SlasshyWispr",
+        true,
+        None::<&str>,
+    )?;
     let separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,

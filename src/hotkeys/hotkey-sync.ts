@@ -1,5 +1,5 @@
 /**
- * Global shortcut sync — Phase 5 shell decomposition.
+ * Global shortcut sync - Phase 5 shell decomposition.
  *
  * Owns the global-shortcut registration state machine (active flags,
  * registered shortcuts/signature, last-handled dedup, sync
@@ -27,6 +27,8 @@ import {
 
 export interface HotkeySyncDeps {
   isTauri: () => boolean;
+  /** F-007: true while a PTT hold is active; used to defer remaps mid-hold. */
+  isHoldActive?: () => boolean;
   getSettings: () => PersistedSettings;
   notify: (message: string, isError?: boolean) => void;
   log: (message: string) => void;
@@ -46,6 +48,18 @@ let lastGlobalShortcutState: "pressed" | "released" | "" = "";
 let lastGlobalShortcutHandledAt = 0;
 let shortcutSyncInFlight: Promise<void> | null = null;
 let shortcutSyncQueued = false;
+// F-007: remap requested while a PTT hold is active is parked here and applied
+// on release (see noteRemapRequestedDuringHold / drainPendingRemap below).
+let pendingRemapSignature = "";
+// F-007: when global registration fails we keep local (in-app) hotkeys working
+// as the fallback. suppressLocal is true only while globally registered.
+let suppressLocalHandling = false;
+// F-018: anti-echo straddle window. A local keydown that lands within
+// STRADDLE_MS *before* the global event arrives is also swallowed, covering
+// the race where local fires first (global "released" echo arrives late).
+const LOCAL_DEDUP_MS = 180;
+const STRADDLE_MS = 60;
+const recentLocalPressAt = new Map<string, number>();
 
 export function initHotkeySync(deps: HotkeySyncDeps): void {
   syncDeps = deps;
@@ -150,6 +164,14 @@ export async function syncGlobalShortcuts(force = false): Promise<void> {
     return;
   }
 
+  // F-007: never re-register mid-hold - unregisterAll would kill the active
+  // PTT press. Park the request; the release path drains it via drainPendingRemap.
+  if (syncDeps.isHoldActive?.() && !force) {
+    pendingRemapSignature = buildShortcutSyncSignature(settings);
+    syncDeps.log("[hotkey.sync.defer] remap requested mid-hold; parked until release");
+    return;
+  }
+
   const pushSpec = parseHotkey(settings.pushToTalkHotkey);
   if (!pushSpec) {
     registeredPushShortcut = "";
@@ -208,6 +230,7 @@ export async function syncGlobalShortcuts(force = false): Promise<void> {
     registeredCommandShortcut = commandShortcut;
     registeredShortcutSignature = desiredSignature;
     globalShortcutsActive = true;
+    suppressLocalHandling = true; // F-007: global owns delivery; local stays quiet
     syncDeps.publishDockState();
     syncDeps.log(
       `[hotkey.sync.success] registered=${shortcuts.join(",")} signature=${registeredShortcutSignature}`,
@@ -217,6 +240,7 @@ export async function syncGlobalShortcuts(force = false): Promise<void> {
     registeredCommandShortcut = "";
     registeredShortcutSignature = "";
     globalShortcutsActive = false;
+    suppressLocalHandling = false; // F-007: global failed -> local stays LIVE
     syncDeps.log(`[hotkey.sync.failure] ${asErrorMessage(error)}`);
     syncDeps.notify(`Global hotkeys unavailable. Using in-app hotkeys only: ${asErrorMessage(error)}`, true);
     syncDeps.publishDockState();
@@ -230,7 +254,9 @@ export function markGlobalShortcutHandled(shortcutToken: string, state: "pressed
 }
 
 export function shouldBypassLocalShortcutHandling(shortcutToken: string): boolean {
-  if (!globalShortcutsActive || !shortcutToken) {
+  // F-007: suppress-local ONLY while globally registered. On sync failure
+  // suppressLocalHandling is false so in-app hotkeys keep working (fallback).
+  if (!globalShortcutsActive || !suppressLocalHandling || !shortcutToken) {
     return false;
   }
 
@@ -243,6 +269,11 @@ export function shouldBypassLocalShortcutHandling(shortcutToken: string): boolea
   return shouldBypass;
 }
 
+/** F-018: record a local keydown so a global event arriving just after still dedups. */
+export function noteLocalShortcutPressed(shortcutToken: string): void {
+  if (shortcutToken) recentLocalPressAt.set(shortcutToken, Date.now());
+}
+
 export function shouldIgnoreLocalShortcutFromRecentGlobal(
   shortcutToken: string,
   state: "pressed" | "released",
@@ -252,15 +283,50 @@ export function shouldIgnoreLocalShortcutFromRecentGlobal(
   }
 
   if (lastGlobalShortcutState !== state || lastGlobalShortcutToken !== shortcutToken) {
+    // F-018 straddle: local fired first, global echo arrives just after.
+    if (state === "pressed") {
+      const at = recentLocalPressAt.get(shortcutToken) ?? 0;
+      const elapsed = Date.now() - at;
+      if (elapsed >= 0 && elapsed <= STRADDLE_MS + LOCAL_DEDUP_MS) {
+        recentLocalPressAt.delete(shortcutToken);
+        return true;
+      }
+    }
     return false;
   }
 
   const elapsed = Date.now() - lastGlobalShortcutHandledAt;
-  const shouldIgnore = elapsed >= 0 && elapsed <= 180;
+  const shouldIgnore = elapsed >= 0 && elapsed <= LOCAL_DEDUP_MS;
   if (shouldIgnore) {
     syncDeps.log(
       `[hotkey.local.dedupe] ignored state=${state} shortcut=${shortcutToken} elapsedMs=${elapsed}`,
     );
   }
   return shouldIgnore;
+}
+
+/** F-007: parked remap drains on PTT release. Returns true when a sync was queued. */
+export function drainPendingRemap(): boolean {
+  if (!pendingRemapSignature) return false;
+  pendingRemapSignature = "";
+  syncDeps.log("[hotkey.sync.drain] applying remap parked during hold");
+  requestGlobalShortcutSync();
+  return true;
+}
+
+export function hasPendingRemap(): boolean {
+  return pendingRemapSignature !== "";
+}
+
+// F-018: Ctrl+Space / Ctrl+Shift+Space collide with IME / VS Code / browsers.
+// constants.ts is READ-ONLY, so the warning text lives here.
+const CONFLICT_HOTKEYS = new Set(["ctrl+space", "ctrl+shift+space"]);
+
+export function hotkeyConflictWarning(shortcutToken: string): string {
+  const normalized = normalizeShortcutToken(shortcutToken);
+  if (!CONFLICT_HOTKEYS.has(normalized)) return "";
+  return (
+    `"${normalized}" often collides with IME / editor shortcuts ` +
+    `(VS Code autocomplete, browser focus). Prefer Ctrl+Alt+Space if you see double-fires.`
+  );
 }

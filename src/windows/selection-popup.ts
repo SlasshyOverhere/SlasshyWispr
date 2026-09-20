@@ -19,6 +19,7 @@ import {
   SELECTION_POPUP_MIN_WIDTH,
   SELECTION_POPUP_WIDTH,
 } from "../constants";
+import { prefersReducedMotion } from "./dock-geometry";
 import type { SelectionPopupPayload } from "../types";
 import { asErrorMessage } from "../utils";
 
@@ -33,6 +34,13 @@ export interface SelectionPopupDeps {
   getLatestPayload: () => SelectionPopupPayload | null;
   setLatestPayload: (payload: SelectionPopupPayload | null) => void;
   nextToken: () => number;
+  /** F-030 (Agent 2 rule): true when a payload token was superseded by a newer
+      generation. Wired by Agent 3/main.tsx to Agent 2's generation-token API;
+      absent = no stale tokens, everything shows. Paste logic untouched. */
+  isTokenStale?: (token: number) => boolean;
+  /** F-030 return-focus: refocus the main window after the popup closes.
+      Wired by Agent 3 (one-liner); absent = hide only. */
+  focusMainWindow?: () => Promise<void>;
 }
 
 let popupDeps!: SelectionPopupDeps;
@@ -64,7 +72,7 @@ export function initSelectionPopup(deps: SelectionPopupDeps, channel: BroadcastC
 
     if (payload.action === "copy-result") {
       const latest = popupDeps.getLatestPayload();
-      if (latest) {
+      if (latest && !isPayloadTokenStale(latest.token)) {
         popupDeps.copyResult(latest.text);
       }
       return;
@@ -72,7 +80,8 @@ export function initSelectionPopup(deps: SelectionPopupDeps, channel: BroadcastC
 
     if (payload.action === "replace-selection") {
       const latest = popupDeps.getLatestPayload();
-      if (latest) {
+      // F-030: stale generation = no-op. Paste call below is unchanged.
+      if (latest && !isPayloadTokenStale(latest.token)) {
         void (async () => {
           const win = popupDeps.getWindow();
           if (win) {
@@ -217,7 +226,56 @@ export async function ensureSelectionAssistantWindow(): Promise<WebviewWindow> {
   return created;
 }
 
+export function isPayloadTokenStale(token: number): boolean {
+  try {
+    return popupDeps.isTokenStale?.(token) ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/** F-030 ARIA: the popup page applies these to its dialog root. */
+export function selectionPopupA11yAttributes(payload: SelectionPopupPayload): {
+  role: string;
+  ariaModal: string;
+  ariaLabel: string;
+} {
+  return { role: "dialog", ariaModal: "true", ariaLabel: payload.title };
+}
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** F-030 focus trap math: next index for Tab/Shift+Tab over N focusables. Pure. */
+export function trapFocusNextIndex(current: number, shiftKey: boolean, count: number): number {
+  if (count <= 0) return 0;
+  const next = current + (shiftKey ? -1 : 1);
+  return ((next % count) + count) % count;
+}
+
+/** F-030: Tab-cycles focus inside container; Escape dismisses. For the popup page. */
+export function handlePopupFocusTrap(event: KeyboardEvent, container: HTMLElement): void {
+  if (event.key !== "Tab") return;
+  const focusables = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => el.tabIndex !== -1,
+  );
+  if (focusables.length === 0) {
+    event.preventDefault();
+    return;
+  }
+  const active = container.ownerDocument?.activeElement as HTMLElement | null;
+  const current = focusables.indexOf(active as HTMLElement);
+  event.preventDefault();
+  const next = current === -1 ? 0 : trapFocusNextIndex(current, event.shiftKey, focusables.length);
+  focusables[next]?.focus();
+}
+
 export async function showSelectionAssistantPopup(payload: SelectionPopupPayload): Promise<boolean> {
+  // F-030: stale generation never reaches the screen.
+  if (isPayloadTokenStale(payload.token)) {
+    popupDeps.log(`selection.popup stale token=${payload.token} -> no-op`);
+    return false;
+  }
   popupDeps.setLatestPayload(payload);
 
   if (!popupDeps.isTauri()) {
@@ -233,14 +291,20 @@ export async function showSelectionAssistantPopup(payload: SelectionPopupPayload
     }
     await win.show();
     await win.setFocus();
+    // F-030: reducedMotion lets the popup page kill its enter transition.
+    // ponytail: if the popup ever needs animated enter/exit beyond a transition,
+    // move to Motion (motion.dev) + prefers-reduced-motion gate there.
+    const reducedMotion = prefersReducedMotion();
     popupChannel?.postMessage({
       kind: "payload",
       payload,
+      reducedMotion,
     });
     window.setTimeout(() => {
       popupChannel?.postMessage({
         kind: "payload",
         payload,
+        reducedMotion,
       });
     }, 120);
     popupDeps.notify("SlasshyWispr popup opened.");
@@ -255,22 +319,46 @@ export function setLatestSelectionPopupPayload(payload: SelectionPopupPayload | 
   popupDeps.setLatestPayload(payload);
 }
 
+async function returnFocusToMain(): Promise<void> {
+  try {
+    await popupDeps.focusMainWindow?.();
+  } catch (error) {
+    popupDeps.log(`selection.popup return-focus failed: ${asErrorMessage(error)}`);
+  }
+}
+
 export async function dismissSelectionPopup(): Promise<void> {
   popupDeps.setLatestPayload(null);
   const win = popupDeps.getWindow();
-  if (win) {
+  // No popup window: nothing was shown, so never touch focus. The dictation
+  // auto-paste path calls dismiss unconditionally before Ctrl+V; stealing
+  // focus here is what trips the backend foreground guard and silently turns
+  // every paste into a clipboard-only write.
+  if (!win) {
+    return;
+  }
+  let wasVisible = true;
+  try {
+    wasVisible = await win.isVisible();
+  } catch {
+    // Visibility probe failed: assume it was shown (previous behavior).
+  }
+  try {
+    await win.hide();
+  } catch (hideError) {
+    popupDeps.log(`selection.popup hide failed: ${asErrorMessage(hideError)}`);
     try {
-      await win.hide();
-    } catch (hideError) {
-      popupDeps.log(`selection.popup hide failed: ${asErrorMessage(hideError)}`);
-      try {
-        await win.close();
-      } catch (closeError) {
-        popupDeps.log(`selection.popup close fallback failed: ${asErrorMessage(closeError)}`);
-      } finally {
-        popupDeps.setWindow(null);
-      }
+      await win.close();
+    } catch (closeError) {
+      popupDeps.log(`selection.popup close fallback failed: ${asErrorMessage(closeError)}`);
+    } finally {
+      popupDeps.setWindow(null);
     }
+  }
+  // Only a popup the user actually saw earns focus back. A hidden window
+  // means dictation flow: focus stays where the paste target snapshot took it.
+  if (wasVisible) {
+    await returnFocusToMain();
   }
 }
 

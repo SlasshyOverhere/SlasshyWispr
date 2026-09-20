@@ -6,30 +6,30 @@
 use std::collections::BTreeSet;
 
 use log::info;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tauri::{AppHandle, State};
 
+use super::ipc_types::{
+    AssistantInfoResponse, OllamaModelsRequest, OllamaPullRequest, OllamaPullResponse,
+    OllamaStatusRequest, OllamaStatusResponse, ProviderModelsRequest, ProviderModelsResponse,
+};
 use crate::constants::{
     DEFAULT_AI_MODEL, DEFAULT_BASE_URL, DEFAULT_STT_MODEL, OLLAMA_WINDOWS_INSTALLER_URL,
 };
 use crate::pipeline::fs::{download_file, file_exists_with_content};
 use crate::pipeline::log::{clip_text, single_line};
-use crate::pipeline::tts::{coqui_venv_python_path, voice_paths};
 use crate::pipeline::routing::{
-    normalize_api_base_url, normalize_api_key_secret, normalize_local_ollama_base_url,
-    normalize_model_name, zero_python_mode_enabled,
+    normalize_api_key_secret, normalize_model_name, validate_api_base_url,
+    validate_local_ollama_base_url, zero_python_mode_enabled,
 };
-use crate::services::transcribe::apply_optional_bearer_auth;
+use crate::pipeline::tts::{coqui_venv_python_path, voice_paths};
 use crate::services::pipeline_service::discover_installed_piper_path;
 use crate::services::providers::{
-    is_ollama_service_running, ollama_installer_path,
-    query_ollama_version, run_ollama_installer_windows,
+    is_ollama_service_running, ollama_installer_path, query_ollama_version,
+    run_ollama_installer_windows,
 };
+use crate::services::transcribe::apply_optional_bearer_auth;
 use crate::state::AppState;
-use super::ipc_types::{
-    AssistantInfoResponse, OllamaModelsRequest, OllamaPullRequest, OllamaPullResponse,
-    OllamaStatusRequest, OllamaStatusResponse, ProviderModelsRequest, ProviderModelsResponse,
-};
 
 #[tauri::command]
 pub(crate) async fn get_assistant_info(app: AppHandle) -> Result<AssistantInfoResponse, String> {
@@ -45,6 +45,13 @@ pub(crate) async fn get_assistant_info(app: AppHandle) -> Result<AssistantInfoRe
         )
     };
 
+    // F-020: never leak absolute host paths over IPC. Basename (or "" when
+    // absent) plus the installed bools is all the UI needs to render status.
+    fn basename_only(path: &std::path::Path) -> String {
+        path.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
     Ok(AssistantInfoResponse {
         app_version: app.package_info().version.to_string(),
         base_url: DEFAULT_BASE_URL,
@@ -52,14 +59,18 @@ pub(crate) async fn get_assistant_info(app: AppHandle) -> Result<AssistantInfoRe
         ai_model: DEFAULT_AI_MODEL,
         piper_installed: piper_path.is_some(),
         piper_path: piper_path
-            .map(|path| path.to_string_lossy().into_owned())
+            .as_ref()
+            .map(|path| basename_only(path))
             .unwrap_or_default(),
         voice_installed: file_exists_with_content(&model_path)
             && file_exists_with_content(&config_path),
-        voice_model_path: model_path.to_string_lossy().into_owned(),
-        voice_config_path: config_path.to_string_lossy().into_owned(),
+        voice_model_path: basename_only(&model_path),
+        voice_config_path: basename_only(&config_path),
         coqui_installed,
-        coqui_python_path,
+        coqui_python_path: std::path::Path::new(&coqui_python_path)
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default(),
     })
 }
 
@@ -120,10 +131,8 @@ pub(crate) async fn fetch_provider_models(
         return Err("API key is required to fetch models.".to_string());
     }
 
-    let base_url = normalize_api_base_url(request.api_base_url.as_deref());
-    if base_url.is_empty() {
-        return Err("API base URL is required to fetch models.".to_string());
-    }
+    let base_url = validate_api_base_url(request.api_base_url.as_deref())
+        .map_err(|error| format!("Invalid API base URL: {error}"))?;
     let request_builder = state.http.get(format!("{base_url}/models"));
     let response = apply_optional_bearer_auth(request_builder, Some(api_key.as_str()))
         .send()
@@ -159,7 +168,8 @@ pub(crate) async fn fetch_ollama_models(
     state: State<'_, AppState>,
     request: OllamaModelsRequest,
 ) -> Result<ProviderModelsResponse, String> {
-    let base_url = normalize_local_ollama_base_url(request.base_url.as_deref());
+    let base_url = validate_local_ollama_base_url(request.base_url.as_deref())
+        .map_err(|error| format!("Invalid Ollama base URL: {error}"))?;
     let response = state
         .http
         .get(format!("{base_url}/api/tags"))
@@ -201,7 +211,8 @@ pub(crate) async fn pull_ollama_model(
         return Err("Model name is required to pull from Ollama.".to_string());
     }
 
-    let base_url = normalize_local_ollama_base_url(request.base_url.as_deref());
+    let base_url = validate_local_ollama_base_url(request.base_url.as_deref())
+        .map_err(|error| format!("Invalid Ollama base URL: {error}"))?;
     let response = state
         .http
         .post(format!("{base_url}/api/pull"))
@@ -257,7 +268,8 @@ pub(crate) async fn get_ollama_status(
     state: State<'_, AppState>,
     request: OllamaStatusRequest,
 ) -> Result<OllamaStatusResponse, String> {
-    let base_url = normalize_local_ollama_base_url(request.base_url.as_deref());
+    let base_url = validate_local_ollama_base_url(request.base_url.as_deref())
+        .map_err(|error| format!("Invalid Ollama base URL: {error}"))?;
     let version = match query_ollama_version().await {
         Ok(value) => value,
         Err(error) => {
@@ -304,7 +316,8 @@ pub(crate) async fn install_ollama(
         .await
         .map_err(|error| format!("Ollama installer task failed: {error}"))??;
 
-        let base_url = normalize_local_ollama_base_url(None);
+        let base_url = validate_local_ollama_base_url(None)
+            .unwrap_or_else(|_| crate::constants::DEFAULT_LOCAL_OLLAMA_BASE_URL.to_string());
         let version = query_ollama_version().await.unwrap_or_default();
         let running = is_ollama_service_running(&state.http, &base_url).await;
         let details = if running {
@@ -330,24 +343,34 @@ pub(crate) async fn install_ollama(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::super::ipc_types::{OllamaPullResponse, OllamaStatusResponse, ProviderModelsResponse};
+    use super::super::ipc_types::{
+        OllamaPullResponse, OllamaStatusResponse, ProviderModelsResponse,
+    };
 
     #[test]
     fn extract_model_ids_supports_all_catalog_envelopes() {
-        use serde_json::json;
         use super::extract_model_ids_from_payload;
+        use serde_json::json;
 
         let openai = json!({ "data": [{ "id": "gpt-4o-mini" }, { "id": "gpt-4o-mini" }] });
-        assert_eq!(extract_model_ids_from_payload(&openai), vec!["gpt-4o-mini".to_string()]);
+        assert_eq!(
+            extract_model_ids_from_payload(&openai),
+            vec!["gpt-4o-mini".to_string()]
+        );
 
         let ollama = json!({ "models": [{ "name": "llama3.1:8b" }] });
-        assert_eq!(extract_model_ids_from_payload(&ollama), vec!["llama3.1:8b".to_string()]);
+        assert_eq!(
+            extract_model_ids_from_payload(&ollama),
+            vec!["llama3.1:8b".to_string()]
+        );
 
         let bare = json!(["a", "b"]);
-        assert_eq!(extract_model_ids_from_payload(&bare), vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(
+            extract_model_ids_from_payload(&bare),
+            vec!["a".to_string(), "b".to_string()]
+        );
 
         let empty = json!({});
         assert!(extract_model_ids_from_payload(&empty).is_empty());

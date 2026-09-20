@@ -50,8 +50,15 @@ export async function triggerAutoPaste(text?: string): Promise<boolean> {
     return false;
   }
 
+  // F-009: a whitespace-only payload is not "paste whatever is on the
+  // clipboard" — it is an empty result. Refuse instead of firing Ctrl+V on
+  // stale clipboard contents.
+  if (typeof text === "string" && text.trim().length === 0) {
+    return false;
+  }
+
   try {
-    if (typeof text === "string" && text.trim().length > 0) {
+    if (typeof text === "string") {
       await ipcPasteTextViaClipboard(text);
     } else {
       await ipcPasteClipboardText();

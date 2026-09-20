@@ -124,6 +124,11 @@ export function pasteClipboardText(): Promise<void> {
   return invoke(IPC_COMMANDS.pasteClipboardText);
 }
 
+/** Snapshot the foreground window as the dictation paste target (record start). */
+export function notePasteTarget(): Promise<number> {
+  return invoke<number>(IPC_COMMANDS.notePasteTarget);
+}
+
 export function muteSystemAudio(mute: boolean): Promise<void> {
   return invoke(IPC_COMMANDS.muteSystemAudio, { mute });
 }

@@ -244,8 +244,13 @@ export async function runPipeline(audioBlob: Blob, audioMimeType: string): Promi
     }
 
     const sttLanguageConfig = resolveSttLanguageConfig(activeSettings);
+    // F-009: one token per run, shared by the request and the popup it
+    // produces, so a later run's token supersedes this one and the backend
+    // can reject the older replace.
+    const runToken = clientDeps.nextSelectionPopupToken();
 
     const response: AssistantPipelineResponse = await ipcRunAssistantPipeline({
+        replaceToken: String(runToken),
         apiKey: activeSettings.apiKey,
         apiBaseUrl: activeSettings.apiBaseUrl || null,
         sttModel: activeSettings.sttModelName || null,
@@ -310,7 +315,7 @@ export async function runPipeline(audioBlob: Blob, audioMimeType: string): Promi
 
     renderPipelineResponse(resolvedResponse);
     let playbackCompleted = true;
-    const selectionPopupPayload = buildSelectionPopupPayload(resolvedResponse, clientDeps.nextSelectionPopupToken());
+    const selectionPopupPayload = buildSelectionPopupPayload(resolvedResponse, runToken);
     if (!selectionPopupPayload) {
       await clientDeps.dismissSelectionPopup();
     }

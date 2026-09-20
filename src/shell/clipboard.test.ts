@@ -91,13 +91,17 @@ describe("triggerAutoPaste", () => {
   it("dispatches text vs clipboard-empty pastes", async () => {
     wireHarness(true);
     await expect(triggerAutoPaste("hello")).resolves.toBe(true);
-    await expect(triggerAutoPaste("   ")).resolves.toBe(true);
     await expect(triggerAutoPaste()).resolves.toBe(true);
     expect(invokeCalls.map((call) => call.command)).toEqual([
       "paste_text_via_clipboard",
       "paste_clipboard_text",
-      "paste_clipboard_text",
     ]);
+  });
+
+  it("refuses a whitespace-only payload instead of pasting stale clipboard", async () => {
+    wireHarness(true);
+    await expect(triggerAutoPaste("   ")).resolves.toBe(false);
+    expect(invokeCalls).toEqual([]);
   });
 
   it("notices on failure and returns false", async () => {
