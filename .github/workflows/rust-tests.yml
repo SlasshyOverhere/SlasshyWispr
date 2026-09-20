@@ -48,6 +48,14 @@ jobs:
       - name: cargo test
         run: cargo test
 
+      - name: cargo fmt
+        run: cargo fmt --check
+
+      # Advisory only: 51 pre-existing lints. Tighten to `-- -D warnings`
+      # once that backlog is cleared.
+      - name: cargo clippy
+        run: cargo clippy --all-targets
+
       - name: production CSP gate (F-032)
         shell: bash
         working-directory: src-tauri
