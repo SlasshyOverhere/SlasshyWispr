@@ -400,3 +400,14 @@ export interface SelectionPopupPayload {
   text: string;
   audioBase64: string;
 }
+
+/**
+ * Timeout bounds for one online transcription, as owned by the backend.
+ * The settings pane and the stored-value clamp both read these so neither can
+ * promise a range the backend will not honour.
+ */
+export interface SttTimeoutBoundsResponse {
+  defaultSeconds: number;
+  minSeconds: number;
+  maxSeconds: number;
+}

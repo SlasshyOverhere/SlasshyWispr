@@ -10,9 +10,6 @@ import {
   DEFAULT_HOTKEY,
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
   DEFAULT_MAX_TOKENS,
-  DEFAULT_STT_TIMEOUT_SECONDS,
-  MIN_STT_TIMEOUT_SECONDS,
-  MAX_STT_TIMEOUT_SECONDS,
   DEFAULT_PIPER_SPEED,
   DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
   DEFAULT_TEMPERATURE,
@@ -33,6 +30,7 @@ import type { DictationLanguageMode, TtsEngine } from "../types";
 import { captureModeLabel } from "../utils";
 import { formatHotkeyForDisplay, parseHotkey } from "../hotkeys/hotkey-service";
 import type { SettingsFormRefs } from "./settings-form-refs";
+import { sttTimeoutBounds } from "./stt-timeout-bounds";
 import {
   applyDictationLanguageSettingsToForm,
   applyTheme,
@@ -109,9 +107,9 @@ export function readSettingsFromForm(
     maxTokens: coerceInteger(Number(refs.maxTokensInput.value), DEFAULT_MAX_TOKENS, 64, 4096),
     sttTimeoutSeconds: coerceInteger(
       Number(refs.sttTimeoutSecondsInput.value),
-      DEFAULT_STT_TIMEOUT_SECONDS,
-      MIN_STT_TIMEOUT_SECONDS,
-      MAX_STT_TIMEOUT_SECONDS,
+      sttTimeoutBounds().defaultSeconds,
+      sttTimeoutBounds().minSeconds,
+      sttTimeoutBounds().maxSeconds,
     ),
     launchAtLogin: refs.launchAtLoginToggle.checked,
     showFlowBar: refs.showFlowBarToggle.checked,

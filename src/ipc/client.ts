@@ -24,6 +24,7 @@ import type {
   ProviderModelsResponse,
   RecordingsStats,
   RuntimeSetupResponse,
+  SttTimeoutBoundsResponse,
   TtsSetupStatusResponse,
   VoiceInstallResponse,
 } from "../types";
@@ -195,6 +196,10 @@ export function launchAtLoginStatus(): Promise<{
 
 export function logClientEvent(message: string): Promise<void> {
   return invoke(IPC_COMMANDS.logClientEvent, { message });
+}
+
+export function sttTimeoutBounds(): Promise<SttTimeoutBoundsResponse> {
+  return invoke(IPC_COMMANDS.sttTimeoutBounds);
 }
 
 // ===== Providers / Ollama =====

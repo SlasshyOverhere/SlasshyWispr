@@ -11,6 +11,7 @@ import {
   captureSelectedText as ipcCaptureSelectedText,
   getAssistantInfo as ipcGetAssistantInfo,
   loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
+  sttTimeoutBounds as ipcSttTimeoutBounds,
   listDictationRecordingIds as ipcListDictationRecordingIds,
   notePasteTarget as ipcNotePasteTarget,
   saveDictationRecording as ipcSaveDictationRecording,
@@ -64,6 +65,7 @@ import {
   wireSettingsFormInputs as wireSettingsFormInputsService,
 } from "./settings/settings-service";
 import { querySettingsFormRefs } from "./settings/settings-form-refs";
+import { refreshSttTimeoutBounds } from "./settings/stt-timeout-bounds";
 import {
   SETTINGS_PATCH_EVENT,
   initSettingsState,
@@ -2115,6 +2117,8 @@ initUsageTracker({
 });
 async function bootstrap(): Promise<void> {
   logClientEventService("[bootstrap] start");
+  // Before the hydrate below: it clamps stored values against these bounds.
+  await refreshSttTimeoutBounds(() => ipcSttTimeoutBounds());
   await hydrateSettingsFromNativeStorageChangeService();
   logClientEventService(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
 

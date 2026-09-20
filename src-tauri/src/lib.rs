@@ -27,7 +27,7 @@ use commands::{
     read_audio_file_base64, run_assistant_pipeline, save_dictation_recording,
     save_persisted_local_settings, set_clipboard_text, set_tray_update_available,
     setup_assistant_runtime, setup_coqui_runtime, shell_integration_status, show_update_settings,
-    start_native_capture, start_tts_runtime_setup, stop_native_capture,
+    start_native_capture, start_tts_runtime_setup, stop_native_capture, stt_timeout_bounds,
     take_pending_transcribe_file, toggle_main_window_visibility, validate_coqui, validate_piper,
     warmup_local_stt_model, TtsSetupState,
 };
@@ -220,6 +220,7 @@ pub fn run() {
             download_and_install_app_update,
             load_persisted_local_settings,
             save_persisted_local_settings,
+            stt_timeout_bounds,
             save_dictation_recording,
             list_dictation_recordings_stats,
             list_dictation_recording_ids,

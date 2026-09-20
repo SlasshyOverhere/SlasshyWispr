@@ -41,7 +41,9 @@ pub(crate) use recordings::{
     clear_dictation_recordings, get_dictation_recording, list_dictation_recording_ids,
     list_dictation_recordings_stats, save_dictation_recording,
 };
-pub(crate) use settings::{load_persisted_local_settings, save_persisted_local_settings};
+pub(crate) use settings::{
+    load_persisted_local_settings, save_persisted_local_settings, stt_timeout_bounds,
+};
 pub(crate) use tts::{
     clone_coqui_voice, ensure_voice_model, get_coqui_status, get_tts_runtime_setup_status,
     list_coqui_models, list_coqui_voices, preview_coqui_voice, setup_assistant_runtime,

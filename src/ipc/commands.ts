@@ -12,6 +12,7 @@ export const IPC_COMMANDS = {
   // Settings
   loadPersistedLocalSettings: "load_persisted_local_settings",
   savePersistedLocalSettings: "save_persisted_local_settings",
+  sttTimeoutBounds: "stt_timeout_bounds",
   // Recordings
   listDictationRecordingIds: "list_dictation_recording_ids",
   listDictationRecordingsStats: "list_dictation_recordings_stats",

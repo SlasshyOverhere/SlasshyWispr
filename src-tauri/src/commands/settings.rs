@@ -10,11 +10,24 @@ use log::info;
 use serde_json::Value;
 use tauri::AppHandle;
 
+use crate::commands::ipc_types::SttTimeoutBoundsResponse;
 use crate::pipeline::routing::{validate_api_base_url, validate_local_ollama_base_url};
 use crate::security;
 use crate::services::settings_store::{
     persisted_settings_path, restore_settings_payload, secure_settings_payload,
 };
+use crate::services::transcribe::{
+    STT_TIMEOUT_DEFAULT, STT_TIMEOUT_MAX_SECS, STT_TIMEOUT_MIN_SECS,
+};
+#[tauri::command]
+pub(crate) fn stt_timeout_bounds() -> SttTimeoutBoundsResponse {
+    SttTimeoutBoundsResponse {
+        default_seconds: STT_TIMEOUT_DEFAULT.as_secs(),
+        min_seconds: STT_TIMEOUT_MIN_SECS,
+        max_seconds: STT_TIMEOUT_MAX_SECS,
+    }
+}
+
 #[tauri::command]
 pub(crate) async fn load_persisted_local_settings(app: AppHandle) -> Result<String, String> {
     let settings_path = persisted_settings_path(&app)?;
@@ -173,7 +186,29 @@ pub(crate) fn validate_settings_payload(parsed: &serde_json::Value) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    use super::validate_settings_payload;
+    use super::{stt_timeout_bounds, validate_settings_payload};
+    use crate::services::transcribe::resolve_stt_timeout;
+
+    #[test]
+    fn advertised_stt_timeout_bounds_match_the_clamp() {
+        // The frontend renders these numbers and the backend enforces them, so
+        // they have to come from the same constants or the UI lies.
+        let bounds = stt_timeout_bounds();
+        assert_eq!(
+            resolve_stt_timeout(None).as_secs(),
+            bounds.default_seconds,
+            "the advertised default must be the one the clamp applies"
+        );
+        assert_eq!(
+            resolve_stt_timeout(Some(bounds.min_seconds)).as_secs(),
+            bounds.min_seconds
+        );
+        assert_eq!(
+            resolve_stt_timeout(Some(bounds.max_seconds)).as_secs(),
+            bounds.max_seconds
+        );
+        assert!(bounds.min_seconds < bounds.max_seconds);
+    }
 
     fn payload(json: serde_json::Value) -> serde_json::Value {
         json

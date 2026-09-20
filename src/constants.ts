@@ -39,10 +39,6 @@ export const DEFAULT_SYSTEM_PROMPT =
   "You are SlasshyWispr, a helpful desktop voice assistant. Keep replies concise and easy to speak aloud.";
 export const DEFAULT_TEMPERATURE = 0.35;
 export const DEFAULT_MAX_TOKENS = 320;
-/** Ceiling for one online transcription, in seconds. Mirrors the Rust bounds. */
-export const DEFAULT_STT_TIMEOUT_SECONDS = 60;
-export const MIN_STT_TIMEOUT_SECONDS = 10;
-export const MAX_STT_TIMEOUT_SECONDS = 600;
 export const DEFAULT_API_BASE_URL = "";
 export const DEFAULT_STT_MODEL_NAME = "";
 export const DEFAULT_AI_MODEL_NAME = "";

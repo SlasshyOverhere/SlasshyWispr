@@ -84,6 +84,16 @@ pub(crate) struct ProviderModelsResponse {
     pub(crate) models: Vec<String>,
 }
 
+/// Bounds the frontend renders and clamps with, so its limits come from the
+/// same constants the backend enforces instead of being restated in TypeScript.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SttTimeoutBoundsResponse {
+    pub(crate) default_seconds: u64,
+    pub(crate) min_seconds: u64,
+    pub(crate) max_seconds: u64,
+}
+
 // ===== DAY-1 pipeline run contract (shared with commands::pipeline + TS) =====
 // Flatten these into the pipeline request/response so the JSON shape has one
 // source of truth. All fields defaulted: old frontends that omit them keep

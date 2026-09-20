@@ -6,9 +6,6 @@ import {
   DEFAULT_COMMAND_HOTKEY,
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
   DEFAULT_MAX_TOKENS,
-  DEFAULT_STT_TIMEOUT_SECONDS,
-  MIN_STT_TIMEOUT_SECONDS,
-  MAX_STT_TIMEOUT_SECONDS,
   DEFAULT_PIPER_EMOTION,
   DEFAULT_PIPER_QUALITY,
   DEFAULT_PIPER_SPEED,
@@ -27,6 +24,7 @@ import {
   DICTATION_LANGUAGE_LABELS,
   SETTINGS_STORAGE_KEY,
 } from "../constants";
+import { sttTimeoutBounds } from "../settings/stt-timeout-bounds";
 import type {
   CaptureBackend,
   DictationLanguageMode,
@@ -227,7 +225,7 @@ export function defaultSettings(): PersistedSettings {
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     temperature: DEFAULT_TEMPERATURE,
     maxTokens: DEFAULT_MAX_TOKENS,
-    sttTimeoutSeconds: DEFAULT_STT_TIMEOUT_SECONDS,
+    sttTimeoutSeconds: sttTimeoutBounds().defaultSeconds,
     launchAtLogin: true,
     showFlowBar: false,
     showDockAlways: false,
@@ -295,6 +293,8 @@ export function readRawPersistedSettings(): Partial<PersistedSettings> & { local
 
 export function loadSettings(): PersistedSettings {
   const defaults = defaultSettings();
+  // Read once: the bounds are backend-owned and can change after boot.
+  const sttBounds = sttTimeoutBounds();
 
   const rawCurrent = localStorage.getItem(SETTINGS_STORAGE_KEY);
   const raw = rawCurrent;
@@ -361,8 +361,8 @@ export function loadSettings(): PersistedSettings {
       sttTimeoutSeconds: coerceInteger(
         parsed.sttTimeoutSeconds,
         defaults.sttTimeoutSeconds,
-        MIN_STT_TIMEOUT_SECONDS,
-        MAX_STT_TIMEOUT_SECONDS,
+        sttBounds.minSeconds,
+        sttBounds.maxSeconds,
       ),
       launchAtLogin: coerceBoolean(parsed.launchAtLogin, defaults.launchAtLogin),
       showFlowBar: fromLegacyOnly

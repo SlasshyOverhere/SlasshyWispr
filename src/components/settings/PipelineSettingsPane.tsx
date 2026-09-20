@@ -1,11 +1,12 @@
 import {
-  MAX_STT_TIMEOUT_SECONDS,
-  MIN_STT_TIMEOUT_SECONDS,
-} from '../../constants';
-import { useSettingsSnapshot, dispatchSettingsPatch } from '../../settings/settings-react-shim';
+  useSettingsSnapshot,
+  useSttTimeoutBounds,
+  dispatchSettingsPatch,
+} from '../../settings/settings-react-shim';
 
 export function PipelineSettingsPane() {
   const settings = useSettingsSnapshot();
+  const sttTimeoutBounds = useSttTimeoutBounds();
 
   return (
     <section id="settingsPanePipeline" className="settings-pane" data-settings-pane="pipeline" hidden>
@@ -17,8 +18,8 @@ export function PipelineSettingsPane() {
         <input
           id="sttTimeoutSecondsInput"
           type="number"
-          min={MIN_STT_TIMEOUT_SECONDS}
-          max={MAX_STT_TIMEOUT_SECONDS}
+          min={sttTimeoutBounds.minSeconds}
+          max={sttTimeoutBounds.maxSeconds}
           step="5"
           value={settings.sttTimeoutSeconds}
           onChange={(event) => dispatchSettingsPatch({ sttTimeoutSeconds: Number(event.target.value) })}
