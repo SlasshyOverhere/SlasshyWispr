@@ -23,6 +23,7 @@ export const IPC_COMMANDS = {
   setClipboardText: "set_clipboard_text",
   pasteTextViaClipboard: "paste_text_via_clipboard",
   pasteClipboardText: "paste_clipboard_text",
+  notePasteTarget: "note_paste_target",
   muteSystemAudio: "mute_system_audio",
   getForegroundInputBlockStatus: "get_foreground_input_block_status",
   configureLaunchAtLogin: "configure_launch_at_login",

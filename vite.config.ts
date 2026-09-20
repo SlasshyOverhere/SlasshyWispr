@@ -24,6 +24,12 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    // Only the app entry is pre-bundled. Without this, Vite 8's scanner
+    // crawls every HTML file in the repo (public/*.html, site/*.html)
+    // and fails the dev startup scan.
+    entries: ["index.html"],
+  },
   build: {
     rollupOptions: {
       output: {

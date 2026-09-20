@@ -62,6 +62,8 @@ export interface RecordingControllerDeps {
   performanceNow: () => number;
   runPipeline: (blob: Blob, mimeType: string) => Promise<void>;
   createId: () => string;
+  /** Snapshot the paste target at capture intent (best-effort, never blocks recording). */
+  notePasteTarget?: () => void;
   saveDictationRecording: (args: {
     recordingId: string;
     mimeType: string;
@@ -129,6 +131,13 @@ export function initRecordingController(
 export async function startRecording(): Promise<void> {
   const startRequestedAt = controllerDeps.performanceNow();
   activePipelineGen += 1;
+  // Capture the paste target now, while focus is still where the user was
+  // working. By paste time (seconds later) focus may sit in our own window.
+  try {
+    controllerDeps.notePasteTarget?.();
+  } catch {
+    // Best-effort only; the paste path falls back to invoke-time focus.
+  }
   controllerDeps.log(
     `[record.start] requested stage=${controllerDeps.getStage()} pipelineRunning=${boolFlag(
       controllerDeps.isPipelineRunning(),

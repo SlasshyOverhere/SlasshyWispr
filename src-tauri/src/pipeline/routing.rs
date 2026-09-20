@@ -167,8 +167,11 @@ fn is_blocked_url_host(host: &str) -> bool {
 }
 
 /// Hosts allowed plain http for a cloud API base URL via explicit opt-in env
-/// SLASSHYWISPR_ALLOW_INSECURE_HTTP_HOSTS (comma-separated). Loopback is
-/// NEVER valid for a cloud key: keys must not ride cleartext.
+/// SLASSHYWISPR_ALLOW_INSECURE_HTTP_HOSTS (comma-separated). Loopback http
+/// (localhost, 127.0.0.1, ::1) is allowed without opt-in so a local
+/// OpenAI-compatible gateway (LiteLLM, LM Studio, local proxy) can serve as
+/// the online provider. Loopback never leaves the machine; LAN/non-loopback
+/// http still needs the explicit opt-in.
 fn insecure_http_opt_in_hosts() -> Vec<String> {
     non_empty_env_var(INSECURE_HTTP_HOSTS_ENV)
         .unwrap_or_default()
@@ -239,22 +242,25 @@ fn validate_http_url(raw: &str, field: &str, allow_loopback_http: bool) -> Resul
 /// Normalize an API base URL: trim whitespace, strip trailing slashes.
 /// Keeps the old signature; invalid input normalizes to "" (empty = missing).
 /// Use `validate_api_base_url` for a field-level error instead.
+/// Loopback http is valid (local gateway); LAN/non-loopback http is not.
 pub fn normalize_api_base_url(raw: Option<&str>) -> String {
     let trimmed = raw.map(str::trim).filter(|value| !value.is_empty());
     match trimmed {
         None => String::new(),
-        Some(value) => validate_http_url(value, "apiBaseUrl", false).unwrap_or_default(),
+        Some(value) => validate_http_url(value, "apiBaseUrl", true).unwrap_or_default(),
     }
 }
 
-/// Field-level cloud API base-URL validation.
+/// Field-level cloud API base-URL validation. Empty input -> "required" error.
+/// https anywhere is valid; plain http is valid only for loopback
+/// (localhost, 127.0.0.1, ::1) or explicit SLASSHYWISPR_ALLOW_INSECURE_HTTP_HOSTS opt-in.
 pub fn validate_api_base_url(raw: Option<&str>) -> Result<String, String> {
     let trimmed = raw.map(str::trim).filter(|value| !value.is_empty());
     match trimmed {
         None => Err(
             "API base URL is required for online STT/AI mode. Open Settings > Models.".to_string(),
         ),
-        Some(value) => validate_http_url(value, "apiBaseUrl", false),
+        Some(value) => validate_http_url(value, "apiBaseUrl", true),
     }
 }
 
@@ -699,10 +705,15 @@ mod tests {
             normalize_api_base_url(Some("  https://api.example.com  ")),
             "https://api.example.com"
         );
-        // Policy: plain http + metadata IPs normalize to "" (missing).
+        // Policy: non-loopback plain http + metadata IPs normalize to "" (missing).
         assert_eq!(
             normalize_api_base_url(Some("http://api.example.com/v1")),
             ""
+        );
+        // Loopback http is valid (local gateway).
+        assert_eq!(
+            normalize_api_base_url(Some("http://localhost:20128/v1/")),
+            "http://localhost:20128/v1"
         );
         assert_eq!(
             normalize_api_base_url(Some("https://169.254.169.254/latest/")),
@@ -895,9 +906,21 @@ mod tests {
         std::env::set_var(INSECURE_HTTP_HOSTS_ENV, "intranet.example.com, 10.0.0.5 ");
         assert!(validate_api_base_url(Some("http://intranet.example.com/v1")).is_ok());
         assert!(validate_api_base_url(Some("http://other.example.com/v1")).is_err());
-        assert!(validate_api_base_url(Some("http://localhost:11434")).is_err());
+        // Loopback http is allowed without opt-in (local gateway).
+        assert!(validate_api_base_url(Some("http://localhost:11434")).is_ok());
         std::env::remove_var(INSECURE_HTTP_HOSTS_ENV);
         assert!(validate_api_base_url(Some("http://intranet.example.com/v1")).is_err());
+    }
+
+    #[test]
+    fn loopback_http_api_base_url_is_allowed() {
+        // Local OpenAI-compatible gateways (LiteLLM, LM Studio, local proxy).
+        assert!(validate_api_base_url(Some("http://localhost:20128/v1")).is_ok());
+        assert!(validate_api_base_url(Some("http://127.0.0.1:20128/v1")).is_ok());
+        assert!(validate_api_base_url(Some("http://[::1]:20128/v1")).is_ok());
+        // LAN / non-loopback http still needs the opt-in.
+        assert!(validate_api_base_url(Some("http://192.168.1.10:11434")).is_err());
+        assert!(validate_api_base_url(Some("http://api.example.com/v1")).is_err());
     }
 
     #[test]

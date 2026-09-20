@@ -180,16 +180,9 @@ async fn paste_settle_sleep(ms: u64) {
 pub(crate) async fn paste_clipboard_text() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        // F-002: remember who had focus; a paste into a different window is
-        // the user having switched away, and must not land somewhere else.
-        let focus_before = crate::platform::windows_native::foreground_window_handle();
+        let target = crate::platform::windows_native::noted_paste_target();
         paste_settle_sleep(70).await;
-        if focus_before != 0
-            && crate::platform::windows_native::foreground_window_handle() != focus_before
-        {
-            warn!("[client] auto-paste aborted: foreground window changed");
-            return Err("Auto-paste aborted: the active window changed.".to_string());
-        }
+        ensure_paste_focus(target, "Auto-paste").await?;
         simulate_ctrl_combo(0x56).map_err(|e| format!("Auto-paste failed: {e}"))?; // Ctrl+V
         info!("[client] auto-paste triggered");
         return Ok(());
@@ -202,23 +195,62 @@ pub(crate) async fn paste_clipboard_text() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub(crate) async fn note_paste_target() -> Result<i64, String> {
+    #[cfg(target_os = "windows")]
+    {
+        return Ok(crate::platform::windows_native::note_paste_target_windows());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Paste target snapshot is currently implemented for Windows builds only.".to_string())
+    }
+}
+
+/// Decide whether Ctrl+V may fire for the snapshotted paste target.
+///
+/// - Focus already on the target: paste.
+/// - Focus in one of our own windows (user glanced at the app while the
+///   pipeline ran): hand focus back to the captured target, then paste.
+/// - Focus in a different foreign window (user switched away): abort so the
+///   dictation cannot land somewhere unexpected. The `label` picks the
+///   command-specific abort message.
+#[cfg(target_os = "windows")]
+async fn ensure_paste_focus(target: Option<(isize, u32)>, label: &str) -> Result<(), String> {
+    use crate::platform::windows_native as native;
+    let current = native::foreground_window_handle();
+    let wanted = target.map(|(hwnd, _)| hwnd).unwrap_or(current);
+    if current != 0 && current == wanted {
+        return Ok(());
+    }
+    if wanted != 0 && native::window_is_own_process(current) {
+        native::focus_noted_paste_target().await?;
+        info!("[client] paste focus returned to captured target");
+        return Ok(());
+    }
+    if wanted == 0 {
+        // No target captured and no focus to reason about; best effort.
+        return Ok(());
+    }
+    Err(format!("{label} aborted: the active window changed."))
+}
+
+#[tauri::command]
 pub(crate) async fn paste_text_via_clipboard(text: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        let focus_before = crate::platform::windows_native::foreground_window_handle();
         // F-002: snapshot the clipboard so a failed paste cannot destroy what
         // the user had copied; restored below on the abort path.
         let previous_clipboard = crate::platform::windows_native::native_get_clipboard_text().ok();
         native_set_clipboard_text(&text)?;
+        let target = crate::platform::windows_native::noted_paste_target();
         paste_settle_sleep(90).await;
-        if focus_before != 0
-            && crate::platform::windows_native::foreground_window_handle() != focus_before
-        {
+        if let Err(error) = ensure_paste_focus(target, "Dictation paste").await {
             if let Some(previous) = previous_clipboard {
                 let _ = native_set_clipboard_text(&previous);
             }
-            warn!("[client] dictation paste aborted: foreground window changed");
-            return Err("Dictation paste aborted: the active window changed.".to_string());
+            warn!("[client] dictation paste aborted: {error}");
+            return Err(error);
         }
         simulate_ctrl_combo(0x56).map_err(|e| format!("Dictation paste failed: {e}"))?; // Ctrl+V
         info!(

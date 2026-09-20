@@ -22,6 +22,10 @@ mock.module("@tauri-apps/api/window", () => ({
       public height: number,
     ) {}
   },
+  // selection-popup.ts pulls prefersReducedMotion from dock-geometry, which
+  // imports monitor helpers at module scope; stub them so the import resolves.
+  currentMonitor: async () => null,
+  availableMonitors: async () => [],
 }));
 
 // Import after the mocks.
@@ -32,12 +36,13 @@ function fakePayload(text = "hello world"): SelectionPopupPayload {
   return { token: 1, mode: "rewrite", title: "t", text, audioBase64: "" };
 }
 
-function wireHarness() {
+function wireHarness(win: unknown = null) {
   const posted: unknown[] = [];
   const notices: Array<{ message: string; isError?: boolean }> = [];
   const copied: string[] = [];
   let latest: SelectionPopupPayload | null = null;
   let hidden = 0;
+  let focusCalls = 0;
   const channel = {
     posted,
     postMessage(message: unknown) {
@@ -56,13 +61,16 @@ function wireHarness() {
         copied.push(text);
       },
       replaceSelection: async () => true,
-      getWindow: () => null,
+      getWindow: () => win as never,
       setWindow: () => {},
       getLatestPayload: () => latest,
       setLatestPayload: (payload) => {
         latest = payload;
       },
       nextToken: () => 7,
+      focusMainWindow: async () => {
+        focusCalls += 1;
+      },
     },
     channel as unknown as BroadcastChannel,
   );
@@ -70,6 +78,7 @@ function wireHarness() {
     posted,
     notices,
     copied,
+    focusCalls: () => focusCalls,
     setLatest: (payload: SelectionPopupPayload | null) => {
       latest = payload;
     },
@@ -138,5 +147,23 @@ describe("channel actions", () => {
     harness.send("not-a-real-action");
     expect(harness.posted).toEqual([]);
     expect(harness.copied).toEqual([]);
+  });
+
+  it("leaves focus alone when no popup window exists (dictation paste path)", async () => {
+    const harness = wireHarness();
+    await popup.dismissSelectionPopup();
+    expect(harness.focusCalls()).toBe(0);
+  });
+
+  it("returns focus when a visible popup is dismissed", async () => {
+    const harness = wireHarness({ isVisible: async () => true, hide: async () => {} });
+    await popup.dismissSelectionPopup();
+    expect(harness.focusCalls()).toBe(1);
+  });
+
+  it("leaves focus alone when a hidden popup is dismissed", async () => {
+    const harness = wireHarness({ isVisible: async () => false, hide: async () => {} });
+    await popup.dismissSelectionPopup();
+    expect(harness.focusCalls()).toBe(0);
   });
 });

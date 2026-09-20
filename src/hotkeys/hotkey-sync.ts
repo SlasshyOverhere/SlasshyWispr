@@ -1,5 +1,5 @@
 /**
- * Global shortcut sync â€” Phase 5 shell decomposition.
+ * Global shortcut sync - Phase 5 shell decomposition.
  *
  * Owns the global-shortcut registration state machine (active flags,
  * registered shortcuts/signature, last-handled dedup, sync
@@ -164,7 +164,7 @@ export async function syncGlobalShortcuts(force = false): Promise<void> {
     return;
   }
 
-  // F-007: never re-register mid-hold — unregisterAll would kill the active
+  // F-007: never re-register mid-hold - unregisterAll would kill the active
   // PTT press. Park the request; the release path drains it via drainPendingRemap.
   if (syncDeps.isHoldActive?.() && !force) {
     pendingRemapSignature = buildShortcutSyncSignature(settings);

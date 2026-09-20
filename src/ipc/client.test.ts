@@ -40,6 +40,7 @@ describe("IPC command constants match backend command names", () => {
     expect(IPC_COMMANDS.setClipboardText).toBe("set_clipboard_text");
     expect(IPC_COMMANDS.pasteTextViaClipboard).toBe("paste_text_via_clipboard");
     expect(IPC_COMMANDS.pasteClipboardText).toBe("paste_clipboard_text");
+    expect(IPC_COMMANDS.notePasteTarget).toBe("note_paste_target");
     expect(IPC_COMMANDS.muteSystemAudio).toBe("mute_system_audio");
     expect(IPC_COMMANDS.getForegroundInputBlockStatus).toBe("get_foreground_input_block_status");
     expect(IPC_COMMANDS.configureLaunchAtLogin).toBe("configure_launch_at_login");
@@ -116,11 +117,13 @@ describe("IPC wrapper argument shapes", () => {
     await client.setClipboardText("hello");
     await client.pasteTextViaClipboard("hello");
     await client.pasteClipboardText();
+    await client.notePasteTarget();
     await client.muteSystemAudio(true);
     expect(calls).toEqual([
       { command: "set_clipboard_text", args: { text: "hello" } },
       { command: "paste_text_via_clipboard", args: { text: "hello" } },
       { command: "paste_clipboard_text", args: undefined },
+      { command: "note_paste_target", args: undefined },
       { command: "mute_system_audio", args: { mute: true } },
     ]);
   });

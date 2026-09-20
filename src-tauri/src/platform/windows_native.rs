@@ -330,6 +330,89 @@ pub(crate) fn foreground_window_handle() -> isize {
     }
 }
 
+/// Paste-target snapshot: the foreground window at capture intent is where
+/// the user was working. Stored as (HWND, owning PID) so a recycled handle
+/// can never redirect a paste — the PID is re-validated before any refocus.
+#[cfg(target_os = "windows")]
+static PASTE_TARGET: std::sync::Mutex<Option<(isize, u32)>> = std::sync::Mutex::new(None);
+
+#[cfg(target_os = "windows")]
+fn window_owner_pid(hwnd: isize) -> u32 {
+    unsafe {
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd as _, &mut pid);
+        pid
+    }
+}
+
+/// Snapshot the current foreground window as the paste target. Called at
+/// capture intent (record start), when focus is still where the user was
+/// working. Returns the HWND as i64, or 0 when there is none.
+#[cfg(target_os = "windows")]
+pub(crate) fn note_paste_target_windows() -> i64 {
+    let hwnd = foreground_window_handle();
+    if hwnd == 0 {
+        if let Ok(mut guard) = PASTE_TARGET.lock() {
+            *guard = None;
+        }
+        return 0;
+    }
+    let pid = window_owner_pid(hwnd);
+    if let Ok(mut guard) = PASTE_TARGET.lock() {
+        *guard = Some((hwnd, pid));
+    }
+    info!("[client] paste target noted hwnd={} pid={}", hwnd, pid);
+    hwnd as i64
+}
+
+/// The snapshotted paste target, if any.
+#[cfg(target_os = "windows")]
+pub(crate) fn noted_paste_target() -> Option<(isize, u32)> {
+    PASTE_TARGET.lock().ok().and_then(|guard| guard.clone())
+}
+
+/// True when the window belongs to this process — one of our own windows
+/// (main, dock overlay, selection popup).
+#[cfg(target_os = "windows")]
+pub(crate) fn window_is_own_process(hwnd: isize) -> bool {
+    hwnd != 0 && window_owner_pid(hwnd) == std::process::id()
+}
+
+/// Refocus a previously snapshotted paste target. Rejects a dead handle
+/// (IsWindow) and a recycled one (owner PID changed), then foregrounds the
+/// window and verifies. Only invoked when one of our own windows currently
+/// holds focus — the case the foreground API permits, since a foreground
+/// app may pass focus onward.
+#[cfg(target_os = "windows")]
+pub(crate) async fn focus_noted_paste_target() -> Result<(), String> {
+    let (hwnd, pid) = noted_paste_target()
+        .ok_or_else(|| "No paste target was captured for this recording.".to_string())?;
+    unsafe {
+        if IsWindow(hwnd as _) == 0 {
+            if let Ok(mut guard) = PASTE_TARGET.lock() {
+                *guard = None;
+            }
+            return Err("Paste target window was closed before pasting.".to_string());
+        }
+        if window_owner_pid(hwnd) != pid {
+            if let Ok(mut guard) = PASTE_TARGET.lock() {
+                *guard = None;
+            }
+            return Err("Paste target window is no longer the same app.".to_string());
+        }
+        SetForegroundWindow(hwnd as _);
+    }
+    tauri::async_runtime::spawn_blocking(|| {
+        std::thread::sleep(std::time::Duration::from_millis(120));
+    })
+    .await
+    .ok();
+    if foreground_window_handle() != hwnd {
+        return Err("Could not return focus to the dictation target window.".to_string());
+    }
+    Ok(())
+}
+
 static SAVED_SYSTEM_AUDIO_VOLUME: std::sync::Mutex<Option<u32>> = std::sync::Mutex::new(None);
 
 /// Send a media play/pause app-command broadcast (moved verbatim from the

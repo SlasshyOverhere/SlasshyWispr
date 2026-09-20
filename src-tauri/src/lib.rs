@@ -22,12 +22,12 @@ use commands::{
     get_ollama_status, get_tts_runtime_setup_status, install_ollama, launch_at_login_status,
     list_coqui_models, list_coqui_voices, list_dictation_recording_ids,
     list_dictation_recordings_stats, load_persisted_local_settings, log_client_event,
-    mute_system_audio, open_local_stt_model_path, paste_clipboard_text, paste_text_via_clipboard,
-    preview_coqui_voice, pull_ollama_model, run_assistant_pipeline, save_dictation_recording,
-    save_persisted_local_settings, set_clipboard_text, set_tray_update_available,
-    setup_assistant_runtime, setup_coqui_runtime, show_update_settings, start_tts_runtime_setup,
-    toggle_main_window_visibility, validate_coqui, validate_piper, warmup_local_stt_model,
-    TtsSetupState,
+    mute_system_audio, note_paste_target, open_local_stt_model_path, paste_clipboard_text,
+    paste_text_via_clipboard, preview_coqui_voice, pull_ollama_model, run_assistant_pipeline,
+    save_dictation_recording, save_persisted_local_settings, set_clipboard_text,
+    set_tray_update_available, setup_assistant_runtime, setup_coqui_runtime, show_update_settings,
+    start_tts_runtime_setup, toggle_main_window_visibility, validate_coqui, validate_piper,
+    warmup_local_stt_model, TtsSetupState,
 };
 use state::AppState;
 
@@ -201,6 +201,7 @@ pub fn run() {
             launch_at_login_status,
             paste_clipboard_text,
             paste_text_via_clipboard,
+            note_paste_target,
             control_media_playback,
             mute_system_audio,
             get_foreground_input_block_status,

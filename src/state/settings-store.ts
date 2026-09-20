@@ -66,9 +66,11 @@ export function coerceBoolean(value: unknown, fallback: boolean): boolean {
 
 /**
  * F-021: inline URL invariant, mirroring the backend validator's shape check
- * (commands/settings.rs). Empty is valid (means "use the default"); anything
- * else must be a well-formed http(s) URL. Returns an error message or null —
- * callers surface it inline instead of silently coercing.
+ * (commands/settings.rs + pipeline/routing.rs validate_api_base_url).
+ * Empty is valid (means "use the default"); https is always valid; plain
+ * http is valid only for a loopback host (localhost, 127.0.0.1, ::1) so a
+ * local OpenAI-compatible gateway can serve as the online provider.
+ * LAN/non-loopback http needs SLASSHYWISPR_ALLOW_INSECURE_HTTP_HOSTS opt-in.
  */
 export function apiBaseUrlError(value: string): string | null {
   const trimmed = value.trim();
@@ -81,10 +83,22 @@ export function apiBaseUrlError(value: string): string | null {
   } catch {
     return "Enter a full URL, e.g. https://api.example.com/v1";
   }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    return "URL must start with https:// (or http:// for a local host)";
+  if (parsed.protocol === "https:") {
+    return null;
   }
-  return null;
+  if (parsed.protocol !== "http:") {
+    return "URL must start with https:// (http is allowed only for a local loopback host)";
+  }
+  const host = parsed.hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[/, "")
+    .replace(/\]$/, "")
+    .replace(/\.$/, "");
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+    return null;
+  }
+  return "Plain http is allowed only for a local loopback host (localhost); otherwise use https://";
 }
 
 export function asStyleProfile(value: unknown): StyleProfile {

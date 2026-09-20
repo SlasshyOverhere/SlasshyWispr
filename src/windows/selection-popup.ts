@@ -330,9 +330,18 @@ async function returnFocusToMain(): Promise<void> {
 export async function dismissSelectionPopup(): Promise<void> {
   popupDeps.setLatestPayload(null);
   const win = popupDeps.getWindow();
+  // No popup window: nothing was shown, so never touch focus. The dictation
+  // auto-paste path calls dismiss unconditionally before Ctrl+V; stealing
+  // focus here is what trips the backend foreground guard and silently turns
+  // every paste into a clipboard-only write.
   if (!win) {
-    await returnFocusToMain();
     return;
+  }
+  let wasVisible = true;
+  try {
+    wasVisible = await win.isVisible();
+  } catch {
+    // Visibility probe failed: assume it was shown (previous behavior).
   }
   try {
     await win.hide();
@@ -346,7 +355,11 @@ export async function dismissSelectionPopup(): Promise<void> {
       popupDeps.setWindow(null);
     }
   }
-  await returnFocusToMain();
+  // Only a popup the user actually saw earns focus back. A hidden window
+  // means dictation flow: focus stays where the paste target snapshot took it.
+  if (wasVisible) {
+    await returnFocusToMain();
+  }
 }
 
 export async function closeSelectionAssistantWindowForTray(): Promise<void> {

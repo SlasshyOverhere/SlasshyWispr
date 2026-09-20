@@ -266,6 +266,34 @@ describe("startRecording runtime-combination gate (F-029)", () => {
   });
 });
 
+describe("startRecording paste-target snapshot", () => {
+  it("notes the paste target at capture intent and survives a snapshot failure", async () => {
+    let notes = 0;
+    // No API key: recording blocks at the missing-key gate, but the paste
+    // target snapshot runs first, at capture intent.
+    const settings = { ...defaultSettings(), apiKey: "" };
+    const harness = wireHarness({
+      readSettings: () => settings,
+      notePasteTarget: () => {
+        notes += 1;
+      },
+    });
+    await startRecording();
+    expect(notes).toBe(1);
+    expect(harness.logs.some((line) => line.includes("missing-api-key"))).toBe(true);
+
+    const failing = wireHarness({
+      readSettings: () => settings,
+      notePasteTarget: () => {
+        throw new Error("ipc unavailable");
+      },
+    });
+    await startRecording();
+    // Snapshot is best-effort: recording still reaches the gate.
+    expect(failing.logs.some((line) => line.includes("missing-api-key"))).toBe(true);
+  });
+});
+
 describe("cancelPipeline (F-007 generation guard)", () => {
   it("returns false for a stale generation and kills nothing", () => {
     const harness = wireHarness();

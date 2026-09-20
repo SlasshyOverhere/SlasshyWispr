@@ -13,9 +13,19 @@ describe("apiBaseUrlError", () => {
     expect(apiBaseUrlError("   ")).toBeNull();
   });
 
-  it("accepts well-formed http(s) URLs", () => {
+  it("accepts well-formed https URLs", () => {
     expect(apiBaseUrlError("https://api.example.com/v1")).toBeNull();
-    expect(apiBaseUrlError("http://127.0.0.1:11434")).toBeNull();
+  });
+
+  it("accepts loopback http (local gateway)", () => {
+    expect(apiBaseUrlError("http://localhost:20128/v1")).toBeNull();
+    expect(apiBaseUrlError("http://127.0.0.1:20128/v1")).toBeNull();
+    expect(apiBaseUrlError("http://[::1]:20128/v1")).toBeNull();
+  });
+
+  it("rejects non-loopback plain http", () => {
+    expect(apiBaseUrlError("http://api.example.com/v1")).toContain("https://");
+    expect(apiBaseUrlError("http://192.168.1.10:11434")).toContain("https://");
   });
 
   it("rejects a value that is not a URL", () => {
