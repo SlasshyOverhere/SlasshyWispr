@@ -20,8 +20,10 @@ import {
   initSettingsChange,
   describeMaxTokensCorrection,
   describeSttTimeoutCorrection,
+  describeTemperatureCorrection,
   reconcileMaxTokensWithBounds,
   reconcileSttTimeoutWithBounds,
+  reconcileTemperatureWithBounds,
   settingsHandleEffects,
   type SettingsChangeDeps,
 } from "./settings-change";
@@ -35,6 +37,11 @@ import {
   resetMaxTokensBoundsForTests,
   setMaxTokensBounds,
 } from "./max-tokens-bounds";
+import {
+  resetTemperatureBoundsForTests,
+  setTemperatureBounds,
+  temperatureBounds,
+} from "./temperature-bounds";
 
 // The pipeline touches real DOM APIs (setCustomValidity, document theme
 // root, classList on panels); stub them at module scope.
@@ -314,6 +321,7 @@ function wireHarness(overrides: {
 beforeEach(() => {
   // Reset first: defaultSettings() reads these bounds.
   resetMaxTokensBoundsForTests();
+  resetTemperatureBoundsForTests();
   resetSttTimeoutBoundsForTests();
   wireHarness();
 });
@@ -484,7 +492,83 @@ describe("reconcileMaxTokensWithBounds", () => {
   });
 });
 
+describe("reconcileTemperatureWithBounds", () => {
+  it("lowers a stored temperature above the backend maximum", () => {
+    // The validator used to accept up to 2.0 while the request path clamped to
+    // 1.2, so a stored 1.5 passed every check and was then silently changed.
+    setTemperatureBounds({ defaultTemperature: 0.35, minTemperature: 0, maxTemperature: 1.2 });
+    const harness = wireHarness({
+      settings: { ...defaultSettings(), temperature: 1.5 },
+    });
+
+    // The descriptor is what bootstrap shows the user, so it has to carry the
+    // real numbers rather than just a flag.
+    expect(reconcileTemperatureWithBounds()).toEqual({
+      previousTemperature: 1.5,
+      temperature: 1.2,
+      minTemperature: 0,
+      maxTemperature: 1.2,
+    });
+    expect(harness.getSettings().temperature).toBe(1.2);
+    expect(harness.snapshots()).toBe(1);
+    expect(harness.persists()).toBe(1);
+  });
+
+  it("raises a stored temperature below the backend minimum", () => {
+    setTemperatureBounds({ defaultTemperature: 0.35, minTemperature: 0.2, maxTemperature: 1.2 });
+    const harness = wireHarness({
+      settings: { ...defaultSettings(), temperature: 0.05 },
+    });
+
+    expect(reconcileTemperatureWithBounds()?.temperature).toBe(0.2);
+    expect(harness.getSettings().temperature).toBe(0.2);
+  });
+
+  it("leaves an in-range temperature untouched", () => {
+    const harness = wireHarness({
+      settings: { ...defaultSettings(), temperature: 0.7 },
+    });
+
+    // null, not a no-op descriptor: nothing happened and nothing is reported.
+    expect(reconcileTemperatureWithBounds()).toBeNull();
+    // No write, so a normal boot does not churn the settings file.
+    expect(harness.snapshots()).toBe(0);
+    expect(harness.persists()).toBe(0);
+  });
+
+  it("repairs a non-numeric stored value", () => {
+    const harness = wireHarness({
+      settings: { ...defaultSettings(), temperature: Number.NaN },
+    });
+
+    const corrected = temperatureBounds().defaultTemperature;
+    expect(reconcileTemperatureWithBounds()?.temperature).toBe(corrected);
+    expect(harness.getSettings().temperature).toBe(corrected);
+  });
+
+  it("reports each stale value once, because correcting it persists the fix", () => {
+    setTemperatureBounds({ defaultTemperature: 0.35, minTemperature: 0, maxTemperature: 1.2 });
+    wireHarness({ settings: { ...defaultSettings(), temperature: 9 } });
+
+    expect(reconcileTemperatureWithBounds()).not.toBeNull();
+    // Persisted, so the next launch has nothing to correct and nothing to say.
+    expect(reconcileTemperatureWithBounds()).toBeNull();
+  });
+});
+
 describe("bounds correction notices", () => {
+  it("names the temperature range too", () => {
+    expect(
+      describeTemperatureCorrection({
+        previousTemperature: 1.5,
+        temperature: 1.2,
+        minTemperature: 0,
+        maxTemperature: 1.2,
+      }),
+    ).toBe(
+      "Temperature 1.5 is outside the supported 0-1.2 range; set to 1.2. Change it in Settings > Pipeline.",
+    );
+  });
   it("names the previous value, the range, and the corrected value", () => {
     // A silent correction is the thing being fixed here, so the copy has to
     // carry enough to act on: what it was, what it is now, and where to change it.

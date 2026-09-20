@@ -18,7 +18,7 @@ import type {
 } from "../types";
 import { newlyUnlockedAchievements } from "../analytics/analytics-service";
 import { formatHotkeyForDisplay } from "../hotkeys/hotkey-service";
-import { coerceInteger } from "../state/settings-store";
+import { coerceInteger, coerceNumber } from "../state/settings-store";
 import {
   hydrateSettingsFromNativeStorage as hydrateSettingsFromNativeStoragePipeline,
   type SettingsHydrateDeps,
@@ -31,6 +31,7 @@ import {
 import { buildShortcutSyncSignature, summarizeSettingsForDiagnostics } from "./settings-signatures";
 import { maxTokensBounds } from "./max-tokens-bounds";
 import { sttTimeoutBounds } from "./stt-timeout-bounds";
+import { temperatureBounds } from "./temperature-bounds";
 import type { SettingsFormRefs } from "./settings-form-refs";
 import type { SettingsCoreDeps } from "./settings-wiring";
 
@@ -170,6 +171,18 @@ export function describeMaxTokensCorrection(correction: MaxTokensCorrection): st
   return `Max Tokens ${correction.previousTokens} is outside the supported ${correction.minTokens}-${correction.maxTokens} range; set to ${correction.tokens}. Change it in Settings > Pipeline.`;
 }
 
+/// A stored temperature that had to be moved back inside the backend's bounds.
+export interface TemperatureCorrection {
+  previousTemperature: number;
+  temperature: number;
+  minTemperature: number;
+  maxTemperature: number;
+}
+
+export function describeTemperatureCorrection(correction: TemperatureCorrection): string {
+  return `Temperature ${correction.previousTemperature} is outside the supported ${correction.minTemperature}-${correction.maxTemperature} range; set to ${correction.temperature}. Change it in Settings > Pipeline.`;
+}
+
 /**
  * Bring a stored STT timeout back inside the backend's bounds.
  *
@@ -208,6 +221,40 @@ export function reconcileSttTimeoutWithBounds(): SttTimeoutCorrection | null {
     seconds: reconciled,
     minSeconds,
     maxSeconds,
+  };
+}
+
+/// Same shape as the STT-timeout reconcile, and the same reason: the backend
+/// validator accepted up to 2.0 while the request path clamped to 1.2, so a
+/// stored value in between was accepted, displayed and then silently changed.
+export function reconcileTemperatureWithBounds(): TemperatureCorrection | null {
+  const current = changeDeps.getSettings();
+  const { defaultTemperature, minTemperature, maxTemperature } = temperatureBounds();
+  const reconciled = coerceNumber(
+    current.temperature,
+    defaultTemperature,
+    minTemperature,
+    maxTemperature,
+  );
+  if (reconciled === current.temperature) {
+    return null;
+  }
+
+  const next: PersistedSettings = { ...current, temperature: reconciled };
+  changeDeps.setSettings(next);
+  changeDeps.applySettingsToForm(changeDeps.getFormRefs(), changeCoreDeps, next);
+  changeDeps.commitSettingsSnapshot(next);
+  changeDeps.warn(
+    `[settings] temperature ${current.temperature} was outside the backend bounds ${minTemperature}-${maxTemperature}; corrected to ${reconciled}`,
+  );
+  if (changeDeps.isTauri()) {
+    changeDeps.persist(next);
+  }
+  return {
+    previousTemperature: current.temperature,
+    temperature: reconciled,
+    minTemperature,
+    maxTemperature,
   };
 }
 

@@ -11,7 +11,6 @@ import {
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
   DEFAULT_PIPER_SPEED,
   DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
-  DEFAULT_TEMPERATURE,
 } from "../constants";
 import type { PersistedSettings } from "../types";
 import {
@@ -31,6 +30,7 @@ import { formatHotkeyForDisplay, parseHotkey } from "../hotkeys/hotkey-service";
 import type { SettingsFormRefs } from "./settings-form-refs";
 import { maxTokensBounds } from "./max-tokens-bounds";
 import { sttTimeoutBounds } from "./stt-timeout-bounds";
+import { temperatureBounds } from "./temperature-bounds";
 import {
   applyDictationLanguageSettingsToForm,
   applyTheme,
@@ -103,7 +103,12 @@ export function readSettingsFromForm(
     dictationLanguageAllowList,
     styleProfile: asStyleProfile(refs.styleProfileSelect.value),
     systemPrompt: refs.systemPromptInput.value,
-    temperature: coerceNumber(Number(refs.temperatureInput.value), DEFAULT_TEMPERATURE, 0, 1.2),
+    temperature: coerceNumber(
+      Number(refs.temperatureInput.value),
+      temperatureBounds().defaultTemperature,
+      temperatureBounds().minTemperature,
+      temperatureBounds().maxTemperature,
+    ),
     maxTokens: coerceInteger(
       Number(refs.maxTokensInput.value),
       maxTokensBounds().defaultTokens,

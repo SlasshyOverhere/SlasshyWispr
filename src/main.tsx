@@ -13,6 +13,7 @@ import {
   loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
   maxTokensBounds as ipcMaxTokensBounds,
   sttTimeoutBounds as ipcSttTimeoutBounds,
+  temperatureBounds as ipcTemperatureBounds,
   listDictationRecordingIds as ipcListDictationRecordingIds,
   notePasteTarget as ipcNotePasteTarget,
   saveDictationRecording as ipcSaveDictationRecording,
@@ -78,6 +79,7 @@ import {
   backfillAchievementsFromUsageStats as backfillAchievementsFromUsageStatsService,
   describeMaxTokensCorrection,
   describeSttTimeoutCorrection,
+  describeTemperatureCorrection,
   getCachedHotkeyDisplay as getCachedHotkeyDisplayService,
   getSettingsCoreDeps as getSettingsCoreDepsService,
   handleSettingsChange as handleSettingsChangeService,
@@ -85,8 +87,10 @@ import {
   initSettingsChange,
   reconcileMaxTokensWithBounds as reconcileMaxTokensWithBoundsService,
   reconcileSttTimeoutWithBounds as reconcileSttTimeoutWithBoundsService,
+  reconcileTemperatureWithBounds as reconcileTemperatureWithBoundsService,
 } from "./settings/settings-change";
 import { refreshMaxTokensBounds as refreshMaxTokensBoundsService } from "./settings/max-tokens-bounds";
+import { refreshTemperatureBounds as refreshTemperatureBoundsService } from "./settings/temperature-bounds";
 import { APP_UPDATE_AUTO_CHECK_CHANGED_EVENT } from "./updater/updater-client-shim";
 import {
   initializeUpdaterPanel as initializeUpdaterPanelService,
@@ -2137,6 +2141,7 @@ async function bootstrap(): Promise<void> {
   // Before the hydrate below: it clamps stored values against these bounds.
   await refreshSttTimeoutBounds(() => ipcSttTimeoutBounds());
   await refreshMaxTokensBoundsService(() => ipcMaxTokensBounds());
+  await refreshTemperatureBoundsService(() => ipcTemperatureBounds());
   await hydrateSettingsFromNativeStorageChangeService();
   // The hydrate can restore a value stored under an older, wider range.
   const sttTimeoutCorrection = reconcileSttTimeoutWithBoundsService();
@@ -2146,6 +2151,10 @@ async function bootstrap(): Promise<void> {
   const maxTokensCorrection = reconcileMaxTokensWithBoundsService();
   if (maxTokensCorrection) {
     queueNoticeService(describeMaxTokensCorrection(maxTokensCorrection));
+  }
+  const temperatureCorrection = reconcileTemperatureWithBoundsService();
+  if (temperatureCorrection) {
+    queueNoticeService(describeTemperatureCorrection(temperatureCorrection));
   }
   logClientEventService(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
 

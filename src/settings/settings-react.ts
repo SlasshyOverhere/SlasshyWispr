@@ -14,10 +14,15 @@ import {
   sttTimeoutBounds,
   subscribeSttTimeoutBounds,
 } from "./stt-timeout-bounds";
+import {
+  subscribeTemperatureBounds,
+  temperatureBounds,
+} from "./temperature-bounds";
 import type {
   MaxTokensBoundsResponse,
   PersistedSettings,
   SttTimeoutBoundsResponse,
+  TemperatureBoundsResponse,
 } from "../types";
 
 export function useSettingsSnapshot(): PersistedSettings {
@@ -45,5 +50,13 @@ export function useMaxTokensBounds(): MaxTokensBoundsResponse {
     subscribeMaxTokensBounds,
     maxTokensBounds,
     maxTokensBounds,
+  );
+}
+
+export function useTemperatureBounds(): TemperatureBoundsResponse {
+  return useSyncExternalStore(
+    subscribeTemperatureBounds,
+    temperatureBounds,
+    temperatureBounds,
   );
 }

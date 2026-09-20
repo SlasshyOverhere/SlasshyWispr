@@ -2,6 +2,7 @@ import {
   useMaxTokensBounds,
   useSettingsSnapshot,
   useSttTimeoutBounds,
+  useTemperatureBounds,
   dispatchSettingsPatch,
 } from '../../settings/settings-react-shim';
 
@@ -9,6 +10,7 @@ export function PipelineSettingsPane() {
   const settings = useSettingsSnapshot();
   const sttTimeoutBounds = useSttTimeoutBounds();
   const maxTokensBounds = useMaxTokensBounds();
+  const temperatureBounds = useTemperatureBounds();
 
   return (
     <section id="settingsPanePipeline" className="settings-pane" data-settings-pane="pipeline" hidden>
@@ -52,8 +54,8 @@ export function PipelineSettingsPane() {
         <input
           id="temperatureInput"
           type="range"
-          min="0"
-          max="1.2"
+          min={temperatureBounds.minTemperature}
+          max={temperatureBounds.maxTemperature}
           step="0.05"
           value={settings.temperature}
           onChange={(event) => dispatchSettingsPatch({ temperature: Number(event.target.value) })}

@@ -17,14 +17,14 @@ import {
   DEFAULT_AI_MODEL_NAME,
   DEFAULT_STT_MODEL_NAME,
   DEFAULT_STYLE_PROFILE,
-  DEFAULT_TEMPERATURE,
-  // No token default or bounds here: the backend owns them (see max-tokens-bounds).
+  // No temperature or token defaults here: the backend owns those (see *-bounds).
   DEFAULT_TTS_ENGINE,
   DICTATION_LANGUAGE_LABELS,
   SETTINGS_STORAGE_KEY,
 } from "../constants";
 import { maxTokensBounds } from "../settings/max-tokens-bounds";
 import { sttTimeoutBounds } from "../settings/stt-timeout-bounds";
+import { temperatureBounds } from "../settings/temperature-bounds";
 import type {
   CaptureBackend,
   DictationLanguageMode,
@@ -243,7 +243,7 @@ export function defaultSettings(): PersistedSettings {
     dictationLanguageAllowList: [],
     styleProfile: DEFAULT_STYLE_PROFILE,
     systemPrompt: "",
-    temperature: DEFAULT_TEMPERATURE,
+    temperature: temperatureBounds().defaultTemperature,
     maxTokens: maxTokensBounds().defaultTokens,
     sttTimeoutSeconds: sttTimeoutBounds().defaultSeconds,
     launchAtLogin: true,
@@ -376,7 +376,12 @@ export function loadSettings(): PersistedSettings {
       dictationLanguageAllowList,
       styleProfile: asStyleProfile(parsed.styleProfile),
       systemPrompt: coerceSystemPrompt(parsed.systemPrompt, defaults.systemPrompt),
-      temperature: coerceNumber(parsed.temperature, defaults.temperature, 0, 1.2),
+      temperature: coerceNumber(
+        parsed.temperature,
+        defaults.temperature,
+        temperatureBounds().minTemperature,
+        temperatureBounds().maxTemperature,
+      ),
       maxTokens: coerceInteger(
         parsed.maxTokens,
         defaults.maxTokens,
