@@ -1,169 +1,182 @@
 /**
  * Diagnostics wiring test.
  *
- * The queue's ordering rules are covered in notice-queue.test.ts. What this
- * file pins is the seam around it: that a plain setNotice still reaches the
- * element (a regression here would silence every notice in the app at once),
- * that the dismiss control reflects and drains the queue, and that the real
- * timer resumes a queued notice.
+ * The stack's rules are covered in notice-stack.test.ts. What this file pins is
+ * the rendering seam around it, against a fake DOM: that a plain setNotice
+ * still reaches the area (a regression there would silence every notice in the
+ * app at once), that each row's button dismisses its own row and no other, and
+ * that rows appear in list order.
  */
-import { describe, expect, it } from "bun:test";
-import { initDiagnostics, queueNotice, setNotice, type NoticeElements } from "./diagnostics";
+import { beforeEach, describe, expect, it } from "bun:test";
+import { initDiagnostics, queueNotice, setNotice } from "./diagnostics";
 
-function makeNotice(textContent = "Ready.") {
-  return {
-    textContent,
-    dataset: {} as Record<string, string>,
-  } as unknown as HTMLParagraphElement;
+class FakeElement {
+  className = "";
+  title = "";
+  type = "";
+  dataset: Record<string, string> = {};
+  children: FakeElement[] = [];
+  parent: FakeElement | null = null;
+
+  private text = "";
+  private attributes: Record<string, string> = {};
+  private listeners: Array<() => void> = [];
+
+  constructor(readonly tagName: string) {}
+
+  get textContent(): string {
+    return this.text;
+  }
+
+  set textContent(value: string) {
+    this.text = value;
+    // Assigning text replaces children, as the real DOM does.
+    this.children = [];
+  }
+
+  appendChild(child: FakeElement): FakeElement {
+    child.parent = this;
+    this.children.push(child);
+    return child;
+  }
+
+  remove(): void {
+    if (!this.parent) {
+      return;
+    }
+    this.parent.children = this.parent.children.filter((node) => node !== this);
+    this.parent = null;
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes[name] = value;
+  }
+
+  getAttribute(name: string): string | null {
+    return this.attributes[name] ?? null;
+  }
+
+  addEventListener(_type: string, listener: () => void): void {
+    this.listeners.push(listener);
+  }
+
+  removeEventListener(_type: string, listener: () => void): void {
+    this.listeners = this.listeners.filter((entry) => entry !== listener);
+  }
+
+  click(): void {
+    for (const listener of [...this.listeners]) {
+      listener();
+    }
+  }
 }
 
-function makeDismissButton() {
-  const listeners: Array<() => void> = [];
-  const attributes: Array<{ name: string; value: string }> = [];
-  const button = {
-    dataset: {} as Record<string, string>,
-    addEventListener(_type: string, listener: () => void) {
-      listeners.push(listener);
-    },
-    removeEventListener(_type: string, listener: () => void) {
-      const index = listeners.indexOf(listener);
-      if (index >= 0) {
-        listeners.splice(index, 1);
-      }
-    },
-    setAttribute(name: string, value: string) {
-      attributes.push({ name, value });
-    },
-    getAttribute(name: string) {
-      return attributes.filter((entry) => entry.name === name).at(-1)?.value ?? null;
-    },
-    click() {
-      for (const listener of [...listeners]) {
-        listener();
-      }
-    },
-    listenerCount: () => listeners.length,
+function wire() {
+  (globalThis as unknown as { document: unknown }).document = {
+    createElement: (tagName: string) => new FakeElement(tagName),
   };
-  return button as unknown as HTMLButtonElement & {
-    click: () => void;
-    listenerCount: () => number;
-    getAttribute: (name: string) => string | null;
-  };
+  const area = new FakeElement("div");
+  initDiagnostics(area as unknown as HTMLElement, { isTauri: () => false });
+  return area;
 }
 
-function wire(options: { dwellMs?: number; idle?: string } = {}) {
-  const notice = makeNotice(options.idle ?? "Ready.");
-  const dismiss = makeDismissButton();
-  const elements: NoticeElements = { notice, dismiss };
-  initDiagnostics(elements, { isTauri: () => false, dwellMs: options.dwellMs ?? 10 });
-  return { notice, dismiss, elements };
+/** Row text of each rendered row, in DOM order. */
+function rowTexts(area: FakeElement): string[] {
+  return area.children.map((row) => row.children[0].textContent);
 }
 
-async function settle(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+function dismissButton(area: FakeElement, index: number): FakeElement {
+  return area.children[index].children[1];
 }
 
-describe("diagnostics notice wiring", () => {
-  // First: the module has not been initialised at this point, and boot calls
-  // these from many branches that may run before the element is bound.
+describe("diagnostics notice rendering", () => {
+  beforeEach(() => {
+    (globalThis as unknown as { document?: unknown }).document = undefined;
+  });
+
   it("is a no-op before init rather than throwing", () => {
     expect(() => setNotice("early")).not.toThrow();
     expect(() => queueNotice("early")).not.toThrow();
   });
 
-  it("writes the element and tone for a status notice", () => {
-    const { notice, dismiss } = wire();
-
+  it("writes the status line", () => {
+    const area = wire();
     setNotice("Recording started");
-    expect(notice.textContent).toBe("Recording started");
-    expect(notice.dataset.tone).toBe("normal");
-    expect(dismiss.dataset.available).toBe("1");
 
-    setNotice("Something broke", true);
-    expect(notice.textContent).toBe("Something broke");
-    expect(notice.dataset.tone).toBe("error");
+    expect(rowTexts(area)).toEqual(["Recording started"]);
   });
 
-  it("hides the dismiss control while there is nothing to dismiss", () => {
-    const { notice, dismiss } = wire();
-    expect(dismiss.dataset.available).toBeUndefined();
+  it("stacks notices so all of them are visible at once", () => {
+    const area = wire();
+    queueNotice("timeout corrected");
+    queueNotice("verb registry repaired");
 
-    setNotice("Recording started");
-    expect(dismiss.dataset.available).toBe("1");
-
-    dismiss.click();
-    expect(notice.textContent).toBe("Ready.");
-    expect(dismiss.dataset.available).toBeUndefined();
+    expect(rowTexts(area)).toEqual(["timeout corrected", "verb registry repaired"]);
   });
 
-  it("reports how many notices are waiting behind the current one", () => {
-    const { dismiss } = wire();
-    setNotice("first");
-    expect(dismiss.getAttribute("aria-label")).toBe("Dismiss notice");
-
-    queueNotice("second");
-    expect(dismiss.getAttribute("aria-label")).toBe("Dismiss notice (1 more waiting)");
-
-    dismiss.click();
-    expect(dismiss.getAttribute("aria-label")).toBe("Dismiss notice");
-  });
-
-  it("drains the queue on dismiss rather than only clearing the text", () => {
-    const { notice, dismiss } = wire();
+  it("dismisses only the row whose button was clicked", () => {
+    const area = wire();
     queueNotice("first");
     queueNotice("second");
+    queueNotice("third");
 
-    dismiss.click();
-    expect(notice.textContent).toBe("second");
-    expect(dismiss.dataset.available).toBe("1");
+    dismissButton(area, 1).click();
 
-    dismiss.click();
-    expect(notice.textContent).toBe("Ready.");
-    expect(dismiss.dataset.available).toBeUndefined();
+    expect(rowTexts(area)).toEqual(["first", "third"]);
   });
 
-  it("keeps the idle text the markup shipped", () => {
-    const { notice, dismiss } = wire({ idle: "Nothing to report." });
-    setNotice("Recording started");
-    dismiss.click();
-
-    expect(notice.textContent).toBe("Nothing to report.");
-  });
-
-  it("does not stack click listeners when re-initialised", () => {
-    const notice = makeNotice();
-    const dismiss = makeDismissButton();
-    initDiagnostics({ notice, dismiss }, { isTauri: () => false, dwellMs: 10 });
-    // A second init happens whenever the shell is rebuilt in dev.
-    initDiagnostics({ notice, dismiss }, { isTauri: () => false, dwellMs: 10 });
-
-    expect(dismiss.listenerCount()).toBe(1);
+  it("keeps rows in list order as items come and go", () => {
+    const area = wire();
     queueNotice("first");
     queueNotice("second");
-    dismiss.click();
-    // One click must advance one notice, not skip past it.
-    expect(notice.textContent).toBe("second");
+    dismissButton(area, 0).click();
+    queueNotice("third");
+
+    expect(rowTexts(area)).toEqual(["second", "third"]);
   });
 
-  it("shows a queued notice and advances to the next after the dwell", async () => {
-    const { notice } = wire({ dwellMs: 10 });
+  it("leaves the area empty once everything is dismissed", () => {
+    const area = wire();
+    queueNotice("only");
+    dismissButton(area, 0).click();
 
-    queueNotice("first");
-    queueNotice("second");
-    expect(notice.textContent).toBe("first");
-
-    await settle(30);
-    expect(notice.textContent).toBe("second");
+    expect(rowTexts(area)).toEqual([]);
+    expect(area.children).toHaveLength(0);
   });
 
-  it("lets status take the slot but brings the queued notice back", async () => {
-    const { notice } = wire({ dwellMs: 10 });
-
-    queueNotice("correction");
+  it("updates the status row in place instead of adding a row", () => {
+    const area = wire();
     setNotice("Recording started");
-    expect(notice.textContent).toBe("Recording started");
+    setNotice("Processing");
 
-    await settle(30);
-    expect(notice.textContent).toBe("correction");
+    expect(rowTexts(area)).toEqual(["Processing"]);
+    expect(area.children).toHaveLength(1);
+  });
+
+  it("marks an error row with its tone", () => {
+    const area = wire();
+    queueNotice("soft");
+    queueNotice("hard", true);
+
+    expect(area.children.map((row) => row.dataset.tone)).toEqual(["normal", "error"]);
+  });
+
+  it("names the notice each button dismisses", () => {
+    const area = wire();
+    queueNotice("timeout corrected");
+
+    expect(dismissButton(area, 0).getAttribute("aria-label")).toBe(
+      "Dismiss notice: timeout corrected",
+    );
+  });
+
+  it("starts from an empty area when re-initialised", () => {
+    const area = wire();
+    queueNotice("stale");
+    initDiagnostics(area as unknown as HTMLElement, { isTauri: () => false });
+
+    expect(area.children).toHaveLength(0);
+    queueNotice("fresh");
+    expect(rowTexts(area)).toEqual(["fresh"]);
   });
 });

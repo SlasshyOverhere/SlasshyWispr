@@ -519,8 +519,7 @@ const sidebarLabeledButtons = Array.from(
 
 const statusPill = requiredElement<HTMLDivElement>("#statusPill");
 const statusDetail = requiredElement<HTMLParagraphElement>("#statusDetail");
-const noticeText = requiredElement<HTMLParagraphElement>("#noticeText");
-const noticeDismiss = requiredElement<HTMLButtonElement>("#noticeDismiss");
+const noticeStack = requiredElement<HTMLElement>("#noticeStack");
 const metricWords = requiredElement<HTMLElement>("#metricWords");
 const metricSpeakingTime = requiredElement<HTMLElement>("#metricSpeakingTime");
 const metricSessions = requiredElement<HTMLElement>("#metricSessions");
@@ -1117,7 +1116,7 @@ initLocalSttClient(
     isSettingsOpen: () => isSettingsOpenService(),
   },
 );
-initDiagnostics({ notice: noticeText, dismiss: noticeDismiss }, { isTauri: isTauriEnvironment });
+initDiagnostics(noticeStack, { isTauri: isTauriEnvironment });
 void initFileTranscription({
   isTauri: isTauriEnvironment,
   isPipelineRunning: () => pipelineRunning,

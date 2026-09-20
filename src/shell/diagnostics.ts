@@ -3,87 +3,94 @@
  *
  * Owns setNotice/logClientEvent behind an injected NoticeDeps seam so
  * extracted shell modules can report without touching main.tsx globals.
- * Moved verbatim from main.tsx; the notice element is bound once at boot.
  *
- * setNotice replaces the slot immediately (live status). queueNotice is for
- * the other kind of message — rare, and each one needs to be read — and is
- * drained in order, with a dismiss control to move on early. See
- * notice-queue.ts for the ordering rules.
+ * setNotice writes the status line, which replaces itself. queueNotice stacks a
+ * notice, which stays on screen until it is dismissed. See notice-stack.ts for
+ * the ordering rules.
  */
 import { logClientEvent as ipcLogClientEvent } from "../ipc/client";
-import { createNoticeQueue, type NoticeQueue, type NoticeSlotState } from "./notice-queue";
-
-export const NOTICE_DWELL_MS = 6000;
-
-export interface NoticeElements {
-  notice: HTMLParagraphElement;
-  dismiss: HTMLButtonElement;
-}
+import { createNoticeStack, type NoticeItem, type NoticeStack } from "./notice-stack";
 
 export interface NoticeDeps {
   isTauri: () => boolean;
-  /** Slot dwell for queued notices. Tests shorten it. */
-  dwellMs?: number;
 }
 
-let noticeElements: NoticeElements | null = null;
-let noticeDeps: NoticeDeps = { isTauri: () => false };
-let noticeQueue: NoticeQueue | null = null;
-let dismissHandler: (() => void) | null = null;
-// The markup owns the placeholder, so read it once rather than restating it.
-let idleNotice = "Ready.";
+interface NoticeRow {
+  root: HTMLElement;
+  text: HTMLElement;
+}
 
-function renderNotice(state: NoticeSlotState): void {
-  if (!noticeElements) {
+let noticeElement: HTMLElement | null = null;
+let noticeDeps: NoticeDeps = { isTauri: () => false };
+let stack: NoticeStack | null = null;
+const rows = new Map<number, NoticeRow>();
+
+function createRow(item: NoticeItem): NoticeRow {
+  const root = document.createElement("div");
+  root.className = "notice-item";
+
+  const text = document.createElement("p");
+  text.className = "notice-item-text";
+  root.appendChild(text);
+
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "notice-dismiss";
+  dismiss.textContent = "\u00d7";
+  dismiss.title = "Dismiss notice";
+  // Each button dismisses its own row: the label names which one, so a screen
+  // reader can tell stacked notices apart.
+  dismiss.setAttribute("aria-label", `Dismiss notice: ${item.message}`);
+  dismiss.addEventListener("click", () => {
+    stack?.dismiss(item.id);
+  });
+  root.appendChild(dismiss);
+
+  return { root, text };
+}
+
+function renderStack(items: NoticeItem[]): void {
+  if (!noticeElement) {
     return;
   }
-  const { entry, queued } = state;
-  noticeElements.notice.textContent = entry ? entry.message : idleNotice;
-  noticeElements.notice.dataset.tone = entry?.isError ? "error" : "normal";
 
-  // Visibility rides on a dataset the JSX never declares, so a re-render of the
-  // pane cannot reset it. React only re-applies attributes it owns.
-  if (entry) {
-    noticeElements.dismiss.dataset.available = "1";
-  } else {
-    delete noticeElements.dismiss.dataset.available;
+  const live = new Set(items.map((item) => item.id));
+  for (const [id, row] of rows) {
+    if (!live.has(id)) {
+      row.root.remove();
+      rows.delete(id);
+    }
   }
-  noticeElements.dismiss.setAttribute(
-    "aria-label",
-    queued > 0 ? `Dismiss notice (${queued} more waiting)` : "Dismiss notice",
-  );
+
+  for (const item of items) {
+    let row = rows.get(item.id);
+    if (!row) {
+      row = createRow(item);
+      rows.set(item.id, row);
+      // Items are only ever appended or removed, never reordered, so appending
+      // here keeps the DOM in list order.
+      noticeElement.appendChild(row.root);
+    }
+    row.text.textContent = item.message;
+    row.root.dataset.tone = item.isError ? "error" : "normal";
+  }
 }
 
-export function initDiagnostics(elements: NoticeElements, deps: NoticeDeps): void {
-  // Re-init must not stack listeners, or one click would dismiss two notices.
-  if (dismissHandler && noticeElements) {
-    noticeElements.dismiss.removeEventListener("click", dismissHandler);
-  }
-
-  idleNotice = elements.notice.textContent?.trim() || "Ready.";
-  noticeElements = elements;
+export function initDiagnostics(element: HTMLElement, deps: NoticeDeps): void {
+  // Re-init starts from an empty area, so stale rows cannot outlive their items.
+  element.textContent = "";
+  rows.clear();
+  noticeElement = element;
   noticeDeps = deps;
-  noticeQueue = createNoticeQueue({
-    render: renderNotice,
-    schedule: (run, delayMs) => {
-      setTimeout(run, delayMs);
-    },
-    dwellMs: deps.dwellMs ?? NOTICE_DWELL_MS,
-  });
-
-  delete elements.dismiss.dataset.available;
-  dismissHandler = () => {
-    noticeQueue?.dismiss();
-  };
-  elements.dismiss.addEventListener("click", dismissHandler);
+  stack = createNoticeStack({ render: renderStack });
 }
 
 export function setNotice(message: string, isError = false): void {
-  noticeQueue?.present(message, isError);
+  stack?.present(message, isError);
 }
 
 export function queueNotice(message: string, isError = false): void {
-  noticeQueue?.enqueue(message, isError);
+  stack?.enqueue(message, isError);
 }
 
 export function logClientEvent(message: string): void {
