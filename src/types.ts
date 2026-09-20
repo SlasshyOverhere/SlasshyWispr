@@ -411,3 +411,13 @@ export interface SttTimeoutBoundsResponse {
   minSeconds: number;
   maxSeconds: number;
 }
+
+/**
+ * Reply-length bounds for one assistant call, as owned by the backend. The
+ * pane's input range and the stored-value clamp both read these.
+ */
+export interface MaxTokensBoundsResponse {
+  defaultTokens: number;
+  minTokens: number;
+  maxTokens: number;
+}

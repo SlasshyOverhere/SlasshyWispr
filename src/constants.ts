@@ -38,7 +38,7 @@ export const EMPTY_HISTORY_HINT = "No turns yet. Start dictating to see your rec
 // No DEFAULT_SYSTEM_PROMPT here on purpose: the built-in prompt is owned by the
 // backend (src-tauri/src/constants.rs) and an empty setting means "use it".
 export const DEFAULT_TEMPERATURE = 0.35;
-export const DEFAULT_MAX_TOKENS = 320;
+
 export const DEFAULT_API_BASE_URL = "";
 export const DEFAULT_STT_MODEL_NAME = "";
 export const DEFAULT_AI_MODEL_NAME = "";

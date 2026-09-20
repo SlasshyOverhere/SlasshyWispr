@@ -125,6 +125,21 @@ pub(crate) struct AssistantPipelineResponse {
     #[serde(flatten, default)]
     pub(crate) outcome: PipelineRunOutcome,
 }
+/// Bounds for one assistant reply. The frontend renders these and the backend
+/// enforces them, so they are stated once, here.
+pub(crate) const MAX_TOKENS_DEFAULT: u32 = 320;
+pub(crate) const MAX_TOKENS_MIN: u32 = 64;
+pub(crate) const MAX_TOKENS_MAX: u32 = 1024;
+
+/// Clamp a user-set token ceiling. Below the minimum a reply is cut off
+/// mid-sentence; above the maximum one dictation can hold the pipeline open.
+pub(crate) fn resolve_max_tokens(requested: Option<u32>) -> u32 {
+    match requested {
+        Some(tokens) => tokens.clamp(MAX_TOKENS_MIN, MAX_TOKENS_MAX),
+        None => MAX_TOKENS_DEFAULT,
+    }
+}
+
 /// The prompt the AI stages run with, given whatever the frontend sent.
 ///
 /// An absent or empty setting means "use the built-in prompt". The frontend
@@ -473,7 +488,7 @@ pub(crate) async fn run_assistant_pipeline(
     // --- Delegate decision logic to the orchestrator ---
     let system_prompt = resolve_system_prompt(request.system_prompt.as_deref());
     let temperature = request.temperature.unwrap_or(0.35).clamp(0.0, 1.2);
-    let max_tokens = request.max_tokens.unwrap_or(320).clamp(64, 1024);
+    let max_tokens = resolve_max_tokens(request.max_tokens);
 
     let orch_state = crate::pipeline::orchestration::PipelineState::new();
     // Seed orchestrator state with any existing pending rewrite

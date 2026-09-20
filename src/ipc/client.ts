@@ -17,6 +17,7 @@ import type {
   LocalSttRuntimeStateResponse,
   LocalSttWarmupResponse,
   NativeCapturedAudio,
+  MaxTokensBoundsResponse,
   NativeCaptureInfo,
   OllamaPullResponse,
   OllamaStatusResponse,
@@ -200,6 +201,10 @@ export function logClientEvent(message: string): Promise<void> {
 
 export function sttTimeoutBounds(): Promise<SttTimeoutBoundsResponse> {
   return invoke(IPC_COMMANDS.sttTimeoutBounds);
+}
+
+export function maxTokensBounds(): Promise<MaxTokensBoundsResponse> {
+  return invoke(IPC_COMMANDS.maxTokensBounds);
 }
 
 // ===== Providers / Ollama =====

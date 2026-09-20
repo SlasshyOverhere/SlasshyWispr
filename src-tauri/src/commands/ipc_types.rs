@@ -94,6 +94,15 @@ pub(crate) struct SttTimeoutBoundsResponse {
     pub(crate) max_seconds: u64,
 }
 
+/// Same contract for the assistant's token ceiling.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MaxTokensBoundsResponse {
+    pub(crate) default_tokens: u32,
+    pub(crate) min_tokens: u32,
+    pub(crate) max_tokens: u32,
+}
+
 // ===== DAY-1 pipeline run contract (shared with commands::pipeline + TS) =====
 // Flatten these into the pipeline request/response so the JSON shape has one
 // source of truth. All fields defaulted: old frontends that omit them keep

@@ -1,4 +1,5 @@
 import {
+  useMaxTokensBounds,
   useSettingsSnapshot,
   useSttTimeoutBounds,
   dispatchSettingsPatch,
@@ -7,6 +8,7 @@ import {
 export function PipelineSettingsPane() {
   const settings = useSettingsSnapshot();
   const sttTimeoutBounds = useSttTimeoutBounds();
+  const maxTokensBounds = useMaxTokensBounds();
 
   return (
     <section id="settingsPanePipeline" className="settings-pane" data-settings-pane="pipeline" hidden>
@@ -63,8 +65,8 @@ export function PipelineSettingsPane() {
         <input
           id="maxTokensInput"
           type="number"
-          min="64"
-          max="1024"
+          min={maxTokensBounds.minTokens}
+          max={maxTokensBounds.maxTokens}
           step="16"
           value={settings.maxTokens}
           onChange={(event) => dispatchSettingsPatch({ maxTokens: Number(event.target.value) })}

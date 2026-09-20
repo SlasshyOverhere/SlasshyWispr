@@ -6,5 +6,5 @@
  * useSyncExternalStore binding; dispatchSettingsPatch is the single
  * write path back to main.tsx through SETTINGS_PATCH_EVENT.
  */
-export { useSettingsSnapshot, useSttTimeoutBounds } from "./settings-react";
+export { useMaxTokensBounds, useSettingsSnapshot, useSttTimeoutBounds } from "./settings-react";
 export { dispatchSettingsPatch } from "./settings-state";

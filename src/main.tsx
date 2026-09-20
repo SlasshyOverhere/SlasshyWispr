@@ -11,6 +11,7 @@ import {
   captureSelectedText as ipcCaptureSelectedText,
   getAssistantInfo as ipcGetAssistantInfo,
   loadPersistedLocalSettings as ipcLoadPersistedLocalSettings,
+  maxTokensBounds as ipcMaxTokensBounds,
   sttTimeoutBounds as ipcSttTimeoutBounds,
   listDictationRecordingIds as ipcListDictationRecordingIds,
   notePasteTarget as ipcNotePasteTarget,
@@ -75,14 +76,17 @@ import {
 } from "./settings/settings-state";
 import {
   backfillAchievementsFromUsageStats as backfillAchievementsFromUsageStatsService,
+  describeMaxTokensCorrection,
   describeSttTimeoutCorrection,
   getCachedHotkeyDisplay as getCachedHotkeyDisplayService,
   getSettingsCoreDeps as getSettingsCoreDepsService,
   handleSettingsChange as handleSettingsChangeService,
   hydrateSettingsFromNativeStorage as hydrateSettingsFromNativeStorageChangeService,
   initSettingsChange,
+  reconcileMaxTokensWithBounds as reconcileMaxTokensWithBoundsService,
   reconcileSttTimeoutWithBounds as reconcileSttTimeoutWithBoundsService,
 } from "./settings/settings-change";
+import { refreshMaxTokensBounds as refreshMaxTokensBoundsService } from "./settings/max-tokens-bounds";
 import { APP_UPDATE_AUTO_CHECK_CHANGED_EVENT } from "./updater/updater-client-shim";
 import {
   initializeUpdaterPanel as initializeUpdaterPanelService,
@@ -2132,11 +2136,16 @@ async function bootstrap(): Promise<void> {
   logClientEventService("[bootstrap] start");
   // Before the hydrate below: it clamps stored values against these bounds.
   await refreshSttTimeoutBounds(() => ipcSttTimeoutBounds());
+  await refreshMaxTokensBoundsService(() => ipcMaxTokensBounds());
   await hydrateSettingsFromNativeStorageChangeService();
   // The hydrate can restore a value stored under an older, wider range.
   const sttTimeoutCorrection = reconcileSttTimeoutWithBoundsService();
   if (sttTimeoutCorrection) {
     queueNoticeService(describeSttTimeoutCorrection(sttTimeoutCorrection));
+  }
+  const maxTokensCorrection = reconcileMaxTokensWithBoundsService();
+  if (maxTokensCorrection) {
+    queueNoticeService(describeMaxTokensCorrection(maxTokensCorrection));
   }
   logClientEventService(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
 

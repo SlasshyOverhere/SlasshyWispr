@@ -10,6 +10,7 @@
  * (main.tsx), so the first read happens before any IPC answer can exist.
  */
 import type { SttTimeoutBoundsResponse } from "../types";
+import { createBoundsStore } from "./bounds-store";
 
 const FALLBACK_BOUNDS: SttTimeoutBoundsResponse = {
   defaultSeconds: 60,
@@ -17,56 +18,17 @@ const FALLBACK_BOUNDS: SttTimeoutBoundsResponse = {
   maxSeconds: 600,
 };
 
-let bounds: SttTimeoutBoundsResponse = FALLBACK_BOUNDS;
-const listeners = new Set<() => void>();
-
-export function sttTimeoutBounds(): SttTimeoutBoundsResponse {
-  return bounds;
-}
-
-export function subscribeSttTimeoutBounds(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-export function setSttTimeoutBounds(next: SttTimeoutBoundsResponse): void {
-  bounds = normalizeBounds(next);
-  for (const listener of listeners) {
-    listener();
-  }
-}
-
-/**
- * Adopt the backend's bounds. The fetch is a seam so this module stays free of
- * IPC imports and testable without a Tauri environment.
- *
- * A backend that cannot answer cannot clamp either, so the fallback stands
- * rather than the whole settings load failing.
- */
-export async function refreshSttTimeoutBounds(
-  load: () => Promise<SttTimeoutBoundsResponse>,
-): Promise<void> {
-  try {
-    setSttTimeoutBounds(await load());
-  } catch {
-    // Keep the fallback bounds.
-  }
-}
-
 /** A malformed answer must not widen the range the pane offers. */
-function normalizeBounds(
-  next: Partial<SttTimeoutBoundsResponse> | null | undefined,
-): SttTimeoutBoundsResponse {
-  const defaultSeconds = Number(next?.defaultSeconds);
-  const minSeconds = Number(next?.minSeconds);
-  const maxSeconds = Number(next?.maxSeconds);
+function normalizeBounds(next: unknown): SttTimeoutBoundsResponse | null {
+  const candidate = next as Partial<SttTimeoutBoundsResponse> | null | undefined;
+  const defaultSeconds = Number(candidate?.defaultSeconds);
+  const minSeconds = Number(candidate?.minSeconds);
+  const maxSeconds = Number(candidate?.maxSeconds);
   const usable = [defaultSeconds, minSeconds, maxSeconds].every(
     (value) => Number.isFinite(value) && value > 0,
   );
   if (!usable || minSeconds > maxSeconds) {
-    return FALLBACK_BOUNDS;
+    return null;
   }
   return {
     defaultSeconds: Math.min(Math.max(defaultSeconds, minSeconds), maxSeconds),
@@ -75,8 +37,10 @@ function normalizeBounds(
   };
 }
 
-/** Test seam: drop back to the pre-IPC fallback. */
-export function resetSttTimeoutBoundsForTests(): void {
-  bounds = FALLBACK_BOUNDS;
-  listeners.clear();
-}
+const store = createBoundsStore<SttTimeoutBoundsResponse>(FALLBACK_BOUNDS, normalizeBounds);
+
+export const sttTimeoutBounds = store.read;
+export const subscribeSttTimeoutBounds = store.subscribe;
+export const setSttTimeoutBounds = store.set;
+export const refreshSttTimeoutBounds = store.refresh;
+export const resetSttTimeoutBoundsForTests = store.reset;

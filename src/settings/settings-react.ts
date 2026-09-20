@@ -7,10 +7,18 @@
 import { useSyncExternalStore } from "react";
 import { getSettingsSnapshot, subscribeSettings } from "./settings-state";
 import {
+  maxTokensBounds,
+  subscribeMaxTokensBounds,
+} from "./max-tokens-bounds";
+import {
   sttTimeoutBounds,
   subscribeSttTimeoutBounds,
 } from "./stt-timeout-bounds";
-import type { PersistedSettings, SttTimeoutBoundsResponse } from "../types";
+import type {
+  MaxTokensBoundsResponse,
+  PersistedSettings,
+  SttTimeoutBoundsResponse,
+} from "../types";
 
 export function useSettingsSnapshot(): PersistedSettings {
   return useSyncExternalStore(
@@ -29,5 +37,13 @@ export function useSttTimeoutBounds(): SttTimeoutBoundsResponse {
     subscribeSttTimeoutBounds,
     sttTimeoutBounds,
     sttTimeoutBounds,
+  );
+}
+
+export function useMaxTokensBounds(): MaxTokensBoundsResponse {
+  return useSyncExternalStore(
+    subscribeMaxTokensBounds,
+    maxTokensBounds,
+    maxTokensBounds,
   );
 }

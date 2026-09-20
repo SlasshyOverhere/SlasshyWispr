@@ -5,7 +5,6 @@ import {
   DEFAULT_HOTKEY,
   DEFAULT_COMMAND_HOTKEY,
   DEFAULT_LOCAL_OLLAMA_BASE_URL,
-  DEFAULT_MAX_TOKENS,
   DEFAULT_PIPER_EMOTION,
   DEFAULT_PIPER_QUALITY,
   DEFAULT_PIPER_SPEED,
@@ -19,10 +18,12 @@ import {
   DEFAULT_STT_MODEL_NAME,
   DEFAULT_STYLE_PROFILE,
   DEFAULT_TEMPERATURE,
+  // No token default or bounds here: the backend owns them (see max-tokens-bounds).
   DEFAULT_TTS_ENGINE,
   DICTATION_LANGUAGE_LABELS,
   SETTINGS_STORAGE_KEY,
 } from "../constants";
+import { maxTokensBounds } from "../settings/max-tokens-bounds";
 import { sttTimeoutBounds } from "../settings/stt-timeout-bounds";
 import type {
   CaptureBackend,
@@ -243,7 +244,7 @@ export function defaultSettings(): PersistedSettings {
     styleProfile: DEFAULT_STYLE_PROFILE,
     systemPrompt: "",
     temperature: DEFAULT_TEMPERATURE,
-    maxTokens: DEFAULT_MAX_TOKENS,
+    maxTokens: maxTokensBounds().defaultTokens,
     sttTimeoutSeconds: sttTimeoutBounds().defaultSeconds,
     launchAtLogin: true,
     showFlowBar: false,
@@ -314,6 +315,7 @@ export function loadSettings(): PersistedSettings {
   const defaults = defaultSettings();
   // Read once: the bounds are backend-owned and can change after boot.
   const sttBounds = sttTimeoutBounds();
+  const tokenBounds = maxTokensBounds();
 
   const rawCurrent = localStorage.getItem(SETTINGS_STORAGE_KEY);
   const raw = rawCurrent;
@@ -375,7 +377,12 @@ export function loadSettings(): PersistedSettings {
       styleProfile: asStyleProfile(parsed.styleProfile),
       systemPrompt: coerceSystemPrompt(parsed.systemPrompt, defaults.systemPrompt),
       temperature: coerceNumber(parsed.temperature, defaults.temperature, 0, 1.2),
-      maxTokens: coerceInteger(parsed.maxTokens, defaults.maxTokens, 64, 4096),
+      maxTokens: coerceInteger(
+        parsed.maxTokens,
+        defaults.maxTokens,
+        tokenBounds.minTokens,
+        tokenBounds.maxTokens,
+      ),
       sttTimeoutSeconds: coerceInteger(
         parsed.sttTimeoutSeconds,
         defaults.sttTimeoutSeconds,

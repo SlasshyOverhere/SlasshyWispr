@@ -10,7 +10,8 @@ use log::info;
 use serde_json::Value;
 use tauri::AppHandle;
 
-use crate::commands::ipc_types::SttTimeoutBoundsResponse;
+use crate::commands::ipc_types::{MaxTokensBoundsResponse, SttTimeoutBoundsResponse};
+use crate::commands::pipeline::{MAX_TOKENS_DEFAULT, MAX_TOKENS_MAX, MAX_TOKENS_MIN};
 use crate::pipeline::routing::{validate_api_base_url, validate_local_ollama_base_url};
 use crate::security;
 use crate::services::settings_store::{
@@ -25,6 +26,15 @@ pub(crate) fn stt_timeout_bounds() -> SttTimeoutBoundsResponse {
         default_seconds: STT_TIMEOUT_DEFAULT.as_secs(),
         min_seconds: STT_TIMEOUT_MIN_SECS,
         max_seconds: STT_TIMEOUT_MAX_SECS,
+    }
+}
+
+#[tauri::command]
+pub(crate) fn max_tokens_bounds() -> MaxTokensBoundsResponse {
+    MaxTokensBoundsResponse {
+        default_tokens: MAX_TOKENS_DEFAULT,
+        min_tokens: MAX_TOKENS_MIN,
+        max_tokens: MAX_TOKENS_MAX,
     }
 }
 
@@ -186,7 +196,8 @@ pub(crate) fn validate_settings_payload(parsed: &serde_json::Value) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    use super::{stt_timeout_bounds, validate_settings_payload};
+    use super::{max_tokens_bounds, stt_timeout_bounds, validate_settings_payload};
+    use crate::commands::pipeline::resolve_max_tokens;
     use crate::services::transcribe::resolve_stt_timeout;
 
     #[test]
@@ -208,6 +219,25 @@ mod tests {
             bounds.max_seconds
         );
         assert!(bounds.min_seconds < bounds.max_seconds);
+    }
+
+    #[test]
+    fn advertised_max_tokens_bounds_match_the_clamp() {
+        let bounds = max_tokens_bounds();
+        assert_eq!(
+            resolve_max_tokens(None),
+            bounds.default_tokens,
+            "the advertised default must be the one the clamp applies"
+        );
+        assert_eq!(
+            resolve_max_tokens(Some(bounds.min_tokens)),
+            bounds.min_tokens
+        );
+        assert_eq!(
+            resolve_max_tokens(Some(bounds.max_tokens)),
+            bounds.max_tokens
+        );
+        assert!(bounds.min_tokens < bounds.max_tokens);
     }
 
     fn payload(json: serde_json::Value) -> serde_json::Value {

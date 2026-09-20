@@ -29,6 +29,7 @@ import {
   type SettingsHandleEffects,
 } from "./settings-handle";
 import { buildShortcutSyncSignature, summarizeSettingsForDiagnostics } from "./settings-signatures";
+import { maxTokensBounds } from "./max-tokens-bounds";
 import { sttTimeoutBounds } from "./stt-timeout-bounds";
 import type { SettingsFormRefs } from "./settings-form-refs";
 import type { SettingsCoreDeps } from "./settings-wiring";
@@ -157,6 +158,18 @@ export function describeSttTimeoutCorrection(correction: SttTimeoutCorrection): 
   return `Request Timeout ${correction.previousSeconds}s is outside the supported ${correction.minSeconds}-${correction.maxSeconds}s range; set to ${correction.seconds}s. Change it in Settings > Pipeline.`;
 }
 
+/// A stored token ceiling that had to be moved back inside the backend's bounds.
+export interface MaxTokensCorrection {
+  previousTokens: number;
+  tokens: number;
+  minTokens: number;
+  maxTokens: number;
+}
+
+export function describeMaxTokensCorrection(correction: MaxTokensCorrection): string {
+  return `Max Tokens ${correction.previousTokens} is outside the supported ${correction.minTokens}-${correction.maxTokens} range; set to ${correction.tokens}. Change it in Settings > Pipeline.`;
+}
+
 /**
  * Bring a stored STT timeout back inside the backend's bounds.
  *
@@ -195,6 +208,35 @@ export function reconcileSttTimeoutWithBounds(): SttTimeoutCorrection | null {
     seconds: reconciled,
     minSeconds,
     maxSeconds,
+  };
+}
+
+/// Same shape as the STT-timeout reconcile, and the same reason: settings load
+/// before bootstrap can ask the backend for its bounds, so a value stored under
+/// an older, wider range would otherwise stay on screen and be clamped silently.
+export function reconcileMaxTokensWithBounds(): MaxTokensCorrection | null {
+  const current = changeDeps.getSettings();
+  const { defaultTokens, minTokens, maxTokens } = maxTokensBounds();
+  const reconciled = coerceInteger(current.maxTokens, defaultTokens, minTokens, maxTokens);
+  if (reconciled === current.maxTokens) {
+    return null;
+  }
+
+  const next: PersistedSettings = { ...current, maxTokens: reconciled };
+  changeDeps.setSettings(next);
+  changeDeps.applySettingsToForm(changeDeps.getFormRefs(), changeCoreDeps, next);
+  changeDeps.commitSettingsSnapshot(next);
+  changeDeps.warn(
+    `[settings] max tokens ${current.maxTokens} was outside the backend bounds ${minTokens}-${maxTokens}; corrected to ${reconciled}`,
+  );
+  if (changeDeps.isTauri()) {
+    changeDeps.persist(next);
+  }
+  return {
+    previousTokens: current.maxTokens,
+    tokens: reconciled,
+    minTokens,
+    maxTokens,
   };
 }
 
