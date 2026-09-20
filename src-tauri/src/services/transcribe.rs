@@ -666,17 +666,62 @@ pub(crate) fn mime_to_extension(mime: &str) -> &'static str {
 pub(crate) fn transcript_candidate_score(input: &str) -> usize {
     input.chars().filter(|ch| ch.is_alphanumeric()).count()
 }
+
 /// One transcription request against an OpenAI-compatible STT endpoint.
+///
+/// Required inputs are named in [`SttRequest::new`] and every other option
+/// starts at a default, so adding one (timeouts, vocabulary hints, diarization)
+/// only needs a default here and a setter below — existing call sites keep
+/// working untouched.
 #[derive(Clone, Copy)]
 pub(crate) struct SttRequest<'a> {
-    pub(crate) api_key: Option<&'a str>,
-    pub(crate) api_base_url: &'a str,
-    pub(crate) stt_model: &'a str,
-    pub(crate) audio_bytes: &'a [u8],
-    pub(crate) audio_mime_type: &'a str,
-    pub(crate) language: Option<&'a str>,
-    /// Identifies the caller in logs and error messages.
-    pub(crate) source_label: &'a str,
+    api_key: Option<&'a str>,
+    api_base_url: &'a str,
+    stt_model: &'a str,
+    audio_bytes: &'a [u8],
+    audio_mime_type: &'a str,
+    language: Option<&'a str>,
+    /// Identifies the caller in logs and error messages. Required rather than
+    /// defaulted: a wrong label misattributes every log line downstream.
+    source_label: &'a str,
+}
+
+impl<'a> SttRequest<'a> {
+    pub(crate) fn new(
+        api_base_url: &'a str,
+        stt_model: &'a str,
+        audio_bytes: &'a [u8],
+        source_label: &'a str,
+    ) -> Self {
+        Self {
+            api_key: None,
+            api_base_url,
+            stt_model,
+            audio_bytes,
+            audio_mime_type: "",
+            language: None,
+            source_label,
+        }
+    }
+
+    pub(crate) fn api_key(self, api_key: Option<&'a str>) -> Self {
+        Self { api_key, ..self }
+    }
+
+    /// An empty MIME type sends the audio with no Content-Type, leaving the
+    /// endpoint to infer the format from the file name.
+    pub(crate) fn audio_mime_type(self, audio_mime_type: &'a str) -> Self {
+        Self {
+            audio_mime_type,
+            ..self
+        }
+    }
+
+    /// Retargets a copy of the request, which is how the multi-language retry
+    /// loop drives one language per attempt.
+    pub(crate) fn language(self, language: Option<&'a str>) -> Self {
+        Self { language, ..self }
+    }
 }
 
 pub(crate) async fn transcribe_audio(
@@ -696,10 +741,7 @@ pub(crate) async fn transcribe_audio(
     if whisper_family {
         let transcript = transcribe_audio_openai_compatible(
             client,
-            SttRequest {
-                language: effective_language.as_deref(),
-                ..request
-            },
+            request.language(effective_language.as_deref()),
         )
         .await?;
 
@@ -719,10 +761,7 @@ pub(crate) async fn transcribe_audio(
         for candidate_language in &normalized_allowed_languages {
             match transcribe_audio_openai_compatible(
                 client,
-                SttRequest {
-                    language: Some(candidate_language.as_str()),
-                    ..request
-                },
+                request.language(Some(candidate_language.as_str())),
             )
             .await
             {
@@ -756,14 +795,8 @@ pub(crate) async fn transcribe_audio(
         }
     }
 
-    transcribe_audio_openai_compatible(
-        client,
-        SttRequest {
-            language: effective_language.as_deref(),
-            ..request
-        },
-    )
-    .await
+    transcribe_audio_openai_compatible(client, request.language(effective_language.as_deref()))
+        .await
 }
 
 pub(crate) async fn transcribe_audio_local(
@@ -1062,6 +1095,37 @@ pub(crate) async fn transcribe_audio_openai_compatible(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stt_request_new_leaves_the_optional_inputs_at_their_defaults() {
+        let audio = [1u8, 2, 3];
+        let request = SttRequest::new("https://example.test/v1", "whisper-1", &audio, "online");
+        assert_eq!(request.api_key, None);
+        // Empty means "send no Content-Type", not "send an empty one".
+        assert_eq!(request.audio_mime_type, "");
+        assert_eq!(request.language, None);
+        assert_eq!(request.source_label, "online");
+        assert_eq!(request.audio_bytes, &audio[..]);
+    }
+
+    #[test]
+    fn stt_request_setters_retarget_a_copy() {
+        let audio = [0u8];
+        let base = SttRequest::new("https://example.test/v1", "whisper-1", &audio, "online");
+        let retargeted = base
+            .language(Some("fr"))
+            .api_key(Some("secret"))
+            .audio_mime_type("audio/wav");
+
+        // The retry loop reuses one request across attempts, so a retarget must
+        // not mutate the request it came from.
+        assert_eq!(base.language, None);
+        assert_eq!(base.api_key, None);
+        assert_eq!(base.audio_mime_type, "");
+        assert_eq!(retargeted.language, Some("fr"));
+        assert_eq!(retargeted.api_key, Some("secret"));
+        assert_eq!(retargeted.audio_mime_type, "audio/wav");
+    }
 
     #[test]
     fn mime_to_extension_handles_common_types() {

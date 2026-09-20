@@ -234,15 +234,10 @@ pub(crate) async fn run_assistant_pipeline(
         } => {
             transcribe_audio(
                 &state.http,
-                SttRequest {
-                    api_key: Some(api_key.as_str()),
-                    api_base_url,
-                    stt_model,
-                    audio_bytes: &audio_bytes,
-                    audio_mime_type: request.audio_mime_type.trim(),
-                    language: request.language.as_deref(),
-                    source_label: "online",
-                },
+                SttRequest::new(api_base_url, stt_model, &audio_bytes, "online")
+                    .api_key(Some(api_key.as_str()))
+                    .audio_mime_type(request.audio_mime_type.trim())
+                    .language(request.language.as_deref()),
                 request.allowed_languages.as_deref(),
             )
             .await?
