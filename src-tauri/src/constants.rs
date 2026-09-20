@@ -33,6 +33,8 @@ pub const TRAY_MENU_COPY_LAST_RESPONSE_ID: &str = "copy-last-response";
 pub const TRAY_MENU_DASHBOARD_ID: &str = "dashboard";
 pub const TRAY_MENU_QUIT_ID: &str = "quit";
 pub const STARTUP_ARG_START_IN_TRAY: &str = "--start-in-tray";
+/// Per-user hive; Explorer verbs here need no elevation.
+pub const SHELL_VERB_REGISTRY_ROOT: &str = "Software\\Classes";
 pub const APP_EVENT_MAIN_WINDOW_VISIBILITY: &str = "slasshywispr://main-window-visibility";
 pub const APP_EVENT_UPDATE_INSTALL_PROGRESS: &str = "slasshywispr://update-install-progress";
 pub const TRAY_MENU_UPDATE_AVAILABLE_ID: &str = "update-available";

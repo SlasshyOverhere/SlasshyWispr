@@ -15,9 +15,10 @@ pub mod updater;
 pub mod windows;
 
 pub(crate) use input::{
-    capture_selected_text, configure_launch_at_login, control_media_playback,
-    get_foreground_input_block_status, launch_at_login_status, mute_system_audio,
-    note_paste_target, paste_clipboard_text, paste_text_via_clipboard, set_clipboard_text,
+    capture_selected_text, configure_launch_at_login, configure_shell_integration,
+    control_media_playback, get_foreground_input_block_status, launch_at_login_status,
+    mute_system_audio, note_paste_target, paste_clipboard_text, paste_text_via_clipboard,
+    set_clipboard_text, shell_integration_status,
 };
 pub(crate) use local_stt::{
     deactivate_local_stt_model, delete_local_stt_model, download_local_stt_model,

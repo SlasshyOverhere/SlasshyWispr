@@ -13,10 +13,10 @@ pub mod state;
 pub mod updater;
 use commands::{
     capture_selected_text, check_for_app_update, clear_dictation_recordings, clone_coqui_voice,
-    configure_launch_at_login, control_media_playback, deactivate_local_stt_model,
-    delete_local_stt_model, download_and_install_app_update, download_local_stt_model,
-    ensure_voice_model, fetch_local_stt_models, fetch_ollama_models, fetch_provider_models,
-    get_assistant_info, get_coqui_status, get_dictation_recording,
+    configure_launch_at_login, configure_shell_integration, control_media_playback,
+    deactivate_local_stt_model, delete_local_stt_model, download_and_install_app_update,
+    download_local_stt_model, ensure_voice_model, fetch_local_stt_models, fetch_ollama_models,
+    fetch_provider_models, get_assistant_info, get_coqui_status, get_dictation_recording,
     get_foreground_input_block_status, get_local_stt_download_status,
     get_local_stt_hardware_advice, get_local_stt_model_status, get_local_stt_runtime_state,
     get_ollama_status, get_tts_runtime_setup_status, install_ollama, launch_at_login_status,
@@ -25,9 +25,10 @@ use commands::{
     mute_system_audio, note_paste_target, open_local_stt_model_path, paste_clipboard_text,
     paste_text_via_clipboard, preview_coqui_voice, pull_ollama_model, run_assistant_pipeline,
     save_dictation_recording, save_persisted_local_settings, set_clipboard_text,
-    set_tray_update_available, setup_assistant_runtime, setup_coqui_runtime, show_update_settings,
-    start_tts_runtime_setup, toggle_main_window_visibility, validate_coqui, validate_piper,
-    warmup_local_stt_model, TtsSetupState,
+    set_tray_update_available, setup_assistant_runtime, setup_coqui_runtime,
+    shell_integration_status, show_update_settings, start_tts_runtime_setup,
+    toggle_main_window_visibility, validate_coqui, validate_piper, warmup_local_stt_model,
+    TtsSetupState,
 };
 use state::AppState;
 
@@ -237,6 +238,8 @@ pub fn run() {
             show_update_settings,
             set_tray_update_available,
             toggle_main_window_visibility,
+            configure_shell_integration,
+            shell_integration_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

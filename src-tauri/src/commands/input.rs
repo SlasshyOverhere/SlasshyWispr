@@ -195,6 +195,24 @@ pub(crate) async fn paste_clipboard_text() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub(crate) async fn configure_shell_integration(enabled: bool) -> Result<(), String> {
+    let exe = std::env::current_exe()
+        .map_err(|error| format!("Failed to resolve the application path: {error}"))?;
+    if enabled {
+        crate::platform::shell_integration::register_shell_integration(&exe)
+    } else {
+        crate::platform::shell_integration::unregister_shell_integration()
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn shell_integration_status() -> Result<bool, String> {
+    let exe = std::env::current_exe()
+        .map_err(|error| format!("Failed to resolve the application path: {error}"))?;
+    Ok(crate::platform::shell_integration::shell_integration_is_registered(&exe))
+}
+
+#[tauri::command]
 pub(crate) async fn note_paste_target() -> Result<i64, String> {
     #[cfg(target_os = "windows")]
     {

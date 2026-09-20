@@ -70,6 +70,16 @@ export function downloadAndInstallAppUpdate(request: InstallAppUpdateRequest): P
   return invoke(IPC_COMMANDS.downloadAndInstallAppUpdate, { request });
 }
 
+// ===== Shell integration =====
+
+export function configureShellIntegration(enabled: boolean): Promise<void> {
+  return invoke(IPC_COMMANDS.configureShellIntegration, { enabled });
+}
+
+export function shellIntegrationStatus(): Promise<boolean> {
+  return invoke<boolean>(IPC_COMMANDS.shellIntegrationStatus);
+}
+
 // ===== Settings =====
 
 export function savePersistedLocalSettings(payload: string): Promise<void> {

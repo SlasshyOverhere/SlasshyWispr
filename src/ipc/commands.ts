@@ -58,6 +58,9 @@ export const IPC_COMMANDS = {
   runAssistantPipeline: "run_assistant_pipeline",
   // Windows
   toggleMainWindowVisibility: "toggle_main_window_visibility",
+  // Shell integration
+  configureShellIntegration: "configure_shell_integration",
+  shellIntegrationStatus: "shell_integration_status",
 } as const;
 
 export type IpcCommandName = (typeof IPC_COMMANDS)[keyof typeof IPC_COMMANDS];
