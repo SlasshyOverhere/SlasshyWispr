@@ -80,6 +80,7 @@ import {
   handleSettingsChange as handleSettingsChangeService,
   hydrateSettingsFromNativeStorage as hydrateSettingsFromNativeStorageChangeService,
   initSettingsChange,
+  reconcileSttTimeoutWithBounds as reconcileSttTimeoutWithBoundsService,
 } from "./settings/settings-change";
 import { APP_UPDATE_AUTO_CHECK_CHANGED_EVENT } from "./updater/updater-client-shim";
 import {
@@ -2120,6 +2121,8 @@ async function bootstrap(): Promise<void> {
   // Before the hydrate below: it clamps stored values against these bounds.
   await refreshSttTimeoutBounds(() => ipcSttTimeoutBounds());
   await hydrateSettingsFromNativeStorageChangeService();
+  // The hydrate can restore a value stored under an older, wider range.
+  reconcileSttTimeoutWithBoundsService();
   logClientEventService(`[bootstrap] settings after hydrate ${summarizeSettingsForDiagnostics(settings)}`);
 
   // Register global hotkeys immediately — user should be able to press the

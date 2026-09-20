@@ -18,9 +18,15 @@ import {
   handleSettingsChange,
   hydrateSettingsFromNativeStorage,
   initSettingsChange,
+  reconcileSttTimeoutWithBounds,
   settingsHandleEffects,
   type SettingsChangeDeps,
 } from "./settings-change";
+import {
+  resetSttTimeoutBoundsForTests,
+  setSttTimeoutBounds,
+  sttTimeoutBounds,
+} from "./stt-timeout-bounds";
 
 // The pipeline touches real DOM APIs (setCustomValidity, document theme
 // root, classList on panels); stub them at module scope.
@@ -298,6 +304,8 @@ function wireHarness(overrides: {
 }
 
 beforeEach(() => {
+  // Reset first: defaultSettings() reads these bounds.
+  resetSttTimeoutBoundsForTests();
   wireHarness();
 });
 
@@ -309,6 +317,55 @@ describe("handleSettingsChange", () => {
     expect(harness.persists()).toBe(1);
     expect(getCachedHotkeyDisplay()).toContain("Ctrl");
     expect(harness.getSettings().assistantName).toBe("Nova");
+  });
+});
+
+describe("reconcileSttTimeoutWithBounds", () => {
+  it("raises a stored timeout below the backend minimum", () => {
+    // A value persisted while the backend allowed a wider range. Leaving it
+    // would show one number on screen while every request used another.
+    setSttTimeoutBounds({ defaultSeconds: 60, minSeconds: 120, maxSeconds: 600 });
+    const harness = wireHarness({
+      settings: { ...defaultSettings(), sttTimeoutSeconds: 30 },
+    });
+
+    expect(reconcileSttTimeoutWithBounds()).toBe(true);
+    expect(harness.getSettings().sttTimeoutSeconds).toBe(120);
+    expect(harness.snapshots()).toBe(1);
+    expect(harness.persists()).toBe(1);
+  });
+
+  it("lowers a stored timeout above the backend maximum", () => {
+    setSttTimeoutBounds({ defaultSeconds: 60, minSeconds: 10, maxSeconds: 120 });
+    const harness = wireHarness({
+      settings: { ...defaultSettings(), sttTimeoutSeconds: 900 },
+    });
+
+    expect(reconcileSttTimeoutWithBounds()).toBe(true);
+    expect(harness.getSettings().sttTimeoutSeconds).toBe(120);
+  });
+
+  it("leaves an in-range timeout untouched", () => {
+    const harness = wireHarness({
+      settings: { ...defaultSettings(), sttTimeoutSeconds: 120 },
+    });
+
+    expect(reconcileSttTimeoutWithBounds()).toBe(false);
+    expect(harness.getSettings().sttTimeoutSeconds).toBe(120);
+    // No write, so a normal boot does not churn the settings file.
+    expect(harness.snapshots()).toBe(0);
+    expect(harness.persists()).toBe(0);
+  });
+
+  it("repairs a non-numeric stored value", () => {
+    const harness = wireHarness({
+      settings: { ...defaultSettings(), sttTimeoutSeconds: Number.NaN },
+    });
+
+    expect(reconcileSttTimeoutWithBounds()).toBe(true);
+    expect(harness.getSettings().sttTimeoutSeconds).toBe(
+      sttTimeoutBounds().defaultSeconds,
+    );
   });
 });
 

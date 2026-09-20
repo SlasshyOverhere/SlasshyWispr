@@ -18,6 +18,7 @@ import type {
 } from "../types";
 import { newlyUnlockedAchievements } from "../analytics/analytics-service";
 import { formatHotkeyForDisplay } from "../hotkeys/hotkey-service";
+import { coerceInteger } from "../state/settings-store";
 import {
   hydrateSettingsFromNativeStorage as hydrateSettingsFromNativeStoragePipeline,
   type SettingsHydrateDeps,
@@ -28,6 +29,7 @@ import {
   type SettingsHandleEffects,
 } from "./settings-handle";
 import { buildShortcutSyncSignature, summarizeSettingsForDiagnostics } from "./settings-signatures";
+import { sttTimeoutBounds } from "./stt-timeout-bounds";
 import type { SettingsFormRefs } from "./settings-form-refs";
 import type { SettingsCoreDeps } from "./settings-wiring";
 
@@ -139,6 +141,41 @@ export async function hydrateSettingsFromNativeStorage(): Promise<void> {
     changeDeps.setSettings(hydrated);
     changeDeps.commitSettingsSnapshot(hydrated);
   }
+}
+
+/**
+ * Bring a stored STT timeout back inside the backend's bounds.
+ *
+ * Settings load before bootstrap can ask the backend for its bounds, so a value
+ * persisted under an older, wider range would otherwise stay on screen — and be
+ * silently clamped on every request — until the user next edited a field.
+ *
+ * Returns whether it corrected anything.
+ */
+export function reconcileSttTimeoutWithBounds(): boolean {
+  const current = changeDeps.getSettings();
+  const { defaultSeconds, minSeconds, maxSeconds } = sttTimeoutBounds();
+  const reconciled = coerceInteger(
+    current.sttTimeoutSeconds,
+    defaultSeconds,
+    minSeconds,
+    maxSeconds,
+  );
+  if (reconciled === current.sttTimeoutSeconds) {
+    return false;
+  }
+
+  const next: PersistedSettings = { ...current, sttTimeoutSeconds: reconciled };
+  changeDeps.setSettings(next);
+  changeDeps.applySettingsToForm(changeDeps.getFormRefs(), changeCoreDeps, next);
+  changeDeps.commitSettingsSnapshot(next);
+  changeDeps.warn(
+    `[settings] stt timeout ${current.sttTimeoutSeconds}s was outside the backend bounds ${minSeconds}-${maxSeconds}s; corrected to ${reconciled}s`,
+  );
+  if (changeDeps.isTauri()) {
+    changeDeps.persist(next);
+  }
+  return true;
 }
 
 export async function handleSettingsChange(): Promise<void> {
