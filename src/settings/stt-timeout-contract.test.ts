@@ -1,28 +1,22 @@
 /**
- * STT timeout bounds — the Rust <-> TypeScript half of the contract.
+ * STT timeout bounds — the numbers half of the Rust <-> TypeScript contract.
  *
  * `advertised_stt_timeout_bounds_match_the_clamp` (src-tauri/src/commands/settings.rs)
- * proves the command and the clamp agree, but both of those are Rust. Two things
- * cross the language boundary with no compiler between them:
+ * proves the command and the clamp agree, but both of those are Rust. What is
+ * pinned here is the one number that crosses the boundary with no compiler
+ * between it: the fallback in stt-timeout-bounds.ts, which is read at boot before
+ * any IPC answer can exist and is used outright by the browser dev build.
  *
- *   - the fallback numbers in stt-timeout-bounds.ts, read at boot before any IPC
- *     answer can exist and used outright by the browser dev build, and
- *   - the wire field names, where a rename on either side turns every field into
- *     `undefined` and silently parks the pane on the fallback forever.
- *
- * Both failures are invisible at runtime, so they are pinned here by reading the
- * Rust source. Parsing is deliberately strict: a pattern that stops matching must
- * fail the test rather than pass it vacuously.
+ * The wire field names and the command registration are not repeated here — see
+ * src/ipc/wire-contract.test.ts, which covers those for every payload at once.
+ * Parsing is deliberately strict: a pattern that stops matching must fail the
+ * test rather than pass it vacuously.
  */
 import { describe, expect, it } from "bun:test";
-import { IPC_COMMANDS } from "../ipc/commands";
 import { resetSttTimeoutBoundsForTests, sttTimeoutBounds } from "./stt-timeout-bounds";
 
 const TRANSCRIBE_RS = "src-tauri/src/services/transcribe.rs";
 const SETTINGS_RS = "src-tauri/src/commands/settings.rs";
-const IPC_TYPES_RS = "src-tauri/src/commands/ipc_types.rs";
-const LIB_RS = "src-tauri/src/lib.rs";
-const TYPES_TS = "src/types.ts";
 
 async function read(path: string): Promise<string> {
   const file = Bun.file(path);
@@ -47,28 +41,6 @@ function fnBody(source: string, name: string): string {
     new RegExp(`fn ${name}\\([^)]*\\)[^{]*\\{([\\s\\S]*?)\\n\\}`),
     `the body of ${name}()`,
   );
-}
-
-function structFields(source: string, name: string): string[] {
-  const body = mustGroup(source, new RegExp(`struct ${name} \\{([^}]*)\\}`), `struct ${name}`);
-  const fields = [...body.matchAll(/pub\(crate\)\s+(\w+)\s*:/g)].map((match) => match[1]);
-  if (fields.length === 0) {
-    throw new Error(`struct ${name} parsed but has no fields — check the pattern`);
-  }
-  return fields;
-}
-
-function interfaceFields(source: string, name: string): string[] {
-  const body = mustGroup(source, new RegExp(`interface ${name} \\{([^}]*)\\}`), `interface ${name}`);
-  const fields = [...body.matchAll(/^\s*(\w+)\s*:/gm)].map((match) => match[1]);
-  if (fields.length === 0) {
-    throw new Error(`interface ${name} parsed but has no fields — check the pattern`);
-  }
-  return fields;
-}
-
-function toCamelCase(snake: string): string {
-  return snake.replace(/_([a-z])/g, (_all, letter: string) => letter.toUpperCase());
 }
 
 describe("stt timeout bounds contract", () => {
@@ -112,36 +84,5 @@ describe("stt timeout bounds contract", () => {
     const body = fnBody(await read(TRANSCRIBE_RS), "resolve_stt_timeout");
     expect(body).toContain(".clamp(STT_TIMEOUT_MIN_SECS, STT_TIMEOUT_MAX_SECS)");
     expect(body).toContain("None => STT_TIMEOUT_DEFAULT");
-  });
-
-  it("sends the field names the frontend interface declares", async () => {
-    const rustSource = await read(IPC_TYPES_RS);
-    // Without camelCase on this exact struct the keys arrive snake_case and every
-    // read is undefined, which normalizeBounds rejects into the fallback.
-    expect(rustSource).toMatch(
-      /#\[serde\(rename_all = "camelCase"\)\]\s*pub\(crate\) struct SttTimeoutBoundsResponse/,
-    );
-
-    const wireKeys = structFields(rustSource, "SttTimeoutBoundsResponse").map(toCamelCase);
-    const declaredKeys = interfaceFields(await read(TYPES_TS), "SttTimeoutBoundsResponse");
-    expect(wireKeys.sort()).toEqual([...declaredKeys].sort());
-  });
-
-  it("sends a command name that is registered with Tauri", async () => {
-    const command = IPC_COMMANDS.sttTimeoutBounds;
-    expect(command).toBe("stt_timeout_bounds");
-
-    const settingsSource = await read(SETTINGS_RS);
-    expect(settingsSource).toMatch(new RegExp(`#\\[tauri::command\\]\\s*pub\\(crate\\) fn ${command}\\(`));
-
-    // A command the frontend calls but generate_handler! never lists fails at
-    // runtime as an unknown command, which the caller swallows as "no backend".
-    const libSource = await read(LIB_RS);
-    const registered = mustGroup(
-      libSource,
-      /generate_handler!\[([\s\S]*?)\]/,
-      "the generate_handler! list",
-    );
-    expect(registered).toContain(command);
   });
 });
