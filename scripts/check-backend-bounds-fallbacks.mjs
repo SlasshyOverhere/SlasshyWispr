@@ -37,6 +37,13 @@ const SETS = [
     client: "ipcMaxTokensBounds",
     fields: ["defaultTokens", "minTokens", "maxTokens"],
   },
+  {
+    name: "temperature",
+    owner: "src/settings/temperature-bounds.ts",
+    refresh: "refreshTemperatureBounds",
+    client: "ipcTemperatureBounds",
+    fields: ["defaultTemperature", "minTemperature", "maxTemperature"],
+  },
 ];
 
 const failures = [];

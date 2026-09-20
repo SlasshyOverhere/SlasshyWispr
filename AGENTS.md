@@ -33,7 +33,7 @@ Single-instance enforcement (per spec `2026-07-07-tray-window-toggle-and-single-
 - `src/**/*.test.ts` is excluded from type checking.
 - Path alias `@/` maps to `./src/*`.
 - `pretauri:dev` (`scripts/ensure-valid-dev-exe.mjs`) deletes corrupted Windows dev binaries (`app.exe`/`app.pdb`) before `tauri dev`.
-- `prebuild` runs two gates: `scripts/check-backend-bounds-fallbacks.mjs` fails the build if any TS bounds fallback (`stt-timeout-bounds.ts`, `max-tokens-bounds.ts`) stops being superseded by the backend answer over IPC (static, because the backend's bounds currently equal the fallbacks and no value comparison could tell them apart), and `scripts/generate-wire-types.mjs --check` fails if `src/generated/ipc-wire-types.ts` is not current with the Rust structs. `npm run generate:wire-types` regenerates that file.
+- `prebuild` runs two gates: `scripts/check-backend-bounds-fallbacks.mjs` fails the build if any TS bounds fallback (`stt-timeout-bounds.ts`, `max-tokens-bounds.ts`, `temperature-bounds.ts`) stops being superseded by the backend answer over IPC (static, because the backend's bounds currently equal the fallbacks and no value comparison could tell them apart), and `scripts/generate-wire-types.mjs --check` fails if `src/generated/ipc-wire-types.ts` is not current with the Rust structs. `npm run generate:wire-types` regenerates that file.
 - Tauri v2 dev URL `http://localhost:1421` is hardcoded in `vite.config.ts`.
 - Window is non-resizable, non-maximizable, non-minimizable, with a custom titlebar (`decorations: false`).
 
