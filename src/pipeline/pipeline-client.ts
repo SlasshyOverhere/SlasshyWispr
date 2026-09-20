@@ -312,6 +312,21 @@ export async function runPipeline(
       )} ttsMs=${Math.round(response.ttsLatencyMs)} endToEndMs=${Math.round(response.totalLatencyMs)}`,
     );
 
+    // Dictation only: release the capture gate the moment the transcript is
+    // back, before the delivery tail (paste/clipboard/refresh). The paste
+    // path can block ~1.5s+ (consumption wait) while holding nothing the next
+    // recording needs, so the next hotkey press must not wait for it. Order
+    // matters: clear the flag before markIdle so the record button renders
+    // idle, not "Processing...". Assistant mode keeps the gate until playback
+    // finishes (barge-in stays a deliberate product decision, not a side effect).
+    if (response.mode === "dictation") {
+      clientDeps.setPipelineRunning(false);
+      clientDeps.syncAvailability();
+      if (clientDeps.getStage() !== "recording") {
+        clientDeps.markIdle("Ready for next request.");
+      }
+    }
+
     const resolvedResponse =
       response.mode === "dictation"
         ? {
@@ -384,8 +399,14 @@ export async function runPipeline(
     clientDeps.notify(`Pipeline failed: ${asErrorMessage(error)}`, true);
     clientDeps.transition({ type: "pipeline-failed", reason: `Pipeline failed: ${asErrorMessage(error)}` });
   } finally {
+    // The flag is already cleared up front on the success path; keep this as
+    // the error/blocked-path safety net. refreshAssistantInfo stays off the
+    // ready path — it only re-renders settings chrome, so a slow fetch must
+    // not hold capture availability.
     clientDeps.setPipelineRunning(false);
-    await clientDeps.refreshAssistantInfo();
     clientDeps.syncAvailability();
+    void clientDeps.refreshAssistantInfo().catch(() => {
+      // refreshAssistantInfoSafely already notifies; nothing more to do here.
+    });
   }
 }
