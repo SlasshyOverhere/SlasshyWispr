@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/check-backend-bounds-fallbacks.mjs",
+    "prebuild": "node scripts/check-backend-bounds-fallbacks.mjs && node scripts/generate-wire-types.mjs --check",
+    "generate:wire-types": "node scripts/generate-wire-types.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "pretauri:dev": "node scripts/ensure-valid-dev-exe.mjs",

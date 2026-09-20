@@ -66,6 +66,11 @@ jobs:
       - name: Backend bounds fallback gate
         run: node scripts/check-backend-bounds-fallbacks.mjs
 
+      # Also a prebuild step: a payload type that only exists in Rust would
+      # otherwise go unnoticed until the next release build.
+      - name: Generated wire types are current
+        run: node scripts/generate-wire-types.mjs --check
+
       - name: Typecheck
         run: npx tsc --noEmit
 
