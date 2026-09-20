@@ -265,7 +265,6 @@ Consider setting {UPDATE_GITHUB_TOKEN_ENV} for a higher limit."
 
 // is_safe_update_url has been moved to updater::
 
-#[tauri::command]
 /// Fetch the minisign sidecar published next to an installer asset.
 /// Tries `.minisig` then `.sig`, and reports why every candidate failed so a
 /// missing sidecar is distinguishable from a network error.
