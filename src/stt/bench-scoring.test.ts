@@ -64,6 +64,34 @@ describe("normalizeTranscript", () => {
     expect(normalizeTranscript("   ")).toEqual([]);
     expect(normalizeTranscript("...")).toEqual([]);
   });
+
+  it("splits scripts without word spacing into characters", () => {
+    expect(normalizeTranscript("你好世界")).toEqual(["你", "好", "世", "界"]);
+    // Punctuation cannot separate tokens in a language that has none: the same sentence
+    // with and without it must produce the same tokens.
+    expect(normalizeTranscript("你好，世界.")).toEqual(normalizeTranscript("你好世界"));
+  });
+
+  it("keeps latin runs whole inside a mixed token", () => {
+    expect(normalizeTranscript("你好world")).toEqual(["你", "好", "world"]);
+  });
+});
+
+describe("wordErrorRate on scripts without word spacing", () => {
+  it("scores a punctuation-only difference as no error", () => {
+    // The real case this guards: SenseVoice drops CJK punctuation, and scoring that as an
+    // error reported a perfect transcript as 100% wrong.
+    const score = wordErrorRate("真诚，就是不欺人也不自欺.", "真诚就是不欺人也不自欺");
+    expect(score.errors).toBe(0);
+    expect(score.wer).toBe(0);
+  });
+
+  it("still counts a genuinely wrong character once", () => {
+    const score = wordErrorRate("你好世界", "你好四界");
+    expect(score.substitutions).toBe(1);
+    expect(score.referenceWords).toBe(4);
+    expect(score.wer).toBeCloseTo(0.25, 5);
+  });
 });
 
 describe("wordErrorRate", () => {

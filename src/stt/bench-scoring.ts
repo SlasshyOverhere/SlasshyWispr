@@ -129,9 +129,34 @@ export function foldNumbers(tokens: string[]): string[] {
 }
 
 /**
+ * Scripts written without word spacing. Whitespace is not a token boundary in these, so a
+ * "word" is really a run of characters: scoring that run as one word turns a perfect
+ * transcript into 100% WER the moment the model formats punctuation differently — and
+ * punctuation is never a transcription error here.
+ */
+const NO_SPACE_SCRIPT_CHAR = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+const NO_SPACE_SCRIPT_RUN =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|[^\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+/gu;
+
+/** Split no-space-script runs into characters, leaving other tokens whole. */
+function segmentUnsegmentedScripts(tokens: string[]): string[] {
+  const segmented: string[] = [];
+  for (const token of tokens) {
+    if (!NO_SPACE_SCRIPT_CHAR.test(token)) {
+      segmented.push(token);
+      continue;
+    }
+    segmented.push(...(token.match(NO_SPACE_SCRIPT_RUN) ?? [token]));
+  }
+  return segmented;
+}
+
+/**
  * Comparison tokens: case, punctuation, whitespace and number formatting are
  * normalized away, because a model that writes "Hello, world." or "3:30" for
  * "hello world" / "three thirty" made no transcription error.
+ *
+ * Scripts without word spacing compare per character (see `segmentUnsegmentedScripts`).
  */
 export function normalizeTranscript(text: string): string[] {
   const tokens = text
@@ -144,7 +169,7 @@ export function normalizeTranscript(text: string): string[] {
     // Quotes around a word are layout, not a word: "'quote'" and "quote" are the same token.
     .map((token) => token.replace(/^'+|'+$/g, ""))
     .filter((token) => token.length > 0);
-  return foldNumbers(tokens);
+  return foldNumbers(segmentUnsegmentedScripts(tokens));
 }
 
 type Triple = { substitutions: number; deletions: number; insertions: number };
