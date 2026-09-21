@@ -1,4 +1,4 @@
-use log::{info, warn};
+use log::{error, info, warn};
 use std::fs;
 use tauri::{Emitter, Manager};
 
@@ -53,6 +53,13 @@ pub fn run() {
         app_state.set_pending_transcribe_file(path);
     }
 
+    let bench_args = services::stt_bench::parse_bench_args(&startup_args);
+    // A measurement run has no UI: building the window would flash one on screen.
+    let mut context = tauri::generate_context!();
+    if bench_args.is_some() {
+        context.config_mut().app.windows.clear();
+    }
+
     let mut builder = tauri::Builder::default();
     // window-state plugin — needs to be added before .manage()
     builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
@@ -105,6 +112,24 @@ pub fn run() {
                     .level(log::LevelFilter::Info)
                     .build(),
             )?;
+
+            if let Some(bench_args) = bench_args.clone() {
+                let bench_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let code = match services::stt_bench::run(&bench_handle, &bench_args).await {
+                        Ok(path) => {
+                            info!("[stt.bench] results written to {}", path.display());
+                            0
+                        }
+                        Err(message) => {
+                            error!("[stt.bench] {}", pipeline::log::single_line(&message));
+                            1
+                        }
+                    };
+                    bench_handle.exit(code);
+                });
+                return Ok(());
+            }
 
             let app_handle = app.handle().clone();
             commands::windows::build_tray_icon(&app_handle)?;
@@ -279,6 +304,6 @@ pub fn run() {
             take_pending_transcribe_file,
             read_audio_file_base64,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }

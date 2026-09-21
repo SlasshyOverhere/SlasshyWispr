@@ -8,6 +8,7 @@ pub mod pipeline_service;
 pub mod providers;
 pub mod settings_store;
 pub mod startup;
+pub mod stt_bench;
 pub mod transcribe;
 
 pub(crate) use pipeline_service::{
