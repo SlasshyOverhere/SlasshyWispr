@@ -9,7 +9,7 @@
  * this module never touches main.tsx module globals.
  */
 import { ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS } from "../constants";
-import type { CaptureMode, HoldSource } from "../types";
+import type { CaptureMode } from "../types";
 import { boolFlag } from "../utils";
 import { startRecording, stopRecording, type StopRecordingOptions } from "./recording-controller";
 
@@ -30,8 +30,8 @@ export interface CaptureTriggerDeps {
 }
 
 let triggerDeps!: CaptureTriggerDeps;
-const pushToTalkHoldSources = new Set<HoldSource>();
-const pushToTalkHoldStartedAt = new Map<HoldSource, number>();
+const pushToTalkHoldSources = new Set<string>();
+const pushToTalkHoldStartedAt = new Map<string, number>();
 
 export function initCaptureTriggers(deps: CaptureTriggerDeps): void {
   triggerDeps = deps;
@@ -41,7 +41,7 @@ export function getPushToTalkHoldCount(): number {
   return pushToTalkHoldSources.size;
 }
 
-export function hasPushToTalkHold(source: HoldSource): boolean {
+export function hasPushToTalkHold(source: string): boolean {
   return pushToTalkHoldSources.has(source);
 }
 
@@ -97,7 +97,7 @@ export async function handleDockMicToggle(): Promise<void> {
   await handleRecordToggle();
 }
 
-export async function engagePushToTalk(source: HoldSource): Promise<void> {
+export async function engagePushToTalk(source: string): Promise<void> {
   triggerDeps.log(
     `[record.ptt.engage] source=${source} capture=${triggerDeps.getCaptureMode()} stage=${triggerDeps.getStage()} pipelineRunning=${boolFlag(
       triggerDeps.isPipelineRunning(),
@@ -180,7 +180,7 @@ export async function engagePushToTalk(source: HoldSource): Promise<void> {
   }
 }
 
-export function releasePushToTalk(source: HoldSource): void {
+export function releasePushToTalk(source: string): void {
   const holdStartedAt = pushToTalkHoldStartedAt.get(source) ?? 0;
   pushToTalkHoldStartedAt.delete(source);
   if (!pushToTalkHoldSources.delete(source)) {
@@ -237,7 +237,7 @@ function isPushToTalkMode(): boolean {
   return bindDeps ? bindDeps.isPushToTalkMode() : false;
 }
 
-export function bindPushToTalkPointerHold(button: HTMLButtonElement, source: HoldSource): void {
+export function bindPushToTalkPointerHold(button: HTMLButtonElement, source: string): void {
   button.addEventListener("pointerdown", (event) => {
     if (!isPushToTalkMode()) {
       return;
@@ -269,7 +269,7 @@ export function bindPushToTalkPointerHold(button: HTMLButtonElement, source: Hol
   });
 }
 
-export function bindPushToTalkKeyboardHold(button: HTMLButtonElement, source: HoldSource): void {
+export function bindPushToTalkKeyboardHold(button: HTMLButtonElement, source: string): void {
   let keyboardHoldActive = false;
 
   button.addEventListener("keydown", (event) => {

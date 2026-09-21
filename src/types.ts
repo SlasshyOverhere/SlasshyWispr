@@ -51,7 +51,7 @@ export type Stage = "idle" | "recording" | "processing" | "speaking" | "error";
 export type CaptureMode = "single-tap" | "push-to-talk";
 export type ThemeMode = "system" | "dark" | "light" | "mono";
 export type StyleProfile = "adaptive" | "professional" | "casual" | "concise" | "developer";
-export type MainPage = "home" | "history" | "dictionary" | "snippets" | "notes" | "analytics";
+export type MainPage = "home" | "history" | "analytics";
 export type SettingsPane =
   | "general"
   | "models"
@@ -67,7 +67,6 @@ export type DictationLanguageMode = "single" | "multiple";
 export type PiperQuality = "fast" | "balanced" | "high";
 export type PiperEmotion = "neutral" | "calm" | "happy" | "excited" | "serious" | "sad";
 export type TtsProfilePane = "piper";
-export type HoldSource = "notes-button" | "hotkey";
 
 export type LocalSttHardwareAdvisorChoice = "suggestion" | "selected" | "cancel";
 
@@ -137,28 +136,6 @@ export interface HotkeySpec {
   meta: boolean;
   key: string;
   label: string;
-}
-
-export interface DictionaryTerm {
-  id: string;
-  source: string;
-  target: string;
-
-  createdAt: number;
-}
-
-export interface SnippetEntry {
-  id: string;
-  trigger: string;
-  expansion: string;
-
-  createdAt: number;
-}
-
-export interface QuickNoteEntry {
-  id: string;
-  text: string;
-  createdAt: number;
 }
 
 export interface UsageStats {

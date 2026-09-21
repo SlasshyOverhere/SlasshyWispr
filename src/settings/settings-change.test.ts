@@ -238,9 +238,6 @@ function wireHarness(overrides: {
     updateMicrophoneSummary: () => {
       calls.push("mic-summary");
     },
-    renderNotesList: () => {
-      calls.push("notes");
-    },
     renderAssistantInfo: () => {
       calls.push("assistant-info");
     },

@@ -18,9 +18,6 @@ export const SETTINGS_STORAGE_KEY = "slasshywispr-settings-v4";
 
 /** Emitted by Rust when a second launch asks for a file to be transcribed. */
 export const APP_EVENT_TRANSCRIBE_FILE = "slasshywispr://transcribe-file";
-export const DICTIONARY_STORAGE_KEY = "slasshywispr-dictionary-v1";
-export const SNIPPETS_STORAGE_KEY = "slasshywispr-snippets-v1";
-export const NOTES_STORAGE_KEY = "slasshywispr-notes-v1";
 export const USAGE_STORAGE_KEY = "slasshywispr-usage-v1";
 export const DOCK_LAYOUT_STORAGE_KEY = "slasshywispr-dock-layout-v2";
 export const HOME_HISTORY_STORAGE_KEY = "slasshywispr-home-history-v1";

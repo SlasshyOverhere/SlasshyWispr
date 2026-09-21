@@ -160,7 +160,7 @@ describe("handleLocalKeydown", () => {
   it("navigates pages on Alt+digit and side buttons on Alt+letter", () => {
     const harness = wireHarness();
     handleLocalKeydown(fakeKeyEvent({ key: "3", altKey: true, target: null }));
-    expect(harness.pages).toEqual(["dictionary"]);
+    expect(harness.pages).toEqual(["analytics"]);
     handleLocalKeydown(fakeKeyEvent({ key: "b", altKey: true, target: null }));
     expect(harness.buttons.toggleSidebarBtn.clicks).toBe(1);
     handleLocalKeydown(fakeKeyEvent({ key: "s", altKey: true, target: null }));

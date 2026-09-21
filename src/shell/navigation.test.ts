@@ -105,7 +105,8 @@ beforeEach(() => {
 
 describe("parsers", () => {
   it("accepts known pages and panes plus legacy aliases", () => {
-    expect(asMainPage("notes")).toBe("notes");
+    expect(asMainPage("analytics")).toBe("analytics");
+    expect(asMainPage("dictionary")).toBeNull();
     expect(asMainPage("nope")).toBeNull();
     expect(asSettingsPane("pipeline")).toBe("pipeline");
     expect(asSettingsPane("online")).toBe("models");

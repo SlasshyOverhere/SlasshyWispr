@@ -100,10 +100,6 @@ function wireHarness(options: {
     commandHotkeyInput: fakeInput(),
     toggleMicEditorBtn: fakeButton(),
     toggleHotkeyEditorBtn: fakeButton(),
-    dictionaryAddBtn: fakeButton(),
-    dictionaryAddBtnTop: fakeButton(),
-    snippetAddBtn: fakeButton(),
-    snippetsAddBtnTop: fakeButton(),
   };
   const formRefs = fakeFormRefs();
   let renders = 0;

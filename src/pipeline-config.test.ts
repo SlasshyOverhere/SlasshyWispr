@@ -2,12 +2,6 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import {
   validateApiBaseUrl,
   validateAssistantName,
-  validateDictionaryEntry,
-  validateSnippetEntry,
-  validateQuickNote,
-  normalizeDictionaryEntries,
-  normalizeSnippetEntries,
-  expandSnippetsInText,
   buildAgentOperatingCorePrompt,
   captureModeLabel,
 } from "./utils";
@@ -16,7 +10,6 @@ import {
   ACTIVE_PAGE_STORAGE_KEY,
 } from "./constants";
 import type { PersistedSettings, MainPage } from "./types";
-import type { DictionaryTerm, SnippetEntry } from "./types";
 
 // ===== Pipeline Configuration Mapping =====
 // These tests verify that the frontend settings configuration
@@ -217,167 +210,6 @@ describe("Settings: loadSettings from localStorage", () => {
     };
     const result = coerceNumber("not-a-number", 0.35, 0, 1.2);
     expect(result).toBe(0.35);
-  });
-});
-
-// ===== expandSnippetsInText =====
-
-describe("expandSnippetsInText", () => {
-  it("replaces trigger text with expansion", () => {
-    const entries: SnippetEntry[] = [
-      { id: "1", trigger: "brb", expansion: "be right back", createdAt: 0 },
-    ];
-    const result = expandSnippetsInText("I'll be brb in a sec", entries);
-    expect(result).toBe("I'll be be right back in a sec");
-  });
-
-  it("replaces all occurrences of a trigger", () => {
-    const entries: SnippetEntry[] = [
-      { id: "1", trigger: "brb", expansion: "be right back", createdAt: 0 },
-    ];
-    const result = expandSnippetsInText("brb brb brb", entries);
-    expect(result).toBe("be right back be right back be right back");
-  });
-
-  it("processes longer triggers before shorter ones", () => {
-    const entries: SnippetEntry[] = [
-      { id: "1", trigger: "atm", expansion: "at the moment", createdAt: 0 },
-      { id: "2", trigger: "at the moment", expansion: "right now", createdAt: 0 },
-    ];
-    // Longer trigger "at the moment" should be expanded first
-    const result = expandSnippetsInText("I'm busy atm", entries);
-    // "atm" is replaced with "at the moment", which was already processed as "right now"
-    // But since "at the moment" was already expanded in the text, the "atm" expansion
-    // creates new "at the moment" text that won't be re-processed
-    expect(result).toBe("I'm busy at the moment");
-  });
-
-  it("returns empty string for empty input", () => {
-    const entries: SnippetEntry[] = [
-      { id: "1", trigger: "brb", expansion: "be right back", createdAt: 0 },
-    ];
-    expect(expandSnippetsInText("", entries)).toBe("");
-    expect(expandSnippetsInText("   ", entries)).toBe("   ");
-  });
-
-  it("returns input unchanged when no entries", () => {
-    expect(expandSnippetsInText("hello world", [])).toBe("hello world");
-  });
-
-  it("is case-sensitive for trigger matching", () => {
-    const entries: SnippetEntry[] = [
-      { id: "1", trigger: "brb", expansion: "be right back", createdAt: 0 },
-    ];
-    const result = expandSnippetsInText("BRB and brb", entries);
-    expect(result).toBe("BRB and be right back");
-  });
-
-  it("handles triggers that are substrings of other words", () => {
-    const entries: SnippetEntry[] = [
-      { id: "1", trigger: "go", expansion: "good morning", createdAt: 0 },
-    ];
-    // "go" in "going" should be replaced — that's the expected behavior
-    const result = expandSnippetsInText("go to go", entries);
-    expect(result).toBe("good morning to good morning");
-  });
-});
-
-// ===== normalizeDictionaryEntries edge cases =====
-
-describe("normalizeDictionaryEntries edge cases", () => {
-  it("deduplicates case-insensitively", () => {
-    const entries: DictionaryTerm[] = [
-      { id: "1", source: "BRB", target: "be right back", createdAt: 0 },
-      { id: "2", source: "brb", target: "be right back", createdAt: 0 },
-      { id: "3", source: "Brb", target: "be right back", createdAt: 0 },
-    ];
-    const result = normalizeDictionaryEntries(entries);
-    expect(result.length).toBe(1);
-  });
-
-  it("filters entries with empty source or target", () => {
-    const entries: DictionaryTerm[] = [
-      { id: "1", source: "", target: "be right back", createdAt: 0 },
-      { id: "2", source: "brb", target: "", createdAt: 0 },
-      { id: "3", source: "  ", target: "  ", createdAt: 0 },
-      { id: "4", source: "valid", target: "valid entry", createdAt: 0 },
-    ];
-    const result = normalizeDictionaryEntries(entries);
-    expect(result.length).toBe(1);
-    expect(result[0].source).toBe("valid");
-  });
-
-  it("trims whitespace from entries", () => {
-    const entries: DictionaryTerm[] = [
-      { id: "1", source: "  brb  ", target: "  be right back  ", createdAt: 0 },
-    ];
-    const result = normalizeDictionaryEntries(entries);
-    expect(result.length).toBe(1);
-    expect(result[0].source).toBe("brb");
-    expect(result[0].target).toBe("be right back");
-  });
-
-  it("rejects entries exceeding length limits", () => {
-    const entries: DictionaryTerm[] = [
-      {
-        id: "1",
-        source: "a".repeat(101),
-        target: "short",
-        createdAt: 0,
-      },
-      {
-        id: "2",
-        source: "short",
-        target: "b".repeat(201),
-        createdAt: 0,
-      },
-    ];
-    const result = normalizeDictionaryEntries(entries);
-    expect(result.length).toBe(0);
-  });
-});
-
-// ===== normalizeSnippetEntries edge cases =====
-
-describe("normalizeSnippetEntries edge cases", () => {
-  it("deduplicates case-insensitively", () => {
-    const entries: SnippetEntry[] = [
-      { id: "1", trigger: "brb", expansion: "be right back", createdAt: 0 },
-      { id: "2", trigger: "BRB", expansion: "be right back now", createdAt: 0 },
-    ];
-    const result = normalizeSnippetEntries(entries);
-    expect(result.length).toBe(1);
-    // First occurrence wins
-    expect(result[0].expansion).toBe("be right back");
-  });
-
-  it("filters entries with empty trigger or expansion", () => {
-    const entries: SnippetEntry[] = [
-      { id: "1", trigger: "", expansion: "something", createdAt: 0 },
-      { id: "2", trigger: "valid", expansion: "", createdAt: 0 },
-      { id: "3", trigger: "  ", expansion: "  ", createdAt: 0 },
-    ];
-    const result = normalizeSnippetEntries(entries);
-    expect(result.length).toBe(0);
-  });
-
-  it("rejects entries exceeding length limits", () => {
-    const entries: SnippetEntry[] = [
-      {
-        id: "1",
-        trigger: "a".repeat(51),
-        expansion: "short",
-        createdAt: 0,
-      },
-      {
-        id: "2",
-        trigger: "valid",
-        expansion: "b".repeat(1001),
-        createdAt: 0,
-      },
-    ];
-    const result = normalizeSnippetEntries(entries);
-    expect(result.length).toBe(0);
   });
 });
 

@@ -43,9 +43,6 @@ export function parseJson<T>(key: string, fallback: T): T {
 // Remove once old keys are extinct in the wild.
 const LEGACY_STORAGE_KEY_PAIRS: Array<[string, string]> = [
   ["slasshy-desktop-assistant-settings-v4", "slasshywispr-settings-v4"],
-  ["slasshy-wispr-dictionary-v1", "slasshywispr-dictionary-v1"],
-  ["slasshy-wispr-snippets-v1", "slasshywispr-snippets-v1"],
-  ["slasshy-wispr-notes-v1", "slasshywispr-notes-v1"],
   ["slasshy-wispr-usage-v1", "slasshywispr-usage-v1"],
   ["slasshy-wispr-dock-layout-v2", "slasshywispr-dock-layout-v2"],
   ["slasshy-wispr-home-history-v1", "slasshywispr-home-history-v1"],

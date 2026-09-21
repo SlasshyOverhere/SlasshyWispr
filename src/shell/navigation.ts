@@ -87,7 +87,7 @@ export function initNavigation(
 }
 
 export function asMainPage(value: string | undefined): MainPage | null {
-  if (value === "home" || value === "history" || value === "dictionary" || value === "snippets" || value === "notes" || value === "analytics") {
+  if (value === "home" || value === "history" || value === "analytics") {
     return value;
   }
 

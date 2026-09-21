@@ -13,7 +13,6 @@ import {
 } from './app/hooks';
 import { buildHomeList } from './app/rows/HomeEntryCard';
 import { PaceSparkline } from './app/rows/PaceSparkline';
-import { DictionaryRow, SnippetRow, NoteRow } from './app/rows/SmallRows';
 import { HistoryRow } from './app/rows/HistoryRow';
 
 /**
@@ -115,33 +114,12 @@ export function App() {
                 <span>History</span>
                 <span className="nav-keyhint">Alt+2</span>
               </button>
-              <button className={`nav-item ${state.activePage === 'dictionary' ? 'is-active' : ''}`} data-page-nav="dictionary" data-label="Dictionary" data-hotkey="Alt+3" aria-label="Dictionary (Alt+3)" type="button">
-                <span className="nav-glyph">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
-                </span>
-                <span>Dictionary</span>
-                <span className="nav-keyhint">Alt+3</span>
-              </button>
-              <button className={`nav-item ${state.activePage === 'snippets' ? 'is-active' : ''}`} data-page-nav="snippets" data-label="Snippets" data-hotkey="Alt+4" aria-label="Snippets (Alt+4)" type="button">
-                <span className="nav-glyph">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
-                </span>
-                <span>Snippets</span>
-                <span className="nav-keyhint">Alt+4</span>
-              </button>
-              <button className={`nav-item ${state.activePage === 'notes' ? 'is-active' : ''}`} data-page-nav="notes" data-label="Notes" data-hotkey="Alt+5" aria-label="Notes (Alt+5)" type="button">
-                <span className="nav-glyph">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                </span>
-                <span>Notes</span>
-                <span className="nav-keyhint">Alt+5</span>
-              </button>
-              <button className={`nav-item ${state.activePage === 'analytics' ? 'is-active' : ''}`} data-page-nav="analytics" data-label="Analytics" data-hotkey="Alt+6" aria-label="Analytics (Alt+6)" type="button">
+              <button className={`nav-item ${state.activePage === 'analytics' ? 'is-active' : ''}`} data-page-nav="analytics" data-label="Analytics" data-hotkey="Alt+3" aria-label="Analytics (Alt+3)" type="button">
                 <span className="nav-glyph">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
                 </span>
                 <span>Analytics</span>
-                <span className="nav-keyhint">Alt+6</span>
+                <span className="nav-keyhint">Alt+3</span>
               </button>
             </nav>
 
@@ -396,181 +374,12 @@ export function App() {
               </div>
             </section>
 
-            <section className={`flow-page ${state.activePage === 'dictionary' ? 'is-active' : ''}`} data-page="dictionary">
-              <div className="flow-page-inner">
-                <header className="page-header-row">
-                  <div>
-                    <h1>Dictionary</h1>
-                    <p className="page-subtitle">Teach SlasshyWispr your unique vocabulary and jargon.</p>
-                  </div>
-                  <button id="dictionaryAddBtnTop" className="dark-action" type="button">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px' }}><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    Add new
-                  </button>
-                </header>
-                
-                <div className="dictionary-container">
-                  <article id="dictionaryFormCard" className="focus-card dictionary-form-card is-collapsed">
-                    <div className="card-header-simple">
-                      <div className="card-icon-title">
-                        <div className="card-icon-bg">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
-                        </div>
-                        <h3>Vocabulary Training</h3>
-                      </div>
-                      <button id="dictionaryFormCloseBtn" className="icon-close-btn" type="button">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                      </button>
-                    </div>
-                    
-                    <p className="card-description">
-                      Add specific pronunciations or spellings for names, products, and technical terms 
-                      to ensure perfect transcription.
-                    </p>
-
-                    <form id="dictionaryForm" className="dictionary-form-grid">
-                      <div className="input-group">
-                        <label htmlFor="dictionarySourceInput">Spoken term</label>
-                        <div className="input-with-icon">
-                          <div className="input-icon">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path></svg>
-                          </div>
-                          <input id="dictionarySourceInput" type="text" placeholder="e.g., slashy" autoComplete="off" />
-                        </div>
-                      </div>
-
-                      <div className="input-connector">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                      </div>
-
-                      <div className="input-group">
-                        <label htmlFor="dictionaryTargetInput">Correct term</label>
-                        <div className="input-with-icon">
-                          <div className="input-icon">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                          </div>
-                          <input id="dictionaryTargetInput" type="text" placeholder="e.g., Slasshy" autoComplete="off" />
-                        </div>
-                      </div>
-
-                      <div className="form-actions">
-                        <button id="dictionaryAddBtn" className="dark-action" type="submit">Add term</button>
-                      </div>
-                    </form>
-                  </article>
-
-                  <div className="dictionary-list-header">
-                    <h3>Active Dictionary</h3>
-                    <span id="dictionaryCount" className="badge-count">{state.dictionary.length} terms</span>
-                  </div>
-
-                  <div id="dictionaryList" className="dictionary-list-enhanced">
-                    {state.dictionary.length === 0 ? (
-                      <div className="empty-state">
-                        <h4>No terms yet</h4>
-                      </div>
-                    ) : (
-                      state.dictionary.map(term => (
-                        <DictionaryRow key={term.id} term={term} />
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className={`flow-page ${state.activePage === 'snippets' ? 'is-active' : ''}`} data-page="snippets">
-              <div className="flow-page-inner">
-                <header className="page-header-row">
-                  <div>
-                    <h1>Snippets</h1>
-                    <p className="page-subtitle">
-                      <span id="snippetsCountBadge" className="badge-count">{state.snippets.length} snippets</span>
-                      Create shortcuts for text you use frequently.
-                    </p>
-                  </div>
-                  <button id="snippetsAddBtnTop" className="dark-action" type="button">Add new</button>
-                </header>
 
 
 
-                <article id="snippetFormContainer" className="snippet-card is-collapsed">
-                  <div className="snippet-card-header">
-                    <div className="snippet-card-icon">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15V19A2 2 0 0 0 19 21H5A2 2 0 0 0 3 19V15"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                    </div>
-                    <div className="snippet-card-title">
-                      <h2>Text Shortcuts</h2>
-                      <p>Define short phrases that expand into full paragraphs instantly.</p>
-                    </div>
-                  </div>
-                  <form id="snippetForm" className="snippet-create-form">
-                    <div className="snippet-input-group">
-                      <div className="snippet-field">
-                        <label htmlFor="snippetTriggerInput">Trigger</label>
-                        <input id="snippetTriggerInput" type="text" placeholder="e.g., /sig" autoComplete="off" />
-                      </div>
-                      <div className="snippet-field">
-                        <label htmlFor="snippetExpansionInput">Expansion</label>
-                        <input id="snippetExpansionInput" type="text" placeholder="The text to insert" autoComplete="off" />
-                      </div>
-                    </div>
-                    <div className="snippet-form-actions">
-                      <button id="snippetAddBtn" className="dark-action" type="submit">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                        <span>Add Shortcut</span>
-                      </button>
-                    </div>
-                  </form>
-                </article>
 
-                <div id="snippetsList" className="snippets-grid">
-                  {state.snippets.length === 0 ? (
-                    <div className="empty-state">
-                      <h4>No snippets yet</h4>
-                    </div>
-                  ) : (
-                    state.snippets.map(snippet => (
-                      <SnippetRow key={snippet.id} snippet={snippet} />
-                    ))
-                  )}
-                </div>
-              </div>
-            </section>
 
-            <section className={`flow-page ${state.activePage === 'notes' ? 'is-active' : ''}`} data-page="notes">
-              <div className="flow-page-inner notes-layout">
-                <header className="page-header-row">
-                  <div>
-                    <h1>Quick Notes</h1>
-                    <p className="page-subtitle">Voice-captured thoughts, ready for review.</p>
-                  </div>
-                </header>
 
-                <article className="quick-note-card">
-                  <div className="quick-note-content">
-                    <div className="quick-note-info">
-                      <span className="quick-note-label">Capture a thought</span>
-                      <h3>Tap to record a voice note</h3>
-                    </div>
-                    <button id="notesQuickMicBtn" className="notes-mic-btn" type="button" aria-label="Dictate a quick note">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
-                    </button>
-                  </div>
-                </article>
-
-                <div className="notes-ledger">
-                  <div className="notes-ledger-head">
-                    <h3>Recent Notes</h3>
-                  </div>
-                  <div id="notesList" className="notes-list">
-                    {state.notes.map(note => (
-                      <NoteRow key={note.id} note={note} />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
 
             <section className={`flow-page ${state.activePage === 'analytics' ? 'is-active' : ''}`} data-page="analytics">
               <div className="flow-page-inner">

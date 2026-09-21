@@ -15,14 +15,12 @@ import { resolveSttLanguageConfig } from "../state/settings-store";
 import { pickDefaultLocalSttModelFromCatalog as pickDefaultLocalSttModelFromList } from "../stt/provider-inference";
 import type {
   AssistantPipelineResponse,
-  DictionaryTerm,
   PersistedSettings,
   SelectionPopupPayload,
   SettingsPane,
-  SnippetEntry,
   TtsEngine,
 } from "../types";
-import { asErrorMessage, expandSnippetsInText } from "../utils";
+import { asErrorMessage } from "../utils";
 import { buildSelectionPopupPayload } from "../windows/selection-intent";
 import {
   audioBufferToWavBlob,
@@ -71,8 +69,6 @@ export interface PipelineClientDeps {
   getLastWarmedLocalSttModel: () => string;
   setLastWarmedLocalSttModel: (model: string) => void;
   ensureLocalOllamaModelSelected: (options?: { quiet?: boolean }) => Promise<string>;
-  getDictionaryTerms: () => DictionaryTerm[];
-  getSnippets: () => SnippetEntry[];
   nextSelectionPopupToken: () => number;
   dismissSelectionPopup: () => Promise<void>;
   showSelectionAssistantPopup: (payload: SelectionPopupPayload) => Promise<boolean>;
@@ -286,14 +282,6 @@ export async function runPipeline(
         systemPrompt,
         temperature: activeSettings.temperature,
         maxTokens: activeSettings.maxTokens,
-        dictionaryEntries: clientDeps.getDictionaryTerms().map((item) => ({
-          source: item.source,
-          target: item.target,
-        })),
-        snippetEntries: clientDeps.getSnippets().map((item) => ({
-          trigger: item.trigger,
-          expansion: item.expansion,
-        })),
         rawMode: activeSettings.rawMode,
         applyBacktrack: activeSettings.backtrackCorrection,
         removeFillers: activeSettings.removeFillers,
@@ -336,14 +324,7 @@ export async function runPipeline(
       }
     }
 
-    const resolvedResponse =
-      response.mode === "dictation"
-        ? {
-            ...response,
-            assistantResponse: expandSnippetsInText(response.assistantResponse, clientDeps.getSnippets()),
-          }
-        : response;
-
+    const resolvedResponse = response;
     renderPipelineResponse(resolvedResponse);
     let playbackCompleted = true;
     const selectionPopupPayload = buildSelectionPopupPayload(resolvedResponse, runToken);

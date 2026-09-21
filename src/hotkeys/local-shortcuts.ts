@@ -116,9 +116,9 @@ export function handleLocalKeydown(event: KeyboardEvent): void {
 
   if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
     const digit = event.key;
-    if (digit >= "1" && digit <= "6") {
+    if (digit >= "1" && digit <= "3") {
       const pageIndex = parseInt(digit, 10) - 1;
-      const pages: MainPage[] = ["home", "history", "dictionary", "snippets", "notes", "analytics"];
+      const pages: MainPage[] = ["home", "history", "analytics"];
       const page = pages[pageIndex];
       if (page) {
         event.preventDefault();

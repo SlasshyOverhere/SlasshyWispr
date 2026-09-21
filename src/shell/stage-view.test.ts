@@ -51,7 +51,6 @@ function wireHarness(options: {
     statusPill: fakeDiv(),
     statusDetail: fakeParagraph(),
     recordBtn: fakeButton(),
-    notesQuickMicBtn: fakeButton(),
   };
   let stage: Stage = options.stage ?? "idle";
   const sounds: string[] = [];

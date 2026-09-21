@@ -8,9 +8,6 @@ import {
   HOME_HISTORY_STORAGE_KEY,
   SETTINGS_STORAGE_KEY,
   USAGE_STORAGE_KEY,
-  SNIPPETS_STORAGE_KEY,
-  DICTIONARY_STORAGE_KEY,
-  NOTES_STORAGE_KEY,
 } from "./constants";
 import type { HomeHistoryEntry } from "./types";
 
@@ -182,18 +179,12 @@ describe("uiStore integration", () => {
     localStorage.removeItem(HOME_HISTORY_STORAGE_KEY);
     localStorage.removeItem(SETTINGS_STORAGE_KEY);
     localStorage.removeItem(USAGE_STORAGE_KEY);
-    localStorage.removeItem(SNIPPETS_STORAGE_KEY);
-    localStorage.removeItem(DICTIONARY_STORAGE_KEY);
-    localStorage.removeItem(NOTES_STORAGE_KEY);
   });
 
   it("returns default state when localStorage is empty", () => {
     const state = uiStore.getState();
     expect(state.activePage).toBe("home");
     expect(state.history).toEqual([]);
-    expect(state.dictionary).toEqual([]);
-    expect(state.snippets).toEqual([]);
-    expect(state.notes).toEqual([]);
     expect(state.usage.sessions).toBe(0);
     expect(state.usage.words).toBe(0);
   });
@@ -267,47 +258,6 @@ describe("uiStore integration", () => {
     const state = uiStore.getState();
     expect(state.usage.sessions).toBe(0);
     expect(state.usage.words).toBe(0);
-  });
-
-  it("loads snippets from localStorage", () => {
-    const snippets = [
-      {
-        id: "s1",
-        trigger: "brb",
-        expansion: "be right back",
-        createdAt: Date.now(),
-      },
-    ];
-    localStorage.setItem(SNIPPETS_STORAGE_KEY, JSON.stringify(snippets));
-
-    uiStore.reNotify();
-    const state = uiStore.getState();
-    expect(state.snippets.length).toBe(1);
-    expect(state.snippets[0].trigger).toBe("brb");
-  });
-
-  it("loads notes from localStorage", () => {
-    const notes = [
-      { id: "n1", text: "remember this", createdAt: Date.now() },
-    ];
-    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
-
-    uiStore.reNotify();
-    const state = uiStore.getState();
-    expect(state.notes.length).toBe(1);
-    expect(state.notes[0].text).toBe("remember this");
-  });
-
-  it("filters out notes without text field", () => {
-    const notes = [
-      { id: "n1", text: "valid note", createdAt: Date.now() },
-      { id: "n2", createdAt: Date.now() }, // missing text
-    ];
-    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
-
-    uiStore.reNotify();
-    const state = uiStore.getState();
-    expect(state.notes.length).toBe(1);
   });
 
   it("notify listeners on custom event", () => {

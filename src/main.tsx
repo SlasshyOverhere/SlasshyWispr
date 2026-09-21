@@ -134,8 +134,6 @@ import {
 } from "./recording/mic-stream";
 import {
   clearPushToTalkHolds as clearPushToTalkHoldsService,
-  bindPushToTalkKeyboardHold as bindPushToTalkKeyboardHoldService,
-  bindPushToTalkPointerHold as bindPushToTalkPointerHoldService,
   engagePushToTalk as engagePushToTalkService,
   getPushToTalkHoldCount,
   handleDockMicToggle as handleDockMicToggleService,
@@ -198,20 +196,6 @@ import {
   queueNotice as queueNoticeService,
   setNotice as setNoticeService,
 } from "./shell/diagnostics";
-import {
-  addDictionaryTerm as addDictionaryTermService,
-  addQuickNote as addQuickNoteService,
-  addSnippetEntry as addSnippetEntryService,
-  getDictionaryTerms as getDictionaryTermsService,
-  getSnippets as getSnippetsService,
-  initCollectionsView,
-  persistDictionaryTerms as persistDictionaryTermsService,
-  persistQuickNotes as persistQuickNotesService,
-  persistSnippets as persistSnippetsService,
-  renderDictionaryList as renderDictionaryListService,
-  renderNotesList as renderNotesListService,
-  renderSnippetsList as renderSnippetsListService,
-} from "./collections/collections-view";
 import {
   initAssistantInfo,
   initAssistantStatus,
@@ -536,27 +520,6 @@ const timeTrend = requiredElement<HTMLElement>("#timeTrend");
 const sessionsTrend = requiredElement<HTMLElement>("#sessionsTrend");
 const wpmTrend = requiredElement<HTMLElement>("#wpmTrend");
 
-const dictionaryList = requiredElement<HTMLDivElement>("#dictionaryList");
-const dictionaryForm = requiredElement<HTMLFormElement>("#dictionaryForm");
-const dictionaryFormCard = requiredElement<HTMLElement>("#dictionaryFormCard");
-const dictionaryFormCloseBtn = requiredElement<HTMLButtonElement>("#dictionaryFormCloseBtn");
-const dictionaryCount = requiredElement<HTMLSpanElement>("#dictionaryCount");
-const dictionarySourceInput = requiredElement<HTMLInputElement>("#dictionarySourceInput");
-const dictionaryTargetInput = requiredElement<HTMLInputElement>("#dictionaryTargetInput");
-const dictionaryAddBtn = requiredElement<HTMLButtonElement>("#dictionaryAddBtn");
-const dictionaryAddBtnTop = requiredElement<HTMLButtonElement>("#dictionaryAddBtnTop");
-
-
-const snippetsList = requiredElement<HTMLDivElement>("#snippetsList");
-const snippetFormContainer = requiredElement<HTMLElement>("#snippetFormContainer");
-const snippetForm = requiredElement<HTMLFormElement>("#snippetForm");
-const snippetTriggerInput = requiredElement<HTMLInputElement>("#snippetTriggerInput");
-const snippetExpansionInput = requiredElement<HTMLInputElement>("#snippetExpansionInput");
-const snippetAddBtn = requiredElement<HTMLButtonElement>("#snippetAddBtn");
-const snippetsAddBtnTop = requiredElement<HTMLButtonElement>("#snippetsAddBtnTop");
-
-
-const notesList = requiredElement<HTMLDivElement>("#notesList");
 const settingsVersionText = requiredElement<HTMLParagraphElement>("#settingsVersionText");
 
 const providerModelCatalogSelect = requiredElement<HTMLSelectElement>("#providerModelCatalogSelect");
@@ -633,7 +596,6 @@ const clearHistoryBtn = requiredElement<HTMLButtonElement>("#clearHistoryBtn");
 const clearHistoryBtnFull = requiredElement<HTMLButtonElement>("#clearHistoryBtnFull");
 const viewFullHistoryBtn = requiredElement<HTMLButtonElement>("#viewFullHistoryBtn");
 const clearStatsBtn = requiredElement<HTMLButtonElement>("#clearStatsBtn");
-const notesQuickMicBtn = requiredElement<HTMLButtonElement>("#notesQuickMicBtn");
 
 const toggleHotkeyEditorBtn = requiredElement<HTMLButtonElement>("#toggleHotkeyEditorBtn");
 const toggleMicEditorBtn = requiredElement<HTMLButtonElement>("#toggleMicEditorBtn");
@@ -692,13 +654,6 @@ import {
   snoozeUpdateFor24Hours,
 } from "./updater/updater-client";
 
-const NOTE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
 const systemThemeMediaQuery =
   typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: light)")
@@ -744,7 +699,6 @@ initPipelineRender(
     getLastSavedRecordingId: () => lastSavedRecordingId,
     getLastCaptureIntentLabel: () => lastCaptureIntentLabel,
     trackUsage: (transcript) => trackUsageService(transcript),
-    addQuickNote: (text) => addQuickNoteService(text),
     getHomeHistory: () => homeHistoryEntries,
     setHomeHistory: (entries) => {
       homeHistoryEntries = entries;
@@ -931,8 +885,6 @@ initPipelineClient(
       lastWarmedLocalSttModel = model;
     },
     ensureLocalOllamaModelSelected: (options) => ensureLocalOllamaModelSelectedService(options),
-    getDictionaryTerms: () => getDictionaryTermsService(),
-    getSnippets: () => getSnippetsService(),
     nextSelectionPopupToken: () => nextSelectionPopupTokenService(),
     dismissSelectionPopup: () => dismissSelectionPopupService(),
     showSelectionAssistantPopup: (payload) => showSelectionAssistantPopupService(payload),
@@ -1208,10 +1160,6 @@ initAvailability(
     commandHotkeyInput,
     toggleMicEditorBtn,
     toggleHotkeyEditorBtn,
-    dictionaryAddBtn,
-    dictionaryAddBtnTop,
-    snippetAddBtn,
-    snippetsAddBtnTop,
   },
   {
     isPipelineRunning: () => pipelineRunning,
@@ -1229,7 +1177,7 @@ initAvailability(
   },
 );
 initStageView(
-  { statusPill, statusDetail, recordBtn, notesQuickMicBtn },
+  { statusPill, statusDetail, recordBtn },
   {
     getStage: () => stage,
     setStageState: (next) => {
@@ -1301,28 +1249,6 @@ initClipboard({
   isTauri: isTauriEnvironment,
   notify: (message, isError) => setNoticeService(message, isError),
 });
-
-initCollectionsView(
-  {
-    dictionaryList,
-    dictionaryFormCard,
-    dictionaryCount,
-    dictionarySourceInput,
-    dictionaryTargetInput,
-    dictionaryAddBtnTop,
-    snippetsList,
-    snippetFormContainer,
-    snippetTriggerInput,
-    snippetExpansionInput,
-    snippetsAddBtnTop,
-    notesList,
-  },
-  {
-    isIncognito: () => settings.incognitoMode,
-    notify: (message, isError) => setNoticeService(message, isError),
-    formatNoteTime: (createdAt) => NOTE_TIME_FORMATTER.format(createdAt),
-  },
-);
 
 initDesktopNotice({
   setNotice: (message, isError) => setNoticeService(message, isError),
@@ -1546,7 +1472,6 @@ initSettingsChange({
   refreshRecordButton: () => refreshRecordButtonService(),
   syncActionAvailability: () => syncActionAvailabilityService(),
   updateMicrophoneSummary: () => updateMicrophoneSummaryService(),
-  renderNotesList: () => renderNotesListService(),
   renderAssistantInfo: (info) => renderAssistantInfoService(info),
   setActiveTtsProfile: (profile) => setActiveTtsProfileService(profile),
   setCatalogSelects: (next, catalogs) => {
@@ -1638,9 +1563,6 @@ renderLocalOllamaModelCatalogService([], settings.localOllamaModel);
 renderLocalSttModelCatalogService([], settings.localSttModel);
 setActiveTtsProfileService("piper");
 updateTtsSetupGateService();
-persistDictionaryTermsService();
-persistSnippetsService();
-persistQuickNotesService();
 persistUsageStatsService();
 
 if (systemThemeMediaQuery) {
@@ -1655,9 +1577,6 @@ if (systemThemeMediaQuery) {
 
 setActivePageService(getActivePageService());
 setActiveSettingsPaneService(getActiveSettingsPaneService());
-renderDictionaryListService();
-renderSnippetsListService();
-renderNotesListService();
 initAnalyticsRender(
   {
     words: metricWords,
@@ -1936,61 +1855,6 @@ localSttModelCatalogSelect.addEventListener("change", () => {
   handleSettingsChangeService();
   void refreshSelectedLocalSttModelAvailabilityService({ quiet: true });
 });
-
-dictionaryForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  addDictionaryTermService();
-});
-
-dictionaryAddBtnTop.addEventListener("click", () => {
-  const isCollapsed = dictionaryFormCard.classList.contains("is-collapsed");
-  if (isCollapsed) {
-    dictionaryFormCard.classList.remove("is-collapsed");
-    dictionaryAddBtnTop.classList.add("is-active");
-    dictionarySourceInput.focus();
-  } else {
-    dictionaryFormCard.classList.add("is-collapsed");
-    dictionaryAddBtnTop.classList.remove("is-active");
-  }
-});
-
-dictionaryFormCloseBtn.addEventListener("click", () => {
-  dictionaryFormCard.classList.add("is-collapsed");
-  dictionaryAddBtnTop.classList.remove("is-active");
-});
-
-
-snippetForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  addSnippetEntryService();
-});
-
-snippetsAddBtnTop.addEventListener("click", () => {
-  const isCollapsed = snippetFormContainer.classList.contains("is-collapsed");
-  if (isCollapsed) {
-    snippetFormContainer.classList.remove("is-collapsed");
-    snippetsAddBtnTop.classList.add("is-active");
-    snippetsAddBtnTop.textContent = "Close";
-    snippetTriggerInput.focus();
-  } else {
-    snippetFormContainer.classList.add("is-collapsed");
-    snippetsAddBtnTop.classList.remove("is-active");
-    snippetsAddBtnTop.textContent = "Add new";
-  }
-});
-
-
-notesQuickMicBtn.addEventListener("click", () => {
-  if (settings.captureMode === "push-to-talk") {
-    setNoticeService("Hold the note button while speaking in push-to-talk mode.");
-    return;
-  }
-
-  void handleRecordToggleService();
-});
-
-bindPushToTalkPointerHoldService(notesQuickMicBtn, "notes-button");
-bindPushToTalkKeyboardHoldService(notesQuickMicBtn, "notes-button");
 
 refreshMicsBtn.addEventListener("click", () => {
   void refreshMicrophonesService(true);
