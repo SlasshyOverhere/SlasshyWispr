@@ -62,4 +62,5 @@ Single-instance enforcement (per spec `2026-07-07-tray-window-toggle-and-single-
 - `src/security.test.ts` and `src/utils-enhanced.test.ts` test inline helper functions rather than production imports — they are standalone validation tests.
 - Settings persist to `localStorage` under keys like `slasshywispr-settings-v4` (see `src/constants.ts`).
 - The Rust backend stores API keys in the OS keyring (`keyring` crate), with a DPAPI fallback on Windows.
+- Local STT models are downloaded as prepacked int8 tar.gz mirrors from the `SlasshyOverhere/parakeet-int8-mirror` release, not from HuggingFace: the native engine needs an istupakov-layout directory (`encoder-model.int8.onnx`, `decoder_joint-model.int8.onnx`, `nemo128.onnx`, `vocab.txt`, `config.json`), and no public export ships that. `scripts/repack-parakeet-unified-en.mjs --from <dir>` builds one; `src/stt/parakeet-archive-contract.test.ts` pins the packed file set against the Rust discovery function.
 - `noUnusedLocals` and `noUnusedParameters` are enforced by tsconfig.
