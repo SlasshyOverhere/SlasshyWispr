@@ -895,7 +895,7 @@ mod tests {
     #[test]
     fn hallucination_guards_skip_local_engines_that_cannot_invent_text() {
         assert!(!stt_hallucination_guards_apply(&local_stt_mode(
-            "nvidia/parakeet-unified-en-0.6b"
+            "nvidia/parakeet-tdt-0.6b-v3"
         )));
         assert!(!stt_hallucination_guards_apply(&local_stt_mode(
             "iic/SenseVoiceSmall"

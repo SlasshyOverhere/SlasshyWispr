@@ -105,6 +105,9 @@ function wireHarness(options: {
       notify: (message, isError) => {
         notices.push({ message, isError });
       },
+      queueNotice: (message, isError) => {
+        notices.push({ message, isError });
+      },
       log: () => {},
       syncAvailability: () => {},
       openSettings: () => {},

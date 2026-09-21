@@ -1109,6 +1109,7 @@ initLocalSttClient(
     getStage: () => stage,
     setStage: (next, detail) => setStageService(next, detail),
     notify: (message, isError) => setNoticeService(message, isError),
+    queueNotice: (message, isError) => queueNoticeService(message, isError),
     log: (message) => logClientEventService(message),
     syncAvailability: () => syncActionAvailabilityService(),
     openSettings: (reason) => openSettingsService(reason),

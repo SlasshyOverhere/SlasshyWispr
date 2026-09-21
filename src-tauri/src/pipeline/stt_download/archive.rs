@@ -23,10 +23,6 @@ pub(crate) fn local_parakeet_archive_source(repo_id: &str) -> Option<LocalParake
             archive_url: PARAKEET_V2_INT8_ARCHIVE_URL,
             expected_root_dir: PARAKEET_V2_INT8_ROOT_DIR,
         }),
-        "nvidia/parakeet-unified-en-0.6b" => Some(LocalParakeetArchiveSource {
-            archive_url: PARAKEET_UNIFIED_EN_INT8_ARCHIVE_URL,
-            expected_root_dir: PARAKEET_UNIFIED_EN_INT8_ROOT_DIR,
-        }),
         "nvidia/parakeet-tdt-0.6b-v3" => Some(LocalParakeetArchiveSource {
             archive_url: PARAKEET_V3_INT8_ARCHIVE_URL,
             expected_root_dir: PARAKEET_V3_INT8_ROOT_DIR,
@@ -142,7 +138,8 @@ mod tests {
     use crate::pipeline::routing::built_in_local_stt_model_catalog;
 
     /// A catalog entry with no download source strands the user on a model the app
-    /// lists but cannot install.
+    /// lists but cannot install. That the source *exists* is a network question —
+    /// `scripts/verify-stt-mirrors.mjs` answers it against the release manifest.
     #[test]
     fn every_catalog_model_has_an_archive_source() {
         for model in built_in_local_stt_model_catalog() {

@@ -15,6 +15,11 @@
  *
  * Publish (release tag `models-parakeet-int8-v1` must exist):
  *   gh release upload models-parakeet-int8-v1 <out>/parakeet-unified-en-int8.tar.gz
+ *
+ * The model is deliberately absent from `built_in_local_stt_model_catalog()` until that
+ * upload happens: shipping the catalog entry first is what left users clicking a download
+ * that could only 404. After uploading, re-add the entry, its `PARAKEET_UNIFIED_EN_*`
+ * constants and the archive arm, then confirm with `node scripts/verify-stt-mirrors.mjs`.
  */
 import { createHash } from "node:crypto";
 import { createGzip } from "node:zlib";

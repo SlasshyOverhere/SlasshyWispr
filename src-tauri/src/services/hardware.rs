@@ -266,17 +266,16 @@ pub(crate) fn local_stt_models_for_tier(
     _nvidia_gpu_detected: bool,
 ) -> (&'static str, Vec<&'static str>, Vec<&'static str>) {
     // Performance: strong CPU/GPU + ample RAM can handle a 0.6B model, so suggest
-    // the English-only Parakeet.
+    // Parakeet v3.
     // Balanced/Basic: recommend the lightweight 110m model; caution about the
-    // heavier 0.6B models which may be slow on constrained hardware.
+    // heavier 0.6B model which may be slow on constrained hardware.
     // NOTE: Native Parakeet runs on CPU int8 regardless of GPU, so
     // _nvidia_gpu_detected is unused today but reserved for future GPU-accelerated
     // inference paths.
     match tier {
         "performance" => (
-            "nvidia/parakeet-unified-en-0.6b",
+            "nvidia/parakeet-tdt-0.6b-v3",
             vec![
-                "nvidia/parakeet-unified-en-0.6b",
                 "nvidia/parakeet-tdt-0.6b-v3",
                 "nvidia/parakeet-tdt_ctc-110m",
             ],
@@ -285,18 +284,12 @@ pub(crate) fn local_stt_models_for_tier(
         "balanced" => (
             "nvidia/parakeet-tdt_ctc-110m",
             vec!["nvidia/parakeet-tdt_ctc-110m"],
-            vec![
-                "nvidia/parakeet-unified-en-0.6b",
-                "nvidia/parakeet-tdt-0.6b-v3",
-            ],
+            vec!["nvidia/parakeet-tdt-0.6b-v3"],
         ),
         _ => (
             "nvidia/parakeet-tdt_ctc-110m",
             vec!["nvidia/parakeet-tdt_ctc-110m"],
-            vec![
-                "nvidia/parakeet-unified-en-0.6b",
-                "nvidia/parakeet-tdt-0.6b-v3",
-            ],
+            vec!["nvidia/parakeet-tdt-0.6b-v3"],
         ),
     }
 }
@@ -435,8 +428,7 @@ mod tests {
     fn performance_tier_suggests_heavier_model() {
         let (suggested, suggested_candidates, caution) =
             super::local_stt_models_for_tier("performance", false);
-        assert_eq!(suggested, "nvidia/parakeet-unified-en-0.6b");
-        assert!(suggested_candidates.contains(&"nvidia/parakeet-unified-en-0.6b"));
+        assert_eq!(suggested, "nvidia/parakeet-tdt-0.6b-v3");
         assert!(suggested_candidates.contains(&"nvidia/parakeet-tdt-0.6b-v3"));
         assert!(suggested_candidates.contains(&"nvidia/parakeet-tdt_ctc-110m"));
         assert!(caution.is_empty());
@@ -448,7 +440,6 @@ mod tests {
             super::local_stt_models_for_tier("balanced", false);
         assert_eq!(suggested, "nvidia/parakeet-tdt_ctc-110m");
         assert_eq!(suggested_candidates, vec!["nvidia/parakeet-tdt_ctc-110m"]);
-        assert!(caution.contains(&"nvidia/parakeet-unified-en-0.6b"));
         assert!(caution.contains(&"nvidia/parakeet-tdt-0.6b-v3"));
     }
 
@@ -458,7 +449,6 @@ mod tests {
             super::local_stt_models_for_tier("basic", false);
         assert_eq!(suggested, "nvidia/parakeet-tdt_ctc-110m");
         assert_eq!(suggested_candidates, vec!["nvidia/parakeet-tdt_ctc-110m"]);
-        assert!(caution.contains(&"nvidia/parakeet-unified-en-0.6b"));
         assert!(caution.contains(&"nvidia/parakeet-tdt-0.6b-v3"));
     }
 

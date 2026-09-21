@@ -115,6 +115,8 @@ export interface LocalSttClientDeps {
   getStage: () => string;
   setStage: (stage: "idle" | "processing", detail: string) => void;
   notify: (message: string, isError?: boolean) => void;
+  /** Sticky, for a correction the user did not ask for and must not miss. */
+  queueNotice: (message: string, isError?: boolean) => void;
   log: (message: string) => void;
   syncAvailability: () => void;
   openSettings: (reason: string) => void;
@@ -1213,8 +1215,15 @@ export async function fetchLocalSttModels(
     clientDeps.renderFetchedCatalog(response.models, activeSettings.localSttModel);
     const refreshedSettings = clientDeps.readSettings();
     if (autoSelect && !refreshedSettings.localSttModel.trim() && response.models.length > 0) {
+      // A selection that was set and is now absent was dropped from the catalog,
+      // so the app moved it without being asked to — reported even when quiet.
+      const replaced = activeSettings.localSttModel.trim();
       const fallback = await applyCatalogFallbackToForm(clientDeps.getCatalog());
-      if (fallback && !quiet) {
+      if (fallback && replaced && !response.models.includes(replaced)) {
+        clientDeps.queueNotice(
+          `Local STT model "${replaced}" is no longer offered; switched to "${localSttModelLabel(fallback)}".`,
+        );
+      } else if (fallback && !quiet) {
         clientDeps.notify(`Auto-selected local STT model "${localSttModelLabel(fallback)}".`);
       }
     } else if (!quiet) {

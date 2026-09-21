@@ -22,7 +22,6 @@ import { join, resolve } from "node:path";
  * Pinned by src/stt/stt-bench-roster-contract.test.ts so the two cannot drift.
  */
 const DEFAULT_MODELS = [
-  "nvidia/parakeet-unified-en-0.6b",
   "nvidia/parakeet-tdt-0.6b-v3",
   "nvidia/parakeet-tdt_ctc-110m",
 ];
