@@ -58,5 +58,7 @@ Desktop.ini
 docs/superpowers/
 jules/
 
-# Staged sherpa-onnx runtime DLLs (script-generated, bundled as resources)
-src-tauri/sherpa-runtime/
+# Staged sherpa-onnx runtime DLLs (script-generated, bundled as resources).
+# The directory itself is tracked via .gitkeep: `bundle.resources` names it, and
+# Tauri's build script fails when a configured resource path does not exist.
+src-tauri/sherpa-runtime/*.dll

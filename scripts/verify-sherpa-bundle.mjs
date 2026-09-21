@@ -43,10 +43,17 @@ if (!rootMap) {
     "bundle.resources has no entry mapping DLLs onto the install root (target \".\"); " +
       "resources in a subdirectory are not on the exe's DLL search path.",
   );
-} else if (!rootMap[0].includes("sherpa-runtime/")) {
+} else if (!/sherpa-runtime\/?$/.test(rootMap[0])) {
   problems.push(
     `bundle.resources maps "${rootMap[0]}" onto the install root, which is not where ` +
       "stage-sherpa-runtime.mjs writes.",
+  );
+} else if (/[*?[]/.test(rootMap[0])) {
+  // A glob is resolved by Tauri's build script, which hard-fails when it matches
+  // nothing — so the entry is the directory, which exists on a clean checkout.
+  problems.push(
+    `bundle.resources maps the glob "${rootMap[0]}"; name the directory instead, ` +
+      "or `cargo check` fails on a tree where nothing has been staged yet.",
   );
 }
 

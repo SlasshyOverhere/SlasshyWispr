@@ -12,6 +12,11 @@
  * This copies exactly the needed set into `src-tauri/sherpa-runtime/`, which `tauri.conf.json`
  * maps onto the install root so the Windows loader finds them beside the exe. Wired as
  * `bundle.beforeBundleCommand`, so a failure here aborts the bundle rather than shipping it.
+ *
+ * The resource entry names that directory rather than globbing `*.dll`: a glob is resolved by
+ * Tauri's build script, which errors when it matches nothing, and then `cargo check`, `cargo
+ * test` and `tauri dev` all fail on any tree where nothing has been staged yet. The directory
+ * is tracked with a `.gitkeep` for the same reason.
  */
 import { copyFileSync, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

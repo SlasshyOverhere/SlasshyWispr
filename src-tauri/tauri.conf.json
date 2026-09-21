@@ -38,7 +38,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "sherpa-runtime/*.dll": "."
+      "sherpa-runtime": "."
     }
   }
 }
