@@ -142,6 +142,11 @@ pub(crate) fn clear_local_stt_runtime_ready_marker(runtime_dir: &Path) {
     let _ = fs::remove_file(marker_path);
 }
 
+/// Modules the bridge needs to serve the local models that still route through it.
+/// Probing all of them keeps a partially-built venv self-healing instead of reporting ready.
+const LOCAL_STT_BRIDGE_IMPORT_PROBE: &str =
+    "import faster_whisper, torch, torchaudio, transformers";
+
 fn try_install_local_stt_cuda_torch(
     python_path: &str,
     cache_dir: &Path,
@@ -344,9 +349,12 @@ pub(crate) fn setup_local_stt_runtime_blocking(
         }
     }
 
-    let probe_faster_whisper =
-        run_local_stt_python_command(&venv_python, &["-c", "import faster_whisper"], &cache_dir);
-    if probe_faster_whisper.is_ok() {
+    let probe_runtime = run_local_stt_python_command(
+        &venv_python,
+        &["-c", LOCAL_STT_BRIDGE_IMPORT_PROBE],
+        &cache_dir,
+    );
+    if probe_runtime.is_ok() {
         let _ = try_install_local_stt_cuda_torch(
             &venv_python,
             &cache_dir,
@@ -371,7 +379,7 @@ pub(crate) fn setup_local_stt_runtime_blocking(
         }
         return Ok(venv_python);
     }
-    if probe_faster_whisper.is_err() {
+    if probe_runtime.is_err() {
         info!(
             "[local.stt.runtime] installing faster-whisper acceleration packages for local Whisper models"
         );
@@ -393,12 +401,12 @@ pub(crate) fn setup_local_stt_runtime_blocking(
                 clip_text(&single_line(&install_output), 260)
             );
         }
-        let recheck_faster_whisper = run_local_stt_python_command(
+        let recheck_runtime = run_local_stt_python_command(
             &venv_python,
-            &["-c", "import faster_whisper"],
+            &["-c", LOCAL_STT_BRIDGE_IMPORT_PROBE],
             &cache_dir,
         );
-        if recheck_faster_whisper.is_ok() {
+        if recheck_runtime.is_ok() {
             let _ = try_install_local_stt_cuda_torch(
                 &venv_python,
                 &cache_dir,
@@ -491,8 +499,12 @@ pub(crate) fn setup_local_stt_runtime_blocking(
         );
     }
 
-    run_local_stt_python_command(&venv_python, &["-c", "import faster_whisper"], &cache_dir)
-        .map_err(|error| format!("Local STT runtime validation failed: {error}"))?;
+    run_local_stt_python_command(
+        &venv_python,
+        &["-c", LOCAL_STT_BRIDGE_IMPORT_PROBE],
+        &cache_dir,
+    )
+    .map_err(|error| format!("Local STT runtime validation failed: {error}"))?;
     let cuda_available = local_stt_torch_cuda_available(&venv_python, &cache_dir).unwrap_or(false);
     info!(
         "[local.stt.runtime] install complete python={} cuda={}",
