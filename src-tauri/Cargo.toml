@@ -51,6 +51,11 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 
+# Whisper runs through whisper.cpp via transcribe-cpp, which vendors its own MAX_PATH
+# workaround. Windows x86_64 only, matching the one platform we ship.
+[target."cfg(all(windows, target_arch = \"x86_64\"))".dependencies]
+transcribe-cpp = { version = "0.2.3", default-features = false, features = ["vulkan"] }
+
 [target."cfg(target_os = \"windows\")".dependencies]
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",

@@ -15,13 +15,15 @@ pub(crate) enum LocalSttEngine {
     Parakeet,
     Moonshine,
     SenseVoice,
+    Whisper,
 }
 
 impl LocalSttEngine {
-    pub(crate) const ALL: [LocalSttEngine; 3] = [
+    pub(crate) const ALL: [LocalSttEngine; 4] = [
         LocalSttEngine::Parakeet,
         LocalSttEngine::Moonshine,
         LocalSttEngine::SenseVoice,
+        LocalSttEngine::Whisper,
     ];
 
     pub(crate) fn label(&self) -> &'static str {
@@ -29,6 +31,7 @@ impl LocalSttEngine {
             LocalSttEngine::Parakeet => "parakeet",
             LocalSttEngine::Moonshine => "moonshine",
             LocalSttEngine::SenseVoice => "sense_voice",
+            LocalSttEngine::Whisper => "whisper",
         }
     }
 }
@@ -39,7 +42,45 @@ pub(crate) fn engine_for_provider(provider: &str) -> Option<LocalSttEngine> {
         "parakeet" => Some(LocalSttEngine::Parakeet),
         "moonshine" => Some(LocalSttEngine::Moonshine),
         "sensevoice" | "sense_voice" => Some(LocalSttEngine::SenseVoice),
+        "whisper" => Some(LocalSttEngine::Whisper),
         _ => None,
+    }
+}
+
+/// Whisper's native engine is `transcribe-cpp`, which we only build for Windows x86_64.
+/// Off that target the engine has no runtime, so these answer as if nothing is resident.
+/// The three bodies are identical by construction, which is why they share one cfg each.
+fn whisper_runtime_loaded() -> Option<bool> {
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    {
+        crate::audio::whisper::runtime_loaded()
+    }
+    #[cfg(not(all(windows, target_arch = "x86_64")))]
+    {
+        Some(false)
+    }
+}
+
+fn unload_whisper_runtime() -> bool {
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    {
+        crate::audio::whisper::unload_runtime().unwrap_or(false)
+    }
+    #[cfg(not(all(windows, target_arch = "x86_64")))]
+    {
+        false
+    }
+}
+
+fn unload_idle_whisper_runtime(max_idle: Duration) -> Option<String> {
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    {
+        crate::audio::whisper::unload_idle_runtime(max_idle)
+    }
+    #[cfg(not(all(windows, target_arch = "x86_64")))]
+    {
+        let _ = max_idle;
+        None
     }
 }
 
@@ -50,6 +91,7 @@ fn unload_engine(engine: LocalSttEngine) -> bool {
         }
         LocalSttEngine::Moonshine => crate::audio::moonshine::unload_runtime().unwrap_or(false),
         LocalSttEngine::SenseVoice => crate::audio::sense_voice::unload_runtime().unwrap_or(false),
+        LocalSttEngine::Whisper => unload_whisper_runtime(),
     }
 }
 
@@ -60,6 +102,7 @@ fn unload_idle_engine(engine: LocalSttEngine, max_idle: Duration) -> Option<Stri
         LocalSttEngine::Parakeet => None,
         LocalSttEngine::Moonshine => crate::audio::moonshine::unload_idle_runtime(max_idle),
         LocalSttEngine::SenseVoice => crate::audio::sense_voice::unload_idle_runtime(max_idle),
+        LocalSttEngine::Whisper => unload_idle_whisper_runtime(max_idle),
     }
 }
 
@@ -99,6 +142,7 @@ pub(crate) fn states() -> Vec<(&'static str, &'static str)> {
                 }
                 LocalSttEngine::Moonshine => crate::audio::moonshine::runtime_loaded(),
                 LocalSttEngine::SenseVoice => crate::audio::sense_voice::runtime_loaded(),
+                LocalSttEngine::Whisper => whisper_runtime_loaded(),
             };
             let label = match state {
                 Some(true) => "true",
@@ -132,7 +176,11 @@ mod tests {
             engine_for_provider("sense_voice"),
             Some(LocalSttEngine::SenseVoice)
         );
-        assert_eq!(engine_for_provider("whisper"), None);
+        assert_eq!(
+            engine_for_provider("whisper"),
+            Some(LocalSttEngine::Whisper)
+        );
+        assert_eq!(engine_for_provider("openai/whisper-small"), None);
     }
 
     #[test]

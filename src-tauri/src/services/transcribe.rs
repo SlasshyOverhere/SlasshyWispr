@@ -844,14 +844,21 @@ pub(crate) async fn transcribe_audio_local(
         return transcribe_audio_local_parakeet(app, local, audio_bytes, audio_mime_type, language)
             .await;
     }
-    if provider == "moonshine" || provider == "sensevoice" {
+    if matches!(provider.as_str(), "whisper" | "moonshine" | "sensevoice") {
+        // Resolved the same way the bridge path resolves it, so a native transcript is
+        // not silently less language-aware than the Python one it replaced.
+        let language_hint = normalize_stt_language_hint(language).or_else(|| {
+            normalize_stt_allowed_languages(allowed_languages)
+                .first()
+                .cloned()
+        });
         match transcribe_audio_local_in_process(
             app,
             &provider,
             local,
             audio_bytes,
             audio_mime_type,
-            language,
+            language_hint.as_deref(),
         )
         .await
         {
@@ -984,6 +991,21 @@ async fn transcribe_audio_local_in_process(
                 &samples,
                 language.as_deref(),
             ),
+            "whisper" => {
+                #[cfg(all(windows, target_arch = "x86_64"))]
+                {
+                    audio::whisper::transcribe_whisper(
+                        &model,
+                        &model_dir,
+                        &samples,
+                        language.as_deref(),
+                    )
+                }
+                #[cfg(not(all(windows, target_arch = "x86_64")))]
+                {
+                    Err("Whisper's native engine is only built for Windows x86_64.".to_string())
+                }
+            }
             other => Err(format!(
                 "Unsupported in-process local STT provider '{other}'."
             )),

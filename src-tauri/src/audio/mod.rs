@@ -18,5 +18,8 @@ pub mod processing;
 pub mod runtimes;
 pub mod sense_voice;
 pub mod vad;
+// whisper.cpp via transcribe-cpp, which we build for Windows x86_64 only.
+#[cfg(all(windows, target_arch = "x86_64"))]
+pub mod whisper;
 
 pub use processing::*;

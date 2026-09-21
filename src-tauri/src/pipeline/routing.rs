@@ -305,16 +305,22 @@ pub fn built_in_local_stt_model_catalog() -> Vec<String> {
 
 /// Whether the provider still needs the Python runtime bootstrapped.
 ///
-/// Only Whisper does: Parakeet, Moonshine and SenseVoice now run in this process, so
-/// selecting one must not install a venv. Unknown providers fall through to Whisper's
-/// answer, preserving the old default.
+/// No local provider does: Parakeet, Moonshine, SenseVoice and Whisper all run in this
+/// process, so selecting one must not install a venv. Unknown providers keep the historic
+/// answer of yes, since we cannot promise a native engine for a provider we do not know.
 pub fn local_stt_provider_requires_python(provider: &str) -> bool {
-    !matches!(provider, "parakeet" | "moonshine" | "sensevoice")
+    !matches!(
+        provider,
+        "parakeet" | "moonshine" | "sensevoice" | "whisper"
+    )
 }
 
 /// Whether the provider is supported in zero-Python mode.
 pub fn local_stt_provider_supported_in_zero_python_mode(provider: &str) -> bool {
-    matches!(provider, "parakeet" | "moonshine" | "sensevoice")
+    matches!(
+        provider,
+        "parakeet" | "moonshine" | "sensevoice" | "whisper"
+    )
 }
 
 /// Infer the STT provider from a model identifier string.
@@ -355,10 +361,10 @@ pub fn local_stt_model_display_label(model: &str) -> String {
         "nvidia/parakeet-tdt-0.6b-v3" => "Parakeet v3 (478 MB)".to_string(),
         "nvidia/parakeet-tdt_ctc-110m" => "Parakeet v2 (473 MB)".to_string(),
         "openai/whisper-large-v3" => "Whisper Large (1.1 GB)".to_string(),
-        "openai/whisper-medium" => "Whisper Medium (492 MB)".to_string(),
-        "openai/whisper-small" => "Whisper Small (487 MB)".to_string(),
+        "openai/whisper-medium" => "Whisper Medium (556 MB)".to_string(),
+        "openai/whisper-small" => "Whisper Small (185 MB)".to_string(),
         "UsefulSensors/moonshine-base" => "Moonshine Base (58 MB)".to_string(),
-        "openai/whisper-large-v3-turbo" => "Whisper Turbo (1.6 GB)".to_string(),
+        "openai/whisper-large-v3-turbo" => "Whisper Turbo (591 MB)".to_string(),
         "FunAudioLLM/SenseVoiceSmall" => "SenseVoice (160 MB)".to_string(),
         _ => canonical,
     }
@@ -371,11 +377,11 @@ pub fn local_stt_model_size_gb(model: &str) -> f64 {
         "nvidia/parakeet-unified-en-0.6b" => 0.663,
         "nvidia/parakeet-tdt-0.6b-v3" => 0.478,
         "nvidia/parakeet-tdt_ctc-110m" => 0.473,
-        "openai/whisper-large-v3" => 1.1,
-        "openai/whisper-medium" => 0.492,
-        "openai/whisper-small" => 0.487,
+        "openai/whisper-large-v3" => 1.107,
+        "openai/whisper-medium" => 0.556,
+        "openai/whisper-small" => 0.185,
         "UsefulSensors/moonshine-base" => 0.058,
-        "openai/whisper-large-v3-turbo" => 1.6,
+        "openai/whisper-large-v3-turbo" => 0.591,
         "FunAudioLLM/SenseVoiceSmall" => 0.160,
         _ => 0.0,
     }
@@ -805,7 +811,7 @@ mod tests {
 
     #[test]
     fn local_stt_provider_python_requirement_flags() {
-        assert!(local_stt_provider_requires_python("whisper"));
+        assert!(!local_stt_provider_requires_python("whisper"));
         assert!(!local_stt_provider_requires_python("moonshine"));
         assert!(!local_stt_provider_requires_python("sensevoice"));
         assert!(!local_stt_provider_requires_python("parakeet"));
@@ -820,13 +826,12 @@ mod tests {
         assert!(local_stt_provider_supported_in_zero_python_mode(
             "sensevoice"
         ));
-        // Whisper still goes through the bridge, so the mode cannot cover it yet.
-        assert!(!local_stt_provider_supported_in_zero_python_mode("whisper"));
+        assert!(local_stt_provider_supported_in_zero_python_mode("whisper"));
     }
 
     #[test]
-    fn only_whisper_still_bootstraps_the_python_runtime() {
-        assert!(local_stt_provider_requires_python("whisper"));
+    fn no_known_local_provider_still_bootstraps_the_python_runtime() {
+        assert!(!local_stt_provider_requires_python("whisper"));
         assert!(!local_stt_provider_requires_python("parakeet"));
         assert!(!local_stt_provider_requires_python("moonshine"));
         assert!(!local_stt_provider_requires_python("sensevoice"));

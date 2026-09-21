@@ -46,6 +46,33 @@ pub(crate) fn faster_whisper_repo_alias_for_model(model: &str) -> Option<&'stati
     }
 }
 
+/// Map a known OpenAI Whisper model to the GGUF mirror whisper.cpp can read.
+///
+/// Returns the repo and the one file to fetch: the quantized mirror carries every
+/// quantization as a separate sibling, and we want only the default one.
+pub(crate) fn whisper_gguf_mirror_for_model(model: &str) -> Option<(&'static str, &'static str)> {
+    let normalized_model = model.trim().to_ascii_lowercase();
+    match normalized_model.as_str() {
+        "openai/whisper-large-v3" => Some((
+            "handy-computer/whisper-large-v3-gguf",
+            "whisper-large-v3-Q5_K_M.gguf",
+        )),
+        "openai/whisper-large-v3-turbo" => Some((
+            "handy-computer/whisper-large-v3-turbo-gguf",
+            "whisper-large-v3-turbo-Q5_K_M.gguf",
+        )),
+        "openai/whisper-medium" => Some((
+            "handy-computer/whisper-medium-gguf",
+            "whisper-medium-Q5_K_M.gguf",
+        )),
+        "openai/whisper-small" => Some((
+            "handy-computer/whisper-small-gguf",
+            "whisper-small-Q5_K_M.gguf",
+        )),
+        _ => None,
+    }
+}
+
 /// Resolve the canonical HuggingFace repo id for a provider/model pair.
 pub(crate) fn resolve_huggingface_repo_id(provider: &str, model: &str) -> String {
     let normalized_model = model.trim();
@@ -53,8 +80,8 @@ pub(crate) fn resolve_huggingface_repo_id(provider: &str, model: &str) -> String
         // Legacy alias: old "Parakeet v2" selection now resolves to the lightweight v2-class model.
         return "nvidia/parakeet-tdt_ctc-110m".to_string();
     }
-    if let Some(mapped_repo) = faster_whisper_repo_alias_for_model(normalized_model) {
-        return mapped_repo.to_string();
+    if let Some((gguf_repo, _)) = whisper_gguf_mirror_for_model(normalized_model) {
+        return gguf_repo.to_string();
     }
     if normalized_model.contains('/') {
         return normalized_model.to_string();
@@ -83,6 +110,11 @@ pub(crate) fn legacy_huggingface_repo_id_for_model(provider: &str, model: &str) 
     let normalized_provider = normalize_local_stt_provider(Some(provider));
     if normalized_provider != "whisper" {
         return None;
+    }
+    // The CTranslate2 mirrors are where Whisper lived before the GGUF move, so they are
+    // the directory a download from the last few releases left behind.
+    if let Some(mapped_repo) = faster_whisper_repo_alias_for_model(model) {
+        return Some(mapped_repo.to_string());
     }
     let normalized_model = model.trim();
     if normalized_model
@@ -167,6 +199,10 @@ fn preferred_huggingface_primary_file_names(repo_id: &str) -> &'static [&'static
     match repo_id {
         "nvidia/parakeet-tdt-0.6b-v3" => &["parakeet-tdt-0.6b-v3.nemo"],
         "nvidia/parakeet-tdt_ctc-110m" => &["parakeet-tdt_ctc-110m.nemo"],
+        "handy-computer/whisper-large-v3-gguf" => &["whisper-large-v3-Q5_K_M.gguf"],
+        "handy-computer/whisper-large-v3-turbo-gguf" => &["whisper-large-v3-turbo-Q5_K_M.gguf"],
+        "handy-computer/whisper-medium-gguf" => &["whisper-medium-Q5_K_M.gguf"],
+        "handy-computer/whisper-small-gguf" => &["whisper-small-Q5_K_M.gguf"],
         "Systran/faster-whisper-large-v3" => &["model.bin"],
         "mobiuslabsgmbh/faster-whisper-large-v3-turbo" => &["model.bin"],
         "Systran/faster-whisper-medium" => &["model.bin"],
@@ -361,7 +397,25 @@ mod tests {
         );
         assert_eq!(
             resolve_huggingface_repo_id("whisper", "openai/whisper-large-v3"),
-            "Systran/faster-whisper-large-v3"
+            "handy-computer/whisper-large-v3-gguf"
+        );
+    }
+
+    #[test]
+    fn whisper_models_resolve_to_the_gguf_mirror_and_one_file() {
+        let (repo, file) = whisper_gguf_mirror_for_model("openai/whisper-small").unwrap();
+        assert_eq!(repo, "handy-computer/whisper-small-gguf");
+        assert_eq!(file, "whisper-small-Q5_K_M.gguf");
+        assert_eq!(
+            preferred_huggingface_primary_file_names(repo),
+            &[file],
+            "the mirror ships every quantization; we fetch only the default one"
+        );
+        assert!(should_download_huggingface_stt_file(file));
+
+        assert_eq!(
+            whisper_gguf_mirror_for_model("openai/whisper-large-v2"),
+            None
         );
     }
 
