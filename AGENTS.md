@@ -12,6 +12,8 @@ Desktop voice dictation. Tauri v2 (Rust) + React 19 + Vite 8 + Tailwind CSS 4.
 | `npm run tauri:build` | Production build (NSIS installer on Windows), using the default `tauri.conf.json`. |
 | `npm run test` | `bun test` (NOT vitest/jest) |
 | `npm run preview` | `vite preview` |
+| `bun scripts/stt-bench-record.mjs` | Local mic recorder: saves each clip and its reference transcript into `bench/manifest.json`. |
+| `bun scripts/stt-bench.mjs --manifest bench/manifest.json` | Scores every clip against every model in the manifest (WER + warm/cold latency), prints a table, and diffs `bench/baseline.json` — exits 1 on a regression. Add `--results <jsonl>` to re-score without re-running. |
 
 Single test: `bun test src/utils.test.ts` — works on any `src/**/*.test.ts` file.
 
@@ -60,6 +62,7 @@ Single-instance enforcement (per spec `2026-07-07-tray-window-toggle-and-single-
 ## Notable conventions
 
 - `src/security.test.ts` and `src/utils-enhanced.test.ts` test inline helper functions rather than production imports — they are standalone validation tests.
+- The STT benchmark (`--stt-bench <manifest>`) drives `transcribe_audio_local`, the same call a dictation makes, so its numbers are the app's rather than a parallel implementation. It writes JSONL to `--stt-bench-out` instead of stdout because release builds are Windows GUI-subsystem binaries with no console. `bun scripts/stt-bench.mjs` is the driver, and it must run under **bun** — it imports the TypeScript scorer so WER has one implementation. The scorer normalizes case, punctuation, whitespace and 0–99 number formatting (so `3:30` equals `three thirty`); larger numbers, years and ordinals are left alone and will score as errors.
 - Settings persist to `localStorage` under keys like `slasshywispr-settings-v4` (see `src/constants.ts`).
 - The Rust backend stores API keys in the OS keyring (`keyring` crate), with a DPAPI fallback on Windows.
 - Local STT models are downloaded as prepacked int8 tar.gz mirrors from the `SlasshyOverhere/parakeet-int8-mirror` release, not from HuggingFace: the native engine needs an istupakov-layout directory (`encoder-model.int8.onnx`, `decoder_joint-model.int8.onnx`, `nemo128.onnx`, `vocab.txt`, `config.json`), and no public export ships that. `scripts/repack-parakeet-unified-en.mjs --from <dir>` builds one; `src/stt/parakeet-archive-contract.test.ts` pins the packed file set against the Rust discovery function.
