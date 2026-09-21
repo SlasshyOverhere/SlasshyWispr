@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "pretauri:dev": "node scripts/ensure-valid-dev-exe.mjs",
     "tauri:dev": "tauri dev --config src-tauri/tauri.conf.dev.json",
-    "tauri:build": "tauri build",
+    "tauri:build": "tauri build && node scripts/verify-sherpa-bundle.mjs",
     "test": "bun test"
   },
   "devDependencies": {
