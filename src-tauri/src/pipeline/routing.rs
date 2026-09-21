@@ -304,13 +304,18 @@ pub fn built_in_local_stt_model_catalog() -> Vec<String> {
 }
 
 /// Whether the given local STT provider requires a Python runtime.
+/// Whether the provider still needs the Python runtime bootstrapped.
+///
+/// Only Whisper does: Parakeet, Moonshine and SenseVoice now run in this process, so
+/// selecting one must not install a venv. Unknown providers fall through to Whisper's
+/// answer, preserving the old default.
 pub fn local_stt_provider_requires_python(provider: &str) -> bool {
-    matches!(provider, "whisper" | "moonshine" | "sensevoice")
+    !matches!(provider, "parakeet" | "moonshine" | "sensevoice")
 }
 
 /// Whether the provider is supported in zero-Python mode.
 pub fn local_stt_provider_supported_in_zero_python_mode(provider: &str) -> bool {
-    provider == "parakeet"
+    matches!(provider, "parakeet" | "moonshine" | "sensevoice")
 }
 
 /// Infer the STT provider from a model identifier string.
@@ -802,21 +807,32 @@ mod tests {
     #[test]
     fn local_stt_provider_python_requirement_flags() {
         assert!(local_stt_provider_requires_python("whisper"));
-        assert!(local_stt_provider_requires_python("moonshine"));
-        assert!(local_stt_provider_requires_python("sensevoice"));
+        assert!(!local_stt_provider_requires_python("moonshine"));
+        assert!(!local_stt_provider_requires_python("sensevoice"));
         assert!(!local_stt_provider_requires_python("parakeet"));
     }
 
     #[test]
     fn zero_python_supported_local_stt_provider_flags() {
         assert!(local_stt_provider_supported_in_zero_python_mode("parakeet"));
-        assert!(!local_stt_provider_supported_in_zero_python_mode("whisper"));
-        assert!(!local_stt_provider_supported_in_zero_python_mode(
+        assert!(local_stt_provider_supported_in_zero_python_mode(
             "moonshine"
         ));
-        assert!(!local_stt_provider_supported_in_zero_python_mode(
+        assert!(local_stt_provider_supported_in_zero_python_mode(
             "sensevoice"
         ));
+        // Whisper still goes through the bridge, so the mode cannot cover it yet.
+        assert!(!local_stt_provider_supported_in_zero_python_mode("whisper"));
+    }
+
+    #[test]
+    fn only_whisper_still_bootstraps_the_python_runtime() {
+        assert!(local_stt_provider_requires_python("whisper"));
+        assert!(!local_stt_provider_requires_python("parakeet"));
+        assert!(!local_stt_provider_requires_python("moonshine"));
+        assert!(!local_stt_provider_requires_python("sensevoice"));
+        // Unknown providers keep the historic default of needing it.
+        assert!(local_stt_provider_requires_python("something-else"));
     }
 
     #[test]

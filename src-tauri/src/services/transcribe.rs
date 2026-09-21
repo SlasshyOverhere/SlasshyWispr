@@ -843,6 +843,33 @@ pub(crate) async fn transcribe_audio_local(
         return transcribe_audio_local_parakeet(app, local, audio_bytes, audio_mime_type, language)
             .await;
     }
+    if provider == "moonshine" || provider == "sensevoice" {
+        match transcribe_audio_local_in_process(
+            app,
+            &provider,
+            local,
+            audio_bytes,
+            audio_mime_type,
+            language,
+        )
+        .await
+        {
+            Ok(transcript) => return Ok(transcript),
+            // The Python bridge stays as a fallback for a model placed by hand in the
+            // older layout. In zero-Python mode the native error is the answer, since
+            // falling back would defeat the mode.
+            Err(error) => {
+                if zero_python_mode_enabled() {
+                    return Err(error);
+                }
+                warn!(
+                    "[local.stt.native] provider={} falling back to the Python bridge: {}",
+                    provider,
+                    clip_text(&single_line(&error), 260)
+                );
+            }
+        }
+    }
     if provider == "whisper" || provider == "moonshine" || provider == "sensevoice" {
         if zero_python_mode_enabled() {
             return Err(ZERO_PYTHON_STT_NOTICE.to_string());
@@ -918,6 +945,52 @@ pub(crate) async fn transcribe_audio_local_parakeet(
     .map_err(|error| format!("Local STT worker failed: {error}"))?;
 
     native_result
+}
+
+/// Transcribe through an in-process engine, so no Python runtime is involved.
+///
+/// The model directory is the download target for the resolved repo, and each engine
+/// finds its own file set inside it — a snapshot keeps the repo's nesting, so the
+/// directory the engine is handed is rarely the snapshot root.
+async fn transcribe_audio_local_in_process(
+    app: &AppHandle,
+    provider: &str,
+    local: &LocalSttConfig,
+    audio_bytes: &[u8],
+    audio_mime_type: &str,
+    language: Option<&str>,
+) -> Result<String, String> {
+    let model = canonical_local_stt_model_id(&local.stt_model);
+    let repo_id = resolve_huggingface_repo_id(provider, &model);
+    let model_dir = stt_models_dir(app)?.join(sanitize_model_cache_dir_name(&repo_id));
+    if !model_dir.exists() {
+        return Err(format!(
+            "Local STT model is not downloaded yet. Download '{model}' first."
+        ));
+    }
+
+    let samples =
+        audio::processing::decode_local_stt_audio_to_mono_f32(audio_bytes, audio_mime_type)?;
+    let provider = provider.to_string();
+    let language = language.map(str::to_string);
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = match provider.as_str() {
+            "moonshine" => audio::moonshine::transcribe_moonshine(&model, &model_dir, &samples),
+            "sensevoice" => audio::sense_voice::transcribe_sense_voice(
+                &model,
+                &model_dir,
+                &samples,
+                language.as_deref(),
+            ),
+            other => Err(format!(
+                "Unsupported in-process local STT provider '{other}'."
+            )),
+        }?;
+        Ok::<String, String>(result.0)
+    })
+    .await
+    .map_err(|error| format!("Local STT worker failed: {error}"))?
 }
 
 pub(crate) async fn transcribe_audio_local_hf_asr(

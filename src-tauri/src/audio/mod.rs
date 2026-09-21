@@ -5,11 +5,18 @@
 //! - Noise suppression (high-pass filter, denoising, compression, normalization)
 //! - Voice Activity Detection (VAD model loading, inference, speech segmentation)
 //! - Native Parakeet in-process STT runtime (engine lifecycle, int8 transcription)
+//! - Shared in-process ASR engine cache (`in_process`) used by the Whisper,
+//!   Moonshine and SenseVoice runtimes, replacing their Python bridge
 
 pub mod capture;
+pub mod in_process;
+pub mod model_layout;
+pub mod moonshine;
 pub mod noise_suppression;
 pub mod parakeet;
 pub mod processing;
+pub mod runtimes;
+pub mod sense_voice;
 pub mod vad;
 
 pub use processing::*;

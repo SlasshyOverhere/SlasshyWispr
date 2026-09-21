@@ -559,8 +559,8 @@ pub(crate) async fn delete_local_stt_model(
 
     let provider = infer_local_stt_provider_from_model(&model);
     let repo_id = resolve_huggingface_repo_id(&provider, &model);
-    if provider.eq_ignore_ascii_case("parakeet") {
-        let _ = audio::parakeet::unload_native_parakeet_runtime("delete-model");
+    if audio::runtimes::engine_for_provider(&provider).is_some() {
+        let _ = audio::runtimes::unload_all();
         stop_all_local_stt_bridge_daemons();
         let _ = state.set_local_stt_runtime_loaded(false);
     }
@@ -812,8 +812,7 @@ pub(crate) async fn deactivate_local_stt_model(
     let worker_result = tauri::async_runtime::spawn_blocking(move || {
         let (trimmed_count, stopped_during_trim) = trim_all_local_stt_bridge_daemon_model_caches()?;
         let fully_stopped = stop_all_local_stt_bridge_daemons_with_count();
-        let native_unloaded =
-            audio::parakeet::unload_native_parakeet_runtime("manual-deactivate").unwrap_or(false);
+        let native_unloaded = !audio::runtimes::unload_all().is_empty();
         Ok::<(usize, usize, usize, bool), String>((
             trimmed_count,
             stopped_during_trim,
@@ -867,10 +866,13 @@ pub(crate) async fn get_local_stt_runtime_state(
 
     // F-017: None = lock held (inference in flight), so the state is unknown
     // rather than a guessed "loaded".
-    let native_loaded = match audio::parakeet::native_parakeet_runtime_loaded() {
-        Some(loaded) => loaded.to_string(),
-        None => "busy".to_string(),
-    };
+    let engine_states = audio::runtimes::states();
+    let any_engine_loaded = engine_states.iter().any(|(_, state)| *state == "true");
+    let native_loaded = engine_states
+        .iter()
+        .map(|(label, state)| format!("{label}={state}"))
+        .collect::<Vec<String>>()
+        .join(" ");
     let loaded = state.local_stt_runtime_loaded_snapshot()?;
     let details = if loaded {
         format!(
@@ -879,7 +881,7 @@ pub(crate) async fn get_local_stt_runtime_state(
             loaded_daemon_count,
             daemon_count
         )
-    } else if daemon_count > 0 || native_loaded == "true" {
+    } else if daemon_count > 0 || any_engine_loaded {
         format!(
             "Local STT is unloaded (native_parakeet_loaded={}, {} warm daemon(s) remain ready).",
             native_loaded, daemon_count

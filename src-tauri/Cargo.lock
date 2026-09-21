@@ -5682,6 +5682,7 @@ version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23e3bf6e1dd4909268796bdf3794fb6fda70f4a0e5a80e2e56cd3fc213a11586"
 dependencies = [
+ "base64 0.22.1",
  "derive_builder",
  "env_logger",
  "hound",
@@ -5690,6 +5691,7 @@ dependencies = [
  "once_cell",
  "ort",
  "regex",
+ "rustfft",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

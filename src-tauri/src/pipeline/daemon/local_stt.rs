@@ -408,6 +408,12 @@ fn stop_idle_local_stt_native_parakeet_runtime() {
     }
 }
 
+/// Moonshine and SenseVoice share one idle sweep; Parakeet reports its own above.
+fn stop_idle_local_stt_in_process_runtimes() {
+    let max_idle = Duration::from_secs(local_stt_model_unload_idle_timeout_secs());
+    let _ = crate::audio::runtimes::unload_idle(max_idle);
+}
+
 pub fn ensure_local_stt_daemon_idle_sweeper() {
     if LOCAL_STT_DAEMON_SWEEPER_STARTED.set(()).is_err() {
         return;
@@ -417,6 +423,7 @@ pub fn ensure_local_stt_daemon_idle_sweeper() {
         std::thread::sleep(Duration::from_secs(local_stt_daemon_sweep_interval_secs()));
         stop_idle_local_stt_bridge_daemons();
         stop_idle_local_stt_native_parakeet_runtime();
+        stop_idle_local_stt_in_process_runtimes();
     });
 }
 

@@ -65,7 +65,7 @@ pub const LOCAL_STT_RUNTIME_READY_MARKER_FILE: &str = "runtime.ready.v2";
 pub const LOCAL_STT_RUNTIME_READY_MARKER_CONTENT: &str = "nemo+faster-whisper+torch";
 pub const ZERO_PYTHON_MODE_ENV: &str = "SLASSHYWISPR_ZERO_PYTHON_MODE";
 pub const ZERO_PYTHON_STT_NOTICE: &str =
-    "Zero-Python mode is enabled. Only native Parakeet local STT models are supported.";
+    "Zero-Python mode is enabled. This local STT model needs the Python bridge; pick Parakeet, Moonshine or SenseVoice instead.";
 pub const ZERO_PYTHON_COQUI_NOTICE: &str =
     "Coqui TTS is disabled in zero-Python mode. Use Piper TTS.";
 #[cfg(target_os = "windows")]
