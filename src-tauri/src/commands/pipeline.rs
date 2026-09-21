@@ -171,6 +171,18 @@ fn resolve_system_prompt(requested: Option<&str>) -> &str {
     }
 }
 
+/// Whisper-era guards: seq2seq models invent text from silence. Transducers and CTC
+/// emit nothing, so rejecting a real short phrase is the worse failure.
+fn stt_hallucination_guards_apply(mode: &SttModeConfig) -> bool {
+    match mode {
+        SttModeConfig::Online { .. } => true,
+        SttModeConfig::Local(local) => !matches!(
+            infer_local_stt_provider_from_model(&local.stt_model).as_str(),
+            "parakeet" | "sensevoice"
+        ),
+    }
+}
+
 #[tauri::command]
 pub(crate) async fn run_assistant_pipeline(
     app: AppHandle,
@@ -306,7 +318,9 @@ pub(crate) async fn run_assistant_pipeline(
             .await?
         }
     };
-    if is_known_stt_hallucination(&transcript_raw) {
+    if stt_hallucination_guards_apply(&pipeline_mode.stt)
+        && is_known_stt_hallucination(&transcript_raw)
+    {
         warn!(
             "[pipeline] rejected known hallucination transcript='{}' chars={}",
             clip_text(&transcript_raw, 120),
@@ -317,7 +331,12 @@ pub(crate) async fn run_assistant_pipeline(
                 .to_string(),
         );
     }
-    if looks_like_repetitive_transcript_noise(&transcript_raw, effective_language_hint.as_deref()) {
+    if stt_hallucination_guards_apply(&pipeline_mode.stt)
+        && looks_like_repetitive_transcript_noise(
+            &transcript_raw,
+            effective_language_hint.as_deref(),
+        )
+    {
         warn!(
             "[pipeline] rejected noisy transcript chars={} language={}",
             transcript_raw.chars().count(),
@@ -836,7 +855,35 @@ pub(crate) async fn run_assistant_pipeline(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pipeline::routing::LocalSttConfig;
     use crate::pipeline::tts::PiperPipelineRequest;
+
+    fn local_stt_mode(model: &str) -> SttModeConfig {
+        SttModeConfig::Local(LocalSttConfig {
+            stt_model: model.to_string(),
+        })
+    }
+
+    #[test]
+    fn hallucination_guards_skip_local_engines_that_cannot_invent_text() {
+        assert!(!stt_hallucination_guards_apply(&local_stt_mode(
+            "nvidia/parakeet-unified-en-0.6b"
+        )));
+        assert!(!stt_hallucination_guards_apply(&local_stt_mode(
+            "iic/SenseVoiceSmall"
+        )));
+        assert!(stt_hallucination_guards_apply(&local_stt_mode(
+            "whisper-large-v3-turbo"
+        )));
+        assert!(stt_hallucination_guards_apply(&local_stt_mode(
+            "onnx-community/moonshine-base"
+        )));
+        assert!(stt_hallucination_guards_apply(&SttModeConfig::Online {
+            api_key: "k".to_string(),
+            api_base_url: "https://api.example.com".to_string(),
+            stt_model: "whisper-1".to_string(),
+        }));
+    }
 
     #[test]
     fn an_absent_or_blank_system_prompt_falls_back_to_the_built_in_one() {
