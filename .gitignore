@@ -57,3 +57,6 @@ Desktop.ini
 .impeccable/
 docs/superpowers/
 jules/
+
+# Staged sherpa-onnx runtime DLLs (script-generated, bundled as resources)
+src-tauri/sherpa-runtime/
