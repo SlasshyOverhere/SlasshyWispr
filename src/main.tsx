@@ -432,8 +432,8 @@ flushSync(() => {
   createRoot(appRoot).render(<App />);
 });
 
-const BASE_WINDOW_WIDTH = 1280;
-const BASE_WINDOW_HEIGHT = 832;
+const BASE_WINDOW_WIDTH = 780;
+const BASE_WINDOW_HEIGHT = 600;
 const BASE_DPI = 96;
 
 async function initializeDpiAwareWindowSize(): Promise<void> {

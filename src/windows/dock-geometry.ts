@@ -24,9 +24,10 @@ export function initDockGeometry(deps: DockGeometryDeps): void {
   geometryDeps = deps;
 }
 
-// F-026: main-window floor proposed for tauri.conf.json (coordinator approves;
-// this module owns the TS-side constants + breakpoint so layout follows suit).
-export const MAIN_WINDOW_MIN_SIZE = { width: 1024, height: 640 } as const;
+// F-026: mirrors tauri.conf.json. The window is not resizable, so this is
+// the size rather than a floor; it stays declared because the TS-side layout
+// breakpoints below derive from it.
+export const MAIN_WINDOW_MIN_SIZE = { width: 780, height: 600 } as const;
 
 // F-026: below this viewport width the dock-dependent layout goes compact.
 export const DOCK_VIEWPORT_BREAKPOINT = 1100;
