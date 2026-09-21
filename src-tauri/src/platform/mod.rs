@@ -8,5 +8,6 @@
 pub mod clipboard_render;
 pub mod input;
 pub mod shell_integration;
+pub mod window_frame;
 pub mod windows_native;
 pub mod windows_types;

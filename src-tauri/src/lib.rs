@@ -101,6 +101,11 @@ pub fn run() {
     builder
         .manage(app_state)
         .manage(tts_setup_state)
+        // Every webview, including the dock created at runtime, gets the same
+        // frame treatment; DWM draws the border per window.
+        .on_page_load(|webview, _| {
+            platform::window_frame::restyle_system_frame(&webview.window());
+        })
         .setup(move |app| {
             #[cfg(desktop)]
             {
