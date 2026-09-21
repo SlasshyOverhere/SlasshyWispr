@@ -58,7 +58,6 @@ export interface OfflineDiagnosticDetails {
   model?: string;
   expectedPath?: string;
   availableMemory?: number;
-  pythonInstalled?: boolean;
   waitTime?: string;
 }
 
@@ -115,58 +114,35 @@ export async function checkAvailableMemory(model: string): Promise<{ sufficient:
 /**
  * Shows a detailed diagnostic dialog when offline mode setup fails
  */
-export function showOfflineModeDiagnostic(issue: string, details?: {
-  model?: string;
-  expectedPath?: string;
-  availableMemory?: number;
-  pythonInstalled?: boolean;
-}): void {
+export function showOfflineModeDiagnostic(
+  issue: string,
+  details?: OfflineDiagnosticDetails,
+): void {
   const diagnostics = getOfflineDiagnosticData(issue, details);
 
   const overlay = document.createElement("div");
   overlay.className = "offline-diagnostic-overlay";
-  overlay.style.cssText = `
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    animation: fadeIn 0.2s ease-out;
-  `;
 
   const dialog = document.createElement("div");
   dialog.className = "offline-diagnostic-dialog";
-  dialog.style.cssText = `
-    background: var(--surface-elevated, #1e1e1e);
-    border: 1px solid var(--border-subtle, #333);
-    border-radius: 12px;
-    padding: 24px;
-    max-width: 560px;
-    width: 90%;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    animation: slideUp 0.3s ease-out;
-  `;
 
   dialog.innerHTML = `
     <div style="margin-bottom: 20px;">
       <div style="font-size: 32px; margin-bottom: 12px;">${diagnostics.icon}</div>
-      <h3 style="margin: 0 0 8px 0; font-size: 18px; color: var(--text-primary, #fff);">${escapeHtml(diagnostics.title)}</h3>
-      <p style="margin: 0; color: var(--text-secondary, #aaa); font-size: 14px; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(diagnostics.description)}</p>
+      <h3 style="margin: 0 0 8px 0; font-size: 18px; color: var(--ink-primary);">${escapeHtml(diagnostics.title)}</h3>
+      <p style="margin: 0; color: var(--ink-secondary); font-size: 14px; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(diagnostics.description)}</p>
     </div>
 
     ${details?.model ? `
-    <div style="background: var(--surface-raised, #2a2a2a); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
-      <div style="font-size: 12px; color: var(--text-muted, #888); margin-bottom: 4px;">Model</div>
-      <div style="font-family: monospace; font-size: 13px; color: var(--text-primary, #fff); word-break: break-all;">${escapeHtml(details?.model)}</div>
+    <div style="background: var(--bg-recess); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+      <div style="font-size: 12px; color: var(--ink-muted); margin-bottom: 4px;">Model</div>
+      <div style="font-family: monospace; font-size: 13px; color: var(--ink-primary); word-break: break-all;">${escapeHtml(details?.model)}</div>
     </div>
     ` : ''}
 
     <div style="margin-bottom: 20px;">
-      <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-primary, #fff);">How to fix:</div>
-      <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary, #aaa); font-size: 13px; line-height: 1.6;">
+      <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--ink-primary);">How to fix:</div>
+      <ol style="margin: 0; padding-left: 20px; color: var(--ink-secondary); font-size: 13px; line-height: 1.6;">
         ${diagnostics.steps.map(step => `<li style="margin-bottom: 6px;">${escapeHtml(step)}</li>`).join('')}
       </ol>
     </div>
@@ -175,18 +151,7 @@ export function showOfflineModeDiagnostic(issue: string, details?: {
       ${diagnostics.actions.map(action => `
         <button
           data-action="${escapeHtml(action.id)}"
-          class="diagnostic-action-btn"
-          style="
-            padding: 8px 16px;
-            border: 1px solid ${action.primary ? '#3b82f6' : 'var(--border-subtle, #444)'};
-            background: ${action.primary ? '#3b82f6' : 'transparent'};
-            color: #ffffff;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-            transition: all 0.15s ease;
-          "
+          class="diagnostic-action-btn${action.primary ? ' is-primary' : ''}"
         >
           ${escapeHtml(action.label)}
         </button>
@@ -197,20 +162,7 @@ export function showOfflineModeDiagnostic(issue: string, details?: {
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
 
-  // Add hover effects
   const buttons = dialog.querySelectorAll('.diagnostic-action-btn');
-  buttons.forEach(btn => {
-    btn.addEventListener('mouseenter', () => {
-      if (!btn.textContent?.includes('Cancel')) {
-        (btn as HTMLElement).style.transform = 'translateY(-1px)';
-        (btn as HTMLElement).style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.3)';
-      }
-    });
-    btn.addEventListener('mouseleave', () => {
-      (btn as HTMLElement).style.transform = 'translateY(0)';
-      (btn as HTMLElement).style.boxShadow = 'none';
-    });
-  });
 
   // Handle actions
   buttons.forEach(btn => {
