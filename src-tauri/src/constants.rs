@@ -59,10 +59,8 @@ pub const LOCAL_STT_DAEMON_IDLE_TIMEOUT_ENV: &str = "SLASSHYWISPR_STT_DAEMON_IDL
 pub const LOCAL_STT_DAEMON_SWEEP_INTERVAL_ENV: &str = "SLASSHYWISPR_STT_DAEMON_SWEEP_INTERVAL_SECS";
 pub const LOCAL_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE_ENV: &str =
     "SLASSHYWISPR_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE";
-pub const LOCAL_STT_PARAKEET_CPU_INT8_ENV: &str = "SLASSHYWISPR_STT_PARAKEET_CPU_INT8";
-pub const LOCAL_STT_PARAKEET_FORCE_CPU_ENV: &str = "SLASSHYWISPR_STT_PARAKEET_FORCE_CPU";
 pub const LOCAL_STT_RUNTIME_READY_MARKER_FILE: &str = "runtime.ready.v2";
-pub const LOCAL_STT_RUNTIME_READY_MARKER_CONTENT: &str = "nemo+faster-whisper+torch";
+pub const LOCAL_STT_RUNTIME_READY_MARKER_CONTENT: &str = "faster-whisper+torch";
 pub const ZERO_PYTHON_MODE_ENV: &str = "SLASSHYWISPR_ZERO_PYTHON_MODE";
 pub const ZERO_PYTHON_STT_NOTICE: &str =
     "Zero-Python mode is enabled. This local STT model needs the Python bridge; pick Parakeet, Moonshine or SenseVoice instead.";

@@ -303,7 +303,6 @@ pub fn built_in_local_stt_model_catalog() -> Vec<String> {
     ]
 }
 
-/// Whether the given local STT provider requires a Python runtime.
 /// Whether the provider still needs the Python runtime bootstrapped.
 ///
 /// Only Whisper does: Parakeet, Moonshine and SenseVoice now run in this process, so

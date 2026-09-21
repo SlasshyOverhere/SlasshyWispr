@@ -225,7 +225,6 @@ pub(crate) fn run_local_stt_python_command(
     command.args(args);
     command
         .env("HF_HOME", cache_dir)
-        .env("NEMO_CACHE_DIR", cache_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let output = command
@@ -345,14 +344,9 @@ pub(crate) fn setup_local_stt_runtime_blocking(
         }
     }
 
-    let probe_nemo = run_local_stt_python_command(
-        &venv_python,
-        &["-c", "import nemo.collections.asr"],
-        &cache_dir,
-    );
     let probe_faster_whisper =
         run_local_stt_python_command(&venv_python, &["-c", "import faster_whisper"], &cache_dir);
-    if probe_nemo.is_ok() && probe_faster_whisper.is_ok() {
+    if probe_faster_whisper.is_ok() {
         let _ = try_install_local_stt_cuda_torch(
             &venv_python,
             &cache_dir,
@@ -377,7 +371,7 @@ pub(crate) fn setup_local_stt_runtime_blocking(
         }
         return Ok(venv_python);
     }
-    if probe_nemo.is_ok() && probe_faster_whisper.is_err() {
+    if probe_faster_whisper.is_err() {
         info!(
             "[local.stt.runtime] installing faster-whisper acceleration packages for local Whisper models"
         );
@@ -434,7 +428,7 @@ pub(crate) fn setup_local_stt_runtime_blocking(
         );
     }
     info!(
-        "[local.stt.runtime] installing runtime packages for Parakeet STT (first run may take several minutes)"
+        "[local.stt.runtime] installing runtime packages for local STT (first run may take several minutes)"
     );
 
     let _ = run_local_stt_python_command(
@@ -482,7 +476,6 @@ pub(crate) fn setup_local_stt_runtime_blocking(
             "pip",
             "install",
             "--upgrade",
-            "nemo_toolkit[asr]>=2,<3",
             "soundfile",
             "transformers>=4.45",
             "accelerate",
@@ -498,12 +491,8 @@ pub(crate) fn setup_local_stt_runtime_blocking(
         );
     }
 
-    run_local_stt_python_command(
-        &venv_python,
-        &["-c", "import nemo.collections.asr"],
-        &cache_dir,
-    )
-    .map_err(|error| format!("Local STT runtime validation failed: {error}"))?;
+    run_local_stt_python_command(&venv_python, &["-c", "import faster_whisper"], &cache_dir)
+        .map_err(|error| format!("Local STT runtime validation failed: {error}"))?;
     let cuda_available = local_stt_torch_cuda_available(&venv_python, &cache_dir).unwrap_or(false);
     info!(
         "[local.stt.runtime] install complete python={} cuda={}",

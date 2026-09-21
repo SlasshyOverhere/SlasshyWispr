@@ -19,7 +19,6 @@ use super::transport::{
 use crate::audio::parakeet::local_stt_native_parakeet_runtime;
 use crate::constants::*;
 use crate::pipeline::log::{clip_text, single_line};
-use crate::pipeline::routing::env_flag;
 
 pub(crate) struct LocalSttBridgeDaemon {
     inner: BridgeDaemon,
@@ -87,17 +86,6 @@ fn spawn_local_stt_bridge_daemon(
     script_path: &Path,
     cache_dir: &Path,
 ) -> Result<LocalSttBridgeDaemon, String> {
-    let parakeet_cpu_int8 = if env_flag(LOCAL_STT_PARAKEET_CPU_INT8_ENV, true) {
-        "1"
-    } else {
-        "0"
-    };
-    let parakeet_force_cpu = if env_flag(LOCAL_STT_PARAKEET_FORCE_CPU_ENV, false) {
-        "1"
-    } else {
-        "0"
-    };
-
     let inner = spawn_bridge_daemon(
         "local STT",
         "local.stt",
@@ -108,15 +96,6 @@ fn spawn_local_stt_bridge_daemon(
             (
                 "TRANSFORMERS_CACHE",
                 cache_dir.to_string_lossy().into_owned(),
-            ),
-            ("NEMO_CACHE_DIR", cache_dir.to_string_lossy().into_owned()),
-            (
-                "SLASSHYWISPR_STT_PARAKEET_CPU_INT8",
-                parakeet_cpu_int8.to_string(),
-            ),
-            (
-                "SLASSHYWISPR_STT_PARAKEET_FORCE_CPU",
-                parakeet_force_cpu.to_string(),
             ),
             ("PYTHONUNBUFFERED", "1".to_string()),
         ],
@@ -140,25 +119,17 @@ fn send_local_stt_daemon_request(
 }
 
 fn local_stt_daemon_action_loads_model(action: &str) -> bool {
-    matches!(
-        action,
-        "warmup_parakeet" | "transcribe_parakeet" | "warmup_hf_asr" | "transcribe_hf_asr"
-    )
+    matches!(action, "warmup_hf_asr" | "transcribe_hf_asr")
 }
 
 fn local_stt_daemon_action_trims_model(action: &str) -> bool {
     action == "trim_cache"
 }
 
-fn mark_model_state(daemon: &mut LocalSttBridgeDaemon, action: &str, result: &Value) {
+fn mark_model_state(daemon: &mut LocalSttBridgeDaemon, action: &str) {
     daemon.last_used = Instant::now();
-    let unloaded_after_transcribe = action == "transcribe_parakeet"
-        && result
-            .get("unloadedAfterTranscribe")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
     if local_stt_daemon_action_loads_model(action) {
-        daemon.model_loaded = !unloaded_after_transcribe;
+        daemon.model_loaded = true;
     }
     if local_stt_daemon_action_trims_model(action) {
         daemon.model_loaded = false;
@@ -199,7 +170,7 @@ pub fn run_local_stt_bridge_via_daemon(
     match first_attempt {
         Ok(result) => {
             if let Some(daemon) = guard.get_mut(&key) {
-                mark_model_state(daemon, action, &result);
+                mark_model_state(daemon, action);
             }
             info!("[local.stt.daemon] success action={}", action);
             Ok(result)
@@ -223,7 +194,7 @@ pub fn run_local_stt_bridge_via_daemon(
             let retry = send_local_stt_daemon_request(&mut daemon, action, payload);
             match retry {
                 Ok(result) => {
-                    mark_model_state(&mut daemon, action, &result);
+                    mark_model_state(&mut daemon, action);
                     guard.insert(key, daemon);
                     info!("[local.stt.daemon] success action={} retry=true", action);
                     Ok(result)
@@ -439,8 +410,6 @@ mod tests {
 
     #[test]
     fn local_stt_daemon_action_loads_model_detects_correct_actions() {
-        assert!(local_stt_daemon_action_loads_model("warmup_parakeet"));
-        assert!(local_stt_daemon_action_loads_model("transcribe_parakeet"));
         assert!(local_stt_daemon_action_loads_model("warmup_hf_asr"));
         assert!(local_stt_daemon_action_loads_model("transcribe_hf_asr"));
         assert!(!local_stt_daemon_action_loads_model("trim_cache"));

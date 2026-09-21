@@ -34,22 +34,6 @@ warnings.filterwarnings(
 )
 
 
-def _env_flag(name: str, default: bool = False) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    value = str(raw).strip().lower()
-    if value in {"1", "true", "yes", "y", "on"}:
-        return True
-    if value in {"0", "false", "no", "n", "off"}:
-        return False
-    return default
-
-
-PARAKEET_FORCE_CPU = _env_flag("SLASSHYWISPR_STT_PARAKEET_FORCE_CPU", False)
-PARAKEET_CPU_INT8 = _env_flag("SLASSHYWISPR_STT_PARAKEET_CPU_INT8", True)
-
-
 def _compact_memory(force_cuda_empty_cache: bool = False) -> None:
     gc.collect()
     if not force_cuda_empty_cache:
@@ -107,13 +91,6 @@ def _extract_transcript(value: Any) -> str:
     return ""
 
 
-def _load_nemo_module():
-    logging.getLogger().setLevel(logging.ERROR)
-    import nemo.collections.asr as nemo_asr  # type: ignore
-
-    return nemo_asr
-
-
 def _configure_torch_runtime() -> None:
     global TORCH_RUNTIME_CONFIGURED
     if TORCH_RUNTIME_CONFIGURED:
@@ -142,20 +119,6 @@ def _configure_torch_runtime() -> None:
     TORCH_RUNTIME_CONFIGURED = True
 
 
-def _pick_device() -> str:
-    if PARAKEET_FORCE_CPU:
-        return "cpu"
-    _configure_torch_runtime()
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            return "cuda"
-    except Exception:
-        pass
-    return "cpu"
-
-
 def _hf_device_index() -> tuple[int, str]:
     _configure_torch_runtime()
     try:
@@ -166,35 +129,6 @@ def _hf_device_index() -> tuple[int, str]:
     except Exception:
         pass
     return -1, "cpu"
-
-
-def _try_quantize_parakeet_cpu_int8(model: Any) -> tuple[Any, str]:
-    if not PARAKEET_CPU_INT8:
-        return model, "fp32"
-
-    try:
-        import torch
-    except Exception:
-        return model, "fp32"
-
-    candidate_apis = []
-    try:
-        candidate_apis.append(torch.ao.quantization.quantize_dynamic)  # type: ignore[attr-defined]
-    except Exception:
-        pass
-    try:
-        candidate_apis.append(torch.quantization.quantize_dynamic)  # type: ignore[attr-defined]
-    except Exception:
-        pass
-
-    for quantize_dynamic in candidate_apis:
-        try:
-            quantized = quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
-            return quantized, "int8-dynamic"
-        except Exception:
-            continue
-
-    return model, "fp32"
 
 
 def _preview_object(value: Any, max_chars: int = 320) -> str:
@@ -343,53 +277,6 @@ def _load_audio_array(audio_path: Path, target_sample_rate: int | None) -> tuple
     return audio, int(sample_rate)
 
 
-def _load_parakeet_model(model_path: Path) -> tuple[Any, bool, str, str]:
-    if not model_path.is_file():
-        raise RuntimeError(f"Parakeet model file not found: {model_path}")
-
-    resolved = str(model_path.resolve())
-    _configure_torch_runtime()
-    cached = MODEL_CACHE.get(resolved)
-    if cached is not None:
-        device = "cuda" if str(getattr(cached, "device", "cpu")).startswith("cuda") else "cpu"
-        precision = str(getattr(cached, "_slasshywispr_precision", "fp32"))
-        return cached, True, device, precision
-
-    nemo_asr = _load_nemo_module()
-    device = _pick_device()
-    map_location = "cuda" if device == "cuda" else "cpu"
-    model = nemo_asr.models.ASRModel.restore_from(str(model_path), map_location=map_location)
-    precision = "fp32"
-    try:
-        model = model.eval()
-    except Exception:
-        pass
-    try:
-        model.freeze()
-    except Exception:
-        pass
-    if device == "cuda":
-        try:
-            model = model.to("cuda")
-        except Exception:
-            pass
-        try:
-            model = model.half()
-            precision = "fp16"
-        except Exception:
-            precision = "fp32"
-    else:
-        model, precision = _try_quantize_parakeet_cpu_int8(model)
-    try:
-        setattr(model, "_slasshywispr_precision", precision)
-    except Exception:
-        pass
-
-    _evict_model_cache_except(resolved)
-    MODEL_CACHE[resolved] = model
-    return model, False, device, precision
-
-
 def _load_faster_whisper_runner(model_path: Path) -> tuple[dict[str, Any], bool, str]:
     if not model_path.exists() or not model_path.is_dir():
         raise RuntimeError(f"Model directory not found: {model_path}")
@@ -503,53 +390,6 @@ def _load_hf_asr_runner(
     _evict_model_cache_except(cache_key)
     MODEL_CACHE[cache_key] = runner
     return runner, False, device
-
-
-def action_warmup_parakeet(request: dict[str, Any]) -> dict[str, Any]:
-    model_path = Path(str(request.get("modelPath") or "").strip())
-    _, model_cached, device, precision = _load_parakeet_model(model_path)
-    return {
-        "ready": True,
-        "modelCached": model_cached,
-        "device": device,
-        "precision": precision,
-    }
-
-
-def action_transcribe_parakeet(request: dict[str, Any]) -> dict[str, Any]:
-    model_path = Path(str(request.get("modelPath") or "").strip())
-    audio_path = Path(str(request.get("audioPath") or "").strip())
-    if not audio_path.is_file():
-        raise RuntimeError(f"Audio file not found: {audio_path}")
-
-    unload_after_transcribe = bool(request.get("unloadAfterTranscribe") or False)
-    asr_model, model_cached, device, precision = _load_parakeet_model(model_path)
-    try:
-        import torch
-
-        with torch.inference_mode():
-            raw = asr_model.transcribe([str(audio_path)], batch_size=1, num_workers=0, verbose=False)
-    except Exception:
-        raw = asr_model.transcribe([str(audio_path)], batch_size=1, num_workers=0, verbose=False)
-    text = _extract_transcript(raw)
-    if not text:
-        raise RuntimeError(f"Parakeet returned an empty transcript. raw={_preview_object(raw)}")
-    if _is_repetitive_transcript_noise(text):
-        raise RuntimeError(
-            f"Parakeet returned repetitive transcript noise. raw={_preview_object(raw)}"
-        )
-    unloaded_after_transcribe = False
-    if unload_after_transcribe:
-        MODEL_CACHE.clear()
-        _compact_memory(force_cuda_empty_cache=True)
-        unloaded_after_transcribe = True
-    return {
-        "text": text,
-        "modelCached": model_cached,
-        "device": device,
-        "precision": precision,
-        "unloadedAfterTranscribe": unloaded_after_transcribe,
-    }
 
 
 def action_warmup_hf_asr(request: dict[str, Any]) -> dict[str, Any]:
@@ -767,10 +607,6 @@ def action_trim_cache(_: dict[str, Any]) -> dict[str, Any]:
 
 def execute(request: dict[str, Any]) -> dict[str, Any]:
     action = str(request.get("action") or "").strip().lower()
-    if action == "warmup_parakeet":
-        return action_warmup_parakeet(request)
-    if action == "transcribe_parakeet":
-        return action_transcribe_parakeet(request)
     if action == "warmup_hf_asr":
         return action_warmup_hf_asr(request)
     if action == "transcribe_hf_asr":
@@ -829,7 +665,7 @@ def run_daemon_loop() -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Bridge script for local Parakeet STT.")
+    parser = argparse.ArgumentParser(description="Bridge script for local HF ASR STT.")
     parser.add_argument(
         "--request",
         help="Path to a JSON request file.",
