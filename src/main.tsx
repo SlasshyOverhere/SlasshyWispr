@@ -1406,7 +1406,7 @@ initUpdaterFlow(
   },
   {
     isTauri: isTauriEnvironment,
-    notify: (message, isError) => setNoticeService(message, isError),
+    queueUpdateNotice: (message, action) => queueNoticeService(message, false, action),
     log: (message) => logClientEventService(message),
     openUpdateSettings: (reason) => {
       openSettingsService(reason);

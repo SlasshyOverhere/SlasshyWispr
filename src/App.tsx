@@ -613,6 +613,12 @@ export function App() {
         </div>
       </div>
 
+      {/* The notice area lives in the shell, not in a settings pane: a notice
+          the user has to open Settings to read is not a notice. */}
+      <div className="notice-toasts">
+        <div id="noticeStack" className="notice-stack" aria-live="polite" />
+      </div>
+
       <SettingsModal />
 
       <OnboardingWizard />

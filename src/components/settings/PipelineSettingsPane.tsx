@@ -92,8 +92,7 @@ export function PipelineSettingsPane() {
         <dt>Total</dt><dd id="totalLatency">-</dd>
       </dl>
 
-      {/* Filled imperatively: the rows are created and dismissed by the shell. */}
-      <div id="noticeStack" className="notice-stack" aria-live="polite" />
+      {/* The notice area is global — it lives in the app shell, not here. */}
 
       <label className="field" htmlFor="assistantAudio">
         <span className="field-label">Voice Preview</span>
