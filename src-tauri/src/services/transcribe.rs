@@ -88,7 +88,6 @@ pub(crate) fn detect_nvidia_gpu_available() -> bool {
 }
 pub(crate) fn warmup_local_stt_parakeet_model_blocking(
     app: &AppHandle,
-    _python_path: &str,
     model: &str,
 ) -> Result<String, String> {
     let canonical_model = canonical_local_stt_model_id(model);

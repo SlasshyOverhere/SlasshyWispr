@@ -13,8 +13,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use bzip2::read::BzDecoder;
 use flate2::read::GzDecoder;
 use reqwest::Client;
+use std::io::Read;
 use tar::Archive;
 
 use crate::pipeline::log::{clip_text, single_line};
@@ -116,18 +118,33 @@ pub(crate) fn extract_tar_gz_archive(
 ) -> Result<(), String> {
     let archive_file = fs::File::open(archive_path).map_err(|error| {
         format!(
-            "Failed to open local STT archive '{}': {error}",
+            "Failed to open archive '{}': {error}",
             archive_path.display()
         )
     })?;
-    let decoder = GzDecoder::new(archive_file);
-    let mut archive = Archive::new(decoder);
-    let entries = archive.entries().map_err(|error| {
+    unpack_tar(GzDecoder::new(archive_file), archive_path, destination)
+}
+
+/// Extract a tar.bz2 archive into `destination`, rejecting unsafe entries.
+pub(crate) fn extract_tar_bz2_archive(
+    archive_path: &Path,
+    destination: &Path,
+) -> Result<(), String> {
+    let archive_file = fs::File::open(archive_path).map_err(|error| {
         format!(
-            "Invalid tar.gz archive '{}': {error}",
+            "Failed to open archive '{}': {error}",
             archive_path.display()
         )
     })?;
+    unpack_tar(BzDecoder::new(archive_file), archive_path, destination)
+}
+
+/// One extraction path for both decoders, so the unsafe-entry guard cannot drift.
+fn unpack_tar<R: Read>(reader: R, archive_path: &Path, destination: &Path) -> Result<(), String> {
+    let mut archive = Archive::new(reader);
+    let entries = archive
+        .entries()
+        .map_err(|error| format!("Invalid archive '{}': {error}", archive_path.display()))?;
 
     for (index, entry_result) in entries.enumerate() {
         let mut entry = entry_result.map_err(|error| {

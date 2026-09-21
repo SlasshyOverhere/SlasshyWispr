@@ -290,8 +290,8 @@ describe("runPipeline invoke shape", () => {
     expect(request.commandMode).toBe(false);
     expect(request.temperature).toBe(makeDefaultSettings().temperature);
     expect(request.maxTokens).toBe(makeDefaultSettings().maxTokens);
-    expect(request.ttsEngine).toBe("piper");
-    expect(request.coqui).toBeNull();
+    expect(request.ttsEngine).toBe(makeDefaultSettings().ttsEngine);
+    expect(request.voiceClone).toBeNull();
     expect("audio_base64" in request).toBe(false);
   });
 });

@@ -19,6 +19,8 @@ import {
   DEFAULT_STYLE_PROFILE,
   // No temperature or token defaults here: the backend owns those (see *-bounds).
   DEFAULT_TTS_ENGINE,
+  DEFAULT_VOICE_CLONE_SPEAKER_ID,
+  DEFAULT_VOICE_CLONE_SPEED,
   DICTATION_LANGUAGE_LABELS,
   SETTINGS_STORAGE_KEY,
 } from "../constants";
@@ -147,8 +149,8 @@ export function asThemeMode(value: unknown): ThemeMode {
   return "system";
 }
 
-export function asTtsEngine(_value: unknown): TtsEngine {
-  return "piper";
+export function asTtsEngine(value: unknown): TtsEngine {
+  return value === "zipvoice" ? "zipvoice" : "piper";
 }
 
 export function asRuntimeMode(value: unknown): RuntimeMode {
@@ -270,6 +272,8 @@ export function defaultSettings(): PersistedSettings {
     piperSpeed: DEFAULT_PIPER_SPEED,
     piperQuality: DEFAULT_PIPER_QUALITY,
     piperEmotion: DEFAULT_PIPER_EMOTION,
+    voiceCloneSpeakerId: DEFAULT_VOICE_CLONE_SPEAKER_ID,
+    voiceCloneSpeed: DEFAULT_VOICE_CLONE_SPEED,
     pushToTalkSound: DEFAULT_PUSH_TO_TALK_SOUND,
     pushToTalkEndSound: DEFAULT_PUSH_TO_TALK_END_SOUND,
     pushToTalkSoundVolume: DEFAULT_PUSH_TO_TALK_SOUND_VOLUME,
@@ -427,6 +431,15 @@ export function loadSettings(): PersistedSettings {
       piperSpeed: coerceNumber(parsed.piperSpeed, defaults.piperSpeed, 0.5, 2),
       piperQuality: asPiperQuality(parsed.piperQuality),
       piperEmotion: asPiperEmotion(parsed.piperEmotion),
+      voiceCloneSpeakerId: String(
+        parsed.voiceCloneSpeakerId ?? defaults.voiceCloneSpeakerId,
+      ),
+      voiceCloneSpeed: coerceNumber(
+        parsed.voiceCloneSpeed,
+        defaults.voiceCloneSpeed,
+        0.5,
+        2,
+      ),
       pushToTalkSound: String(parsed.pushToTalkSound ?? defaults.pushToTalkSound),
       pushToTalkEndSound: String(parsed.pushToTalkEndSound ?? defaults.pushToTalkEndSound),
       pushToTalkSoundVolume: coerceNumber(parsed.pushToTalkSoundVolume, defaults.pushToTalkSoundVolume, 0, 1),

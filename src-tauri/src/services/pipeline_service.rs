@@ -84,9 +84,9 @@ pub(crate) async fn resolve_piper_assets(
     app: &AppHandle,
     http: &Client,
     requested_piper_path: Option<&str>,
-    use_coqui: bool,
+    use_cloned_voice: bool,
 ) -> PiperAssets {
-    let mut piper_path = if use_coqui {
+    let mut piper_path = if use_cloned_voice {
         None
     } else {
         match resolve_piper_path(app, requested_piper_path) {
@@ -101,7 +101,7 @@ pub(crate) async fn resolve_piper_assets(
         }
     };
 
-    let mut piper_model_path = if use_coqui {
+    let mut piper_model_path = if use_cloned_voice {
         None
     } else {
         match voice_paths(app) {
@@ -120,7 +120,7 @@ pub(crate) async fn resolve_piper_assets(
         }
     };
 
-    if !use_coqui {
+    if !use_cloned_voice {
         let piper_binary_missing = piper_path
             .as_deref()
             .map(|path| !file_exists_with_content(Path::new(path)))
@@ -261,7 +261,7 @@ mod tests {
             selected_text: None,
             tts_engine: None,
             piper: None,
-            coqui: None,
+            voice_clone: None,
             noise_suppression: None,
             raw_pcm_base64: None,
             ..Default::default()
@@ -303,7 +303,7 @@ mod tests {
             selected_text: None,
             tts_engine: None,
             piper: None,
-            coqui: None,
+            voice_clone: None,
             noise_suppression: None,
             raw_pcm_base64: None,
             ..Default::default()

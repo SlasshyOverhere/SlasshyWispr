@@ -390,11 +390,6 @@ pub fn env_flag(name: &str, default: bool) -> bool {
     }
 }
 
-/// Whether zero-Python mode is enabled (Coqui TTS disabled).
-pub fn zero_python_mode_enabled() -> bool {
-    env_flag(ZERO_PYTHON_MODE_ENV, true)
-}
-
 // ===== Pipeline mode resolution =====
 
 /// Resolve the pipeline mode from a routing input.

@@ -38,6 +38,12 @@ export type {
   SttTimeoutBoundsResponse,
   TemperatureBoundsResponse,
   TtsSetupStatusResponse,
+  VoiceCloneEngineResponse,
+  VoiceCloneListResponse,
+  VoiceCloneModelResponse,
+  VoiceClonePreviewResponse,
+  VoiceCloneResponse,
+  VoiceCloneStatusResponse,
   VoiceInstallResponse,
 } from "./generated/ipc-wire-types";
 
@@ -51,7 +57,7 @@ export type SettingsPane =
   | "models"
   | "update-security"
   | "pipeline";
-export type TtsEngine = "piper";
+export type TtsEngine = "piper" | "zipvoice";
 
 // "webview" keeps MediaRecorder in the WebView; "native" captures in Rust.
 export type CaptureBackend = "webview" | "native";
@@ -115,6 +121,8 @@ export interface PersistedSettings {
   piperSpeed: number;
   piperQuality: PiperQuality;
   piperEmotion: PiperEmotion;
+  voiceCloneSpeakerId: string;
+  voiceCloneSpeed: number;
   pushToTalkSound: string;
   pushToTalkEndSound: string;
   pushToTalkSoundVolume: number;

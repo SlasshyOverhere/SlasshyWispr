@@ -42,8 +42,7 @@ export interface AssistantInfoResponse {
   voiceInstalled: boolean;
   voiceModelPath: string;
   voiceConfigPath: string;
-  coquiInstalled: boolean;
-  coquiPythonPath: string;
+  voiceCloneInstalled: boolean;
 }
 
 // src-tauri/src/commands/pipeline.rs
@@ -290,6 +289,47 @@ export interface TtsSetupStatusResponse {
   success: boolean;
   stage: string;
   logs: string[];
+}
+
+// src-tauri/src/commands/tts.rs
+export interface VoiceCloneEngineResponse {
+  engineLoaded: boolean;
+}
+
+// src-tauri/src/commands/tts.rs
+export interface VoiceCloneListResponse {
+  voices: string[];
+}
+
+// src-tauri/src/commands/tts.rs
+export interface VoiceCloneModelResponse {
+  modelDir: string;
+  voices: string[];
+}
+
+// src-tauri/src/commands/tts.rs
+export interface VoiceClonePreviewResponse {
+  audioBase64: string;
+  text: string;
+}
+
+// src-tauri/src/commands/tts.rs
+export interface VoiceCloneResponse {
+  speakerId: string;
+  durationSeconds: number;
+  voices: string[];
+  previewAudioBase64: string;
+}
+
+// src-tauri/src/commands/tts.rs
+export interface VoiceCloneStatusResponse {
+  /** Model files are on disk and a synthesis would not need a download. */
+  modelReady: boolean;
+  engineLoaded: boolean;
+  voices: string[];
+  maxReferenceSeconds: number;
+  numSteps: number;
+  error: string;
 }
 
 // src-tauri/src/commands/tts.rs

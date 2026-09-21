@@ -18,8 +18,7 @@ pub(crate) struct AssistantInfoResponse {
     pub(crate) voice_installed: bool,
     pub(crate) voice_model_path: String,
     pub(crate) voice_config_path: String,
-    pub(crate) coqui_installed: bool,
-    pub(crate) coqui_python_path: String,
+    pub(crate) voice_clone_installed: bool,
 }
 
 #[derive(Deserialize)]

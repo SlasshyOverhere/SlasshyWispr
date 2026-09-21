@@ -25,7 +25,6 @@ use crate::pipeline::process::elapsed_ms;
 use crate::pipeline::refinement::{
     self, RefinementConfig, RefinementDictionaryEntry, RefinementSnippetEntry,
 };
-use crate::pipeline::routing::zero_python_mode_enabled;
 use crate::pipeline::routing::{infer_local_stt_provider_from_model, AiModeConfig, SttModeConfig};
 use crate::pipeline::selection::{
     build_selected_context_answer_prompt, seems_like_selection_context_query,
@@ -36,7 +35,8 @@ use crate::pipeline::stt::{
     normalize_stt_allowed_languages, normalize_stt_language_hint,
 };
 use crate::pipeline::tts::{
-    synthesize_with_coqui, synthesize_with_piper, CoquiPipelineRequest, PiperPipelineRequest,
+    load_clone_assets, synthesize_cloned, synthesize_with_piper, voice_clone_models_dir,
+    voice_clone_voice_dir, PiperPipelineRequest, VoiceClonePipelineRequest,
 };
 use crate::pipeline::wake::extract_wake_command;
 use crate::services::pipeline_service::resolve_pipeline_mode;
@@ -84,7 +84,7 @@ pub(crate) struct AssistantPipelineRequest {
     pub(crate) selected_text: Option<String>,
     pub(crate) tts_engine: Option<String>,
     pub(crate) piper: Option<PiperPipelineRequest>,
-    pub(crate) coqui: Option<CoquiPipelineRequest>,
+    pub(crate) voice_clone: Option<VoiceClonePipelineRequest>,
     #[serde(flatten, default)]
     pub(crate) run: PipelineRunIdentity,
     /// Stale replace-selection guard: frontend popup token; backend rejects
@@ -183,6 +183,27 @@ fn stt_hallucination_guards_apply(mode: &SttModeConfig) -> bool {
     }
 }
 
+/// Cloned-voice synthesis for the pipeline. The model must already be installed: a
+/// dictation never triggers the ~156 MB download, which belongs to the settings pane.
+async fn synthesize_with_cloned_voice(
+    app: &AppHandle,
+    clone: &VoiceClonePipelineRequest,
+    text: String,
+) -> Result<Vec<u8>, String> {
+    let models_dir = voice_clone_models_dir(app)?;
+    let assets = load_clone_assets(&models_dir)?.ok_or_else(|| {
+        "The voice-clone model is not installed. Download it from Settings first.".to_string()
+    })?;
+    let voice_dir = voice_clone_voice_dir(app, &clone.speaker_id)?;
+    let speed = clone.speed.unwrap_or(1.0);
+
+    tauri::async_runtime::spawn_blocking(move || {
+        synthesize_cloned(&assets, &voice_dir, &text, speed)
+    })
+    .await
+    .map_err(|error| format!("Voice-clone synthesis worker failed: {error}"))?
+}
+
 #[tauri::command]
 pub(crate) async fn run_assistant_pipeline(
     app: AppHandle,
@@ -217,14 +238,15 @@ pub(crate) async fn run_assistant_pipeline(
         .map(str::trim)
         .unwrap_or("piper")
         .to_ascii_lowercase();
-    let coqui_requested = requested_engine == "coqui";
-    let use_coqui = coqui_requested && !zero_python_mode_enabled();
-    if coqui_requested && zero_python_mode_enabled() {
-        warn!("[pipeline] coqui requested but disabled in zero-python mode; falling back to piper");
-    }
+    let use_cloned_voice = requested_engine == "zipvoice";
 
-    let piper_assets =
-        resolve_piper_assets(&app, &state.http, request.piper_path.as_deref(), use_coqui).await;
+    let piper_assets = resolve_piper_assets(
+        &app,
+        &state.http,
+        request.piper_path.as_deref(),
+        use_cloned_voice,
+    )
+    .await;
     let piper_path = piper_assets.piper_path;
     let piper_model_path = piper_assets.piper_model_path;
 
@@ -270,7 +292,7 @@ pub(crate) async fn run_assistant_pipeline(
     info!(
         "[pipeline] start mode={} engine={} audio_bytes={} mime={} stt_base_url={} stt_model={} ai_model={} stt_timeout_seconds={}",
         pipeline_label,
-        if use_coqui { "coqui" } else { "piper" },
+        if use_cloned_voice { "zipvoice" } else { "piper" },
         audio_bytes.len(),
         request.audio_mime_type,
         clip_text(&stt_base_url_for_log, 180),
@@ -792,10 +814,12 @@ pub(crate) async fn run_assistant_pipeline(
     }
 
     let tts_start = Instant::now();
-    let tts_result = if use_coqui {
-        match request.coqui.as_ref() {
-            Some(coqui) => synthesize_with_coqui(&app, coqui, assistant_response.clone()).await,
-            None => Err("Coqui settings are missing.".to_string()),
+    let tts_result = if use_cloned_voice {
+        match request.voice_clone.as_ref() {
+            Some(clone) => {
+                synthesize_with_cloned_voice(&app, clone, assistant_response.clone()).await
+            }
+            None => Err("Cloned-voice settings are missing.".to_string()),
         }
     } else {
         match (piper_path, piper_model_path) {
@@ -824,7 +848,11 @@ pub(crate) async fn run_assistant_pipeline(
     let tts_latency_ms = elapsed_ms(tts_start);
     info!(
         "[pipeline] tts done engine={} status={} latency_ms={} audio_bytes={}",
-        if use_coqui { "coqui" } else { "piper" },
+        if use_cloned_voice {
+            "zipvoice"
+        } else {
+            "piper"
+        },
         tts_status,
         tts_latency_ms,
         tts_bytes.len()
@@ -954,7 +982,7 @@ mod tests {
                 quality: Some("fast".to_string()),
                 emotion: Some("neutral".to_string()),
             }),
-            coqui: None,
+            voice_clone: None,
             ..Default::default()
         };
 
@@ -1124,7 +1152,7 @@ mod tests {
             selected_text: None,
             tts_engine: None,
             piper: None,
-            coqui: None,
+            voice_clone: None,
             ..Default::default()
         };
 
@@ -1141,7 +1169,7 @@ mod tests {
         assert!(obj.get("systemPrompt").unwrap().is_null());
         assert!(obj.get("temperature").unwrap().is_null());
         assert!(obj.get("piper").unwrap().is_null());
-        assert!(obj.get("coqui").unwrap().is_null());
+        assert!(obj.get("voiceClone").unwrap().is_null());
     }
 
     #[test]
@@ -1287,7 +1315,7 @@ mod tests {
             selected_text: None,
             tts_engine: None,
             piper: None,
-            coqui: None,
+            voice_clone: None,
             ..Default::default()
         };
 
@@ -1339,7 +1367,7 @@ mod tests {
         "selectedText": null,
         "ttsEngine": null,
         "piper": null,
-        "coqui": null
+        "voiceClone": null
     }"#;
 
         let request: AssistantPipelineRequest =

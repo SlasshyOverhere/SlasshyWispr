@@ -244,7 +244,7 @@ export async function handleSetupAllTts(): Promise<void> {
   ttsDeps.syncAvailability();
 
   try {
-    const status = await ipcStartTtsRuntimeSetup({ pythonPath: null, useGpu: false });
+    const status = await ipcStartTtsRuntimeSetup();
     applyTtsSetupStatus(status);
     startTtsSetupPolling();
     await pollTtsSetupStatusOnce();

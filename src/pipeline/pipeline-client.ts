@@ -161,7 +161,16 @@ export async function runPipeline(
       )} bytes=${pipelineAudioBlob.size} mime=${pipelineAudioMimeType || "unknown"}`,
     );
     const systemPrompt = buildEffectiveSystemPrompt(activeSettings, isCommandModeArmed());
-    const pipelineTtsEngine: TtsEngine = "piper";
+    const pipelineTtsEngine: TtsEngine = activeSettings.ttsEngine;
+    // No profile selected means no clone settings: the backend then reports a missing
+    // configuration instead of synthesising in a default voice.
+    const voiceClonePayload =
+      pipelineTtsEngine === "zipvoice" && activeSettings.voiceCloneSpeakerId.trim()
+        ? {
+            speakerId: activeSettings.voiceCloneSpeakerId,
+            speed: activeSettings.voiceCloneSpeed,
+          }
+        : null;
     let selectedTextForRewrite: string | null = null;
     if (isCommandModeArmed()) {
       const primedSelected = (getCommandSelectionSnapshot() ?? "").trim();
@@ -302,7 +311,7 @@ export async function runPipeline(
           quality: activeSettings.piperQuality,
           emotion: activeSettings.piperEmotion,
         },
-        coqui: null,
+        voiceClone: voiceClonePayload,
     } as Record<string, unknown>);
     clientDeps.log(
       `[pipeline.invoke] totalMs=${Math.round(

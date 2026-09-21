@@ -3,7 +3,7 @@
 //! Whisper is the last local model that needed the Python bridge, because `transcribe-rs`
 //! hardcodes whisper-rs's Vulkan feature and its binding layer does not survive this
 //! toolchain. `transcribe-cpp` wraps whisper.cpp directly, so Whisper now runs here too
-//! and zero-Python mode covers every local model.
+//! and every local model now runs here.
 //!
 //! The artifact differs from the other engines: whisper.cpp reads a single self-contained
 //! GGUF, not a HuggingFace directory of safetensors.

@@ -48,6 +48,8 @@ export const DEFAULT_COMMAND_HOTKEY = "Ctrl+Shift+Space";
 export const DEFAULT_CAPTURE_MODE: CaptureMode = "push-to-talk";
 export const DEFAULT_STYLE_PROFILE: StyleProfile = "adaptive";
 export const DEFAULT_TTS_ENGINE: TtsEngine = "piper";
+export const DEFAULT_VOICE_CLONE_SPEAKER_ID = "";
+export const DEFAULT_VOICE_CLONE_SPEED = 1.0;
 export const DEFAULT_ASSISTANT_NAME = "Lily";
 export const DEFAULT_PIPER_SPEED = 1.08;
 export const DEFAULT_PIPER_QUALITY: PiperQuality = "fast";
@@ -76,7 +78,6 @@ export const LOCAL_STT_MODEL_SIZE_LABELS: Record<string, string> = {
   "nvidia/parakeet-tdt-0.6b-v3": "Parakeet v3 (478 MB)",
   "nvidia/parakeet-tdt_ctc-110m": "Parakeet v2 (473 MB)",
 };
-export const MAX_COQUI_REFERENCE_SECONDS = 30;
 export const ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS = 1_000;
 export const MAX_HISTORY_ITEMS = 100;
 export const FOREGROUND_BLOCK_CHECK_CACHE_MS = 320;

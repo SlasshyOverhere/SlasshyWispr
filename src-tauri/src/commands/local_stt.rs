@@ -256,7 +256,6 @@ pub(crate) async fn download_local_stt_model(
                     let warmup_result = tauri::async_runtime::spawn_blocking(move || {
                         crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(
                             &app_for_warmup,
-                            "",
                             &model_for_warmup,
                         )
                     })
@@ -577,7 +576,6 @@ pub(crate) async fn warmup_local_stt_model(
         tauri::async_runtime::spawn_blocking(move || match provider_for_worker.as_str() {
             "parakeet" => crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(
                 &app_for_worker,
-                "",
                 &model_for_worker,
             ),
             // Whichever engine serves a provider warms on first dictation, so there is

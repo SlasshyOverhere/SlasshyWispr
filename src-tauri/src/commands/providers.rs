@@ -20,9 +20,9 @@ use crate::pipeline::fs::{download_file, file_exists_with_content};
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::routing::{
     normalize_api_key_secret, normalize_model_name, validate_api_base_url,
-    validate_local_ollama_base_url, zero_python_mode_enabled,
+    validate_local_ollama_base_url,
 };
-use crate::pipeline::tts::{coqui_venv_python_path, voice_paths};
+use crate::pipeline::tts::{assets_present, voice_clone_models_dir, voice_paths};
 use crate::services::pipeline_service::discover_installed_piper_path;
 use crate::services::providers::{
     is_ollama_service_running, ollama_installer_path, query_ollama_version,
@@ -35,15 +35,7 @@ use crate::state::AppState;
 pub(crate) async fn get_assistant_info(app: AppHandle) -> Result<AssistantInfoResponse, String> {
     let (model_path, config_path) = voice_paths(&app)?;
     let piper_path = discover_installed_piper_path(&app)?;
-    let (coqui_installed, coqui_python_path) = if zero_python_mode_enabled() {
-        (false, String::new())
-    } else {
-        let path = coqui_venv_python_path(&app)?;
-        (
-            file_exists_with_content(&path),
-            path.to_string_lossy().into_owned(),
-        )
-    };
+    let voice_clone_installed = assets_present(&voice_clone_models_dir(&app)?)?;
 
     // F-020: never leak absolute host paths over IPC. Basename (or "" when
     // absent) plus the installed bools is all the UI needs to render status.
@@ -66,11 +58,7 @@ pub(crate) async fn get_assistant_info(app: AppHandle) -> Result<AssistantInfoRe
             && file_exists_with_content(&config_path),
         voice_model_path: basename_only(&model_path),
         voice_config_path: basename_only(&config_path),
-        coqui_installed,
-        coqui_python_path: std::path::Path::new(&coqui_python_path)
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default(),
+        voice_clone_installed,
     })
 }
 

@@ -121,7 +121,6 @@ pub(crate) fn start_local_stt_boot_warmup(app: AppHandle) {
         {
             "parakeet" => crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(
                 &app_for_worker,
-                "",
                 &model_for_worker,
             ),
             // Only Parakeet has a warmup path. Skipping still counts as ready, so the
