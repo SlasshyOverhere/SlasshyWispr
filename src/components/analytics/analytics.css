@@ -1,20 +1,20 @@
 .analytics-page {
-  padding-bottom: var(--space-10);
+  padding-bottom: var(--space-5);
 }
 
 .analytics-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
-  gap: var(--space-6);
-  padding-bottom: var(--space-6);
+  gap: var(--space-4);
+  padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-line);
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-4);
 }
 
 .analytics-title {
   font-family: var(--font-sans);
-  font-size: clamp(26px, 3.6vw, 32px);
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.025em;
   margin: 0;
@@ -70,9 +70,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-4) var(--space-6);
-  margin-bottom: var(--space-6);
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
   background:
     radial-gradient(120% 200% at 0% 50%, var(--streak-glow) 0%, transparent 60%),
     var(--bg-card);
@@ -120,8 +120,8 @@
 .streak-icon-wrap {
   position: relative;
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -257,14 +257,20 @@
   }
 }
 
+/* One bordered strip with hairline dividers, matching Home: four figures
+   side by side instead of four cards stacked two-deep. */
 .analytics-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-1);
-  margin-bottom: var(--space-10);
+  gap: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-line);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  margin-bottom: var(--space-4);
 }
 
-@media (max-width: 850px) {
+@media (max-width: 640px) {
   .analytics-metrics {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -273,26 +279,29 @@
 .analytics-metric {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-6);
-  background: var(--bg-card);
-  border: 1px solid var(--border-line);
-  border-radius: var(--radius-card);
+  gap: 1px;
+  padding: 11px 13px;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--border-line);
+  border-radius: 0;
 }
+
+.analytics-metric:first-child { border-left: 0; }
 
 .analytics-metric-label {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.09em;
   color: var(--ink-faint);
 }
 
 .analytics-metric-value {
   font-family: var(--font-display);
   font-variation-settings: "opsz" 60;
-  font-size: 40px;
+  font-size: 24px;
   font-weight: 460;
   letter-spacing: -0.03em;
   line-height: 1;
@@ -301,7 +310,7 @@
 }
 
 .analytics-metric-unit {
-  font-size: 20px;
+  font-size: 13px;
   color: var(--ink-muted);
 }
 
@@ -319,13 +328,13 @@
   text-transform: uppercase;
   letter-spacing: 0.18em;
   color: var(--ink-faint);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .analytics-recent-section {
   border-top: 1px solid var(--border-line);
-  padding-top: var(--space-6);
-  margin-bottom: var(--space-6);
+  padding-top: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
 .analytics-recent-list {
@@ -338,7 +347,7 @@
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: var(--space-5);
   align-items: baseline;
-  padding: 14px 0;
+  padding: 9px 0;
   border-bottom: 1px solid var(--border-line);
   transition: background-color var(--transition-fast);
 }
@@ -381,8 +390,8 @@
 .analytics-heatmap-section {
   background: transparent;
   border-radius: 0;
-  padding: var(--space-5);
-  margin-bottom: var(--space-6);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
 .analytics-heatmap-grid {
@@ -421,11 +430,11 @@
 .cell-mid { background: oklch(74% 0.18 55 / 0.40); }
 .cell-high { background: oklch(74% 0.18 55 / 0.70); }
 
-.analytics-achievements-section { margin-top: var(--space-2); }
+.analytics-achievements-section { margin-top: var(--space-1); }
 
 .analytics-achievements-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 0;
   border-top: 1px solid var(--border-line);
 }
@@ -433,8 +442,8 @@
 .achievement-card {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-5) var(--space-6);
+  gap: 10px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--border-line);
   border-right: 1px solid var(--border-line);
   position: relative;
@@ -449,8 +458,8 @@
 
 .achievement-icon-wrap {
   position: relative;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   background: var(--bg-recess);
   border: 1px solid var(--border-line);
@@ -466,8 +475,8 @@
 }
 
 .achievement-icon {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
   background: var(--ink-faint);
   opacity: 0.5;
@@ -506,7 +515,7 @@
 .achievement-label {
   font-family: var(--font-display);
   font-variation-settings: "opsz" 36;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 460;
   color: var(--ink-primary);
   letter-spacing: -0.01em;
@@ -515,7 +524,7 @@
 .achievement-desc {
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--ink-muted);
   font-variation-settings: "opsz" 30;
 }

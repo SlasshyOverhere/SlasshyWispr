@@ -1293,6 +1293,12 @@
 .settings-version { padding: 6px 16px 0; }
 .settings-pane { padding: 14px 18px 24px; }
 
+/* Pane rhythm — 540px of dialog is rows, not air. */
+.settings-section-title { padding: 13px 0 6px; }
+.s-row { padding: 7px 0; min-height: 34px; }
+.s-row-label { font-size: 12.5px; }
+.compact-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+
 .ghost-action {
   background: var(--bg-card);
   border: 1px solid var(--border-line);

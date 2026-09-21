@@ -3662,7 +3662,8 @@ textarea:focus-visible {
   z-index: 9999;
   display: grid;
   place-items: center;
-  padding: var(--space-4);
+  padding: var(--space-3);
+  overflow-y: auto;
   animation: fade-in 300ms ease;
 }
 
@@ -3675,9 +3676,12 @@ textarea:focus-visible {
   background: var(--bg-card);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-modal);
-  padding: var(--space-10);
-  max-width: 460px;
+  padding: var(--space-6);
+  max-width: 420px;
   width: 100%;
+  /* 600px of window: the wizard must be able to scroll rather than clip. */
+  max-height: calc(100vh - var(--space-6));
+  overflow-y: auto;
   box-shadow: var(--shadow-modal);
   animation: pane-enter 320ms cubic-bezier(0.22, 1, 0.36, 1);
   display: flex;
@@ -3977,6 +3981,24 @@ kbd {
   border-radius: var(--radius-card);
 }
 .empty-hint { padding: 28px 16px; }
+
+/* Page headers, empty states and the dictionary form were sized for a
+   1080px column; a 612px one wants a smaller title and a shorter well. */
+.page-header-row {
+  gap: 16px;
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.page-header-row h1 { font-size: 20px; margin-bottom: 2px; }
+.page-subtitle { font-size: 12.5px; }
+
+.empty-state { padding: 26px 16px; gap: var(--space-2); }
+.empty-state-icon { width: 40px; height: 40px; margin-bottom: 0; }
+.empty-state h4 { font-size: 16px; }
+.empty-state p { font-size: 12.5px; }
+
+.dictionary-container { gap: var(--space-4); }
+.dictionary-form-card { padding: var(--space-4); }
 
 .stt-load-detail {
   margin-bottom: 0;
