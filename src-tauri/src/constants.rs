@@ -89,6 +89,9 @@ pub const PARAKEET_V2_INT8_ARCHIVE_URL: &str = "https://github.com/SlasshyOverhe
 pub const PARAKEET_V3_INT8_ARCHIVE_URL: &str = "https://github.com/SlasshyOverhere/parakeet-int8-mirror/releases/download/models-parakeet-int8-v1/parakeet-v3-int8.tar.gz";
 pub const PARAKEET_V2_INT8_ROOT_DIR: &str = "parakeet-tdt-0.6b-v2-int8";
 pub const PARAKEET_V3_INT8_ROOT_DIR: &str = "parakeet-tdt-0.6b-v3-int8";
+/// English-only Parakeet ("unified") — the recommended default for English audio.
+pub const PARAKEET_UNIFIED_EN_INT8_ARCHIVE_URL: &str = "https://github.com/SlasshyOverhere/parakeet-int8-mirror/releases/download/models-parakeet-int8-v1/parakeet-unified-en-int8.tar.gz";
+pub const PARAKEET_UNIFIED_EN_INT8_ROOT_DIR: &str = "parakeet-unified-en-0.6b-int8";
 pub const LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_DEFAULT: usize = 4;
 pub const LOCAL_STT_ARCHIVE_PARALLEL_CHUNKS_MAX: usize = 8;
 pub const LOCAL_STT_ARCHIVE_MIN_BYTES_PER_CHUNK: u64 = 24 * 1024 * 1024;

@@ -72,6 +72,7 @@ export const DICTATION_LANGUAGE_LABELS: Record<string, string> = Object.fromEntr
   DICTATION_LANGUAGE_OPTIONS.map((item) => [item.code, item.label]),
 );
 export const LOCAL_STT_MODEL_SIZE_LABELS: Record<string, string> = {
+  "nvidia/parakeet-unified-en-0.6b": "Parakeet Unified EN (663 MB)",
   "nvidia/parakeet-tdt-0.6b-v3": "Parakeet v3 (478 MB)",
   "nvidia/parakeet-tdt_ctc-110m": "Parakeet v2 (473 MB)",
 };

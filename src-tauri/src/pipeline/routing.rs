@@ -297,6 +297,7 @@ pub fn canonical_local_stt_model_id(model: &str) -> String {
 /// Return the built-in catalog of local STT models.
 pub fn built_in_local_stt_model_catalog() -> Vec<String> {
     vec![
+        "nvidia/parakeet-unified-en-0.6b".to_string(),
         "nvidia/parakeet-tdt-0.6b-v3".to_string(),
         "nvidia/parakeet-tdt_ctc-110m".to_string(),
     ]
@@ -346,6 +347,7 @@ pub fn normalize_local_stt_provider(raw: Option<&str>) -> String {
 pub fn local_stt_model_display_label(model: &str) -> String {
     let canonical = canonical_local_stt_model_id(model);
     match canonical.as_str() {
+        "nvidia/parakeet-unified-en-0.6b" => "Parakeet Unified EN (663 MB)".to_string(),
         "nvidia/parakeet-tdt-0.6b-v3" => "Parakeet v3 (478 MB)".to_string(),
         "nvidia/parakeet-tdt_ctc-110m" => "Parakeet v2 (473 MB)".to_string(),
         "openai/whisper-large-v3" => "Whisper Large (1.1 GB)".to_string(),
@@ -362,6 +364,7 @@ pub fn local_stt_model_display_label(model: &str) -> String {
 pub fn local_stt_model_size_gb(model: &str) -> f64 {
     let canonical = canonical_local_stt_model_id(model);
     match canonical.as_str() {
+        "nvidia/parakeet-unified-en-0.6b" => 0.663,
         "nvidia/parakeet-tdt-0.6b-v3" => 0.478,
         "nvidia/parakeet-tdt_ctc-110m" => 0.473,
         "openai/whisper-large-v3" => 1.1,
@@ -789,6 +792,7 @@ mod tests {
         assert_eq!(
             built_in_local_stt_model_catalog(),
             vec![
+                "nvidia/parakeet-unified-en-0.6b".to_string(),
                 "nvidia/parakeet-tdt-0.6b-v3".to_string(),
                 "nvidia/parakeet-tdt_ctc-110m".to_string()
             ]

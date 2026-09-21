@@ -265,16 +265,18 @@ pub(crate) fn local_stt_models_for_tier(
     tier: &str,
     _nvidia_gpu_detected: bool,
 ) -> (&'static str, Vec<&'static str>, Vec<&'static str>) {
-    // Performance: strong CPU/GPU + ample RAM can handle the larger 0.6B model.
+    // Performance: strong CPU/GPU + ample RAM can handle a 0.6B model, so suggest
+    // the English-only Parakeet.
     // Balanced/Basic: recommend the lightweight 110m model; caution about the
-    // heavier 0.6B model which may be slow on constrained hardware.
+    // heavier 0.6B models which may be slow on constrained hardware.
     // NOTE: Native Parakeet runs on CPU int8 regardless of GPU, so
     // _nvidia_gpu_detected is unused today but reserved for future GPU-accelerated
     // inference paths.
     match tier {
         "performance" => (
-            "nvidia/parakeet-tdt-0.6b-v3",
+            "nvidia/parakeet-unified-en-0.6b",
             vec![
+                "nvidia/parakeet-unified-en-0.6b",
                 "nvidia/parakeet-tdt-0.6b-v3",
                 "nvidia/parakeet-tdt_ctc-110m",
             ],
@@ -283,12 +285,18 @@ pub(crate) fn local_stt_models_for_tier(
         "balanced" => (
             "nvidia/parakeet-tdt_ctc-110m",
             vec!["nvidia/parakeet-tdt_ctc-110m"],
-            vec!["nvidia/parakeet-tdt-0.6b-v3"],
+            vec![
+                "nvidia/parakeet-unified-en-0.6b",
+                "nvidia/parakeet-tdt-0.6b-v3",
+            ],
         ),
         _ => (
             "nvidia/parakeet-tdt_ctc-110m",
             vec!["nvidia/parakeet-tdt_ctc-110m"],
-            vec!["nvidia/parakeet-tdt-0.6b-v3"],
+            vec![
+                "nvidia/parakeet-unified-en-0.6b",
+                "nvidia/parakeet-tdt-0.6b-v3",
+            ],
         ),
     }
 }
@@ -427,7 +435,8 @@ mod tests {
     fn performance_tier_suggests_heavier_model() {
         let (suggested, suggested_candidates, caution) =
             super::local_stt_models_for_tier("performance", false);
-        assert_eq!(suggested, "nvidia/parakeet-tdt-0.6b-v3");
+        assert_eq!(suggested, "nvidia/parakeet-unified-en-0.6b");
+        assert!(suggested_candidates.contains(&"nvidia/parakeet-unified-en-0.6b"));
         assert!(suggested_candidates.contains(&"nvidia/parakeet-tdt-0.6b-v3"));
         assert!(suggested_candidates.contains(&"nvidia/parakeet-tdt_ctc-110m"));
         assert!(caution.is_empty());
@@ -439,6 +448,7 @@ mod tests {
             super::local_stt_models_for_tier("balanced", false);
         assert_eq!(suggested, "nvidia/parakeet-tdt_ctc-110m");
         assert_eq!(suggested_candidates, vec!["nvidia/parakeet-tdt_ctc-110m"]);
+        assert!(caution.contains(&"nvidia/parakeet-unified-en-0.6b"));
         assert!(caution.contains(&"nvidia/parakeet-tdt-0.6b-v3"));
     }
 
@@ -448,6 +458,7 @@ mod tests {
             super::local_stt_models_for_tier("basic", false);
         assert_eq!(suggested, "nvidia/parakeet-tdt_ctc-110m");
         assert_eq!(suggested_candidates, vec!["nvidia/parakeet-tdt_ctc-110m"]);
+        assert!(caution.contains(&"nvidia/parakeet-unified-en-0.6b"));
         assert!(caution.contains(&"nvidia/parakeet-tdt-0.6b-v3"));
     }
 
@@ -455,6 +466,25 @@ mod tests {
     fn unknown_tier_defaults_to_lightweight() {
         let (suggested, _, _) = super::local_stt_models_for_tier("unknown", false);
         assert_eq!(suggested, "nvidia/parakeet-tdt_ctc-110m");
+    }
+
+    /// A suggestion the catalog cannot serve would strand the user with no local STT.
+    #[test]
+    fn every_tier_suggestion_is_in_the_built_in_catalog() {
+        let catalog = crate::pipeline::routing::built_in_local_stt_model_catalog();
+        for tier in ["performance", "balanced", "basic", "unknown"] {
+            let (suggested, candidates, caution) = super::local_stt_models_for_tier(tier, false);
+            assert!(
+                catalog.contains(&suggested.to_string()),
+                "tier {tier} suggests '{suggested}', which is not in the catalog"
+            );
+            for model in candidates.iter().chain(caution.iter()) {
+                assert!(
+                    catalog.contains(&model.to_string()),
+                    "tier {tier} references '{model}', which is not in the catalog"
+                );
+            }
+        }
     }
 
     // ===== HARDWARE TIER CLASSIFICATION =====

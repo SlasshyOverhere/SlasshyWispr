@@ -3,7 +3,9 @@
  * Pure, no DOM, no invoke. preferredOrder kept with the inference it serves.
  */
 
+/** English is the primary dictation language, so the English-only Parakeet leads. */
 export const PREFERRED_LOCAL_STT_MODELS = [
+  "nvidia/parakeet-unified-en-0.6b",
   "nvidia/parakeet-tdt_ctc-110m",
   "nvidia/parakeet-tdt-0.6b-v3",
 ];
