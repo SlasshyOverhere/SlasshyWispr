@@ -98,6 +98,46 @@ describe("notice stack", () => {
   });
 });
 
+describe("notice stack actions", () => {
+  it("carries the action it was enqueued with", () => {
+    const h = makeHarness();
+    const run = (): void => {};
+
+    h.stack.enqueue("Update 1.2.3 is available.", false, { label: "Open Updates", run });
+
+    expect(h.stack.items()[0].action?.label).toBe("Open Updates");
+    expect(h.stack.items()[0].action?.run).toBe(run);
+  });
+
+  it("leaves a plain notice without one", () => {
+    const h = makeHarness();
+    h.stack.enqueue("timeout corrected");
+
+    expect(h.stack.items()[0].action).toBeUndefined();
+  });
+
+  it("does not stack a second row when the same update is reported twice", () => {
+    const h = makeHarness();
+    const action = { label: "Open Updates", run: (): void => {} };
+
+    h.stack.enqueue("Update 1.2.3 is available.", false, action);
+    h.stack.enqueue("Update 1.2.3 is available.", false, action);
+
+    expect(h.texts()).toEqual(["Update 1.2.3 is available."]);
+  });
+
+  it("survives a later status line, action intact", () => {
+    const h = makeHarness();
+    const action = { label: "Open Updates", run: (): void => {} };
+
+    h.stack.enqueue("Update 1.2.3 is available.", false, action);
+    h.stack.present("Recording started");
+
+    expect(h.texts()).toEqual(["Update 1.2.3 is available.", "Recording started"]);
+    expect(h.stack.items()[0].action).toBe(action);
+  });
+});
+
 describe("notice stack status line", () => {
   it("replaces itself in place rather than stacking every update", () => {
     const h = makeHarness();

@@ -667,31 +667,70 @@
   line-height: 1.4;
 }
 
-/* The notice area: every message stays visible until it is dismissed. */
+/* Global notice area: every message stays visible until it is dismissed. Pinned
+   to the viewport so a notice reaches the user from any page. */
+.notice-toasts {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 32px));
+  /* The region must not eat clicks meant for the app behind it. */
+  pointer-events: none;
+}
+
+/* Nothing to say: occupy no space, so the toasts never cover the UI.
+   The settings pane keeps its own idle text, so none is needed here. */
+.notice-toasts:has(.notice-stack:empty) {
+  display: none;
+}
+
 .notice-stack {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 11.5px;
-  color: var(--ink-faint);
-  line-height: 1.4;
-}
-
-/* Idle state: an empty area still says something. */
-.notice-stack:empty::before {
-  content: "Ready.";
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+  line-height: 1.45;
 }
 
 .notice-item {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-popover);
+  pointer-events: auto;
 }
 
 .notice-item-text {
   flex: 1;
   min-width: 0;
   margin: 0;
+  color: var(--ink-primary);
+}
+
+.notice-action {
+  flex: none;
+  padding: 5px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--bg-hover);
+  color: var(--ink-primary);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.notice-action:hover {
+  background: var(--bg-active);
 }
 
 .notice-item[data-tone="error"] .notice-item-text {

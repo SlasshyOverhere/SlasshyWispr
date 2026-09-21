@@ -11,6 +11,12 @@
  * without a DOM or a clock.
  */
 
+export interface NoticeAction {
+  /** Button text, short enough to sit in a row. */
+  label: string;
+  run: () => void;
+}
+
 export interface NoticeItem {
   /** Stable for the item's life, so a dismiss can name exactly one row. */
   id: number;
@@ -18,6 +24,8 @@ export interface NoticeItem {
   isError: boolean;
   /** Status: replaces the previous status line instead of stacking. */
   transient: boolean;
+  /** Optional call to action. The row waits to be dismissed either way. */
+  action?: NoticeAction;
 }
 
 export interface NoticeStackDeps {
@@ -26,7 +34,7 @@ export interface NoticeStackDeps {
 
 export interface NoticeStack {
   /** A notice: stacks, and waits to be read. */
-  enqueue: (message: string, isError?: boolean) => void;
+  enqueue: (message: string, isError?: boolean, action?: NoticeAction) => void;
   /** Status: takes the status line, leaving notices untouched. */
   present: (message: string, isError?: boolean) => void;
   dismiss: (id: number) => void;
@@ -41,12 +49,12 @@ export function createNoticeStack(deps: NoticeStackDeps): NoticeStack {
     deps.render([...items]);
   }
 
-  function enqueue(message: string, isError = false): void {
+  function enqueue(message: string, isError = false, action?: NoticeAction): void {
     // The same message twice is the same problem reported twice.
     if (items.some((item) => item.message === message)) {
       return;
     }
-    items.push({ id: nextId, message, isError, transient: false });
+    items.push({ id: nextId, message, isError, transient: false, action });
     nextId += 1;
     publish();
   }
