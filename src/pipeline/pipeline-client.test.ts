@@ -147,8 +147,6 @@ function wireHarness(options: {
       getLastWarmedLocalSttModel: () => settings.localSttModel,
       setLastWarmedLocalSttModel: () => {},
       ensureLocalOllamaModelSelected: async () => settings.localOllamaModel,
-      getDictionaryTerms: () => [],
-      getSnippets: () => [],
       nextSelectionPopupToken: () => 1,
       dismissSelectionPopup: async () => {},
       showSelectionAssistantPopup: async () => false,

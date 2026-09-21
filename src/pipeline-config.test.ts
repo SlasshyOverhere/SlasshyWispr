@@ -313,14 +313,7 @@ describe("Active page persistence", () => {
   });
 
   it("stores valid page values", () => {
-    const validPages: MainPage[] = [
-      "home",
-      "history",
-      "dictionary",
-      "snippets",
-      "notes",
-      "analytics",
-    ];
+    const validPages: MainPage[] = ["home", "history", "analytics"];
     for (const page of validPages) {
       localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, page);
       expect(localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY)).toBe(page);

@@ -22,9 +22,7 @@ use crate::pipeline::ai::{
 use crate::pipeline::input::{apply_noise_suppression, validate_audio_input};
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::process::elapsed_ms;
-use crate::pipeline::refinement::{
-    self, RefinementConfig, RefinementDictionaryEntry, RefinementSnippetEntry,
-};
+use crate::pipeline::refinement::{self, RefinementConfig};
 use crate::pipeline::routing::{infer_local_stt_provider_from_model, AiModeConfig, SttModeConfig};
 use crate::pipeline::selection::{
     build_selected_context_answer_prompt, seems_like_selection_context_query,
@@ -69,8 +67,6 @@ pub(crate) struct AssistantPipelineRequest {
     pub(crate) system_prompt: Option<String>,
     pub(crate) temperature: Option<f32>,
     pub(crate) max_tokens: Option<u32>,
-    pub(crate) dictionary_entries: Option<Vec<DictionaryEntryRequest>>,
-    pub(crate) snippet_entries: Option<Vec<SnippetEntryRequest>>,
     pub(crate) raw_mode: Option<bool>,
     pub(crate) apply_backtrack: Option<bool>,
     pub(crate) remove_fillers: Option<bool>,
@@ -91,18 +87,6 @@ pub(crate) struct AssistantPipelineRequest {
     /// when it does not match the latest issued token.
     #[serde(default)]
     pub(crate) replace_token: String,
-}
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct DictionaryEntryRequest {
-    pub(crate) source: String,
-    pub(crate) target: String,
-}
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct SnippetEntryRequest {
-    pub(crate) trigger: String,
-    pub(crate) expansion: String,
 }
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -381,32 +365,6 @@ pub(crate) async fn run_assistant_pipeline(
     }
     let refinement_config = RefinementConfig {
         raw_mode: request.raw_mode.unwrap_or(false),
-        snippet_entries: request
-            .snippet_entries
-            .as_ref()
-            .map(|entries| {
-                entries
-                    .iter()
-                    .map(|e| RefinementSnippetEntry {
-                        trigger: e.trigger.clone(),
-                        expansion: e.expansion.clone(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
-        dictionary_entries: request
-            .dictionary_entries
-            .as_ref()
-            .map(|entries| {
-                entries
-                    .iter()
-                    .map(|e| RefinementDictionaryEntry {
-                        source: e.source.clone(),
-                        target: e.target.clone(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
         apply_backtrack: request.apply_backtrack.unwrap_or(false),
         remove_fillers: request.remove_fillers.unwrap_or(false),
         auto_numbered_lists: request.auto_numbered_lists.unwrap_or(false),
@@ -957,14 +915,6 @@ mod tests {
             system_prompt: Some("You are helpful.".to_string()),
             temperature: Some(0.5),
             max_tokens: Some(256),
-            dictionary_entries: Some(vec![DictionaryEntryRequest {
-                source: "brb".to_string(),
-                target: "be right back".to_string(),
-            }]),
-            snippet_entries: Some(vec![SnippetEntryRequest {
-                trigger: "gj".to_string(),
-                expansion: "good job".to_string(),
-            }]),
             raw_mode: Some(false),
             apply_backtrack: Some(true),
             remove_fillers: Some(true),
@@ -1043,14 +993,6 @@ mod tests {
         assert!(
             obj.contains_key("maxTokens"),
             "expected camelCase 'maxTokens'"
-        );
-        assert!(
-            obj.contains_key("dictionaryEntries"),
-            "expected camelCase 'dictionaryEntries'"
-        );
-        assert!(
-            obj.contains_key("snippetEntries"),
-            "expected camelCase 'snippetEntries'"
         );
         assert!(obj.contains_key("rawMode"), "expected camelCase 'rawMode'");
         assert!(
@@ -1137,8 +1079,6 @@ mod tests {
             system_prompt: None,
             temperature: None,
             max_tokens: None,
-            dictionary_entries: None,
-            snippet_entries: None,
             raw_mode: None,
             apply_backtrack: None,
             remove_fillers: None,
@@ -1268,70 +1208,6 @@ mod tests {
     }
 
     #[test]
-    fn ipc_nested_entry_requests_serialize_correctly() {
-        let request = AssistantPipelineRequest {
-            api_key: "key".to_string(),
-            api_base_url: Some("https://api.example.com".to_string()),
-            stt_model: Some("model".to_string()),
-            ai_model: Some("model".to_string()),
-            stt_local_mode: Some(false),
-            ai_local_mode: Some(false),
-            local_ollama_base_url: None,
-            local_ollama_model: None,
-            local_stt_model: None,
-            piper_path: None,
-            audio_base64: String::new(),
-            audio_mime_type: "audio/wav".to_string(),
-            stt_timeout_seconds: None,
-            language: None,
-            allowed_languages: None,
-            system_prompt: None,
-            temperature: None,
-            max_tokens: None,
-            dictionary_entries: Some(vec![
-                DictionaryEntryRequest {
-                    source: "brb".to_string(),
-                    target: "be right back".to_string(),
-                },
-                DictionaryEntryRequest {
-                    source: "idk".to_string(),
-                    target: "I don't know".to_string(),
-                },
-            ]),
-            snippet_entries: Some(vec![SnippetEntryRequest {
-                trigger: "gj".to_string(),
-                expansion: "good job".to_string(),
-            }]),
-            raw_mode: None,
-            apply_backtrack: None,
-            remove_fillers: None,
-            auto_punctuation: None,
-            auto_numbered_lists: None,
-            noise_suppression: None,
-            raw_pcm_base64: None,
-            command_mode: None,
-            wake_word_enabled: None,
-            assistant_name: None,
-            selected_text: None,
-            tts_engine: None,
-            piper: None,
-            voice_clone: None,
-            ..Default::default()
-        };
-
-        let json = serde_json::to_value(&request).expect("should serialize");
-        let entries = json.get("dictionaryEntries").unwrap().as_array().unwrap();
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].get("source").unwrap(), "brb");
-        assert_eq!(entries[0].get("target").unwrap(), "be right back");
-
-        let snippets = json.get("snippetEntries").unwrap().as_array().unwrap();
-        assert_eq!(snippets.len(), 1);
-        assert_eq!(snippets[0].get("trigger").unwrap(), "gj");
-        assert_eq!(snippets[0].get("expansion").unwrap(), "good job");
-    }
-
-    #[test]
     fn ipc_round_trip_preserves_option_vs_null_distinction() {
         // When frontend sends null for optional fields, Rust should deserialize as None
         let json_str = r#"{
@@ -1352,8 +1228,6 @@ mod tests {
         "systemPrompt": null,
         "temperature": null,
         "maxTokens": null,
-        "dictionaryEntries": null,
-        "snippetEntries": null,
         "rawMode": null,
         "applyBacktrack": null,
         "removeFillers": null,
@@ -1385,7 +1259,6 @@ mod tests {
         assert!(request.max_tokens.is_none());
         assert!(request.stt_timeout_seconds.is_none());
         assert!(request.system_prompt.is_none());
-        assert!(request.dictionary_entries.is_none());
         assert!(request.piper.is_none());
     }
 }
