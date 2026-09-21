@@ -19,13 +19,20 @@
 import { createHash } from "node:crypto";
 import { createGzip } from "node:zlib";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { join, resolve } from "node:path";
 
+// Int8 ONNX export of the unified model. Its fp32 encoder weights hash identically to
+// the conversion below, so the two agree on the model; its bundled vocab.txt does not
+// satisfy the engine (see VOCAB_REPO).
 const MODEL_REPO = "bobNight/parakeet-unified-en-0.6b-onnx";
 // Every NeMo Parakeet export shares one 16 kHz / 128-bin mel preprocessor.
 const PREPROCESSOR_REPO = "istupakov/parakeet-tdt-0.6b-v2-onnx";
+// The unified model's own token list, emitted as NeMo `token id` lines. Borrowing
+// another Parakeet's vocab instead loads fine and transcribes nonsense: the token
+// orderings diverge from index 10.
+const VOCAB_REPO = "csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-non-streaming";
 const ROOT_DIR = "parakeet-unified-en-0.6b-int8";
 // Must equal the asset name in PARAKEET_UNIFIED_EN_INT8_ARCHIVE_URL.
 const ARCHIVE_NAME = "parakeet-unified-en-int8.tar.gz";
@@ -57,11 +64,11 @@ const DOWNLOADS = [
     sha256: "7f76ad5f35035f25630075699c6c942a2c0c05ff42cb398f966f3c256d148e1e",
   },
   {
-    repo: MODEL_REPO,
-    remote: "vocab.txt",
+    repo: VOCAB_REPO,
+    remote: "tokens.txt",
     local: "vocab.txt",
-    bytes: 4_929,
-    sha256: null, // not LFS-backed, so there is no upstream digest to pin
+    bytes: 8_952,
+    sha256: "dc0b4584ab2e4ddbf888425c076c61b736e7356a015250db7d307e6f1a8188ff",
   },
   {
     repo: PREPROCESSOR_REPO,
@@ -248,6 +255,33 @@ async function writeTarEntries(gzip, modelDir) {
   await writeTo(gzip, Buffer.alloc(1024)); // end-of-archive marker
 }
 
+/**
+ * Applies the engine's own `vocab.txt` rules (transcribe-rs `load_vocab`): usable
+ * lines are `token id`, and `<blk>` must exist. The export this model comes from
+ * ships a bare HuggingFace-style vocab instead, which downloads and extracts fine and
+ * then dies with "Missing <blk> token in vocabulary".
+ */
+async function readVocabStats(path) {
+  const text = await readFile(path, "utf8");
+  let pairs = 0;
+  let blank = null;
+  for (const line of text.split("\n")) {
+    const parts = line.trimEnd().split(" ");
+    if (parts.length < 2) continue;
+    const id = Number.parseInt(parts[1], 10);
+    if (!Number.isInteger(id)) continue;
+    pairs += 1;
+    if (parts[0] === "<blk>") blank = id;
+  }
+  if (blank === null) {
+    throw new Error(
+      `${path}: no '<blk>' token among ${pairs} parsed token/id pairs, so the engine ` +
+        "cannot load this model — source a NeMo-format vocab",
+    );
+  }
+  return { pairs, blank };
+}
+
 async function main() {
   const { out, from } = parseArgs(process.argv.slice(2));
   await mkdir(out, { recursive: true });
@@ -283,6 +317,9 @@ async function main() {
       ) + "\n",
     );
   }
+
+  const vocab = await readVocabStats(join(modelDir, "vocab.txt"));
+  console.log(`  vocab     ${vocab.pairs} tokens, <blk> at ${vocab.blank}`);
 
   const archivePath = join(out, ARCHIVE_NAME);
   const gzip = createGzip({ level: 6 });
