@@ -1,31 +1,26 @@
 //! Shared JSONL bridge-daemon transport (Phase 8).
 //!
-//! Spawn/send/read primitives shared by the Coqui and local-STT bridge
-//! daemons: process spawn with stderr pump, JSONL request write, noisy-output
-//! recovery read loop, response parsing, daemon key helpers, and registry
-//! stop. Lifecycle policy (Coqui stay-alive vs local-STT two-tier reaper)
-//! stays in `super::coqui` / `super::local_stt` — no generic supervisor.
+//! Spawn/send/read primitives for the Coqui bridge daemon: process spawn with
+//! stderr pump, JSONL request write, noisy-output recovery read loop, response
+//! parsing, daemon key helpers, and registry stop. Lifecycle policy stays in
+//! `super::coqui` — no generic supervisor.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;
-use std::time::Instant;
 
 use log::{error, info, warn};
 use serde_json::Value;
 
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::process::{apply_no_window, validate_python_binary_path};
-use crate::pipeline::routing::non_empty_env_var;
 
 pub(crate) struct BridgeDaemon {
     pub(crate) child: Child,
     pub(crate) stdin: ChildStdin,
     pub(crate) stdout: BufReader<ChildStdout>,
-    pub(crate) last_used: Instant,
-    pub(crate) model_loaded: bool,
 }
 
 impl BridgeDaemon {
@@ -34,8 +29,6 @@ impl BridgeDaemon {
             child,
             stdin,
             stdout,
-            last_used: Instant::now(),
-            model_loaded: false,
         }
     }
 }
@@ -47,13 +40,6 @@ pub(crate) fn daemon_key(python_path: &str, script_path: &Path) -> String {
     let normalized_python = python_path.to_string();
 
     format!("{normalized_python}|{}", script_path.to_string_lossy())
-}
-
-pub(crate) fn env_u64(name: &str, default: u64, min: u64, max: u64) -> u64 {
-    non_empty_env_var(name)
-        .and_then(|raw| raw.parse::<u64>().ok())
-        .map(|value| value.clamp(min, max))
-        .unwrap_or(default)
 }
 
 pub(crate) fn extract_json_value_from_output(output: &str) -> Option<Value> {

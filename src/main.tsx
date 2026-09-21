@@ -341,7 +341,6 @@ import {
 import {
   checkAvailableMemory as checkAvailableMemoryService,
   checkModelFileExists as checkModelFileExistsService,
-  checkPythonDependencies as checkPythonDependenciesService,
   initLocalSttDiagnostics,
   showOfflineModeDiagnostic as showOfflineModeDiagnosticService,
 } from "./stt/local-stt-diagnostics";
@@ -1117,7 +1116,6 @@ initLocalSttClient(
     refreshAssistantInfo: () => refreshAssistantInfoSafelyService(),
     renderFetchedCatalog: (models, selected) => renderLocalSttModelCatalogService(models, selected),
     checkModelFileExists: (model) => checkModelFileExistsService(model),
-    checkPythonDependencies: (model) => checkPythonDependenciesService(model),
     checkAvailableMemory: (model) => checkAvailableMemoryService(model),
     showOfflineModeDiagnostic: (issue, details) => showOfflineModeDiagnosticService(issue, details),
     ensureSelectedLocalSttModelForWarmup: () => ensureSelectedLocalSttModelService({ quiet: true }),

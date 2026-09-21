@@ -182,8 +182,6 @@ export interface LocalSttOpenPathResponse {
 // src-tauri/src/commands/local_stt.rs
 export interface LocalSttRuntimeStateResponse {
   loaded: boolean;
-  daemonCount: number;
-  loadedDaemonCount: number;
   details: string;
 }
 

@@ -5,9 +5,15 @@
 //! module. Listing them here means adding an engine is one edit rather than four
 //! call sites that each have to remember it.
 
+use std::sync::Once;
 use std::time::Duration;
 
 use log::info;
+
+use crate::constants::{
+    LOCAL_STT_DAEMON_SWEEP_INTERVAL_SECS, LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_ENV,
+    LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS,
+};
 
 /// Engines that can hold a local STT model resident in this process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,6 +137,34 @@ pub(crate) fn unload_idle(max_idle: Duration) -> Vec<&'static str> {
     released
 }
 
+/// Clamp an idle budget to what the sweep will accept.
+fn clamp_idle_timeout_secs(requested: Option<u64>) -> u64 {
+    requested
+        .filter(|secs| (5..=3600).contains(secs))
+        .unwrap_or(LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS)
+}
+
+fn model_unload_idle_timeout() -> Duration {
+    let requested =
+        crate::pipeline::routing::non_empty_env_var(LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_ENV)
+            .and_then(|value| value.trim().parse::<u64>().ok());
+    Duration::from_secs(clamp_idle_timeout_secs(requested))
+}
+
+/// Start the process-lifetime sweep that releases idle in-process models.
+///
+/// Without it a resident model is held until exit. The sweep only ever takes
+/// `try_lock`, so it can never block a dictation it arrives in the middle of.
+pub(crate) fn ensure_idle_sweeper() {
+    static STARTED: Once = Once::new();
+    STARTED.call_once(|| {
+        std::thread::spawn(|| loop {
+            std::thread::sleep(Duration::from_secs(LOCAL_STT_DAEMON_SWEEP_INTERVAL_SECS));
+            unload_idle(model_unload_idle_timeout());
+        });
+    });
+}
+
 /// `name=state` for every engine, where state is `true`/`false`/`busy`.
 pub(crate) fn states() -> Vec<(&'static str, &'static str)> {
     LocalSttEngine::ALL
@@ -194,6 +228,24 @@ mod tests {
             total,
             "duplicate engine label in LocalSttEngine::ALL"
         );
+    }
+
+    #[test]
+    fn the_idle_budget_is_clamped_and_falls_back_to_the_default() {
+        assert_eq!(
+            clamp_idle_timeout_secs(None),
+            LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS
+        );
+        assert_eq!(
+            clamp_idle_timeout_secs(Some(4)),
+            LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS
+        );
+        assert_eq!(
+            clamp_idle_timeout_secs(Some(3601)),
+            LOCAL_STT_MODEL_UNLOAD_IDLE_TIMEOUT_SECS
+        );
+        assert_eq!(clamp_idle_timeout_secs(Some(5)), 5);
+        assert_eq!(clamp_idle_timeout_secs(Some(3600)), 3600);
     }
 
     #[test]

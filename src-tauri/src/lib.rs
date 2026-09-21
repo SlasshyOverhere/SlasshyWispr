@@ -133,7 +133,7 @@ pub fn run() {
 
             let app_handle = app.handle().clone();
             commands::windows::build_tray_icon(&app_handle)?;
-            crate::pipeline::daemon::ensure_local_stt_daemon_idle_sweeper();
+            audio::runtimes::ensure_idle_sweeper();
             services::startup::start_local_stt_boot_warmup(app_handle.clone());
 
             if let Some(main_window) = app.get_webview_window(crate::constants::MAIN_WINDOW_LABEL) {

@@ -25,7 +25,7 @@ pub const COQUI_MAX_REFERENCE_SECONDS: f32 = 30.0;
 pub const MAX_TTS_INPUT_LENGTH: usize = 2000;
 pub const PENDING_SELECTION_REWRITE_TTL_SECS: u64 = 90;
 pub const RECENT_SELECTION_CONTEXT_TTL_SECS: u64 = 240;
-pub const LOCAL_STT_BRIDGE_SCRIPT: &str = include_str!("../local_stt_bridge.py");
+
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const TRAY_ID: &str = "slasshywispr-tray";
 pub const TRAY_MENU_COPY_LAST_TRANSCRIPTION_ID: &str = "copy-last-transcription";
@@ -59,11 +59,7 @@ pub const LOCAL_STT_DAEMON_IDLE_TIMEOUT_ENV: &str = "SLASSHYWISPR_STT_DAEMON_IDL
 pub const LOCAL_STT_DAEMON_SWEEP_INTERVAL_ENV: &str = "SLASSHYWISPR_STT_DAEMON_SWEEP_INTERVAL_SECS";
 pub const LOCAL_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE_ENV: &str =
     "SLASSHYWISPR_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE";
-pub const LOCAL_STT_RUNTIME_READY_MARKER_FILE: &str = "runtime.ready.v2";
-pub const LOCAL_STT_RUNTIME_READY_MARKER_CONTENT: &str = "faster-whisper+torch";
 pub const ZERO_PYTHON_MODE_ENV: &str = "SLASSHYWISPR_ZERO_PYTHON_MODE";
-pub const ZERO_PYTHON_STT_NOTICE: &str =
-    "Zero-Python mode is enabled. This local STT model needs the Python bridge; pick Parakeet, Moonshine or SenseVoice instead.";
 pub const ZERO_PYTHON_COQUI_NOTICE: &str =
     "Coqui TTS is disabled in zero-Python mode. Use Piper TTS.";
 #[cfg(target_os = "windows")]

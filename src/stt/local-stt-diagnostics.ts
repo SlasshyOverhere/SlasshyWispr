@@ -1,7 +1,7 @@
 /**
  * Local-STT offline diagnostics — Phase 5 shell decomposition.
  *
- * Owns checkModelFileExists + checkPythonDependencies +
+ * Owns checkModelFileExists +
  * checkAvailableMemory + showOfflineModeDiagnostic +
  * getOfflineDiagnosticData. Moved verbatim from main.tsx; shell seams
  * (settings commit, notices, panes, browser, STT actions, IPC) arrive
@@ -9,14 +9,11 @@
  * module globals.
  */
 import type { PersistedSettings, SettingsPane } from "../types";
-import { asErrorMessage, escapeHtml } from "../utils";
+import { escapeHtml } from "../utils";
 import {
   getLocalSttHardwareAdvice as ipcGetLocalSttHardwareAdvice,
   getLocalSttModelStatus as ipcGetLocalSttModelStatus,
-  setupCoquiRuntime as ipcSetupCoquiRuntime,
-  warmupLocalSttModel as ipcWarmupLocalSttModel,
 } from "../ipc/client";
-import { inferLocalSttProviderFromModel } from "./provider-inference";
 
 export interface StageTimings {
   sttMs?: number;
@@ -90,39 +87,6 @@ export async function checkModelFileExists(_model: string): Promise<boolean> {
     `Timed out while checking local STT files for "${_model}".`,
   );
   return response?.exists === true;
-}
-
-/**
- * Checks if Python dependencies are installed
- */
-export async function checkPythonDependencies(model: string): Promise<boolean> {
-  const provider = inferLocalSttProviderFromModel(model);
-  if (!provider || provider === "parakeet") {
-    return true;
-  }
-  try {
-    const response = await ipcWarmupLocalSttModel(
-      { model },
-      12000,
-      `Timed out while checking local STT runtime dependencies for "${model}".`,
-    );
-    if (response.warmed) {
-      return true;
-    }
-    const message = response.details.toLowerCase();
-    return !(
-      message.includes("python") ||
-      message.includes("module") ||
-      message.includes("nemo") ||
-      message.includes("zero-python")
-    );
-  } catch (error) {
-    const msg = asErrorMessage(error).toLowerCase();
-    if (msg.includes("python") || msg.includes("module") || msg.includes("nemo")) {
-      return false;
-    }
-    return true;
-  }
 }
 
 /**
@@ -393,52 +357,6 @@ export function getOfflineDiagnosticData(issue: string, details?: OfflineDiagnos
               currentSettings.sttRuntimeMode = 'online';
               diagnosticsDeps.commitSettings(currentSettings);
               diagnosticsDeps.notify('Switched to Online mode.');
-            }
-          },
-          {
-            id: 'cancel',
-            label: 'Cancel',
-            handler: () => {}
-          }
-        ]
-      };
-
-    case 'python-deps-missing':
-      return {
-        icon: '🐍',
-        title: 'Python Dependencies Not Installed',
-        description: 'Offline STT requires Python packages that aren\'t installed.',
-        steps: [
-          'Missing: nemo-toolkit (for Parakeet) OR transformers + faster-whisper',
-          '',
-          'Quick Fix:',
-          'Click "Install Dependencies" to run the automatic setup script',
-          '',
-          'Manual Fix:',
-          '1. Ensure Python 3.9+ is installed',
-          '2. Run: pip install torch torchaudio nemo-toolkit',
-          '3. Restart the app'
-        ],
-        actions: [
-          {
-            id: 'install-deps',
-            label: 'Install Dependencies',
-            primary: true,
-            handler: async () => {
-              diagnosticsDeps.notify('Running dependency installation script...');
-              try {
-                await ipcSetupCoquiRuntime({ pythonPath: null, useGpu: false });
-                diagnosticsDeps.notify('Dependencies installed successfully! Try loading STT again.');
-              } catch (error) {
-                diagnosticsDeps.notify(`Installation failed: ${asErrorMessage(error)}`, true);
-              }
-            }
-          },
-          {
-            id: 'guide',
-            label: 'Setup Guide',
-            handler: () => {
-              diagnosticsDeps.openInSystemBrowser('https://github.com/SlasshyOverhere/SlasshyWispr#quick-setup');
             }
           },
           {

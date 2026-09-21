@@ -303,34 +303,6 @@ pub fn built_in_local_stt_model_catalog() -> Vec<String> {
     ]
 }
 
-/// Whether the provider still needs the Python runtime bootstrapped.
-///
-/// No local provider does: Parakeet, Moonshine, SenseVoice and Whisper all run in this
-/// process, so selecting one must not install a venv. Unknown providers keep the historic
-/// answer of yes, since we cannot promise a native engine for a provider we do not know.
-pub fn local_stt_provider_requires_python(provider: &str) -> bool {
-    !matches!(
-        provider,
-        "parakeet" | "moonshine" | "sensevoice" | "whisper"
-    )
-}
-/// Whether the provider is supported in zero-Python mode.
-pub fn local_stt_provider_supported_in_zero_python_mode(provider: &str) -> bool {
-    matches!(
-        provider,
-        "parakeet" | "moonshine" | "sensevoice" | "whisper"
-    )
-}
-
-/// Whether a provider's setup should bootstrap the Python runtime.
-///
-/// Needs Python *and* has to be allowed to use it. Callers used to re-encode the provider
-/// list by hand, which is how a download could install a venv while the same response
-/// reported that no runtime setup ran.
-pub fn local_stt_provider_bootstraps_python_runtime(provider: &str) -> bool {
-    !zero_python_mode_enabled() && local_stt_provider_requires_python(provider)
-}
-
 /// Infer the STT provider from a model identifier string.
 /// Defaults to "whisper" for unrecognized models (preserving legacy behavior).
 pub fn infer_local_stt_provider_from_model(model: &str) -> String {
@@ -815,50 +787,6 @@ mod tests {
                 "nvidia/parakeet-tdt_ctc-110m".to_string()
             ]
         );
-    }
-
-    #[test]
-    fn local_stt_provider_python_requirement_flags() {
-        assert!(!local_stt_provider_requires_python("whisper"));
-        assert!(!local_stt_provider_requires_python("moonshine"));
-        assert!(!local_stt_provider_requires_python("sensevoice"));
-        assert!(!local_stt_provider_requires_python("parakeet"));
-    }
-
-    #[test]
-    fn zero_python_supported_local_stt_provider_flags() {
-        assert!(local_stt_provider_supported_in_zero_python_mode("parakeet"));
-        assert!(local_stt_provider_supported_in_zero_python_mode(
-            "moonshine"
-        ));
-        assert!(local_stt_provider_supported_in_zero_python_mode(
-            "sensevoice"
-        ));
-        assert!(local_stt_provider_supported_in_zero_python_mode("whisper"));
-    }
-
-    #[test]
-    fn no_provider_bootstraps_a_venv_while_zero_python_mode_is_on() {
-        // The mode is on by default, so the venv builder is unreachable without opting out.
-        if !zero_python_mode_enabled() {
-            return;
-        }
-        for provider in ["whisper", "moonshine", "sensevoice", "parakeet", "unknown"] {
-            assert!(
-                !local_stt_provider_bootstraps_python_runtime(provider),
-                "{provider} must not bootstrap a venv in the default mode"
-            );
-        }
-    }
-
-    #[test]
-    fn no_known_local_provider_still_bootstraps_the_python_runtime() {
-        assert!(!local_stt_provider_requires_python("whisper"));
-        assert!(!local_stt_provider_requires_python("parakeet"));
-        assert!(!local_stt_provider_requires_python("moonshine"));
-        assert!(!local_stt_provider_requires_python("sensevoice"));
-        // Unknown providers keep the historic default of needing it.
-        assert!(local_stt_provider_requires_python("something-else"));
     }
 
     #[test]

@@ -122,7 +122,6 @@ export interface LocalSttClientDeps {
   refreshAssistantInfo: () => Promise<void>;
   renderFetchedCatalog: (models: string[], selected: string) => void;
   checkModelFileExists: (model: string) => Promise<boolean>;
-  checkPythonDependencies: (model: string) => Promise<boolean>;
   checkAvailableMemory: (model: string) => Promise<{ sufficient: boolean; availableMB?: number }>;
   showOfflineModeDiagnostic: (issue: string, details?: Record<string, unknown>) => void;
   ensureSelectedLocalSttModelForWarmup: () => Promise<string>;
@@ -765,14 +764,6 @@ export async function activateSelectedLocalSttModel(): Promise<void> {
       return;
     }
 
-    // DIAGNOSTIC #4: Check Python dependencies
-    const pythonReady = await clientDeps.checkPythonDependencies(model);
-    if (!pythonReady) {
-      hideLocalSttLoadOverlay();
-      clientDeps.showOfflineModeDiagnostic('python-deps-missing', { model });
-      return;
-    }
-
     // DIAGNOSTIC #5: Check available memory
     const memoryOk = await clientDeps.checkAvailableMemory(model);
     if (!memoryOk.sufficient) {
@@ -797,13 +788,6 @@ export async function activateSelectedLocalSttModel(): Promise<void> {
       const normalizedDetails = warmupDetails.toLowerCase();
       if (normalizedDetails.includes("not downloaded yet")) {
         clientDeps.showOfflineModeDiagnostic('model-file-missing', { model });
-      } else if (
-        normalizedDetails.includes("python") ||
-        normalizedDetails.includes("nemo") ||
-        normalizedDetails.includes("module") ||
-        normalizedDetails.includes("zero-python")
-      ) {
-        clientDeps.showOfflineModeDiagnostic('python-deps-missing', { model });
       } else if (normalizedDetails.includes("timed out") || normalizedDetails.includes("timeout")) {
         clientDeps.showOfflineModeDiagnostic('load-timeout', { model });
       } else {

@@ -4,9 +4,8 @@
 //! operation serialization lock, int8 model loading, idle unload, and the
 //! CPU transcription path (with optional Silero VAD trimming).
 //!
-//! This is deliberately NOT merged with the Python STT runtime provisioning
-//! (`setup_local_stt_runtime_blocking` in `lib.rs`) — that is a separate
-//! subsystem with its own lifecycle.
+//! Kept separate from the shared cache in `in_process` because it predates it and
+//! carries Parakeet-specific behavior (VAD trimming, int8 loading).
 
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
