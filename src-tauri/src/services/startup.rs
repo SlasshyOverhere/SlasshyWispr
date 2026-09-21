@@ -124,10 +124,13 @@ pub(crate) fn start_local_stt_boot_warmup(app: AppHandle) {
                 "",
                 &model_for_worker,
             ),
-            "whisper" | "moonshine" | "sensevoice" => {
-                if crate::pipeline::routing::zero_python_mode_enabled() {
-                    return Err(crate::constants::ZERO_PYTHON_STT_NOTICE.to_string());
-                }
+            // A native provider is ready without a warmup: skipping marks local STT
+            // available, so the first dictation pays the model load instead of boot.
+            provider
+                if crate::pipeline::routing::local_stt_provider_bootstraps_python_runtime(
+                    provider,
+                ) =>
+            {
                 let python_path = crate::services::transcribe::setup_local_stt_runtime_blocking(
                     &app_for_worker,
                     "python",
@@ -138,7 +141,7 @@ pub(crate) fn start_local_stt_boot_warmup(app: AppHandle) {
                     &model_for_worker,
                 )
             }
-            _ => Ok("Warmup skipped (unsupported provider).".to_string()),
+            _ => Ok("Warmup skipped (no runtime setup for this provider).".to_string()),
         })
         .await
         .map_err(|error| format!("Local STT startup warmup worker failed: {error}"))

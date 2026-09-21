@@ -314,13 +314,21 @@ pub fn local_stt_provider_requires_python(provider: &str) -> bool {
         "parakeet" | "moonshine" | "sensevoice" | "whisper"
     )
 }
-
 /// Whether the provider is supported in zero-Python mode.
 pub fn local_stt_provider_supported_in_zero_python_mode(provider: &str) -> bool {
     matches!(
         provider,
         "parakeet" | "moonshine" | "sensevoice" | "whisper"
     )
+}
+
+/// Whether a provider's setup should bootstrap the Python runtime.
+///
+/// Needs Python *and* has to be allowed to use it. Callers used to re-encode the provider
+/// list by hand, which is how a download could install a venv while the same response
+/// reported that no runtime setup ran.
+pub fn local_stt_provider_bootstraps_python_runtime(provider: &str) -> bool {
+    !zero_python_mode_enabled() && local_stt_provider_requires_python(provider)
 }
 
 /// Infer the STT provider from a model identifier string.
@@ -827,6 +835,20 @@ mod tests {
             "sensevoice"
         ));
         assert!(local_stt_provider_supported_in_zero_python_mode("whisper"));
+    }
+
+    #[test]
+    fn no_provider_bootstraps_a_venv_while_zero_python_mode_is_on() {
+        // The mode is on by default, so the venv builder is unreachable without opting out.
+        if !zero_python_mode_enabled() {
+            return;
+        }
+        for provider in ["whisper", "moonshine", "sensevoice", "parakeet", "unknown"] {
+            assert!(
+                !local_stt_provider_bootstraps_python_runtime(provider),
+                "{provider} must not bootstrap a venv in the default mode"
+            );
+        }
     }
 
     #[test]

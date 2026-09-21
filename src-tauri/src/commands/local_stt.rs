@@ -21,7 +21,7 @@ use crate::pipeline::daemon::{
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::routing::{
     built_in_local_stt_model_catalog, canonical_local_stt_model_id,
-    infer_local_stt_provider_from_model, local_stt_provider_requires_python,
+    infer_local_stt_provider_from_model, local_stt_provider_bootstraps_python_runtime,
     local_stt_provider_supported_in_zero_python_mode, normalize_model_name,
     zero_python_mode_enabled,
 };
@@ -245,10 +245,8 @@ pub(crate) async fn download_local_stt_model(
         match download_result {
             Ok(download_summary) => {
                 let download_details = download_summary.details;
-                let runtime_setup_required = matches!(
-                    provider_for_task.as_str(),
-                    "whisper" | "moonshine" | "sensevoice"
-                );
+                let runtime_setup_required =
+                    local_stt_provider_bootstraps_python_runtime(&provider_for_task);
                 if runtime_setup_required {
                     let _ = state_for_task.update_local_stt_download_status(|status| {
                         status.model = model_for_task.clone();
@@ -505,7 +503,7 @@ pub(crate) async fn download_local_stt_model(
         }
     });
 
-    let provider_runs_runtime_setup = local_stt_provider_requires_python(&provider);
+    let provider_runs_runtime_setup = local_stt_provider_bootstraps_python_runtime(&provider);
     let provider_runs_native_warmup = provider == "parakeet";
     Ok(LocalSttDownloadResponse {
         model,
@@ -743,10 +741,9 @@ pub(crate) async fn warmup_local_stt_model(
                 "",
                 &model_for_worker,
             ),
-            "whisper" | "moonshine" | "sensevoice" => {
-                if zero_python_mode_enabled() {
-                    return Err(ZERO_PYTHON_STT_NOTICE.to_string());
-                }
+            // Only a provider that still needs Python gets the venv warmup; everything
+            // else is native and warms on first dictation instead.
+            provider if local_stt_provider_bootstraps_python_runtime(provider) => {
                 let python_path = crate::services::transcribe::setup_local_stt_runtime_blocking(
                     &app_for_worker,
                     "python",
@@ -757,7 +754,7 @@ pub(crate) async fn warmup_local_stt_model(
                     &model_for_worker,
                 )
             }
-            _ => Ok("Warmup skipped (unsupported provider).".to_string()),
+            _ => Ok("Warmup skipped (no runtime setup for this provider).".to_string()),
         })
         .await
         .map_err(|error| format!("Local STT warmup task failed: {error}"));
