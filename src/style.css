@@ -899,7 +899,7 @@ input[type="checkbox"]:checked::after,
 .home-log { flex: 1; min-height: 0; }
 .conversation-log { display: flex; flex-direction: column; gap: 2px; }
 
-.home-list { list-style: none; display: flex; flex-direction: column; }
+.home-list { list-style: none; display: flex; flex-direction: column; gap: 2px; }
 /* Date bands read as rules between groups, not as lone labels. */
 .home-date-band {
   position: sticky;
