@@ -2175,24 +2175,4 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
   return result;
 }
 
-// ============================================================================
-// OFFLINE MODE DIAGNOSTICS - User-Friendly Error Handling
-// ============================================================================
-
-/**
- * Checks if a model file exists on disk
- */
-/**
- * Checks if Python dependencies are installed
- */
-/**
- * Checks available system memory
- */
-/**
- * Shows a detailed diagnostic dialog when offline mode setup fails
- */
-/**
- * Returns diagnostic data for specific offline mode issues
- */
-
 void bootstrap();

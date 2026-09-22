@@ -96,10 +96,6 @@ export async function checkAvailableMemory(model: string): Promise<{ sufficient:
     // Get hardware advice which includes memory info
     const advice = await ipcGetLocalSttHardwareAdvice({ selectedModel: model });
 
-    // Parakeet v3 needs ~600MB, v2 needs ~500MB
-    // const requiredMB = model.includes("parakeet-tdt-0.6b") ? 600 : 500;
-    // const availableMB = advice.totalRamGb * 1024; // Convert GB to MB
-
     // Consider sufficient if at least 1GB free (conservative)
     return {
       sufficient: advice.totalRamGb >= 2,
