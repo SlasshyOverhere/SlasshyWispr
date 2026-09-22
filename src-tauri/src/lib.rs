@@ -85,6 +85,9 @@ pub fn run() {
                     "[app.single-instance] forwarding transcription request for {}",
                     pipeline::log::clip_text(&path, 200)
                 );
+                // The emit is the hand-over, so arm the path the frontend will
+                // hand back to `read_audio_file_base64`.
+                app.state::<AppState>().arm_transcribe_file(&path);
                 if let Err(error) = app.emit(
                     crate::constants::APP_EVENT_TRANSCRIBE_FILE,
                     serde_json::json!({ "path": path }),

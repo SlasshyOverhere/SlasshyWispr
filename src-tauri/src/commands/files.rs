@@ -56,17 +56,33 @@ fn file_name_of(path: &str) -> String {
 pub(crate) async fn take_pending_transcribe_file(
     state: State<'_, AppState>,
 ) -> Result<Option<String>, String> {
-    Ok(state.take_pending_transcribe_file())
+    let pending = state.take_pending_transcribe_file();
+    // Handing the path over is what authorizes reading it back.
+    if let Some(path) = pending.as_deref() {
+        state.arm_transcribe_file(path);
+    }
+    Ok(pending)
 }
 
 #[tauri::command]
-pub(crate) async fn read_audio_file_base64(path: String) -> Result<AudioFilePayload, String> {
-    let trimmed = path.trim().trim_matches('"').trim();
+pub(crate) async fn read_audio_file_base64(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<AudioFilePayload, String> {
+    let trimmed = AppState::normalize_transcribe_path(&path);
     if trimmed.is_empty() {
         return Err("No file path was provided.".to_string());
     }
+    // The webview may only read a path this app handed it (Explorer's verb parks
+    // or forwards it), so a path it invents is refused instead of being read.
+    if !state.take_armed_transcribe_file(&trimmed) {
+        return Err(
+            "That file was not opened through SlasshyWispr. Choose it again from Explorer's \"Transcribe with SlasshyWispr\" menu."
+                .to_string(),
+        );
+    }
 
-    let file_name = file_name_of(trimmed);
+    let file_name = file_name_of(&trimmed);
     let mime_type = audio_mime_type_for_path(&file_name).ok_or_else(|| {
         format!(
             "'{file_name}' is not a supported audio file. Try WAV, MP3, M4A, OGG, FLAC or WebM."
@@ -74,7 +90,7 @@ pub(crate) async fn read_audio_file_base64(path: String) -> Result<AudioFilePayl
     })?;
 
     let metadata =
-        fs::metadata(trimmed).map_err(|error| format!("Failed to open '{file_name}': {error}"))?;
+        fs::metadata(&trimmed).map_err(|error| format!("Failed to open '{file_name}': {error}"))?;
     if !metadata.is_file() {
         return Err(format!("'{file_name}' is not a file."));
     }
@@ -89,7 +105,7 @@ pub(crate) async fn read_audio_file_base64(path: String) -> Result<AudioFilePayl
     }
 
     let bytes =
-        fs::read(trimmed).map_err(|error| format!("Failed to read '{file_name}': {error}"))?;
+        fs::read(&trimmed).map_err(|error| format!("Failed to read '{file_name}': {error}"))?;
 
     Ok(AudioFilePayload {
         file_name,

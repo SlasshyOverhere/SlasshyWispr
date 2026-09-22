@@ -7,7 +7,10 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use super::window::WindowVisibilityState;
-use crate::constants::{PENDING_SELECTION_REWRITE_TTL_SECS, RECENT_SELECTION_CONTEXT_TTL_SECS};
+use crate::constants::{
+    MAX_ARMED_TRANSCRIBE_PATHS, PENDING_SELECTION_REWRITE_TTL_SECS,
+    RECENT_SELECTION_CONTEXT_TTL_SECS,
+};
 use crate::pipeline::stt_download::progress::{
     calculate_local_stt_progress_percent, now_unix_ms, LocalSttDownloadStatusResponse,
 };
@@ -25,6 +28,10 @@ pub(crate) struct AppState {
     /// Held until the frontend is loaded enough to run a pipeline, because a
     /// cold launch has no listener registered yet.
     pending_transcribe_file: Mutex<Option<String>>,
+    /// Transcription paths this app handed to the frontend, which is what
+    /// authorizes reading them back. The webview holds no filesystem rights of
+    /// its own, so an unarmed path is refused rather than read.
+    armed_transcribe_paths: Mutex<Vec<String>>,
     pub(crate) window_visibility: Mutex<WindowVisibilityState>,
 }
 
@@ -47,6 +54,7 @@ impl AppState {
             local_stt_download_status: Mutex::new(LocalSttDownloadStatusResponse::default()),
             local_stt_runtime_loaded: Mutex::new(false),
             pending_transcribe_file: Mutex::new(None),
+            armed_transcribe_paths: Mutex::new(Vec::new()),
             window_visibility: Mutex::new(WindowVisibilityState::default()),
         })
     }
@@ -64,6 +72,50 @@ impl AppState {
             .lock()
             .ok()
             .and_then(|mut slot| slot.take())
+    }
+
+    /// Explorer hands the path over quoted; arming and reading must agree on
+    /// the form, so both go through this.
+    pub(crate) fn normalize_transcribe_path(path: &str) -> String {
+        path.trim().trim_matches('"').trim().to_string()
+    }
+
+    /// Record a path as handed to the frontend, authorizing one read of it.
+    pub(crate) fn arm_transcribe_file(&self, path: &str) {
+        let normalized = Self::normalize_transcribe_path(path);
+        if normalized.is_empty() {
+            return;
+        }
+        match self.armed_transcribe_paths.lock() {
+            Ok(mut armed) => {
+                if armed.iter().any(|entry| entry == &normalized) {
+                    return;
+                }
+                // Bounded: a hand-over nobody collects must not pile up.
+                if armed.len() >= MAX_ARMED_TRANSCRIBE_PATHS {
+                    armed.remove(0);
+                }
+                armed.push(normalized);
+            }
+            Err(_) => log::warn!("[shell] armed transcribe path lock poisoned; dropping request"),
+        }
+    }
+
+    /// Consume the arming for `path`: one hand-over authorizes one read.
+    pub(crate) fn take_armed_transcribe_file(&self, path: &str) -> bool {
+        let normalized = Self::normalize_transcribe_path(path);
+        self.armed_transcribe_paths
+            .lock()
+            .map(|mut armed| {
+                match armed.iter().position(|entry| entry == &normalized) {
+                    Some(index) => {
+                        armed.remove(index);
+                        true
+                    }
+                    None => false,
+                }
+            })
+            .unwrap_or(false)
     }
 
     fn lock_pending_selection_rewrite(
@@ -237,6 +289,72 @@ impl AppState {
             .map_err(|_| "Local STT runtime state lock poisoned.".to_string())?;
         *slot = loaded;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state() -> AppState {
+        AppState::new().expect("app state")
+    }
+
+    #[test]
+    fn arming_a_path_authorizes_exactly_one_read() {
+        let state = state();
+        assert!(!state.take_armed_transcribe_file("C:\\clips\\note.wav"));
+
+        state.arm_transcribe_file("C:\\clips\\note.wav");
+        assert!(state.take_armed_transcribe_file("C:\\clips\\note.wav"));
+        assert!(!state.take_armed_transcribe_file("C:\\clips\\note.wav"));
+    }
+
+    #[test]
+    fn arming_a_second_path_does_not_authorize_the_first() {
+        let state = state();
+        state.arm_transcribe_file("C:\\clips\\other.wav");
+        assert!(!state.take_armed_transcribe_file("C:\\clips\\note.wav"));
+        assert!(state.take_armed_transcribe_file("C:\\clips\\other.wav"));
+    }
+
+    #[test]
+    fn quoted_hand_overs_match_the_plain_path_read_back() {
+        let state = state();
+        // Explorer passes %1 quoted; the frontend hands the path back bare.
+        state.arm_transcribe_file("\"C:\\clips\\note.wav\"");
+        assert!(state.take_armed_transcribe_file("C:\\clips\\note.wav"));
+        assert_eq!(
+            AppState::normalize_transcribe_path("  \"C:\\clips\\note.wav\" "),
+            "C:\\clips\\note.wav"
+        );
+    }
+
+    #[test]
+    fn an_empty_path_is_never_armed() {
+        let state = state();
+        state.arm_transcribe_file("   \"\"  ");
+        assert!(!state.take_armed_transcribe_file(""));
+    }
+
+    #[test]
+    fn repeated_hand_overs_stay_bounded_and_keep_the_newest() {
+        let state = state();
+        state.arm_transcribe_file("C:\\clips\\note.wav");
+        for extra in 0..(MAX_ARMED_TRANSCRIBE_PATHS * 2) {
+            state.arm_transcribe_file(&format!("C:\\clips\\{extra}.wav"));
+        }
+
+        let armed = state
+            .armed_transcribe_paths
+            .lock()
+            .expect("armed paths")
+            .len();
+        assert_eq!(armed, MAX_ARMED_TRANSCRIBE_PATHS);
+        assert!(state.take_armed_transcribe_file(&format!(
+            "C:\\clips\\{}.wav",
+            MAX_ARMED_TRANSCRIBE_PATHS * 2 - 1
+        )));
     }
 }
 

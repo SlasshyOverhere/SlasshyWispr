@@ -48,6 +48,8 @@ pub const SHELL_TRANSCRIBE_ARG: &str = "--transcribe-file";
 pub const APP_EVENT_TRANSCRIBE_FILE: &str = "slasshywispr://transcribe-file";
 /// Audio files above this are refused rather than read into memory.
 pub const MAX_TRANSCRIBE_FILE_BYTES: u64 = 200 * 1024 * 1024;
+/// Transcription paths held as "handed to the frontend" at once.
+pub const MAX_ARMED_TRANSCRIBE_PATHS: usize = 8;
 /// Extensions Explorer offers "Transcribe with SlasshyWispr" for. Kept as one
 /// list so the verb registration and the MIME map cannot drift apart.
 pub const TRANSCRIBE_FILE_EXTENSIONS: &[&str] = &[
