@@ -390,7 +390,9 @@ pub(crate) async fn run_assistant_pipeline(
         );
         let total_latency_ms = elapsed_ms(overall_start);
         let assistant_response = transcript.clone();
-        state.set_last_transcript(&transcript)?;
+        // Both slots: leaving the response slot alone would hand the tray's
+        // "copy last response" the answer from some earlier turn.
+        state.set_last_pipeline_output(&transcript, &assistant_response)?;
         return Ok(AssistantPipelineResponse {
             mode: "dictation".to_string(),
             selection_rewrite: false,
