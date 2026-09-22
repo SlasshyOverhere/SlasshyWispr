@@ -1,4 +1,4 @@
-/* Analytics — metrics strip, streak, heatmap, achievements, recent list.
+/* Analytics — metrics strip, streak, daily chart, achievements, recent list.
    Same Onyx tokens as the shell: flat cards, hairline borders, one accent. */
 
 .analytics-page {
@@ -91,8 +91,10 @@
   flex-shrink: 0;
 }
 .streak-flame { width: 16px; height: 16px; animation: streak-icon-pulse 2.4s ease-in-out infinite; }
-.streak-body { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
-.streak-headline { display: flex; align-items: baseline; gap: 5px; }
+/* Headline and sub-message share one line so the banner has no dead
+   middle between the copy and the meter. */
+.streak-body { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; }
+.streak-headline { display: flex; align-items: baseline; gap: 5px; flex: 0 0 auto; }
 .streak-count {
   font-family: var(--font-mono);
   font-size: 17px;
@@ -100,7 +102,15 @@
   color: var(--ink-primary);
 }
 .streak-label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted); }
-.streak-sub { font-size: 11px; color: var(--ink-faint); }
+.streak-sub {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .streak-meter { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .streak-meter-label { font-size: 9.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-faint); }
@@ -113,8 +123,7 @@
 }
 .streak-meter-dot.is-lit { background: var(--accent-live); }
 
-/* Heatmap */
-.analytics-heatmap-section { display: flex; flex-direction: column; gap: 8px; }
+/* Daily activity chart */
 .analytics-section-title {
   font-size: 10px;
   font-weight: 550;
@@ -122,27 +131,62 @@
   text-transform: uppercase;
   color: var(--ink-faint);
 }
-.analytics-heatmap-grid { display: flex; flex-direction: column; gap: 2px; }
-.analytics-heatmap-row { display: flex; align-items: center; gap: 3px; }
-.analytics-heatmap-day-label {
-  width: 26px;
-  flex-shrink: 0;
-  font-size: 9.5px;
+.analytics-activity { display: flex; flex-direction: column; gap: 8px; }
+.analytics-activity-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.analytics-activity-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
   color: var(--ink-faint);
 }
-.analytics-heatmap-cell {
-  flex: 1;
-  height: 12px;
-  min-width: 5px;
-  border-radius: 2px;
-  background: var(--bg-recess);
+.analytics-activity-bars {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  height: 84px;
 }
-.analytics-heatmap-cell.cell-empty { background: #141416; }
-:root[data-theme="light"] .analytics-heatmap-cell.cell-empty { background: #ededeb; }
-.analytics-heatmap-cell.cell-low { background: var(--accent-live-soft); }
-.analytics-heatmap-cell.cell-mid { background: var(--accent-live-edge); }
-.analytics-heatmap-cell.cell-high { background: var(--accent-live); }
-.analytics-heatmap-cell.cell-outside { background: transparent; }
+.activity-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+/* The rule is the baseline; empty days are just the rule, which keeps
+   a zero day legible without a full-height track block. */
+.activity-track {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid var(--border-line);
+}
+.activity-bar {
+  width: 100%;
+  max-width: 26px;
+  border-radius: 3px 3px 0 0;
+  background: var(--accent-live);
+  opacity: 0.45;
+  transition: opacity var(--transition-fast);
+}
+.activity-col.is-today .activity-bar { opacity: 1; }
+.activity-col:hover .activity-bar { opacity: 1; }
+.activity-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--ink-faint);
+}
+/* A 30-day span only labels its endpoints, so anchor those to the edges
+   instead of centring them under a 14px column. */
+.activity-col:first-child .activity-label { text-align: left; }
+.activity-col:last-child .activity-label { text-align: right; }
+.activity-col.is-today .activity-label { color: var(--accent-live); }
 
 /* Recent activity */
 .analytics-recent-section { display: flex; flex-direction: column; gap: 6px; }
@@ -152,15 +196,16 @@
   grid-template-columns: 1fr auto auto auto;
   gap: 10px;
   align-items: center;
-  padding: 6px 2px;
+  padding: 7px 2px;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 11.5px;
 }
+.analytics-recent-row:hover { background: var(--bg-hover); }
 .analytics-recent-row:last-child { border-bottom: 0; }
-.analytics-recent-time { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-faint); }
+.analytics-recent-time { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-muted); }
 .analytics-recent-words { color: var(--ink-secondary); }
-.analytics-recent-meta { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-muted); }
-.analytics-recent-wpm { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-muted); }
+.analytics-recent-meta { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-faint); }
+.analytics-recent-wpm { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-faint); }
 
 /* Achievements */
 .analytics-achievements-section { display: flex; flex-direction: column; gap: 8px; }
