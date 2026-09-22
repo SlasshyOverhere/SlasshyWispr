@@ -22,7 +22,8 @@ export interface CaptureTriggerDeps {
   shouldBlockFromForegroundApp: () => Promise<boolean>;
   interruptPlayback: () => boolean;
   setCaptureIntent: (startedAt: number, label: string) => void;
-  getRecorderState: () => string | null;
+  /** Whether a capture is live, from whichever backend owns it. */
+  isCaptureActive: () => boolean;
   syncAvailability: () => void;
   isHotkeyCaptureActive: () => boolean;
   performanceNow: () => number;
@@ -144,12 +145,8 @@ export async function engagePushToTalk(source: string): Promise<void> {
   triggerDeps.setCaptureIntent(triggerDeps.performanceNow(), source);
   await startRecording();
 
-  if (triggerDeps.getRecorderState() !== "recording") {
-    triggerDeps.log(
-      `[record.ptt.engage] startRecording did not reach recording state (state=${
-        triggerDeps.getRecorderState() || "none"
-      }); removing hold`,
-    );
+  if (!triggerDeps.isCaptureActive()) {
+    triggerDeps.log("[record.ptt.engage] startRecording began no capture; removing hold");
     pushToTalkHoldSources.delete(source);
     pushToTalkHoldStartedAt.delete(source);
     return;

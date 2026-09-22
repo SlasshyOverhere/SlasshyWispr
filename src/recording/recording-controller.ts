@@ -128,6 +128,13 @@ export function getActivePipelineGen(): number {
   return activePipelineGen;
 }
 
+/// True while a capture is live, whichever backend owns it. The webview path
+/// only exists as a MediaRecorder; the native path has no recorder at all, so
+/// callers must ask this rather than probe the recorder themselves.
+export function isCaptureActive(): boolean {
+  return activeCaptureNative || controllerState.getMediaRecorder()?.state === "recording";
+}
+
 /**
  * Cancel the pipeline for a specific capture generation (F-007). Returns true
  * when the cancel applied to the live generation; a stale gen is a no-op so a

@@ -47,7 +47,7 @@ function wireHarness(overrides: Partial<CaptureTriggerDeps> = {}) {
     setCaptureIntent: (startedAt, label) => {
       intents.push({ startedAt, label });
     },
-    getRecorderState: () => (stage === "recording" ? "recording" : null),
+    isCaptureActive: () => stage === "recording",
     syncAvailability: () => {},
     isHotkeyCaptureActive: () => hotkeyCapture,
     performanceNow: () => 1000,
@@ -197,5 +197,24 @@ describe("push-to-talk holds", () => {
     expect(getPushToTalkHoldCount()).toBe(0);
     expect(harness.transitions).toEqual([]);
     expect(harness.logs.some((line) => line.includes("not active"))).toBe(true);
+  });
+
+  it("keeps the hold when capture is live, whichever backend owns it", async () => {
+    const harness = wireHarness({
+      getCaptureMode: () => "push-to-talk",
+      getStage: () => "recording",
+      isCaptureActive: () => true,
+    });
+    await engagePushToTalk("hotkey");
+    expect(getPushToTalkHoldCount()).toBe(1);
+    expect(harness.logs.some((line) => line.includes("began no capture"))).toBe(false);
+    clearPushToTalkHolds();
+  });
+
+  it("drops the hold when no capture began", async () => {
+    const harness = wireHarness({ getCaptureMode: () => "push-to-talk" });
+    await engagePushToTalk("hotkey");
+    expect(getPushToTalkHoldCount()).toBe(0);
+    expect(harness.logs.some((line) => line.includes("began no capture"))).toBe(true);
   });
 });

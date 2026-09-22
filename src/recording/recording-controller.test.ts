@@ -42,6 +42,7 @@ const {
   cancelPipeline,
   getActivePipelineGen,
   initRecordingController,
+  isCaptureActive,
   finalizeRecording,
   saveDictationAudio,
   startRecording,
@@ -152,6 +153,7 @@ function wireHarness(overrides: Partial<RecordingControllerDeps> = {}) {
     availabilitySyncs: () => availabilitySyncs,
     getSavedId: () => savedId,
     getLastPipeline: () => lastPipeline,
+    getRecorderState: () => recorder?.state ?? null,
     setChunks: (next: Blob[]) => {
       chunks = next;
     },
@@ -406,6 +408,41 @@ describe("native capture backend", () => {
     expect(nativeCommands).toContain("stop_native_capture");
     expect(harness.getLastPipeline()).not.toBeNull();
     expect(harness.getLastPipeline()!.mime).toBe("audio/wav");
+  });
+
+  it("reports a live capture with no MediaRecorder to probe", async () => {
+    const globals = globalThis as unknown as Record<string, unknown>;
+    globals.window = globalThis;
+    globals.requestAnimationFrame = () => 1;
+    globals.cancelAnimationFrame = () => {};
+
+    const harness = wireHarness({
+      readSettings: () => ({ ...defaultSettings, apiKey: "sk-test", captureBackend: "native" }),
+    });
+
+    expect(isCaptureActive()).toBe(false);
+    await startRecording();
+    // The regression this pins: the recorder is null on this backend, so
+    // anything asking the recorder whether capture began is told "no".
+    expect(harness.getRecorderState()).toBeNull();
+    expect(isCaptureActive()).toBe(true);
+
+    stopRecording();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(isCaptureActive()).toBe(false);
+  });
+});
+
+describe("isCaptureActive (webview backend)", () => {
+  it("follows the recorder it actually owns", () => {
+    const harness = wireHarness({ isTauri: () => false });
+    expect(isCaptureActive()).toBe(false);
+
+    harness.setRecorder({ state: "recording" });
+    expect(isCaptureActive()).toBe(true);
+
+    harness.setRecorder({ state: "inactive" });
+    expect(isCaptureActive()).toBe(false);
   });
 });
 

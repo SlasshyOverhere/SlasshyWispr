@@ -159,6 +159,7 @@ import {
 } from "./recording/capture-monitors";
 import {
   initRecordingController,
+  isCaptureActive as isCaptureActiveService,
   stopRecording as stopRecordingService,
 } from "./recording/recording-controller";
 import {
@@ -744,7 +745,7 @@ initCaptureTriggers({
     lastCaptureIntentStartedAt = startedAt;
     lastCaptureIntentLabel = label;
   },
-  getRecorderState: () => mediaRecorder?.state ?? null,
+  isCaptureActive: () => isCaptureActiveService(),
   syncAvailability: () => syncActionAvailabilityService(),
   isHotkeyCaptureActive: () => isAnyHotkeyCaptureActive(),
   performanceNow: () => performance.now(),
