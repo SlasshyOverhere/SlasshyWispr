@@ -83,10 +83,6 @@ pub(crate) struct AssistantPipelineRequest {
     pub(crate) voice_clone: Option<VoiceClonePipelineRequest>,
     #[serde(flatten, default)]
     pub(crate) run: PipelineRunIdentity,
-    /// Stale replace-selection guard: frontend popup token; backend rejects
-    /// when it does not match the latest issued token.
-    #[serde(default)]
-    pub(crate) replace_token: String,
 }
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -204,16 +200,6 @@ pub(crate) async fn run_assistant_pipeline(
         pipeline_run_id: run_id.clone(),
         tts_status: tts_status.to_string(),
     };
-    // F-009: a superseded rewrite must not replace the selection. The frontend
-    // stamps each popup with a monotonic token; an older one is rejected here.
-    if !state.accept_replace_token(&request.replace_token)? {
-        warn!(
-            "[pipeline] rejected stale replace_token={} run_id={}",
-            clip_text(&request.replace_token, 40),
-            run_id
-        );
-        return Err("This rewrite was superseded by a newer request.".to_string());
-    }
     let pipeline_mode = resolve_pipeline_mode(&request)?;
 
     let requested_engine = request

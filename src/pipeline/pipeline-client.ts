@@ -255,13 +255,11 @@ export async function runPipeline(
     }
 
     const sttLanguageConfig = resolveSttLanguageConfig(activeSettings);
-    // F-009: one token per run, shared by the request and the popup it
-    // produces, so a later run's token supersedes this one and the backend
-    // can reject the older replace.
+    // F-030: one token per run, carried by the popup it produces. A later run
+    // supersedes it, and the popup refuses show/copy/replace for an older one.
     const runToken = clientDeps.nextSelectionPopupToken();
 
     const response: AssistantPipelineResponse = await ipcRunAssistantPipeline({
-        replaceToken: String(runToken),
         apiKey: activeSettings.apiKey,
         apiBaseUrl: activeSettings.apiBaseUrl || null,
         sttModel: activeSettings.sttModelName || null,
