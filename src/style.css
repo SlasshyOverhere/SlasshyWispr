@@ -10,27 +10,29 @@
 
   /* Surfaces — black base, cards are the only lift. */
   --bg-void:    #000000;
-  --bg-rail:    #050506;
+  --bg-rail:    #07070a;
   --bg-paper:   #000000;
-  --bg-recess:  #08080a;
-  --bg-card:    #0d0d0f;
-  --bg-hover:   #17171b;
-  --bg-active:  #1f1f24;
+  --bg-recess:  #0a0a0e;
+  --bg-card:    #101014;
+  --bg-hover:   #1b1b21;
+  --bg-active:  #26262e;
 
-  --border-line:   #1a1a1e;
-  --border-strong: #2a2a31;
-  --border-subtle: #131316;
+  --border-line:   #232329;
+  --border-strong: #36363f;
+  --border-subtle: #18181d;
 
-  --ink-primary:   #f4f4f5;
-  --ink-secondary: #a1a1aa;
-  --ink-muted:     #71717a;
-  --ink-faint:     #52525b;
+  /* Ink ladder. Every step clears 4.5:1 on --bg-void, so no label is
+     unreadable — the ratios are against the surface it sits on. */
+  --ink-primary:   #f5f5f7;  /* 19.4:1 */
+  --ink-secondary: #b7b7c0;  /* 11.3:1 */
+  --ink-muted:     #8f8f9a;  /*  7.2:1 */
+  --ink-faint:     #737380;  /*  5.1:1 */
   --ink-inverse:   #0a0a0b;
 
   /* One accent: the live/active signal. Nothing else in the interface is warm. */
-  --accent-live:      oklch(76% 0.16 58);
-  --accent-live-soft: oklch(76% 0.16 58 / 0.14);
-  --accent-live-edge: oklch(76% 0.16 58 / 0.5);
+  --accent-live:      oklch(78% 0.15 62);
+  --accent-live-soft: oklch(78% 0.15 62 / 0.14);
+  --accent-live-edge: oklch(78% 0.15 62 / 0.55);
 
   --accent-quiet:      var(--ink-primary);
   --accent-quiet-ink:  var(--ink-inverse);
@@ -49,16 +51,16 @@
   --ok:          oklch(76% 0.14 155);
 
   /* Geometry */
-  --titlebar-height: 32px;
-  --sidebar-width: 164px;
+  --titlebar-height: 34px;
+  --sidebar-width: 172px;
   --sidebar-collapsed-width: 52px;
 
-  --radius-sm: 5px;
+  --radius-sm: 4px;
   --radius-input: 6px;
   --radius-button: 6px;
   --radius-card: 8px;
-  --radius-modal: 10px;
-  --radius-container: 10px;
+  --radius-modal: 12px;
+  --radius-container: 12px;
 
   --shadow-card:    none;
   --shadow-modal:   0 24px 60px -20px rgb(0 0 0 / 0.9);
@@ -95,13 +97,13 @@
   --bg-card: #ffffff;
   --bg-hover: #ececea;
   --bg-active: #e3e3e0;
-  --border-line: #e4e4e1;
-  --border-strong: #c9c9c5;
-  --border-subtle: #eeeeec;
+  --border-line: #dcdcd8;
+  --border-strong: #c2c2be;
+  --border-subtle: #e8e8e5;
   --ink-primary: #111113;
   --ink-secondary: #55555a;
   --ink-muted: #6b6b70;
-  --ink-faint: #8b8b90;
+  --ink-faint: #6a6a72;
   --ink-inverse: #ffffff;
   --accent-live: oklch(64% 0.17 55);
   --accent-live-soft: oklch(64% 0.17 55 / 0.12);
@@ -152,6 +154,18 @@ button { cursor: pointer; }
 
 a { color: var(--accent-live); text-decoration: none; }
 
+kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-active);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-primary);
+}
+
 ::selection { background: var(--accent-live-soft); color: var(--ink-primary); }
 
 :focus-visible {
@@ -179,6 +193,25 @@ h3 {
 }
 h4 { font-size: 14px; font-weight: 550; color: var(--ink-primary); }
 p { line-height: 1.55; }
+
+/* Numbers sit in columns all over the app, so they line up on a fixed
+   advance width; prose keeps Inter's proportional figures. */
+.metric,
+.metric-num,
+.metric-unit,
+.entry-time,
+.home-entry-time,
+.home-metric-num,
+.home-trend,
+.hist-count,
+.home-card-meta,
+.streak-count,
+.analytics-metric-value,
+.analytics-metric-sub,
+.analytics-activity-meta,
+.analytics-recent-row {
+  font-variant-numeric: tabular-nums;
+}
 
 .page-subtitle {
   display: flex;
@@ -249,8 +282,8 @@ body.sidebar-collapsed .flow-shell,
 .flow-sidebar {
   background: var(--bg-rail);
   border-right: 1px solid var(--border-line);
-  padding: var(--space-4) var(--space-3);
-  padding-top: calc(var(--titlebar-height) + var(--space-3));
+  padding: 10px;
+  padding-top: calc(var(--titlebar-height) + 10px);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -315,15 +348,16 @@ body.sidebar-collapsed .brand-word { display: none; }
 
 .nav-item,
 .secondary-link {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
   width: 100%;
-  height: 30px;
-  padding: 0 8px;
+  height: 32px;
+  padding: 0 9px;
   border-radius: var(--radius-button);
   font-size: 12.5px;
-  font-weight: 480;
+  font-weight: 490;
   color: var(--ink-secondary);
   text-align: left;
   transition: background-color var(--transition-fast), color var(--transition-fast);
@@ -341,6 +375,19 @@ body.sidebar-collapsed .brand-word { display: none; }
   background: var(--bg-active);
   color: var(--ink-primary);
   font-weight: 540;
+}
+/* Marker rides the rail edge rather than the row, so the active page is
+   findable without reading the labels. */
+.nav-item.is-active::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 16px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent-live);
 }
 .nav-item.is-active .nav-glyph { color: var(--accent-live); }
 .app-frame.is-recording .nav-item.is-active .nav-glyph { animation: live-blink 1.4s ease-in-out infinite; }
@@ -369,12 +416,16 @@ body.sidebar-collapsed .secondary-link { justify-content: center; padding: 0; }
 .secondary-link.is-capturing-hotkey { background: var(--accent-live-soft); color: var(--ink-primary); }
 
 /* Content */
+/* The titlebar strip is reserved, not merely overlaid: the drag region
+   has z-index and would otherwise swallow clicks on the first row of
+   content (the Home stat links sat under it). */
 .flow-content {
   background: var(--bg-paper);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   height: 100%;
+  padding-top: var(--titlebar-height);
   position: relative;
   contain: layout paint;
 }
@@ -392,10 +443,10 @@ body.sidebar-collapsed .secondary-link { justify-content: center; padding: 0; }
   width: 100%;
   margin: 0 auto;
   min-height: 100%;
-  padding: 18px 20px 24px;
+  padding: 10px 20px 22px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 /* ── Shared controls ───────────────────────────────────────────────── */
@@ -535,13 +586,24 @@ input:focus, textarea:focus, select:focus {
   background: var(--bg-card);
 }
 textarea { resize: vertical; min-height: 68px; line-height: 1.55; font-family: var(--font-mono); font-size: 12px; }
+/* Native select chrome varies by engine and ignores our surfaces, so the
+   control is ours: no default appearance, our own caret. */
 select, .mini-select {
+  -webkit-appearance: none;
+  appearance: none;
   cursor: pointer;
   height: 28px;
-  padding: 0 8px;
+  padding: 0 24px 0 8px;
   text-align: left;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238f8f9a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  background-size: 11px 11px;
 }
-.mini-select { width: auto; min-width: 96px; max-width: 190px; }
+select option { background: var(--bg-card); color: var(--ink-primary); }
+input[type="checkbox"],
+input[type="radio"] { accent-color: var(--accent-live); }
+.mini-select { width: auto; min-width: 128px; max-width: 190px; }
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -697,7 +759,7 @@ input[type="checkbox"]:checked::after,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 9px 12px 7px;
+  padding: 8px 12px 6px;
 }
 .home-metric-kicker {
   font-size: 10px;
@@ -712,15 +774,22 @@ input[type="checkbox"]:checked::after,
   grid-template-columns: repeat(3, 1fr);
   border-top: 1px solid var(--border-line);
 }
+/* Value and label stack left; the trend owns the right edge so a card
+   is two rows instead of three. */
 .home-metric-card {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "num trend"
+    "label trend";
+  align-content: center;
+  gap: 1px 8px;
+  padding: 10px 12px 11px;
   border-right: 1px solid var(--border-line);
 }
 .home-metric-card:last-child { border-right: 0; }
 .home-metric-num {
+  grid-area: num;
   font-family: var(--font-mono);
   font-size: 21px;
   font-weight: 500;
@@ -728,12 +797,13 @@ input[type="checkbox"]:checked::after,
   color: var(--ink-primary);
 }
 .home-metric-label {
+  grid-area: label;
   font-size: 10.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-muted);
 }
-.home-trend { font-size: 11px; color: var(--ink-faint); }
+.home-trend { grid-area: trend; align-self: center; font-size: 11px; color: var(--ink-faint); }
 .stat-trend-up { color: var(--ok); }
 .stat-trend-down { color: var(--danger); }
 .stat-trend-neutral { color: var(--ink-faint); }
@@ -781,6 +851,7 @@ input[type="checkbox"]:checked::after,
 .home-sparkline {
   display: block;
   width: 100%;
+  height: auto;
   color: var(--accent-live);
 }
 .pace-grid { stroke: var(--border-line); stroke-width: 1; }
@@ -802,30 +873,43 @@ input[type="checkbox"]:checked::after,
 .conversation-log { display: flex; flex-direction: column; gap: 2px; }
 
 .home-list { list-style: none; display: flex; flex-direction: column; }
+/* Date bands read as rules between groups, not as lone labels. */
 .home-date-band {
   position: sticky;
   top: 0;
   z-index: 2;
-  padding: 8px 2px 5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px 6px;
   font-size: 10px;
   font-weight: 550;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.11em;
   color: var(--ink-faint);
   background: var(--bg-paper);
 }
+.home-date-band::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
 
+/* Ledger rows: one hairline each, tinted on hover. Rows read as a list
+   of utterances rather than as a run-on paragraph. */
 .home-entry {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 4px 12px;
   align-items: baseline;
-  padding: 8px 10px;
-  border-radius: var(--radius-button);
-  border: 1px solid transparent;
-  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+  padding: 8px 10px 9px;
+  border-radius: var(--radius-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background-color var(--transition-fast);
 }
+.home-list > li:last-child .home-entry { border-bottom-color: transparent; }
 .home-entry:hover,
-.home-entry:focus-visible { background: var(--bg-card); border-color: var(--border-line); }
+.home-entry:focus-visible { background: var(--bg-hover); }
 .home-entry-body {
   font-size: 13px;
   line-height: 1.5;
@@ -845,7 +929,7 @@ input[type="checkbox"]:checked::after,
 .home-entry-time {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--ink-faint);
+  color: var(--ink-muted);
 }
 .home-entry-actions { display: flex; align-items: center; gap: 2px; opacity: 0; transition: opacity var(--transition-fast); }
 .home-entry:hover .home-entry-actions,
@@ -1236,14 +1320,14 @@ input[type="checkbox"]:checked::after,
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-width: 320px;
+  width: 272px;
 }
 .notice-stack { display: flex; flex-direction: column; gap: 6px; }
 .notice-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 10px;
+  padding: 8px 9px;
   border: 1px solid var(--border-strong);
   border-left: 2px solid var(--accent-live);
   border-radius: var(--radius-card);
@@ -1252,6 +1336,7 @@ input[type="checkbox"]:checked::after,
   animation: slideUp 160ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .notice-item-text { flex: 1; font-size: 11.5px; line-height: 1.45; color: var(--ink-secondary); }
+.notice-item[data-tone="error"] .notice-item-text { color: var(--ink-primary); }
 .notice-item.is-error { border-left-color: var(--danger); }
 .notice-action {
   font-size: 11.5px;
@@ -1272,34 +1357,72 @@ input[type="checkbox"]:checked::after,
 /* ── Onboarding ───────────────────────────────────────────────────── */
 
 .onboarding-modal {
-  width: min(420px, 100%);
+  width: min(440px, 100%);
   max-height: calc(100vh - 16px);
   overflow-y: auto;
-  padding: 20px;
+  padding: 22px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-modal);
   background: var(--bg-card);
   box-shadow: var(--shadow-modal);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
-.onboarding-steps { display: flex; flex-direction: column; gap: 8px; }
+.onboarding-modal h2 { font-size: 17px; letter-spacing: -0.02em; }
+.onboarding-modal p { font-size: 12.5px; color: var(--ink-muted); }
+.onboarding-steps {
+  counter-reset: onboarding-step;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.onboarding-steps li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-line);
+  border-radius: var(--radius-button);
+  background: var(--bg-recess);
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+}
+.onboarding-steps li::before {
+  counter-increment: onboarding-step;
+  content: counter(onboarding-step);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-live-soft);
+  color: var(--accent-live);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
 .onboarding-hint { font-size: 11.5px; color: var(--ink-muted); line-height: 1.55; }
 .onboarding-hotkey-demo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-secondary);
-  padding: 7px 9px;
+  color: var(--ink-muted);
+  padding: 9px 10px;
   border: 1px solid var(--border-line);
   border-radius: var(--radius-button);
   background: var(--bg-recess);
 }
-.onboarding-dots { display: flex; gap: 5px; justify-content: center; }
+/* Progress reads as a segmented track above the title rather than a
+   centred dot row under the buttons. */
+.onboarding-dots { order: -1; display: flex; gap: 4px; justify-content: flex-start; }
 .onboarding-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
+  width: 26px;
+  height: 3px;
+  border-radius: 999px;
   background: var(--border-strong);
 }
 .onboarding-dot.is-active { background: var(--accent-live); }
