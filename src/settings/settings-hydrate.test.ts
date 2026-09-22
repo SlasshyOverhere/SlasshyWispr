@@ -89,4 +89,29 @@ describe("hydrateSettingsFromNativeStorage", () => {
     expect(changed).toBe(1);
     expect(localStorage.getItem(SETTINGS_STORAGE_KEY)).toContain("Nova");
   });
+
+  it("keeps the API key out of localStorage while still applying it", async () => {
+    const stored = {
+      ...defaultSettings(),
+      rememberApiKey: true,
+      apiKey: "sk-live-secret",
+      apiKeyEncrypted: "dpapi-blob",
+    };
+    let applied: PersistedSettings | null = null;
+    const result = await hydrateSettingsFromNativeStorage(
+      baseDeps({
+        loadNative: () => Promise.resolve(JSON.stringify(stored)),
+        applyAll: (next) => {
+          applied = next;
+        },
+      }),
+    );
+
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY) ?? "";
+    expect(raw).not.toContain("sk-live-secret");
+    expect(raw).not.toContain("dpapi-blob");
+    expect(JSON.parse(raw).apiKey).toBeUndefined();
+    expect(result?.apiKey).toBe("sk-live-secret");
+    expect(applied?.apiKey).toBe("sk-live-secret");
+  });
 });
