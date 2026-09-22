@@ -159,7 +159,7 @@ export function GeneralSettingsPane() {
           </span>
           <span className="theme-card-meta">
             <span className="theme-card-name">Studio</span>
-            <span className="theme-card-tagline">Warm amber dark, evening work</span>
+            <span className="theme-card-tagline">Near-black, quiet, long sessions</span>
           </span>
         </label>
 

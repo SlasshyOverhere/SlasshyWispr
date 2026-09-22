@@ -50,7 +50,7 @@ export function PaceSparkline({ points }: { points: number[] }) {
     >
       <defs>
         <linearGradient id="paceArea" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="currentColor" stopOpacity="0.32" />
+          <stop offset="0%" stopColor="currentColor" stopOpacity="0.22" />
           <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
         </linearGradient>
       </defs>

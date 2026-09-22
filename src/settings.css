@@ -289,8 +289,8 @@ label.s-row { cursor: pointer; }
   background: #000;
   overflow: hidden;
 }
-.theme-card[data-theme-target="light"] .theme-card-preview { background: #fbfbfa; }
-.theme-card[data-theme-target="mono"] .theme-card-preview { background: #0b0b0c; }
+.theme-card[data-theme-target="light"] .theme-card-preview { background: #fafafa; }
+.theme-card[data-theme-target="mono"] .theme-card-preview { background: #191919; }
 .preview-titlebar {
   display: block;
   height: 5px;
@@ -320,7 +320,7 @@ label.s-row { cursor: pointer; }
 }
 .preview-row.is-active { background: var(--accent-live); }
 .theme-card[data-theme-target="light"] .preview-row { background: rgb(0 0 0 / 0.12); }
-.theme-card[data-theme-target="mono"] .preview-row { background: rgb(255 255 255 / 0.22); }
+.theme-card[data-theme-target="mono"] .preview-row { background: rgb(255 255 255 / 0.26); }
 .preview-main {
   display: flex;
   flex-direction: column;
