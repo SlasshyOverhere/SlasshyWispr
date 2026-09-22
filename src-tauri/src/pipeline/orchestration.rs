@@ -7,7 +7,7 @@
 //! (`run_assistant_pipeline`) handles runtime concerns and delegates
 //! decision logic here.
 
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::pipeline::response::{
     looks_like_direct_question, looks_like_question_echo, normalize_assistant_response_text,
@@ -60,33 +60,35 @@ impl PipelineState {
     }
 
     pub fn set_pending_rewrite(&self, text: &str) {
-        *self.pending_selection_rewrite.lock().unwrap() = Some(text.to_string());
+        *lock_recover(&self.pending_selection_rewrite) = Some(text.to_string());
     }
 
     pub fn clear_pending_rewrite(&self) -> bool {
-        self.pending_selection_rewrite
-            .lock()
-            .unwrap()
-            .take()
-            .is_some()
+        lock_recover(&self.pending_selection_rewrite).take().is_some()
     }
 
     pub fn peek_pending_rewrite(&self) -> Option<String> {
-        self.pending_selection_rewrite.lock().unwrap().clone()
+        lock_recover(&self.pending_selection_rewrite).clone()
     }
 
     pub fn take_pending_rewrite(&self) -> Option<String> {
-        self.pending_selection_rewrite.lock().unwrap().take()
+        lock_recover(&self.pending_selection_rewrite).take()
     }
 
     pub fn set_recent_context(&self, text: &str) {
-        *self.recent_selection_context.lock().unwrap() = Some(text.to_string());
+        *lock_recover(&self.recent_selection_context) = Some(text.to_string());
     }
 
     #[cfg(test)]
     pub fn peek_recent_context(&self) -> Option<String> {
-        self.recent_selection_context.lock().unwrap().clone()
+        lock_recover(&self.recent_selection_context).clone()
     }
+}
+
+/// These slots hold a `String` and nothing else, so a poisoned lock carries no
+/// invariant worth panicking the pipeline command over — take the data back.
+fn lock_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Resolved pipeline configuration for the orchestrator.
