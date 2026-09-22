@@ -7,9 +7,38 @@
  * saveDictationAudio (non-Tauri early return, recording-id shape,
  * base64 data-URL strip, saved-id commit).
  */
-import { describe, it, expect, beforeEach } from "bun:test";
-import { defaultSettings } from "../state/settings-store";
-import {
+import { describe, it, expect, mock, beforeEach } from "bun:test";
+import type { RecordingControllerDeps } from "./recording-controller";
+
+// Native capture reaches Rust over IPC, so the invoke layer is stubbed here
+// (same pattern as ipc/client.test.ts) and every command is recorded.
+const nativeCommands: string[] = [];
+
+mock.module("@tauri-apps/api/core", () => ({
+  invoke: (command: string) => {
+    nativeCommands.push(command);
+    switch (command) {
+      case "start_native_capture":
+        return Promise.resolve({ deviceName: "USB Audio Device", sampleRate: 48_000, fallbackUsed: false });
+      case "native_capture_level":
+        return Promise.resolve(0.5);
+      case "stop_native_capture":
+        return Promise.resolve({
+          rawPcmBase64: "",
+          wavBase64: btoa("RIFF"),
+          sampleRate: 16_000,
+          sampleCount: 2,
+          durationMs: 1,
+        });
+      default:
+        return Promise.resolve(null);
+    }
+  },
+}));
+
+// Import after the mock so ipc/client binds the stubbed invoke.
+const { defaultSettings } = await import("../state/settings-store");
+const {
   cancelPipeline,
   getActivePipelineGen,
   initRecordingController,
@@ -17,9 +46,8 @@ import {
   saveDictationAudio,
   startRecording,
   stopRecording,
-  type RecordingControllerDeps,
-} from "./recording-controller";
-import { initCaptureMonitors } from "./capture-monitors";
+} = await import("./recording-controller");
+const { initCaptureMonitors } = await import("./capture-monitors");
 
 function wireHarness(overrides: Partial<RecordingControllerDeps> = {}) {
   const transitions: unknown[] = [];
@@ -351,6 +379,33 @@ describe("cancelPipeline (F-007 generation guard)", () => {
     const harness = wireHarness();
     expect(cancelPipeline(getActivePipelineGen())).toBe(true);
     expect(harness.transitions).toEqual([{ type: "stop-recording", cancelPipeline: true }]);
+  });
+});
+
+describe("native capture backend", () => {
+  it("stops through Rust and finalizes on release", async () => {
+    // The shell owns neither a recorder nor a stream here, so the amplitude
+    // monitor is the only thing that needs a frame clock.
+    const globals = globalThis as unknown as Record<string, unknown>;
+    globals.window = globalThis;
+    globals.requestAnimationFrame = () => 1;
+    globals.cancelAnimationFrame = () => {};
+    nativeCommands.length = 0;
+
+    const harness = wireHarness({
+      readSettings: () => ({ ...defaultSettings, apiKey: "sk-test", captureBackend: "native" }),
+    });
+    await startRecording();
+    expect(nativeCommands).toEqual(["start_native_capture"]);
+
+    stopRecording();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // Released capture must be stopped in Rust — that is what yields the audio
+    // — and the pipeline must then run on it.
+    expect(nativeCommands).toContain("stop_native_capture");
+    expect(harness.getLastPipeline()).not.toBeNull();
+    expect(harness.getLastPipeline()!.mime).toBe("audio/wav");
   });
 });
 

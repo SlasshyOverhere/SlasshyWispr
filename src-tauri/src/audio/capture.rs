@@ -130,6 +130,27 @@ pub(crate) fn is_active() -> bool {
     ACTIVE.load(Ordering::SeqCst)
 }
 
+/// Whether a requested device label names this device.
+///
+/// Chromium and WASAPI both report the Windows friendly name, but the spellings
+/// can differ in case or in trailing qualifiers, so compare loosely rather than
+/// making the user's selection silently miss.
+fn matches_device_name(requested: &str, name: &str) -> bool {
+    let requested = requested.trim();
+    let name = name.trim();
+    if requested.is_empty() || name.is_empty() {
+        return false;
+    }
+    if requested.eq_ignore_ascii_case(name) {
+        return true;
+    }
+    // "Microphone (USB Audio Device)" against "USB Audio Device".
+    requested.len() >= 4
+        && name
+            .to_ascii_lowercase()
+            .contains(&requested.to_ascii_lowercase())
+}
+
 fn resolve_device(
     host: &cpal::Host,
     device_id: Option<&str>,
@@ -139,21 +160,25 @@ fn resolve_device(
             .ok_or_else(|| "No microphone input device is available.".to_string())
     };
 
-    let Some(device_id) = device_id.filter(|id| !id.is_empty()) else {
+    let Some(requested) = device_id.filter(|id| !id.trim().is_empty()) else {
         return Ok((default_device()?, false));
     };
 
-    // The webview exposes device ids as strings; cpal matches on name, so treat
-    // the id as a name and fall back rather than failing the whole recording.
+    // The webview hands over the device's label; cpal matches on name. Fall
+    // back to the default rather than failing the whole recording.
     if let Ok(devices) = host.input_devices() {
         for device in devices {
-            if device.name().map(|name| name == device_id).unwrap_or(false) {
+            let name = match device.name() {
+                Ok(name) => name,
+                Err(_) => continue,
+            };
+            if matches_device_name(requested, &name) {
                 return Ok((device, false));
             }
         }
     }
 
-    warn!("[capture] requested device '{device_id}' not found; using default");
+    warn!("[capture] requested device '{requested}' not found; using default");
     Ok((default_device()?, true))
 }
 
@@ -422,6 +447,25 @@ mod tests {
     #[test]
     fn level_bits_round_trip() {
         assert_eq!(bits_to_level(level_to_bits(0.42)), 0.42);
+    }
+
+    #[test]
+    fn device_matching_survives_case_and_qualifier_differences() {
+        assert!(matches_device_name(
+            "Microphone (USB Audio Device)",
+            "microphone (USB Audio Device)"
+        ));
+        assert!(matches_device_name(
+            "USB Audio Device",
+            "Microphone (USB Audio Device)"
+        ));
+        assert!(!matches_device_name(
+            "USB Audio Device",
+            "Microphone (Realtek Audio)"
+        ));
+        // A short or empty hint must never match loosely.
+        assert!(!matches_device_name("mic", "Microphone (Realtek Audio)"));
+        assert!(!matches_device_name("", "Microphone (Realtek Audio)"));
     }
 
     #[test]

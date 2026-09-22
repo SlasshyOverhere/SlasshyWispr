@@ -28,6 +28,7 @@ import {
   stopRecordingTicker,
 } from "./capture-monitors";
 import { openMicrophoneStream } from "./mic-stream";
+import { selectedMicrophoneLabel } from "../shell/microphones";
 import {
   cancelNativeCapture,
   nativeCaptureLevel,
@@ -240,7 +241,7 @@ export async function startRecording(): Promise<void> {
   if (useNativeCapture) {
     try {
       const captureStartedAt = controllerDeps.performanceNow();
-      const info = await startNativeCapture(activeSettings.microphoneDeviceId);
+      const info = await startNativeCapture(selectedMicrophoneLabel());
       activeCaptureNative = true;
       activeCaptureDevice = info.deviceName;
       controllerState.setMediaRecorder(null);
@@ -345,19 +346,23 @@ export function stopRecording(options: StopRecordingOptions = {}): void {
   if (activeCaptureNative) {
     controllerState.setSkipPipeline(cancelPipeline);
     controllerState.setSkipNotice(cancelPipeline ? cancelNotice || "" : "");
+    stopRecordingTicker();
+    stopAmplitudeMonitoring(true);
+
     if (cancelPipeline) {
-      // Cancelled: discard in Rust. Otherwise finalizeRecording stops the
-      // capture, because stopping is what yields the audio.
       activeCaptureNative = false;
       void cancelNativeCapture().catch((error) => {
         controllerDeps.log(`[record.stop] native cancel failed: ${asErrorMessage(error)}`);
       });
+      controllerDeps.transition({ type: "stop-recording", cancelPipeline: true });
+      controllerDeps.syncAvailability();
+      return;
     }
-    stopRecordingTicker();
-    stopAmplitudeMonitoring(true);
-    controllerDeps.transition(
-      cancelPipeline ? { type: "stop-recording", cancelPipeline: true } : { type: "stop-recording" },
-    );
+
+    // Rust owns this capture, so there is no recorder stop event to wait for:
+    // stopping is what yields the audio, and that is finalizeRecording's job.
+    controllerDeps.transition({ type: "stop-recording" });
+    void finalizeRecording();
     controllerDeps.syncAvailability();
     return;
   }
