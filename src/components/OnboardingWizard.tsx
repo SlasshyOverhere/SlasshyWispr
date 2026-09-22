@@ -88,7 +88,7 @@ export function OnboardingWizard() {
 
         <div className="onboarding-dots">
           {(['welcome', 'hotkey', 'tts', 'done'] as const).map(s => (
-            <span key={s} className={`onboarding-dot ${step === s ? 'active' : ''}`} />
+            <span key={s} className={`onboarding-dot ${step === s ? 'is-active' : ''}`} />
           ))}
         </div>
       </div>
