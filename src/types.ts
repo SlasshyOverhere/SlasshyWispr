@@ -17,6 +17,7 @@ export type {
   AudioFilePayload,
   ForegroundInputBlockStatus,
   InstallAppUpdateRequest,
+  LaunchAtLoginStatus,
   LocalSttDeactivateResponse,
   LocalSttDeleteResponse,
   LocalSttDownloadResponse,

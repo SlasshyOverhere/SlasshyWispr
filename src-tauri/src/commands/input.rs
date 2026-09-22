@@ -163,6 +163,7 @@ pub(crate) async fn launch_at_login_status() -> Result<LaunchAtLoginStatus, Stri
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct LaunchAtLoginStatus {
     pub enabled: bool,
     pub path_matches: bool,

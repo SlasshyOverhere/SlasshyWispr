@@ -105,21 +105,21 @@ export async function reconcileLaunchAtLoginWithOs(): Promise<LaunchAtLoginCorre
   try {
     const status = await ipcLaunchAtLoginStatus();
     const wanted = shellDeps.getLaunchAtLogin();
-    if (wanted && (!status.enabled || !status.path_matches)) {
+    if (wanted && (!status.enabled || !status.pathMatches)) {
       shellDeps.log(
         `[startup] launch-at-login registry stale — reapplying wanted=${wanted} stored=${
-          status.stored_value ?? "<missing>"
+          status.storedValue ?? "<missing>"
         }`,
       );
       requestLaunchAtLoginSync(true);
-      return { action: "reapplied", storedValue: status.stored_value ?? null };
+      return { action: "reapplied", storedValue: status.storedValue ?? null };
     }
     if (!wanted && status.enabled) {
       shellDeps.log(
         `[startup] launch-at-login registry still enabled despite preference=false; cleaning up`,
       );
       requestLaunchAtLoginSync(false);
-      return { action: "removed", storedValue: status.stored_value ?? null };
+      return { action: "removed", storedValue: status.storedValue ?? null };
     }
   } catch (error) {
     shellDeps.log(`[startup] launch-at-login reconcile skipped: ${asErrorMessage(error)}`);
