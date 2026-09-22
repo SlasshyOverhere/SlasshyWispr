@@ -84,9 +84,10 @@ export async function openMicrophoneStream(preferredDeviceId: string): Promise<M
     !isPrewarmExpired()
   ) {
     micDeps.log(`[record.mic] reusing pre-warmed stream age=${Date.now() - preWarmedStreamCreateTime}ms`);
-    const clonedStream = preWarmedStream.clone();
-    clearPrewarmExpiryTimer();
-    return clonedStream;
+    // The deadline stays armed: a clone owns its own tracks, so releasing the
+    // source on schedule cannot cut this capture short — and cancelling the TTL
+    // here would hold the device open for the rest of the session.
+    return preWarmedStream.clone();
   }
 
   await releasePreWarmedStream();

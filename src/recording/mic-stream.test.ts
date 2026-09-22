@@ -119,6 +119,42 @@ describe("openMicrophoneStream", () => {
     ]);
   });
 
+  it("keeps the pre-warm TTL armed after a reuse", async () => {
+    cannedStream = fakeStream(true);
+    getUserMediaImpl = async () => cannedStream!;
+
+    const realSetTimeout = window.setTimeout;
+    const realClearTimeout = window.clearTimeout;
+    const timers = new Map<number, () => void>();
+    const cleared: number[] = [];
+    let nextId = 1;
+    (window as unknown as { setTimeout: unknown }).setTimeout = (handler: () => void) => {
+      const id = nextId;
+      nextId += 1;
+      timers.set(id, handler);
+      return id;
+    };
+    (window as unknown as { clearTimeout: unknown }).clearTimeout = (id?: number) => {
+      cleared.push(Number(id));
+    };
+
+    try {
+      await preWarmMicrophoneStream("mic-a");
+      const ttlTimerId = timers.size;
+      expect(ttlTimerId).toBeGreaterThan(0);
+
+      await openMicrophoneStream("mic-a");
+      // Cancelling the deadline on reuse is what left the mic open for good.
+      expect(cleared).not.toContain(ttlTimerId);
+
+      timers.get(ttlTimerId)?.();
+      expect(cannedStream.tracks[0].stopped).toBe(true);
+    } finally {
+      window.setTimeout = realSetTimeout;
+      window.clearTimeout = realClearTimeout;
+    }
+  });
+
   it("skips pre-warmed reuse for a different device", async () => {
     cannedStream = fakeStream(true);
     getUserMediaImpl = async () => cannedStream!;
