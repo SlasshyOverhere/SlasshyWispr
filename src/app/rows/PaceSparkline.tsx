@@ -23,8 +23,10 @@ export function PaceSparkline({ points }: { points: number[] }) {
   if (points.length === 0) {
     return null;
   }
-  const width = 240;
-  const height = 72;
+  // viewBox aspect matches the card so a uniform scale fills the width
+  // instead of letterboxing the chart into a centred 240px band.
+  const width = 560;
+  const height = 76;
   const padding = 4;
   const labelH = 12;
   const innerW = width - padding * 2;
@@ -42,8 +44,6 @@ export function PaceSparkline({ points }: { points: number[] }) {
   return (
     <svg
       className="home-sparkline"
-      width={width}
-      height={height}
       viewBox={`0 0 ${width} ${height}`}
       role="img"
       aria-label="Words spoken over the last 7 days"
