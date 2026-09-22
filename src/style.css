@@ -402,15 +402,16 @@ p { line-height: 1.55; }
   flex-shrink: 0;
   color: currentColor;
 }
-/* Hotkeys live in the tooltips (syncSidebarHoverTitles) — the strip has no
-   room for a key column. */
+/* Hotkeys live in the tooltips — the strip has no room for a key column. */
 .nav-keyhint { display: none; }
 
-body.sidebar-collapsed .brand-word,
-body.sidebar-collapsed .nav-item > span:not(.nav-glyph),
-body.sidebar-collapsed .secondary-link > span:not(.secondary-glyph) { display: none; }
-body.sidebar-collapsed .nav-item,
-body.sidebar-collapsed .secondary-link { padding: 0 9px; }
+/* Icons only, always: the label lives in the tooltip and there is no expanded
+   state to switch back to. */
+.brand-word,
+.nav-item > span:not(.nav-glyph),
+.secondary-link > span:not(.secondary-glyph) { display: none; }
+.nav-item,
+.secondary-link { padding: 0 9px; }
 
 .secondary-link-local-stt[data-stt-state="loading"] .secondary-glyph { color: var(--accent-live); }
 .secondary-link-local-stt[data-stt-state="ready"] .secondary-glyph { color: var(--ok); }
@@ -1583,11 +1584,6 @@ svg { flex-shrink: 0; }
 
 /* The window is a fixed 780x600, so only these two thresholds are reachable. */
 @media (max-width: 760px) {
-  .brand-word,
-  .nav-item > span:not(.nav-glyph),
-  .secondary-link > span:not(.secondary-glyph) { display: none; }
-  .nav-item,
-  .secondary-link { padding: 0 9px; }
   .flow-page-inner { padding: 14px 14px 20px; }
 }
 

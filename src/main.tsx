@@ -224,10 +224,6 @@ import {
   syncActionAvailability as syncActionAvailabilityService,
 } from "./shell/availability";
 import {
-  applyPersistedSidebarCollapsed as applyPersistedSidebarCollapsedService,
-  initSidebar,
-} from "./shell/sidebar";
-import {
   describeLaunchAtLoginCorrection,
   describeShellIntegrationCorrection,
   isTauriEnvironment,
@@ -380,7 +376,6 @@ import type {
 } from "./recording-state-machine";
 
 import {
-  SIDEBAR_COLLAPSED_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
   DEFAULT_HOTKEY,
@@ -466,7 +461,6 @@ function requiredElement<T extends Element>(selector: string): T {
 
 
 const settingsOverlay = requiredElement<HTMLDivElement>("#settingsOverlay");
-const toggleSidebarBtn = requiredElement<HTMLButtonElement>("#toggleSidebarBtn");
 const openSettingsBtn = requiredElement<HTMLButtonElement>("#openSettingsBtn");
 const sidebarToggleLocalSttBtn = requiredElement<HTMLButtonElement>("#sidebarToggleLocalSttBtn");
 const sidebarToggleLocalSttGlyph = requiredElement<HTMLSpanElement>("#sidebarToggleLocalSttGlyph");
@@ -500,10 +494,6 @@ const settingsNavButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>("[data-settings-pane-nav]"),
 );
 const settingsPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-settings-pane]"));
-const sidebarLabeledButtons = Array.from(
-  document.querySelectorAll<HTMLElement>(".topbar [data-label]"),
-);
-
 const statusPill = requiredElement<HTMLDivElement>("#statusPill");
 const statusDetail = requiredElement<HTMLParagraphElement>("#statusDetail");
 const noticeStack = requiredElement<HTMLElement>("#noticeStack");
@@ -1117,16 +1107,6 @@ initTauriShell(
   },
 );
 
-initSidebar(
-  { toggleButton: toggleSidebarBtn, labeledButtons: sidebarLabeledButtons },
-  {
-    readCollapsed: () => localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1",
-    writeCollapsed: (collapsed) => {
-      localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, collapsed ? "1" : "0");
-    },
-  },
-);
-
 initAvailability(
   {
     refreshMicsBtn,
@@ -1608,7 +1588,6 @@ void reconcileShellIntegrationWithOs().then((correction) => {
   }
 });
 startBlockedAppShortcutSuppressionMonitorService();
-applyPersistedSidebarCollapsedService();
 
 
 checkUpdatesBtn.addEventListener("click", () => {
@@ -1761,7 +1740,7 @@ initGlobalShortcutDispatch({
 });
 
 initLocalShortcuts(
-  { toggleSidebarBtn, sidebarToggleLocalSttBtn, openSettingsBtn },
+  { sidebarToggleLocalSttBtn, openSettingsBtn },
   {
     getSettings: () => settings,
     getStage: () => stage,

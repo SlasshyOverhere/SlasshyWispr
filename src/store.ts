@@ -3,7 +3,6 @@ import {
   ACTIVE_PAGE_STORAGE_KEY,
   HOME_HISTORY_STORAGE_KEY,
   SETTINGS_STORAGE_KEY,
-  SIDEBAR_COLLAPSED_STORAGE_KEY,
 } from './constants';
 import { parseJson } from './state/storage';
 import { loadHistory } from './state/history';
@@ -26,7 +25,6 @@ function loadActivePage(): MainPage {
 
 export interface UIState {
   activePage: MainPage;
-  sidebarCollapsed: boolean;
   usage: UsageStats;
   history: HomeHistoryEntry[];
   analyticsSessions: AnalyticsSessionDetail[];
@@ -99,7 +97,6 @@ function loadIncognitoMode(): boolean {
 function loadInitialState(): UIState {
   return {
     activePage: loadActivePage(),
-    sidebarCollapsed: localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true',
     usage: loadUsageStats(),
     history: loadHistory(),
     analyticsSessions: loadAnalyticsSessions(),

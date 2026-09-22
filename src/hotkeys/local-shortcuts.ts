@@ -44,7 +44,6 @@ export interface LocalShortcutSyncGuards {
 }
 
 export interface LocalShortcutButtons {
-  toggleSidebarBtn: HTMLButtonElement;
   sidebarToggleLocalSttBtn: HTMLButtonElement;
   openSettingsBtn: HTMLButtonElement;
 }
@@ -125,12 +124,6 @@ export function handleLocalKeydown(event: KeyboardEvent): void {
         shortcutDeps.setActivePage(page);
         return;
       }
-    }
-
-    if (event.key === "b" || event.key === "B") {
-      event.preventDefault();
-      shortcutButtons.toggleSidebarBtn.click();
-      return;
     }
 
     if (event.key === "d" || event.key === "D") {

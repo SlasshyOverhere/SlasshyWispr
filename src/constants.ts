@@ -21,7 +21,6 @@ export const APP_EVENT_TRANSCRIBE_FILE = "slasshywispr://transcribe-file";
 export const USAGE_STORAGE_KEY = "slasshywispr-usage-v1";
 export const DOCK_LAYOUT_STORAGE_KEY = "slasshywispr-dock-layout-v2";
 export const HOME_HISTORY_STORAGE_KEY = "slasshywispr-home-history-v1";
-export const SIDEBAR_COLLAPSED_STORAGE_KEY = "slasshywispr-sidebar-collapsed-v1";
 export const LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY = "slasshywispr-local-stt-hardware-advisor-v1";
 export const GITHUB_RELEASES_PAGE_URL = "https://github.com/SlasshyOverhere/SlasshyWispr/releases/latest";
 export const APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY = "slasshywispr-app-update-last-checked-at-v1";
