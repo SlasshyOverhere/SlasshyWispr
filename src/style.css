@@ -10,7 +10,6 @@
 
   /* Surfaces — black base, cards are the only lift. */
   --bg-void:    #000000;
-  --bg-rail:    #07070a;
   --bg-paper:   #000000;
   --bg-recess:  #0a0a0e;
   --bg-card:    #101014;
@@ -51,9 +50,7 @@
   --ok:          oklch(76% 0.14 155);
 
   /* Geometry */
-  --titlebar-height: 34px;
-  --sidebar-width: 172px;
-  --sidebar-collapsed-width: 52px;
+  --topbar-height: 48px;
 
   --radius-sm: 4px;
   --radius-input: 6px;
@@ -91,7 +88,6 @@
 :root[data-theme="light"] {
   color-scheme: light;
   --bg-void: #fbfbfa;
-  --bg-rail: #f4f4f2;
   --bg-paper: #ffffff;
   --bg-recess: #f1f1ef;
   --bg-card: #ffffff;
@@ -247,7 +243,7 @@ p { line-height: 1.55; }
 
 .window-btn {
   width: 38px;
-  height: var(--titlebar-height);
+  height: var(--topbar-height);
   display: grid;
   place-items: center;
   color: var(--ink-muted);
@@ -261,44 +257,42 @@ p { line-height: 1.55; }
   top: 0;
   left: 0;
   right: 0;
-  height: var(--titlebar-height);
-  z-index: 1;
+  height: var(--topbar-height);
+  z-index: 0;
 }
 
 .flow-shell {
   flex: 1;
-  display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
-  min-height: 0;
-  transition: grid-template-columns var(--transition-main);
-}
-
-body.sidebar-collapsed .flow-shell,
-.app-frame.sidebar-collapsed .flow-shell {
-  grid-template-columns: var(--sidebar-collapsed-width) 1fr;
-}
-
-/* Rail */
-.flow-sidebar {
-  background: var(--bg-rail);
-  border-right: 1px solid var(--border-line);
-  padding: 10px;
-  padding-top: calc(var(--titlebar-height) + 10px);
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  height: 100%;
-  overflow: hidden;
+  min-height: 0;
 }
+
+/* Top strip: brand, floating tab group, quiet actions. The strip itself is
+   transparent and click-through so the drag region underneath stays
+   reachable in the gaps; only the controls take the pointer. The right
+   padding keeps the window buttons clear of the actions. */
+.topbar {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--topbar-height);
+  padding: 0 76px 0 10px;
+  pointer-events: none;
+}
+.topbar > * { pointer-events: auto; }
 
 .brand-strip {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 8px 12px;
-  min-height: 28px;
+  flex: 0 0 auto;
+  min-width: 0;
 }
-body.sidebar-collapsed .brand-strip { justify-content: center; padding: 0 0 12px; }
+.topbar .brand-tagline { display: none; }
 
 .brand-glyph {
   width: 20px;
@@ -336,38 +330,36 @@ body.sidebar-collapsed .brand-strip { justify-content: center; padding: 0 0 12px
   text-transform: uppercase;
   color: var(--ink-faint);
 }
-body.sidebar-collapsed .brand-word { display: none; }
-
 .nav-main,
 .nav-secondary {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  gap: 2px;
 }
-.nav-main { flex: 1; }
+/* Floating tab group — the active page is a filled pill, not a rail row. */
+.nav-main {
+  flex: 0 0 auto;
+  padding: 3px;
+  border: 1px solid var(--border-line);
+  border-radius: 999px;
+  background: var(--bg-recess);
+  box-shadow: 0 12px 26px -18px rgb(0 0 0 / 0.95);
+}
+.nav-secondary { margin-left: auto; flex: 0 0 auto; }
 
 .nav-item,
 .secondary-link {
-  position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 9px;
-  width: 100%;
-  height: 32px;
-  padding: 0 9px;
-  border-radius: var(--radius-button);
+  gap: 7px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
   font-size: 12.5px;
   font-weight: 490;
-  color: var(--ink-secondary);
-  text-align: left;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
-}
-.nav-item > span:not(.nav-glyph):not(.nav-keyhint),
-.secondary-link > span:not(.secondary-glyph):not(.nav-keyhint) {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--ink-muted);
   white-space: nowrap;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 .nav-item:hover,
 .secondary-link:hover { background: var(--bg-hover); color: var(--ink-primary); }
@@ -376,19 +368,6 @@ body.sidebar-collapsed .brand-word { display: none; }
   color: var(--ink-primary);
   font-weight: 540;
 }
-/* Marker rides the rail edge rather than the row, so the active page is
-   findable without reading the labels. */
-.nav-item.is-active::before {
-  content: "";
-  position: absolute;
-  left: -10px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 2px;
-  height: 16px;
-  border-radius: 0 2px 2px 0;
-  background: var(--accent-live);
-}
 .nav-item.is-active .nav-glyph { color: var(--accent-live); }
 .app-frame.is-recording .nav-item.is-active .nav-glyph { animation: live-blink 1.4s ease-in-out infinite; }
 
@@ -396,36 +375,33 @@ body.sidebar-collapsed .brand-word { display: none; }
 .secondary-glyph {
   display: grid;
   place-items: center;
-  width: 16px;
+  width: 15px;
   flex-shrink: 0;
-  color: var(--ink-muted);
+  color: currentColor;
 }
-.nav-keyhint {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  color: var(--ink-faint);
-  flex: 0 0 auto;
-}
+/* Hotkeys live in the tooltips (syncSidebarHoverTitles) — the strip has no
+   room for a key column. */
+.nav-keyhint { display: none; }
+
+body.sidebar-collapsed .brand-word,
 body.sidebar-collapsed .nav-item > span:not(.nav-glyph),
 body.sidebar-collapsed .secondary-link > span:not(.secondary-glyph) { display: none; }
 body.sidebar-collapsed .nav-item,
-body.sidebar-collapsed .secondary-link { justify-content: center; padding: 0; }
+body.sidebar-collapsed .secondary-link { padding: 0 9px; }
 
 .secondary-link-local-stt[data-stt-state="loading"] .secondary-glyph { color: var(--accent-live); }
 .secondary-link-local-stt[data-stt-state="ready"] .secondary-glyph { color: var(--ok); }
 .secondary-link.is-capturing-hotkey { background: var(--accent-live-soft); color: var(--ink-primary); }
 
-/* Content */
-/* The titlebar strip is reserved, not merely overlaid: the drag region
-   has z-index and would otherwise swallow clicks on the first row of
-   content (the Home stat links sat under it). */
+/* Content — the top strip takes its own row, so no padding reservation is
+   needed and nothing sits under the drag region. */
 .flow-content {
+  flex: 1;
+  min-height: 0;
   background: var(--bg-paper);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  padding-top: var(--titlebar-height);
   position: relative;
   contain: layout paint;
 }
@@ -443,7 +419,7 @@ body.sidebar-collapsed .secondary-link { justify-content: center; padding: 0; }
   width: 100%;
   margin: 0 auto;
   min-height: 100%;
-  padding: 10px 20px 22px;
+  padding: 14px 20px 22px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -742,12 +718,38 @@ input[type="checkbox"]:checked::after,
 
 /* ── Home ─────────────────────────────────────────────────────────── */
 
+/* The stream is the primary surface, so it leads in column 1; the numbers
+   and weekly pace sit in a fixed instrument panel to its right. Placement
+   is explicit because the panel is declared first in the DOM. */
 .home-main {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 296px;
+  align-items: start;
   gap: 12px;
   min-height: 0;
 }
+.home-stream {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.home-side {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* Stats stack in the panel — three across is unreadable at 296px. */
+.home-side .home-metric-grid { grid-template-columns: 1fr; }
+.home-side .home-metric-card {
+  border-right: 0;
+  border-bottom: 1px solid var(--border-line);
+}
+.home-side .home-metric-card:last-child { border-bottom: 0; }
 
 .home-metrics {
   border: 1px solid var(--border-line);
@@ -1134,6 +1136,7 @@ input[type="checkbox"]:checked::after,
 }
 .entry-content-wrap { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .entry-content {
+  max-width: 72ch;
   font-size: 13px;
   line-height: 1.55;
   color: var(--ink-primary);
@@ -1554,19 +1557,15 @@ svg { flex-shrink: 0; }
 
 /* The window is a fixed 780x600, so only these two thresholds are reachable. */
 @media (max-width: 760px) {
-  :root { --sidebar-width: var(--sidebar-collapsed-width); }
   .brand-word,
   .nav-item > span:not(.nav-glyph),
   .secondary-link > span:not(.secondary-glyph) { display: none; }
   .nav-item,
-  .secondary-link { justify-content: center; padding: 0; }
-  .brand-strip { justify-content: center; padding: 0 0 12px; }
+  .secondary-link { padding: 0 9px; }
   .flow-page-inner { padding: 14px 14px 20px; }
 }
 
 @media (max-width: 640px) {
-  .flow-shell { grid-template-columns: 1fr; }
-  .flow-sidebar { display: none; }
   .home-metric-grid { grid-template-columns: 1fr; }
   .home-metric-card { border-right: 0; border-bottom: 1px solid var(--border-line); }
   .home-metric-card:last-child { border-bottom: 0; }

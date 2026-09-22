@@ -501,7 +501,7 @@ const settingsNavButtons = Array.from(
 );
 const settingsPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-settings-pane]"));
 const sidebarLabeledButtons = Array.from(
-  document.querySelectorAll<HTMLElement>(".flow-sidebar [data-label]"),
+  document.querySelectorAll<HTMLElement>(".topbar [data-label]"),
 );
 
 const statusPill = requiredElement<HTMLDivElement>("#statusPill");

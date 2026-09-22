@@ -39,7 +39,7 @@ export function applyPersistedSidebarCollapsed(): void {
 export function applySidebarCollapsed(collapsed: boolean): void {
   document.body.classList.toggle("sidebar-collapsed", collapsed);
   sidebarElements.toggleButton.setAttribute("aria-pressed", collapsed ? "true" : "false");
-  const sidebarActionLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  const sidebarActionLabel = collapsed ? "Expand tabs" : "Compact tabs";
   sidebarElements.toggleButton.setAttribute("aria-label", sidebarActionLabel);
   sidebarElements.toggleButton.dataset.label = sidebarActionLabel;
   syncSidebarHoverTitles(collapsed);

@@ -23,10 +23,10 @@ export function PaceSparkline({ points }: { points: number[] }) {
   if (points.length === 0) {
     return null;
   }
-  // viewBox aspect matches the card so a uniform scale fills the width
-  // instead of letterboxing the chart into a centred 240px band.
-  const width = 560;
-  const height = 76;
+  // viewBox aspect matches its column so a uniform scale fills the width
+  // instead of letterboxing, and the day labels stay legible at ~272px.
+  const width = 300;
+  const height = 112;
   const padding = 4;
   const labelH = 12;
   const innerW = width - padding * 2;

@@ -87,7 +87,7 @@ export function App() {
 
         <div className="flow-shell">
           <div className="app-drag-region" data-tauri-drag-region="true"></div>
-          <aside className="flow-sidebar">
+          <header className="topbar">
             <div className="brand-strip">
               <span className="brand-glyph" aria-hidden="true">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -131,11 +131,11 @@ export function App() {
                 <span id="sidebarToggleLocalSttLabel">Load STT</span>
                 <span className="nav-keyhint">Alt+D</span>
               </button>
-              <button id="toggleSidebarBtn" className="secondary-link" type="button" data-label="Collapse sidebar" data-hotkey="Alt+B" aria-label="Collapse sidebar (Alt+B)">
+              <button id="toggleSidebarBtn" className="secondary-link" type="button" data-label="Compact tabs" data-hotkey="Alt+B" aria-label="Compact tabs (Alt+B)">
                 <span className="secondary-glyph">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="m14 9-3 3 3 3"/></svg>
                 </span>
-                <span title="Collapse sidebar">Collapse</span>
+                <span>Compact</span>
                 <span className="nav-keyhint">Alt+B</span>
               </button>
               <button id="openSettingsBtn" className="secondary-link" data-label="Settings" data-hotkey="Alt+S" aria-label="Settings (Alt+S)" type="button">
@@ -145,12 +145,14 @@ export function App() {
                 <span>Settings</span>
                 <span className="nav-keyhint">Alt+S</span>
               </button>            </nav>
-          </aside>
+          </header>
 
           <main className="flow-content">
             <section className={`flow-page ${state.activePage === 'home' ? 'is-active' : ''}`} data-page="home">
               <div className="flow-page-inner home-page">
                 <div className="home-main">
+                  {/* Instrument panel: lifetime numbers and weekly pace. */}
+                  <aside className="home-side">
                   {/* Stats row: three metric cards + trends. Hidden spans
                       are the existing main.tsx/analytics-render write
                       targets — do not rename their ids. */}
@@ -246,7 +248,10 @@ export function App() {
                     </div>
                   </section>
 
-                  {/* Activity feed. */}
+                  </aside>
+
+                  {/* The dictation stream — the app's primary artifact. */}
+                  <div className="home-stream">
                   <div className="home-list-head">
                     <span className="home-list-head-l">
                       <span className="home-list-head-icon" aria-hidden="true">
@@ -309,6 +314,7 @@ export function App() {
                       )}
                     </div>
                   </section>
+                  </div>
                 </div>
               </div>
             </section>

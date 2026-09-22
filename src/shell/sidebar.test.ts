@@ -120,7 +120,7 @@ describe("applySidebarCollapsed", () => {
     applySidebarCollapsed(true);
     expect(isCollapsed()).toBe(true);
     expect(harness.toggleButton.getAttribute("aria-pressed")).toBe("true");
-    expect(harness.toggleButton.getAttribute("aria-label")).toBe("Expand sidebar");
+    expect(harness.toggleButton.getAttribute("aria-label")).toBe("Expand tabs");
     expect(attrsOf(harness.labeledButtons[0]).get("title")).toBe("Library (Ctrl+L)");
   });
 
@@ -130,7 +130,7 @@ describe("applySidebarCollapsed", () => {
     applySidebarCollapsed(false);
     expect(isCollapsed()).toBe(false);
     expect(harness.toggleButton.getAttribute("aria-pressed")).toBe("false");
-    expect(harness.toggleButton.getAttribute("aria-label")).toBe("Collapse sidebar");
+    expect(harness.toggleButton.getAttribute("aria-label")).toBe("Compact tabs");
     expect(attrsOf(harness.labeledButtons[0]).get("title")).toBe("Library (Ctrl+L)");
   });
 });
