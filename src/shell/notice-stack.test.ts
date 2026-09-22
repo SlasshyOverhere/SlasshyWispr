@@ -3,21 +3,59 @@
  *
  * The rules that matter are the ones a stack makes easy to get wrong: that
  * every notice stays visible instead of waiting its turn, that a dismiss names
- * exactly one item, and that status replaces itself rather than piling up
- * behind the notices.
+ * exactly one item, that status replaces itself rather than piling up behind
+ * the notices, and that nothing outstays its welcome.
  */
 import { describe, expect, it } from "bun:test";
-import { createNoticeStack, type NoticeItem } from "./notice-stack";
+import {
+  createNoticeStack,
+  NOTICE_ERROR_TTL_MS,
+  NOTICE_TTL_MS,
+  type NoticeItem,
+} from "./notice-stack";
 
 function makeHarness() {
   const renders: NoticeItem[][] = [];
-  const stack = createNoticeStack({ render: (items) => renders.push(items) });
+  // A hand-wound clock: nothing expires unless a test says time passed.
+  const timers = new Map<
+    number,
+    { run: () => void; due: number; cancelled: boolean }
+  >();
+  let nextHandle = 1;
+  let elapsed = 0;
+  const stack = createNoticeStack({
+    render: (items) => renders.push(items),
+    schedule: (run, ms) => {
+      const handle = nextHandle;
+      nextHandle += 1;
+      timers.set(handle, { run, due: elapsed + ms, cancelled: false });
+      return handle as unknown as ReturnType<typeof setTimeout>;
+    },
+    cancelScheduled: (handle) => {
+      const timer = timers.get(handle as unknown as number);
+      if (timer) timer.cancelled = true;
+    },
+  });
   return {
     stack,
     renders,
     /** What the area shows, in order. */
     texts: () => stack.items().map((item) => item.message),
     lastRender: () => renders.at(-1) ?? [],
+    /** Let `ms` pass, firing every timer that comes due. */
+    advance: (ms: number) => {
+      elapsed += ms;
+      for (const [handle, timer] of [...timers]) {
+        if (timer.cancelled || timer.due > elapsed) continue;
+        timers.delete(handle);
+        timer.run();
+      }
+    },
+    /** How long each live row has left before it clears itself. */
+    deadlines: () =>
+      [...timers.values()]
+        .filter((timer) => !timer.cancelled)
+        .map((timer) => timer.due - elapsed),
   };
 }
 
@@ -95,6 +133,54 @@ describe("notice stack", () => {
     h.stack.enqueue("hard", true);
 
     expect(h.stack.items().map((item) => item.isError)).toEqual([false, true]);
+  });
+});
+
+describe("notice expiry", () => {
+  it("clears a notice on its own once its time is up", () => {
+    const h = makeHarness();
+    h.stack.enqueue("timeout corrected");
+    h.advance(NOTICE_TTL_MS - 1);
+    expect(h.texts()).toEqual(["timeout corrected"]);
+
+    h.advance(1);
+    expect(h.texts()).toEqual([]);
+  });
+
+  it("gives an error longer than a plain notice", () => {
+    const h = makeHarness();
+    h.stack.enqueue("soft");
+    h.stack.enqueue("hard", true);
+
+    h.advance(NOTICE_TTL_MS);
+    expect(h.texts()).toEqual(["hard"]);
+
+    h.advance(NOTICE_ERROR_TTL_MS);
+    expect(h.texts()).toEqual([]);
+  });
+
+  it("restarts the clock when the status line is replaced", () => {
+    const h = makeHarness();
+    h.stack.present("Recording started");
+    h.advance(NOTICE_TTL_MS - 1000);
+
+    h.stack.present("Processing");
+
+    // The deadline went with the text it was armed for, so the new status gets
+    // a full window instead of inheriting the old one.
+    expect(h.deadlines()).toEqual([NOTICE_TTL_MS]);
+  });
+
+  it("never fires a notice that was dismissed first", () => {
+    const h = makeHarness();
+    h.stack.enqueue("timeout corrected");
+    const renders = h.renders.length;
+
+    h.stack.dismiss(h.stack.items()[0].id);
+    h.advance(NOTICE_ERROR_TTL_MS);
+
+    expect(h.renders.length).toBe(renders + 1);
+    expect(h.texts()).toEqual([]);
   });
 });
 

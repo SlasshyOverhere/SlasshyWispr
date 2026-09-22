@@ -174,7 +174,6 @@ export function applyTtsSetupStatus(status: TtsSetupStatusResponse): void {
 
   if (!status.running && status.completed) {
     if (status.success) {
-      ttsDeps.setNotice("Piper runtime is ready.");
       if (ttsDeps.getStage() !== "recording") {
         ttsDeps.setStage("idle", "TTS setup complete.");
       }

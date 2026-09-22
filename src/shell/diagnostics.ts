@@ -5,8 +5,8 @@
  * extracted shell modules can report without touching main.tsx globals.
  *
  * setNotice writes the status line, which replaces itself. queueNotice stacks a
- * notice, which stays on screen until it is dismissed. See notice-stack.ts for
- * the ordering rules.
+ * notice, which then clears itself after a few seconds. See notice-stack.ts for
+ * the ordering and expiry rules.
  */
 import { logClientEvent as ipcLogClientEvent } from "../ipc/client";
 import {

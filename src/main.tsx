@@ -2030,7 +2030,6 @@ async function bootstrap(): Promise<void> {
     renderAssistantInfoService(info);
 
     if (info.piperInstalled && info.voiceInstalled) {
-      queueNoticeService("Piper runtime is ready.");
       setStageService("idle", "Ready for voice input.");
     } else {
       queueNoticeService("Piper runtime incomplete. Open Settings > Models and complete runtime setup.");
