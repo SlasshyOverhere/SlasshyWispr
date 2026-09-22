@@ -249,11 +249,10 @@ export function getOfflineDiagnosticData(issue: string, details?: OfflineDiagnos
             id: 'switch-now',
             label: 'Switch to Offline Now',
             primary: true,
-            handler: async () => {
+            handler: () => {
               const currentSettings = diagnosticsDeps.readSettings();
               currentSettings.sttRuntimeMode = 'local';
               diagnosticsDeps.commitSettings(currentSettings);
-              diagnosticsDeps.notify('Switched to Offline mode. Now select a model and click "Load STT".');
             }
           },
           {
@@ -308,7 +307,6 @@ export function getOfflineDiagnosticData(issue: string, details?: OfflineDiagnos
               const currentSettings = diagnosticsDeps.readSettings();
               currentSettings.sttRuntimeMode = 'online';
               diagnosticsDeps.commitSettings(currentSettings);
-              diagnosticsDeps.notify('Switched to Online mode.');
             }
           },
           {
@@ -342,7 +340,6 @@ export function getOfflineDiagnosticData(issue: string, details?: OfflineDiagnos
               const currentSettings = diagnosticsDeps.readSettings();
               currentSettings.localSttModel = 'nvidia/parakeet-tdt_ctc-110m';
               diagnosticsDeps.commitSettings(currentSettings);
-              diagnosticsDeps.notify('Switched to smaller model. Click "Load STT" to try again.');
             }
           },
           {
@@ -352,7 +349,6 @@ export function getOfflineDiagnosticData(issue: string, details?: OfflineDiagnos
               const currentSettings = diagnosticsDeps.readSettings();
               currentSettings.sttRuntimeMode = 'online';
               diagnosticsDeps.commitSettings(currentSettings);
-              diagnosticsDeps.notify('Switched to Online mode.');
             }
           },
           {
@@ -391,7 +387,6 @@ export function getOfflineDiagnosticData(issue: string, details?: OfflineDiagnos
               const currentSettings = diagnosticsDeps.readSettings();
               currentSettings.localSttModel = 'nvidia/parakeet-tdt_ctc-110m';
               diagnosticsDeps.commitSettings(currentSettings);
-              diagnosticsDeps.notify('Switched to smaller model. Click "Load STT" to try again.');
             }
           },
           {
@@ -429,7 +424,6 @@ export function getOfflineDiagnosticData(issue: string, details?: OfflineDiagnos
               const currentSettings = diagnosticsDeps.readSettings();
               currentSettings.sttRuntimeMode = 'online';
               diagnosticsDeps.commitSettings(currentSettings);
-              diagnosticsDeps.notify('Switched to Online mode.');
             }
           },
           {

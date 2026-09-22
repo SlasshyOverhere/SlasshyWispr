@@ -228,11 +228,6 @@ export async function startRecording(): Promise<void> {
       );
       controllerDeps.clearCaptureIntent();
     }
-    if (controllerDeps.getCaptureMode() === "push-to-talk") {
-      controllerDeps.setNotice("Recording started. Release the hotkey or mic button to stop.");
-    } else {
-      controllerDeps.setNotice("Recording started. Tap again to stop.");
-    }
     controllerDeps.syncAvailability();
   };
 

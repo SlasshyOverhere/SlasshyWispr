@@ -33,9 +33,7 @@ export async function copyToClipboard(
     } else {
       await navigator.clipboard.writeText(value);
     }
-    if (!options.quiet) {
-      clipboardDeps.notify(options.successMessage ?? "Assistant response copied to clipboard.");
-    }
+    // Silent on success: pasted/copied text is its own confirmation.
     return true;
   } catch {
     if (!options.quiet) {

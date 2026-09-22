@@ -39,15 +39,13 @@ beforeEach(() => {
 });
 
 describe("copyToClipboard", () => {
-  it("uses the Tauri IPC path with the default success notice", async () => {
+  it("uses the Tauri IPC path silently on success", async () => {
     const harness = wireHarness(true);
     await expect(copyToClipboard("hello")).resolves.toBe(true);
     expect(invokeCalls).toEqual([
       { command: "set_clipboard_text", args: { text: "hello" } },
     ]);
-    expect(harness.notices).toEqual([
-      { message: "Assistant response copied to clipboard.", isError: undefined },
-    ]);
+    expect(harness.notices).toEqual([]);
   });
 
   it("uses navigator.clipboard on web and honors quiet", async () => {

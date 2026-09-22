@@ -143,12 +143,10 @@ beforeEach(() => {
 });
 
 describe("handleRecordToggle", () => {
-  it("ignores in push-to-talk mode with a notice", async () => {
+  it("ignores in push-to-talk mode without a notice", async () => {
     const harness = wireHarness({ getCaptureMode: () => "push-to-talk" });
     await handleRecordToggle();
-    expect(harness.notices).toEqual([
-      { message: "Push-to-talk is enabled. Hold the hotkey or mic button while speaking.", isError: undefined },
-    ]);
+    expect(harness.notices).toEqual([]);
     expect(harness.intents).toEqual([]);
   });
 
@@ -168,10 +166,11 @@ describe("handleDockMicToggle", () => {
     expect(harness.intents).toEqual([]);
   });
 
-  it("notices in push-to-talk mode instead of toggling", async () => {
+  it("ignores in push-to-talk mode without a notice", async () => {
     const harness = wireHarness({ getCaptureMode: () => "push-to-talk" });
     await handleDockMicToggle();
-    expect(harness.notices.length).toBe(1);
+    expect(harness.notices).toEqual([]);
+    expect(harness.intents).toEqual([]);
   });
 });
 

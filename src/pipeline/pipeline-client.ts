@@ -326,7 +326,6 @@ export async function runPipeline(
 
     const resolvedResponse = response;
     renderPipelineResponse(resolvedResponse);
-    let playbackCompleted = true;
     const selectionPopupPayload = buildSelectionPopupPayload(resolvedResponse, runToken);
     if (!selectionPopupPayload) {
       await clientDeps.dismissSelectionPopup();
@@ -340,16 +339,14 @@ export async function runPipeline(
       resolvedResponse.mode === "assistant" &&
       resolvedResponse.audioBase64.trim()
     ) {
-      playbackCompleted = await playGeneratedAudio(resolvedResponse.audioBase64, pipelineTtsEngine);
+      await playGeneratedAudio(resolvedResponse.audioBase64, pipelineTtsEngine);
     }
 
     let dictationPasted = false;
     if (resolvedResponse.mode === "dictation") {
       if (activeSettings.autoPasteDictation) {
         dictationPasted = await clientDeps.triggerAutoPaste(resolvedResponse.assistantResponse);
-        if (dictationPasted) {
-          clientDeps.notify("Dictation copied and pasted.");
-        }
+        // Pasted text is its own confirmation; no toast.
       }
       // Bug fix: also copy dictation to clipboard when copyToClipboard is enabled
       // and autoPaste is disabled (previously transcriptions were silently lost)
@@ -372,17 +369,6 @@ export async function runPipeline(
     resetCommandMode();
 
     if (clientDeps.getStage() !== "recording") {
-      if (resolvedResponse.mode === "dictation") {
-        if (dictationPasted) {
-          // Notice already set above.
-        } else {
-          clientDeps.notify("Dictation ready. Copy it from Home if needed.");
-        }
-      } else if (selectionPopupOpened || response.selectionRewrite || response.selectionPending) {
-        // Notice already set above.
-      } else {
-        clientDeps.notify(playbackCompleted ? "Pipeline completed." : "Playback interrupted for new dictation.");
-      }
       clientDeps.markIdle("Ready for next request.");
     }
   } catch (error) {

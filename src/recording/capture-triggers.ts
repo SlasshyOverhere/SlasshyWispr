@@ -53,9 +53,6 @@ export async function handleRecordToggle(): Promise<void> {
   );
   if (triggerDeps.getCaptureMode() === "push-to-talk") {
     triggerDeps.log("[record.toggle] ignored because capture mode is push-to-talk");
-    if (triggerDeps.getStage() !== "recording") {
-      triggerDeps.setNotice("Push-to-talk is enabled. Hold the hotkey or mic button while speaking.");
-    }
     return;
   }
   if (triggerDeps.getStage() === "recording") {
@@ -90,7 +87,6 @@ export async function handleDockMicToggle(): Promise<void> {
   }
 
   if (triggerDeps.getCaptureMode() === "push-to-talk") {
-    triggerDeps.setNotice("Push-to-talk is enabled. Hold the hotkey or mic button while speaking.");
     return;
   }
 

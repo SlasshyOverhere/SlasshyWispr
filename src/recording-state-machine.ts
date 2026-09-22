@@ -192,7 +192,6 @@ function handleRecordingReady(
     { type: "set-recording-started-at", timestamp: Date.now() },
     { type: "begin-recording-ticker" },
     { type: "set-stage", stage: "recording", detail: "Listening..." },
-    { type: "set-notice", message: "Recording started." },
     { type: "publish-dock-state" },
   ];
 
@@ -259,7 +258,6 @@ function handleStopRecording(
 
   actions.push(
     { type: "set-stage", stage: "processing", detail: "Preparing audio..." },
-    { type: "set-notice", message: "Recording stopped. Running pipeline..." },
   );
 
   return {
@@ -303,7 +301,6 @@ function handleAudioCaptured(_state: MachineState): TransitionResult {
     detail: "Transcribing...",
     actions: [
       { type: "set-stage", stage: "processing", detail: "Transcribing..." },
-      { type: "set-notice", message: "Recording stopped. Running pipeline..." },
     ],
   };
 }
@@ -413,7 +410,6 @@ function handleTtsPlaybackCompleted(_state: MachineState): TransitionResult {
     actions: [
       { type: "set-pipeline-running", running: false },
       { type: "set-stage", stage: "idle", detail: "Ready for next request." },
-      { type: "set-notice", message: "Pipeline completed." },
       { type: "publish-dock-state" },
       { type: "pre-warm-microphone" },
     ],
