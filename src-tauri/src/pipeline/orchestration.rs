@@ -183,6 +183,40 @@ pub struct SelectionEditResult {
     pub skip_tts: bool,
 }
 
+// ===== Shared decision rules =====
+//
+// The command adapter needs these same answers before it may run its side
+// effects (clipboard capture, selection sync, the dictation short-circuit), so
+// they live here rather than being restated at the call site.
+
+/// A turn is dictation when wake detection is on and the transcript carried no
+/// wake phrase. The adapter short-circuits on this, and the orchestrator decides
+/// on this, so there is one definition of "not addressed".
+#[must_use]
+pub fn is_dictation_turn(wake_word_enabled: bool, wake_command: Option<&str>) -> bool {
+    wake_word_enabled && wake_command.is_none()
+}
+
+/// What a command asks of the selection context, and whether it asks anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelectionIntents {
+    pub edit: bool,
+    pub context_query: bool,
+    /// Either intent is present, so the turn is selection-aware.
+    pub active: bool,
+}
+
+#[must_use]
+pub fn selection_intents(command: &str) -> SelectionIntents {
+    let edit = seems_like_selection_edit_instruction(command);
+    let context_query = seems_like_selection_context_query(command);
+    SelectionIntents {
+        edit,
+        context_query,
+        active: edit || context_query,
+    }
+}
+
 // ===== Orchestrator =====
 
 /// Pure orchestrator: determines the pipeline path and what actions to take.
@@ -202,7 +236,7 @@ pub fn orchestrate_post_stt(input: OrchestratorInput) -> OrchestratorResult {
     };
 
     // Dictation mode: wake enabled but no wake phrase detected
-    if input.wake_word_enabled && wake_command.is_none() {
+    if is_dictation_turn(input.wake_word_enabled, wake_command.as_deref()) {
         let selection_context_cleared = input.state.clear_pending_rewrite();
         return OrchestratorResult {
             decision: OrchestratorDecision {
@@ -223,9 +257,10 @@ pub fn orchestrate_post_stt(input: OrchestratorInput) -> OrchestratorResult {
     let wake_only = input.wake_word_enabled && command_for_ai.is_empty();
 
     // --- Selection context evaluation ---
-    let selection_edit_intent = seems_like_selection_edit_instruction(&command_for_ai);
-    let selection_context_query_intent = seems_like_selection_context_query(&command_for_ai);
-    let selection_intent_active = selection_edit_intent || selection_context_query_intent;
+    let intents = selection_intents(&command_for_ai);
+    let selection_edit_intent = intents.edit;
+    let selection_context_query_intent = intents.context_query;
+    let selection_intent_active = intents.active;
     let pending_rewrite_present = input.state.peek_pending_rewrite().is_some();
     let selected_text = input.selected_text.map(|s| s.to_string());
 
