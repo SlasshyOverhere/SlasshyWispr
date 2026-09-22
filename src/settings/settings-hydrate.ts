@@ -6,6 +6,7 @@
 import type { PersistedSettings } from "../types";
 import { SETTINGS_STORAGE_KEY } from "../constants";
 import { loadSettings } from "../state/settings-store";
+import { parseJsonText } from "../state/storage";
 import { asErrorMessage, boolFlag } from "../utils";
 import { summarizeSettingsForDiagnostics } from "./settings-signatures";
 
@@ -36,8 +37,13 @@ export async function hydrateSettingsFromNativeStorage(
       return null;
     }
 
-    const parsed = JSON.parse(trimmed);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    const parsed = parseJsonText<unknown>(trimmed, null);
+    if (parsed === null) {
+      deps.log("[settings.hydrate] payload is not valid JSON");
+      deps.warn("[settings] failed to hydrate local settings: the saved payload is not valid JSON");
+      return null;
+    }
+    if (typeof parsed !== "object" || Array.isArray(parsed)) {
       deps.log("[settings.hydrate] payload is not a valid settings object");
       return null;
     }

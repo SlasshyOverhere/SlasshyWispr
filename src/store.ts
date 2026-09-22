@@ -4,7 +4,7 @@ import {
   HOME_HISTORY_STORAGE_KEY,
   SETTINGS_STORAGE_KEY,
 } from './constants';
-import { parseJson } from './state/storage';
+import { parseJson, parseJsonText } from './state/storage';
 import { loadHistory } from './state/history';
 import { loadUsageStats, loadAnalyticsSessions } from './state/usage';
 import type {
@@ -12,6 +12,7 @@ import type {
   AnalyticsSessionDetail,
   HomeHistoryEntry,
   MainPage,
+  PersistedSettings,
   UsageStats,
 } from './types';
 
@@ -84,14 +85,8 @@ function loadAchievementStates(): AchievementState[] {
 }
 
 function loadIncognitoMode(): boolean {
-  try {
-    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw);
-    return parsed?.incognitoMode === true;
-  } catch {
-    return false;
-  }
+  const parsed = parseJson<Partial<PersistedSettings>>(SETTINGS_STORAGE_KEY, {});
+  return parsed.incognitoMode === true;
 }
 
 function loadInitialState(): UIState {
@@ -144,7 +139,9 @@ export function removeHistoryEntry(timestamp: number): void {
   try {
     const raw = localStorage.getItem(HOME_HISTORY_STORAGE_KEY);
     if (!raw) return;
-    const entries = JSON.parse(raw) as HomeHistoryEntry[];
+    // Not `parseJson`: a quarantined key would read back as an empty list and
+    // wipe the history on the next write, where this must stay a no-op.
+    const entries = parseJsonText<HomeHistoryEntry[] | null>(raw, null);
     if (!Array.isArray(entries)) return;
     const filtered = entries.filter((e) => e && e.timestamp !== timestamp);
     localStorage.setItem(HOME_HISTORY_STORAGE_KEY, JSON.stringify(filtered));
