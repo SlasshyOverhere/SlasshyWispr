@@ -24,14 +24,14 @@ export function UpdateSecuritySettingsPane() {
       <h3 className="settings-section-title">Software Updates</h3>
 
       <div className="update-hero">
-        <div className="s-row">
+        <div className="s-row" title="Installed version and the last time updates were checked.">
           <span className="s-row-label">
             Version
             <span id="updateLastCheckedText" className="s-row-hint">Last checked: Never.</span>
           </span>
           <div id="updateStatusPill" className="status-pill" data-stage="idle" aria-live="polite">Idle</div>
         </div>
-        <dl className="version-grid" aria-live="polite">
+        <dl className="version-grid" aria-live="polite" title="Version numbers for this install.">
           <div className="version-item">
             <dt>Current</dt>
             <dd id="updateCurrentVersion">-</dd>
@@ -53,7 +53,7 @@ export function UpdateSecuritySettingsPane() {
 
       <p id="updateStatusText" className="field-hint">Check to see if a new version is available.</p>
 
-      <label className="s-row" htmlFor="autoCheckUpdatesToggle">
+      <label className="s-row" htmlFor="autoCheckUpdatesToggle" title="Check GitHub for new releases twice a day.">
         <span className="s-row-label">Automatic update checks <span className="switch-desc">(every 12 hours)</span></span>
         <input
           id="autoCheckUpdatesToggle"
@@ -64,11 +64,11 @@ export function UpdateSecuritySettingsPane() {
         />
       </label>
 
-      <div className="btn-row">
-        <button id="checkUpdatesBtn" className="btn" type="button">Check for updates</button>
-        <button id="snoozeUpdateBtn" className="btn" type="button" disabled>Snooze 24h</button>
-        <button id="installUpdateBtn" className="btn btn-primary" type="button" disabled>Download &amp; install</button>
-        <button id="skipUpdateVersionBtn" className="btn" type="button" disabled>Skip this version</button>
+      <div className="btn-row" title="Update actions unlock once a newer release is found.">
+        <button id="checkUpdatesBtn" className="btn" type="button" title="Ask GitHub for the newest release.">Check for updates</button>
+        <button id="snoozeUpdateBtn" className="btn" type="button" title="Stop update prompts for a day." disabled>Snooze 24h</button>
+        <button id="installUpdateBtn" className="btn btn-primary" type="button" title="Download and run the installer." disabled>Download &amp; install</button>
+        <button id="skipUpdateVersionBtn" className="btn" type="button" title="Never offer this release again." disabled>Skip this version</button>
       </div>
 
       <div id="updateManualDownloadRow" className="s-row-block" hidden>

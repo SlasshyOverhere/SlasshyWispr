@@ -85,7 +85,7 @@ export function ModelsSettingsPane() {
       <div className="runtime-card">
         <div className="runtime-card-header">
           <span className="runtime-card-title">Speech-to-Text</span>
-          <div className="pills">
+          <div className="pills" title="Online transcribes with your provider; Offline runs a local model on this machine.">
             <label className="pill"><input id="sttRuntimeModeOnline" name="sttRuntimeModeProfile" type="radio" value="online" checked={settings.sttRuntimeMode !== "local"} onChange={() => dispatchSettingsPatch({ sttRuntimeMode: "online" })} />Online</label>
             <label className="pill"><input id="sttRuntimeModeOffline" name="sttRuntimeModeProfile" type="radio" value="offline" checked={settings.sttRuntimeMode === "local"} onChange={() => dispatchSettingsPatch({ sttRuntimeMode: "local" })} />Offline</label>
           </div>
@@ -95,7 +95,7 @@ export function ModelsSettingsPane() {
       <div className="runtime-card">
         <div className="runtime-card-header">
           <span className="runtime-card-title">AI Model</span>
-          <div className="pills">
+          <div className="pills" title="Online rewrites with your provider; Offline rewrites with Ollama on this machine.">
             <label className="pill"><input id="aiRuntimeModeOnline" name="aiRuntimeModeProfile" type="radio" value="online" checked={settings.aiRuntimeMode !== "local"} onChange={() => dispatchSettingsPatch({ aiRuntimeMode: "online" })} />Online</label>
             <label className="pill"><input id="aiRuntimeModeOffline" name="aiRuntimeModeProfile" type="radio" value="offline" checked={settings.aiRuntimeMode === "local"} onChange={() => dispatchSettingsPatch({ aiRuntimeMode: "local" })} />Offline</label>
           </div>
@@ -108,7 +108,7 @@ export function ModelsSettingsPane() {
 
       <div id="onlineProviderSection">
         <div className="compact-grid">
-          <label className="field" data-online-field="base-url">
+          <label className="field" data-online-field="base-url" title="Provider endpoint. Leave empty to use the app's default.">
             <span className="field-label">API Base URL</span>
             <input
               id="apiBaseUrlInput"
@@ -124,40 +124,40 @@ export function ModelsSettingsPane() {
               <span className="field-error">{apiBaseUrlError(settings.apiBaseUrl)}</span>
             )}
           </label>
-          <label className="field" data-online-field="stt-model">
+          <label className="field" data-online-field="stt-model" title="Model name your provider transcribes with.">
             <span className="field-label">STT Model</span>
             <input id="sttModelInput" type="text" placeholder="Use default STT model" autoComplete="off" value={settings.sttModelName} onChange={(event) => dispatchSettingsPatch({ sttModelName: event.target.value })} />
           </label>
         </div>
 
-        <label className="field">
+        <label className="field" title="Your provider key. Stored in the Windows credential store.">
           <span className="field-label">API Key</span>
           <input id="apiKeyInput" type="password" placeholder="Paste your API key" autoComplete="off" value={settings.apiKey} onChange={(event) => dispatchSettingsPatch({ apiKey: event.target.value })} />
         </label>
-        <label className="checkbox-field">
+        <label className="checkbox-field" title="Keep the key on this machine so you are not asked again.">
           <input id="rememberApiKeyInput" type="checkbox" checked={settings.rememberApiKey} onChange={(event) => dispatchSettingsPatch({ rememberApiKey: event.target.checked })} />
           <span>Remember API key locally on this machine</span>
         </label>
 
-        <label className="field" data-online-field="ai-model">
+        <label className="field" data-online-field="ai-model" title="Model name your provider rewrites with.">
           <span className="field-label">AI Model</span>
           <input id="aiModelInput" type="text" placeholder="Use default AI model" autoComplete="off" value={settings.aiModelName} onChange={(event) => dispatchSettingsPatch({ aiModelName: event.target.value })} />
         </label>
 
-        <label className="field">
+        <label className="field" title="Models your key can reach. Fetch to load the list.">
           <span className="field-label">Model Catalog</span>
           <select id="providerModelCatalogSelect">
             <option value="">Fetch models to load catalog...</option>
           </select>
         </label>
-        <div className="btn-row">
-          <button id="fetchProviderModelsBtn" className="btn" type="button">Fetch models</button>
-          <button id="applyModelToAiBtn" className="btn" type="button">Use for AI</button>
-          <button id="applyModelToSttBtn" className="btn" type="button">Use for STT</button>
+        <div className="btn-row" title="Load the provider's model list, then apply one to AI or STT.">
+          <button id="fetchProviderModelsBtn" className="btn" type="button" title="Ask the provider which models your key can use.">Fetch models</button>
+          <button id="applyModelToAiBtn" className="btn" type="button" title="Use the selected model for rewriting.">Use for AI</button>
+          <button id="applyModelToSttBtn" className="btn" type="button" title="Use the selected model for transcription.">Use for STT</button>
         </div>
         <p id="onlineProviderModeNotice" className="field-hint"></p>
 
-        <div className="status-detail-grid">
+        <div className="status-detail-grid" title="What the last run actually used.">
           <div className="status-detail-row">
             <span className="status-detail-label">Base URL</span>
             <code id="baseUrlValue" className="status-detail-value">loading...</code>
@@ -177,46 +177,46 @@ export function ModelsSettingsPane() {
 
       <div id="offlineOllamaSection">
         <div className="compact-grid">
-          <label className="field">
+          <label className="field" title="Address of your local Ollama server.">
             <span className="field-label">Base URL</span>
             <input id="localOllamaBaseUrlInput" type="text" placeholder={DEFAULT_LOCAL_OLLAMA_BASE_URL} autoComplete="off" value={settings.localOllamaBaseUrl} onChange={(event) => dispatchSettingsPatch({ localOllamaBaseUrl: event.target.value })} />
           </label>
-          <label className="field">
+          <label className="field" title="Ollama model used for rewriting.">
             <span className="field-label">Model</span>
             <input id="localOllamaModelInput" type="text" placeholder="llama3.1:8b, qwen2.5:7b, etc." autoComplete="off" value={settings.localOllamaModel} onChange={(event) => dispatchSettingsPatch({ localOllamaModel: event.target.value })} />
           </label>
         </div>
-        <label className="field">
+        <label className="field" title="Models Ollama already has. Fetch to load the list.">
           <span className="field-label">Model Catalog</span>
           <select id="localOllamaModelCatalogSelect">
             <option value="">Fetch models to load catalog...</option>
           </select>
         </label>
         <p id="ollamaStatusNotice" className="field-hint"></p>
-        <div className="btn-row">
-          <button id="checkOllamaStatusBtn" className="btn" type="button">Check status</button>
-          <button id="installOllamaBtn" className="btn" type="button">Install Ollama</button>
-          <button id="fetchOllamaModelsBtn" className="btn" type="button">Fetch models</button>
-          <button id="useOllamaModelBtn" className="btn" type="button">Use selected</button>
-          <button id="pullOllamaModelBtn" className="btn" type="button">Pull model</button>
+        <div className="btn-row" title="Set up Ollama, list what it has, and pick a model.">
+          <button id="checkOllamaStatusBtn" className="btn" type="button" title="See whether Ollama is running on this machine.">Check status</button>
+          <button id="installOllamaBtn" className="btn" type="button" title="Open the Ollama download page.">Install Ollama</button>
+          <button id="fetchOllamaModelsBtn" className="btn" type="button" title="List the models Ollama already has.">Fetch models</button>
+          <button id="useOllamaModelBtn" className="btn" type="button" title="Make the chosen model the active one.">Use selected</button>
+          <button id="pullOllamaModelBtn" className="btn" type="button" title="Download the chosen model through Ollama.">Pull model</button>
         </div>
       </div>
 
       <h3 className="settings-section-title">Local STT (Parakeet)</h3>
 
       <div id="offlineSttSection">
-        <label className="field">
+        <label className="field" title="The local STT model in use.">
           <span className="field-label">Selected Model</span>
           <input id="localSttModelInput" type="text" placeholder="Select a model from catalog below" autoComplete="off" readOnly />
         </label>
-        <label className="field">
+        <label className="field" title="Models you can run offline. Pick one to download.">
           <span className="field-label">Model Catalog</span>
           <select id="localSttModelCatalogSelect">
             <option value="">Loading built-in model catalog...</option>
           </select>
         </label>
 
-        <div className="s-row">
+        <div className="s-row" title="Whether the model is downloaded and loaded.">
           <span className="s-row-label">
             Status
             <span id="localSttStatusDetail" className="s-row-hint">Select a local STT model to download and use it offline.</span>
@@ -224,10 +224,10 @@ export function ModelsSettingsPane() {
           <span id="localSttStatusBadge" className="status-pill" data-state="idle" aria-live="polite">Not selected</span>
         </div>
 
-        <div className="btn-row">
-          <button id="downloadLocalSttModelBtn" className="btn btn-primary" type="button">Download &amp; install</button>
-          <button id="deleteLocalSttModelBtn" className="btn" type="button">Delete</button>
-          <button id="openLocalSttModelPathBtn" className="btn" type="button">Open folder</button>
+        <div className="btn-row" title="Manage the files for the selected offline model.">
+          <button id="downloadLocalSttModelBtn" className="btn btn-primary" type="button" title="Download the model and load it for offline use.">Download &amp; install</button>
+          <button id="deleteLocalSttModelBtn" className="btn" type="button" title="Remove the downloaded model files.">Delete</button>
+          <button id="openLocalSttModelPathBtn" className="btn" type="button" title="Show the model folder in Explorer.">Open folder</button>
         </div>
 
         <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100}>
@@ -242,7 +242,7 @@ export function ModelsSettingsPane() {
       <h3 className="settings-section-title">TTS Setup</h3>
 
       <div id="ttsBootstrapCard">
-        <div className="s-row">
+        <div className="s-row" title="One-time install of the Piper speech engine and its voice.">
           <span className="s-row-label">
             Piper Runtime
             <span className="s-row-hint">Install and configure TTS dependencies with live progress logs.</span>
@@ -258,7 +258,7 @@ export function ModelsSettingsPane() {
       <div id="ttsProfilesArea" hidden>
         <h3 className="settings-section-title">TTS Profiles</h3>
 
-        <label className="field">
+        <label className="field" title="Piper uses a fixed voice; cloned voice uses a recording of you.">
           <span className="field-label">Active Engine</span>
           <select id="ttsEngineSelect">
             <option value="piper">Piper (fixed voice)</option>
@@ -267,17 +267,17 @@ export function ModelsSettingsPane() {
         </label>
 
         <div className="profile-tabs" role="tablist" aria-label="TTS profiles">
-          <button id="ttsProfilePiperTab" className={cloneTab === 'piper' ? 'profile-tab is-active' : 'profile-tab'} type="button" onClick={() => setCloneTab('piper')}>Piper</button>
-          <button id="ttsProfileCloneTab" className={cloneTab === 'clone' ? 'profile-tab is-active' : 'profile-tab'} type="button" onClick={() => setCloneTab('clone')}>Cloned voice</button>
+          <button id="ttsProfilePiperTab" className={cloneTab === 'piper' ? 'profile-tab is-active' : 'profile-tab'} type="button" title="Settings for the fixed Piper voice." onClick={() => setCloneTab('piper')}>Piper</button>
+          <button id="ttsProfileCloneTab" className={cloneTab === 'clone' ? 'profile-tab is-active' : 'profile-tab'} type="button" title="Train and manage voices cloned from your own recording." onClick={() => setCloneTab('clone')}>Cloned voice</button>
         </div>
 
         <div id="ttsProfilePiperPanel" hidden={cloneTab !== 'piper'}>
-          <label className="field">
+          <label className="field" title="Point at your own piper.exe if you keep one elsewhere.">
             <span className="field-label">Executable Path <span className="switch-desc">(optional override)</span></span>
             <input id="piperPathInput" type="text" placeholder="Auto-filled after runtime setup" autoComplete="off" value={settings.piperPath} onChange={(event) => dispatchSettingsPatch({ piperPath: event.target.value })} />
           </label>
           <div className="compact-grid">
-            <label className="field">
+            <label className="field" title="Higher quality is slower to speak.">
               <span className="field-label">Voice Quality</span>
               <select id="piperQualitySelect" value={settings.piperQuality} onChange={(event) => dispatchSettingsPatch({ piperQuality: event.target.value as typeof settings.piperQuality })}>
                 <option value="fast">Fast</option>
@@ -285,7 +285,7 @@ export function ModelsSettingsPane() {
                 <option value="high">High quality</option>
               </select>
             </label>
-            <label className="field">
+            <label className="field" title="Expressive preset applied to the voice.">
               <span className="field-label">Emotion Style</span>
               <select id="piperEmotionSelect" value={settings.piperEmotion} onChange={(event) => dispatchSettingsPatch({ piperEmotion: event.target.value as typeof settings.piperEmotion })}>
                 <option value="neutral">Neutral</option>
@@ -297,15 +297,15 @@ export function ModelsSettingsPane() {
               </select>
             </label>
           </div>
-          <label className="field">
+          <label className="field" title="How fast the voice speaks.">
             <span className="field-label">Speed <strong id="piperSpeedValue">{settings.piperSpeed.toFixed(2)}x</strong></span>
             <input id="piperSpeedInput" type="range" min="0.5" max="2" step="0.05" value={settings.piperSpeed} onChange={(event) => dispatchSettingsPatch({ piperSpeed: Number(event.target.value) })} />
           </label>
           <p className="field-hint">Emotion/quality for Piper are expressive presets, not true voice cloning.</p>
-          <div className="btn-row">
-            <button id="setupRuntimeBtn" className="btn" type="button">Re-setup Piper</button>
-            <button id="validatePiperBtn" className="btn" type="button">Validate Piper</button>
-            <button id="downloadVoiceBtn" className="btn" type="button">Download voice only</button>
+          <div className="btn-row" title="Repair or check the Piper install without losing your settings.">
+            <button id="setupRuntimeBtn" className="btn" type="button" title="Run the engine install again.">Re-setup Piper</button>
+            <button id="validatePiperBtn" className="btn" type="button" title="Check the installed files are usable.">Validate Piper</button>
+            <button id="downloadVoiceBtn" className="btn" type="button" title="Re-download just the voice file.">Download voice only</button>
           </div>
           <div className="status-detail-grid">
             <div className="status-detail-row">
@@ -345,6 +345,7 @@ export function ModelsSettingsPane() {
           <div className="btn-row">
             <button
               id="ensureVoiceCloneModelBtn"
+              title="Downloads the voice-cloning model once, about 156 MB."
               className="btn"
               type="button"
               disabled={cloneBusy}
@@ -360,6 +361,7 @@ export function ModelsSettingsPane() {
             </button>
             <button
               id="unloadVoiceCloneModelBtn"
+              title="Free the clone model from memory."
               className="btn"
               type="button"
               disabled={cloneBusy}
@@ -375,6 +377,7 @@ export function ModelsSettingsPane() {
             </button>
             <button
               id="refreshVoiceClonesBtn"
+              title="Re-read the saved voice profiles."
               className="btn"
               type="button"
               disabled={cloneBusy}
@@ -387,11 +390,11 @@ export function ModelsSettingsPane() {
             </button>
           </div>
 
-          <label className="field">
+          <label className="field" title="Read this sentence exactly — the clone is built from these words, so it must match.">
             <span className="field-label">Enrolment sentence <span className="switch-desc">(read this aloud, exactly)</span></span>
             <code id="voiceCloneSentence" className="status-detail-value">{ENROLMENT_SENTENCE}</code>
           </label>
-          <label className="field">
+          <label className="field" title="A clean WAV of you reading the sentence, 3 to 30 seconds.">
             <span className="field-label">Reference clip <span className="switch-desc">(WAV, 3-30s)</span></span>
             <input
               id="voiceCloneFileInput"
@@ -400,7 +403,7 @@ export function ModelsSettingsPane() {
               onChange={(event) => setReferenceFile(event.target.files?.[0] ?? null)}
             />
           </label>
-          <label className="field">
+          <label className="field" title="Type exactly what the clip says.">
             <span className="field-label">Words spoken in the clip</span>
             <input
               id="voiceCloneReferenceTextInput"
@@ -410,7 +413,7 @@ export function ModelsSettingsPane() {
               onChange={(event) => setReferenceText(event.target.value)}
             />
           </label>
-          <label className="field">
+          <label className="field" title="A short name to save this voice under.">
             <span className="field-label">Voice profile ID</span>
             <input
               id="voiceCloneIdInput"
@@ -424,6 +427,7 @@ export function ModelsSettingsPane() {
           <div className="btn-row">
             <button
               id="cloneVoiceBtn"
+              title="Build a voice profile from the clip and its words."
               className="btn btn-primary"
               type="button"
               disabled={cloneBusy}
@@ -451,6 +455,7 @@ export function ModelsSettingsPane() {
             </button>
             <button
               id="testVoiceCloneBtn"
+              title="Speak a sample line with this voice."
               className="btn"
               type="button"
               disabled={cloneBusy || !settings.voiceCloneSpeakerId}
@@ -469,6 +474,7 @@ export function ModelsSettingsPane() {
             </button>
             <button
               id="deleteVoiceCloneBtn"
+              title="Remove this voice profile."
               className="btn"
               type="button"
               disabled={cloneBusy || !settings.voiceCloneSpeakerId}
@@ -486,7 +492,7 @@ export function ModelsSettingsPane() {
             </button>
           </div>
 
-          <label className="field">
+          <label className="field" title="Pick which cloned voice reads your replies.">
             <span className="field-label">Saved cloned voices</span>
             <select
               id="voiceCloneSelect"
@@ -499,7 +505,7 @@ export function ModelsSettingsPane() {
               ))}
             </select>
           </label>
-          <label className="field">
+          <label className="field" title="How fast the cloned voice speaks.">
             <span className="field-label">Speed <strong id="voiceCloneSpeedValue">{settings.voiceCloneSpeed.toFixed(2)}x</strong></span>
             <input
               id="voiceCloneSpeedInput"
