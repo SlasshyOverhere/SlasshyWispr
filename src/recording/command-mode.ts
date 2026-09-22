@@ -70,11 +70,9 @@ export async function primeSelectionSnapshotForCommandMode(): Promise<void> {
 export function setCommandModeArmed(next: boolean): void {
   commandModeArmed = next;
   if (commandModeArmed) {
-    commandDeps.setNotice("Command mode armed for the next dictation.");
     void primeSelectionSnapshotForCommandMode();
   } else {
     commandSelectionSnapshot = null;
-    commandDeps.setNotice("Command mode disabled for the next dictation.");
   }
   commandDeps.publishDockState();
 }

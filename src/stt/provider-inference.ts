@@ -3,9 +3,10 @@
  * Pure, no DOM, no invoke. preferredOrder kept with the inference it serves.
  */
 
+/** English is the primary dictation language, so the multilingual 0.6B leads. */
 export const PREFERRED_LOCAL_STT_MODELS = [
-  "nvidia/parakeet-tdt_ctc-110m",
   "nvidia/parakeet-tdt-0.6b-v3",
+  "nvidia/parakeet-tdt_ctc-110m",
 ];
 
 export function inferLocalSttProviderFromModel(model: string): string {

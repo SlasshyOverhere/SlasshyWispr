@@ -56,7 +56,14 @@ export const IPC_COMMANDS = {
   ensureVoiceModel: "ensure_voice_model",
   getTtsRuntimeSetupStatus: "get_tts_runtime_setup_status",
   startTtsRuntimeSetup: "start_tts_runtime_setup",
-  setupCoquiRuntime: "setup_coqui_runtime",
+  // Native voice cloning (ZipVoice, in-process)
+  getVoiceCloneStatus: "get_voice_clone_status",
+  ensureVoiceCloneModel: "ensure_voice_clone_model",
+  listVoiceClones: "list_voice_clones",
+  cloneVoice: "clone_voice",
+  previewClonedVoice: "preview_cloned_voice",
+  deleteVoiceClone: "delete_voice_clone",
+  unloadVoiceCloneModel: "unload_voice_clone_model",
   // Pipeline
   runAssistantPipeline: "run_assistant_pipeline",
   // Windows

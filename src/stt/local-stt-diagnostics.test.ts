@@ -1,9 +1,8 @@
 /**
  * Local-STT diagnostics move-boundary test — Phase 5 shell decomposition.
  *
- * Pins the pure getOfflineDiagnosticData matrix (all seven issue keys +
- * default branch carry distinct titles and at least one action) and the
- * checkPythonDependencies parakeet fast path (no IPC fires). IPC is
+ * Pins the pure getOfflineDiagnosticData matrix (every issue key + the
+ * default branch carry distinct titles and at least one action). IPC is
  * stubbed with mock.module.
  */
 import { describe, it, expect, mock, beforeEach } from "bun:test";
@@ -48,7 +47,6 @@ describe("getOfflineDiagnosticData", () => {
       "no-model-downloaded",
       "wrong-stt-mode",
       "model-file-missing",
-      "python-deps-missing",
       "insufficient-memory",
       "load-timeout",
       "some raw error string",
@@ -73,11 +71,3 @@ describe("getOfflineDiagnosticData", () => {
   });
 });
 
-describe("checkPythonDependencies", () => {
-  it("returns true for parakeet without IPC", async () => {
-    await expect(
-      diagnostics.checkPythonDependencies("nvidia/parakeet-tdt-0.6b-v3"),
-    ).resolves.toBe(true);
-    expect(invokeCalls).toEqual([]);
-  });
-});

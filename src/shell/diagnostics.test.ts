@@ -86,6 +86,11 @@ function rowTexts(area: FakeElement): string[] {
 }
 
 function dismissButton(area: FakeElement, index: number): FakeElement {
+  // Always the last control in the row, so an action button cannot displace it.
+  return area.children[index].children.at(-1) as FakeElement;
+}
+
+function actionButton(area: FakeElement, index: number): FakeElement {
   return area.children[index].children[1];
 }
 
@@ -168,6 +173,36 @@ describe("diagnostics notice rendering", () => {
     expect(dismissButton(area, 0).getAttribute("aria-label")).toBe(
       "Dismiss notice: timeout corrected",
     );
+  });
+
+  it("runs the action, and keeps the row so it can still be read", () => {
+    const area = wire();
+    let runs = 0;
+    queueNotice("Update 1.2.3 is available.", false, {
+      label: "Open Updates",
+      run: () => {
+        runs += 1;
+      },
+    });
+
+    actionButton(area, 0).click();
+
+    expect(runs).toBe(1);
+    expect(rowTexts(area)).toEqual(["Update 1.2.3 is available."]);
+  });
+
+  it("omits the action button on a plain notice", () => {
+    const area = wire();
+    queueNotice("timeout corrected");
+
+    expect(area.children[0].children).toHaveLength(2);
+  });
+
+  it("labels the action button with its own text", () => {
+    const area = wire();
+    queueNotice("Update 1.2.3 is available.", false, { label: "Open Updates", run: () => {} });
+
+    expect(actionButton(area, 0).textContent).toBe("Open Updates");
   });
 
   it("starts from an empty area when re-initialised", () => {

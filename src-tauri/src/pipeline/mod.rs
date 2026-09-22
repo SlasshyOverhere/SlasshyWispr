@@ -1,5 +1,4 @@
 pub mod ai;
-pub mod daemon;
 pub mod fs;
 pub mod input;
 pub mod log;

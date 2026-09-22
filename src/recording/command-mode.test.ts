@@ -108,18 +108,11 @@ describe("armed lifecycle", () => {
     expect(isCommandModeArmed()).toBe(false);
     toggleCommandModeArmed();
     expect(isCommandModeArmed()).toBe(true);
-    expect(harness.notices[0]).toEqual({
-      message: "Command mode armed for the next dictation.",
-      isError: undefined,
-    });
     setCommandSelectionSnapshot("stale");
     toggleCommandModeArmed();
     expect(isCommandModeArmed()).toBe(false);
     expect(getCommandSelectionSnapshot()).toBeNull();
-    expect(harness.notices[1]).toEqual({
-      message: "Command mode disabled for the next dictation.",
-      isError: undefined,
-    });
+    expect(harness.notices).toEqual([]);
   });
 
   it("resetCommandMode clears and publishes", () => {

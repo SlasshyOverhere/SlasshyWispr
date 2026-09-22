@@ -52,7 +52,7 @@ export function isTauriEnvironment(): boolean {
 
 export function openInSystemBrowser(url: string): void {
   void openExternalUrl(url).catch((error: unknown) => {
-    shellDeps.notify(`Failed to open link: ${asErrorMessage(error)}`, true);
+    shellDeps.log(`[shell] failed to open link: ${asErrorMessage(error)}`);
   });
 }
 
@@ -67,13 +67,13 @@ export function setupCustomWindowControls(): void {
 
   shellElements.windowMinimizeBtn.addEventListener("click", () => {
     void appWindow.minimize().catch((error) => {
-      shellDeps.notify(`Minimize failed: ${asErrorMessage(error)}`, true);
+      shellDeps.log(`[shell] minimize failed: ${asErrorMessage(error)}`);
     });
   });
 
   shellElements.windowCloseBtn.addEventListener("click", () => {
     void appWindow.close().catch((error) => {
-      shellDeps.notify(`Close failed: ${asErrorMessage(error)}`, true);
+      shellDeps.log(`[shell] close failed: ${asErrorMessage(error)}`);
     });
   });
 }

@@ -17,7 +17,7 @@ export function PipelineSettingsPane() {
 
       <h3 className="settings-section-title">Speech-to-Text</h3>
 
-      <label className="field" htmlFor="sttTimeoutSecondsInput">
+      <label className="field" htmlFor="sttTimeoutSecondsInput" title="How long one online transcription may run before it is abandoned.">
         <span className="field-label">Request Timeout (seconds)</span>
         <input
           id="sttTimeoutSecondsInput"
@@ -33,7 +33,7 @@ export function PipelineSettingsPane() {
 
       <h3 className="settings-section-title">Prompting</h3>
 
-      <label className="field" htmlFor="systemPromptInput">
+      <label className="field" htmlFor="systemPromptInput" title="Replaces the built-in cleanup prompt while filled in.">
         <span className="field-label">System Prompt</span>
         <textarea
           id="systemPromptInput"
@@ -49,7 +49,7 @@ export function PipelineSettingsPane() {
         </span>
       </label>
 
-      <label className="field" htmlFor="temperatureInput">
+      <label className="field" htmlFor="temperatureInput" title="How much the wording may vary. Low is more predictable.">
         <span className="field-label">Temperature <strong id="temperatureValue">{settings.temperature.toFixed(2)}</strong></span>
         <input
           id="temperatureInput"
@@ -62,7 +62,7 @@ export function PipelineSettingsPane() {
         />
       </label>
 
-      <label className="field" htmlFor="maxTokensInput">
+      <label className="field" htmlFor="maxTokensInput" title="Ceiling on the reply length.">
         <span className="field-label">Max Tokens</span>
         <input
           id="maxTokensInput"
@@ -77,7 +77,7 @@ export function PipelineSettingsPane() {
 
       <h3 className="settings-section-title">Pipeline Status</h3>
 
-      <div className="s-row">
+      <div className="s-row" title="What the pipeline is doing right now.">
         <span className="s-row-label">
           Status
           <span id="statusDetail" className="s-row-hint">Ready.</span>
@@ -85,17 +85,16 @@ export function PipelineSettingsPane() {
         <div id="statusPill" className="status-pill" data-stage="idle">Idle</div>
       </div>
 
-      <dl className="latency-inline" aria-live="polite">
+      <dl className="latency-inline" aria-live="polite" title="Where the time went on the last run.">
         <dt>STT</dt><dd id="sttLatency">-</dd>
         <dt>AI</dt><dd id="aiLatency">-</dd>
         <dt>TTS</dt><dd id="ttsLatency">-</dd>
         <dt>Total</dt><dd id="totalLatency">-</dd>
       </dl>
 
-      {/* Filled imperatively: the rows are created and dismissed by the shell. */}
-      <div id="noticeStack" className="notice-stack" aria-live="polite" />
+      {/* The notice area is global — it lives in the app shell, not here. */}
 
-      <label className="field" htmlFor="assistantAudio">
+      <label className="field" htmlFor="assistantAudio" title="Play the last generated reply.">
         <span className="field-label">Voice Preview</span>
         <audio id="assistantAudio" controls preload="none"></audio>
       </label>

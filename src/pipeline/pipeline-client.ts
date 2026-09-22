@@ -15,14 +15,12 @@ import { resolveSttLanguageConfig } from "../state/settings-store";
 import { pickDefaultLocalSttModelFromCatalog as pickDefaultLocalSttModelFromList } from "../stt/provider-inference";
 import type {
   AssistantPipelineResponse,
-  DictionaryTerm,
   PersistedSettings,
   SelectionPopupPayload,
   SettingsPane,
-  SnippetEntry,
   TtsEngine,
 } from "../types";
-import { asErrorMessage, expandSnippetsInText } from "../utils";
+import { asErrorMessage } from "../utils";
 import { buildSelectionPopupPayload } from "../windows/selection-intent";
 import {
   audioBufferToWavBlob,
@@ -71,8 +69,6 @@ export interface PipelineClientDeps {
   getLastWarmedLocalSttModel: () => string;
   setLastWarmedLocalSttModel: (model: string) => void;
   ensureLocalOllamaModelSelected: (options?: { quiet?: boolean }) => Promise<string>;
-  getDictionaryTerms: () => DictionaryTerm[];
-  getSnippets: () => SnippetEntry[];
   nextSelectionPopupToken: () => number;
   dismissSelectionPopup: () => Promise<void>;
   showSelectionAssistantPopup: (payload: SelectionPopupPayload) => Promise<boolean>;
@@ -161,7 +157,16 @@ export async function runPipeline(
       )} bytes=${pipelineAudioBlob.size} mime=${pipelineAudioMimeType || "unknown"}`,
     );
     const systemPrompt = buildEffectiveSystemPrompt(activeSettings, isCommandModeArmed());
-    const pipelineTtsEngine: TtsEngine = "piper";
+    const pipelineTtsEngine: TtsEngine = activeSettings.ttsEngine;
+    // No profile selected means no clone settings: the backend then reports a missing
+    // configuration instead of synthesising in a default voice.
+    const voiceClonePayload =
+      pipelineTtsEngine === "zipvoice" && activeSettings.voiceCloneSpeakerId.trim()
+        ? {
+            speakerId: activeSettings.voiceCloneSpeakerId,
+            speed: activeSettings.voiceCloneSpeed,
+          }
+        : null;
     let selectedTextForRewrite: string | null = null;
     if (isCommandModeArmed()) {
       const primedSelected = (getCommandSelectionSnapshot() ?? "").trim();
@@ -250,13 +255,11 @@ export async function runPipeline(
     }
 
     const sttLanguageConfig = resolveSttLanguageConfig(activeSettings);
-    // F-009: one token per run, shared by the request and the popup it
-    // produces, so a later run's token supersedes this one and the backend
-    // can reject the older replace.
+    // F-030: one token per run, carried by the popup it produces. A later run
+    // supersedes it, and the popup refuses show/copy/replace for an older one.
     const runToken = clientDeps.nextSelectionPopupToken();
 
     const response: AssistantPipelineResponse = await ipcRunAssistantPipeline({
-        replaceToken: String(runToken),
         apiKey: activeSettings.apiKey,
         apiBaseUrl: activeSettings.apiBaseUrl || null,
         sttModel: activeSettings.sttModelName || null,
@@ -277,14 +280,6 @@ export async function runPipeline(
         systemPrompt,
         temperature: activeSettings.temperature,
         maxTokens: activeSettings.maxTokens,
-        dictionaryEntries: clientDeps.getDictionaryTerms().map((item) => ({
-          source: item.source,
-          target: item.target,
-        })),
-        snippetEntries: clientDeps.getSnippets().map((item) => ({
-          trigger: item.trigger,
-          expansion: item.expansion,
-        })),
         rawMode: activeSettings.rawMode,
         applyBacktrack: activeSettings.backtrackCorrection,
         removeFillers: activeSettings.removeFillers,
@@ -302,7 +297,7 @@ export async function runPipeline(
           quality: activeSettings.piperQuality,
           emotion: activeSettings.piperEmotion,
         },
-        coqui: null,
+        voiceClone: voiceClonePayload,
     } as Record<string, unknown>);
     clientDeps.log(
       `[pipeline.invoke] totalMs=${Math.round(
@@ -327,16 +322,8 @@ export async function runPipeline(
       }
     }
 
-    const resolvedResponse =
-      response.mode === "dictation"
-        ? {
-            ...response,
-            assistantResponse: expandSnippetsInText(response.assistantResponse, clientDeps.getSnippets()),
-          }
-        : response;
-
+    const resolvedResponse = response;
     renderPipelineResponse(resolvedResponse);
-    let playbackCompleted = true;
     const selectionPopupPayload = buildSelectionPopupPayload(resolvedResponse, runToken);
     if (!selectionPopupPayload) {
       await clientDeps.dismissSelectionPopup();
@@ -350,16 +337,14 @@ export async function runPipeline(
       resolvedResponse.mode === "assistant" &&
       resolvedResponse.audioBase64.trim()
     ) {
-      playbackCompleted = await playGeneratedAudio(resolvedResponse.audioBase64, pipelineTtsEngine);
+      await playGeneratedAudio(resolvedResponse.audioBase64, pipelineTtsEngine);
     }
 
     let dictationPasted = false;
     if (resolvedResponse.mode === "dictation") {
       if (activeSettings.autoPasteDictation) {
         dictationPasted = await clientDeps.triggerAutoPaste(resolvedResponse.assistantResponse);
-        if (dictationPasted) {
-          clientDeps.notify("Dictation copied and pasted.");
-        }
+        // Pasted text is its own confirmation; no toast.
       }
       // Bug fix: also copy dictation to clipboard when copyToClipboard is enabled
       // and autoPaste is disabled (previously transcriptions were silently lost)
@@ -382,17 +367,6 @@ export async function runPipeline(
     resetCommandMode();
 
     if (clientDeps.getStage() !== "recording") {
-      if (resolvedResponse.mode === "dictation") {
-        if (dictationPasted) {
-          // Notice already set above.
-        } else {
-          clientDeps.notify("Dictation ready. Copy it from Home if needed.");
-        }
-      } else if (selectionPopupOpened || response.selectionRewrite || response.selectionPending) {
-        // Notice already set above.
-      } else {
-        clientDeps.notify(playbackCompleted ? "Pipeline completed." : "Playback interrupted for new dictation.");
-      }
       clientDeps.markIdle("Ready for next request.");
     }
   } catch (error) {

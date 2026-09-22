@@ -13,17 +13,10 @@ use tauri::{AppHandle, Manager, State};
 use crate::audio;
 
 use super::ipc_types::ProviderModelsResponse;
-use crate::constants::ZERO_PYTHON_STT_NOTICE;
-use crate::pipeline::daemon::{
-    local_stt_daemon_stats, stop_all_local_stt_bridge_daemons,
-    stop_all_local_stt_bridge_daemons_with_count, trim_all_local_stt_bridge_daemon_model_caches,
-};
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::routing::{
     built_in_local_stt_model_catalog, canonical_local_stt_model_id,
-    infer_local_stt_provider_from_model, local_stt_provider_requires_python,
-    local_stt_provider_supported_in_zero_python_mode, normalize_model_name,
-    zero_python_mode_enabled,
+    infer_local_stt_provider_from_model, normalize_model_name,
 };
 use crate::pipeline::stt_download::progress::{now_unix_ms, LocalSttDownloadStatusResponse};
 use crate::pipeline::stt_download::resolve::{
@@ -127,8 +120,6 @@ pub(crate) struct LocalSttDeactivateResponse {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LocalSttRuntimeStateResponse {
     loaded: bool,
-    daemon_count: usize,
-    loaded_daemon_count: usize,
     details: String,
 }
 
@@ -185,9 +176,6 @@ pub(crate) async fn download_local_stt_model(
     }
 
     let provider = infer_local_stt_provider_from_model(&model);
-    if zero_python_mode_enabled() && !local_stt_provider_supported_in_zero_python_mode(&provider) {
-        return Err(ZERO_PYTHON_STT_NOTICE.to_string());
-    }
     let repo_id = resolve_huggingface_repo_id(&provider, &model);
     let repo_id_for_status = repo_id.clone();
     state.update_local_stt_download_status(|status| {
@@ -245,183 +233,39 @@ pub(crate) async fn download_local_stt_model(
         match download_result {
             Ok(download_summary) => {
                 let download_details = download_summary.details;
-                let runtime_setup_required = matches!(
-                    provider_for_task.as_str(),
-                    "whisper" | "moonshine" | "sensevoice"
-                );
-                if runtime_setup_required {
+                let native_parakeet_warmup_required = provider_for_task == "parakeet";
+                if native_parakeet_warmup_required {
                     let _ = state_for_task.update_local_stt_download_status(|status| {
                         status.model = model_for_task.clone();
                         status.repo_id = repo_id_for_task.clone();
-                        status.stage = "Preparing local STT runtime...".to_string();
-                        status.message = "Installing local STT runtime dependencies. This can take several minutes."
-                            .to_string();
+                        status.stage = "Warming up local STT model...".to_string();
+                        status.message =
+                            "Loading native Parakeet int8 model so first dictation is fast."
+                                .to_string();
                         status.current_file.clear();
+                        if status.total_bytes > 0 {
+                            status.downloaded_bytes = status.total_bytes;
+                        }
+                        if status.files_total > 0 {
+                            status.files_completed = status.files_total;
+                        }
                     });
 
-                    let app_for_runtime = app_for_task.clone();
-                    let runtime_setup_result = tauri::async_runtime::spawn_blocking(move || {
-                        crate::services::transcribe::setup_local_stt_runtime_blocking(
-                            &app_for_runtime,
-                            "python",
+                    let app_for_warmup = app_for_task.clone();
+                    let model_for_warmup = model_for_task.clone();
+                    let warmup_result = tauri::async_runtime::spawn_blocking(move || {
+                        crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(
+                            &app_for_warmup,
+                            &model_for_warmup,
                         )
                     })
                     .await
-                    .map_err(|error| format!("Local STT runtime worker failed: {error}"))
+                    .map_err(|error| format!("Local STT warmup worker failed: {error}"))
                     .and_then(|result| result);
 
-                    match runtime_setup_result {
-                        Ok(python_path) => {
-                            let warmup_required = matches!(
-                                provider_for_task.as_str(),
-                                "parakeet" | "whisper" | "moonshine" | "sensevoice"
-                            );
-                            let warmup_result = if warmup_required {
-                                let warmup_message = if provider_for_task == "parakeet" {
-                                    "Loading Parakeet model once so first dictation is fast."
-                                } else {
-                                    "Loading local STT model once so first dictation is fast."
-                                };
-                                let _ = state_for_task.update_local_stt_download_status(|status| {
-                                    status.model = model_for_task.clone();
-                                    status.repo_id = repo_id_for_task.clone();
-                                    status.stage = "Warming up local STT model...".to_string();
-                                    status.message = warmup_message.to_string();
-                                    status.current_file.clear();
-                                    if status.total_bytes > 0 {
-                                        status.downloaded_bytes = status.total_bytes;
-                                    }
-                                    if status.files_total > 0 {
-                                        status.files_completed = status.files_total;
-                                    }
-                                });
-
-                                let app_for_warmup = app_for_task.clone();
-                                let model_for_warmup = model_for_task.clone();
-                                let provider_for_warmup = provider_for_task.clone();
-                                let python_for_warmup = python_path.clone();
-                                tauri::async_runtime::spawn_blocking(move || {
-                                    if provider_for_warmup == "parakeet" {
-                                        crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(
-                                            &app_for_warmup,
-                                            &python_for_warmup,
-                                            &model_for_warmup,
-                                        )
-                                    } else {
-                                        crate::services::transcribe::warmup_local_stt_hf_model_blocking(
-                                            &app_for_warmup,
-                                            &python_for_warmup,
-                                            &model_for_warmup,
-                                        )
-                                    }
-                                })
-                                .await
-                                .map_err(|error| format!("Local STT warmup worker failed: {error}"))
-                                .and_then(|result| result)
-                            } else {
-                                Ok("Warmup skipped.".to_string())
-                            };
-
-                            match warmup_result {
-                                Ok(warmup_details) => {
-                                    let _ = state_for_task.update_local_stt_download_status(
-                                        |status| {
-                                            status.active = false;
-                                            status.completed = true;
-                                            status.success = true;
-                                            status.model = model_for_task.clone();
-                                            status.repo_id = repo_id_for_task.clone();
-                                            status.stage = "Download complete.".to_string();
-                            status.message = format!(
-                                "{download_details} Local STT runtime ready ({python_path}). {warmup_details}"
-                            );
-                                            status.current_file.clear();
-                                            if status.total_bytes > 0 {
-                                                status.downloaded_bytes = status.total_bytes;
-                                            }
-                                            if status.files_total > 0 {
-                                                status.files_completed = status.files_total;
-                                            }
-                                        },
-                                    );
-                                }
-                                Err(warmup_error) => {
-                                    let _ = state_for_task.update_local_stt_download_status(
-                                        |status| {
-                                            status.active = false;
-                                            status.completed = true;
-                                            status.success = true;
-                                            status.model = model_for_task.clone();
-                                            status.repo_id = repo_id_for_task.clone();
-                                            status.stage = "Download complete (warmup warning)."
-                                                .to_string();
-                                            status.message = format!(
-                                                "{download_details} Local STT runtime ready ({python_path}). Warmup skipped: {}",
-                                                clip_text(&single_line(&warmup_error), 360)
-                                            );
-                                            status.current_file.clear();
-                                            if status.total_bytes > 0 {
-                                                status.downloaded_bytes = status.total_bytes;
-                                            }
-                                            if status.files_total > 0 {
-                                                status.files_completed = status.files_total;
-                                            }
-                                        },
-                                    );
-                                }
-                            }
-                        }
-                        Err(runtime_error) => {
-                            let _ = state_for_task.update_local_stt_download_status(|status| {
-                                status.active = false;
-                                status.completed = true;
-                                status.success = false;
-                                status.model = model_for_task.clone();
-                                status.repo_id = repo_id_for_task.clone();
-                                status.stage = "Runtime setup failed.".to_string();
-                                status.message = format!(
-                                    "{download_details} Runtime setup failed: {}",
-                                    clip_text(&single_line(&runtime_error), 420)
-                                );
-                                status.current_file.clear();
-                            });
-                        }
-                    }
-                } else {
-                    let native_parakeet_warmup_required = provider_for_task == "parakeet";
-                    if native_parakeet_warmup_required {
-                        let _ = state_for_task.update_local_stt_download_status(|status| {
-                            status.model = model_for_task.clone();
-                            status.repo_id = repo_id_for_task.clone();
-                            status.stage = "Warming up local STT model...".to_string();
-                            status.message =
-                                "Loading native Parakeet int8 model so first dictation is fast."
-                                    .to_string();
-                            status.current_file.clear();
-                            if status.total_bytes > 0 {
-                                status.downloaded_bytes = status.total_bytes;
-                            }
-                            if status.files_total > 0 {
-                                status.files_completed = status.files_total;
-                            }
-                        });
-
-                        let app_for_warmup = app_for_task.clone();
-                        let model_for_warmup = model_for_task.clone();
-                        let warmup_result = tauri::async_runtime::spawn_blocking(move || {
-                            crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(
-                                &app_for_warmup,
-                                "",
-                                &model_for_warmup,
-                            )
-                        })
-                        .await
-                        .map_err(|error| format!("Local STT warmup worker failed: {error}"))
-                        .and_then(|result| result);
-
-                        match warmup_result {
-                            Ok(warmup_details) => {
-                                let _ = state_for_task.update_local_stt_download_status(
+                    match warmup_result {
+                        Ok(warmup_details) => {
+                            let _ = state_for_task.update_local_stt_download_status(
                                     |status| {
                                         status.active = false;
                                         status.completed = true;
@@ -441,48 +285,46 @@ pub(crate) async fn download_local_stt_model(
                                         }
                                     },
                                 );
-                            }
-                            Err(warmup_error) => {
-                                let _ = state_for_task.update_local_stt_download_status(|status| {
-                                    status.active = false;
-                                    status.completed = true;
-                                    status.success = true;
-                                    status.model = model_for_task.clone();
-                                    status.repo_id = repo_id_for_task.clone();
-                                    status.stage =
-                                        "Download complete (warmup warning).".to_string();
-                                    status.message = format!(
-                                        "{download_details} Native Parakeet warmup skipped: {}",
-                                        clip_text(&single_line(&warmup_error), 360)
-                                    );
-                                    status.current_file.clear();
-                                    if status.total_bytes > 0 {
-                                        status.downloaded_bytes = status.total_bytes;
-                                    }
-                                    if status.files_total > 0 {
-                                        status.files_completed = status.files_total;
-                                    }
-                                });
-                            }
                         }
-                    } else {
-                        let _ = state_for_task.update_local_stt_download_status(|status| {
-                            status.active = false;
-                            status.completed = true;
-                            status.success = true;
-                            status.model = model_for_task.clone();
-                            status.repo_id = repo_id_for_task.clone();
-                            status.stage = "Download complete.".to_string();
-                            status.message = download_details;
-                            status.current_file.clear();
-                            if status.total_bytes > 0 {
-                                status.downloaded_bytes = status.total_bytes;
-                            }
-                            if status.files_total > 0 {
-                                status.files_completed = status.files_total;
-                            }
-                        });
+                        Err(warmup_error) => {
+                            let _ = state_for_task.update_local_stt_download_status(|status| {
+                                status.active = false;
+                                status.completed = true;
+                                status.success = true;
+                                status.model = model_for_task.clone();
+                                status.repo_id = repo_id_for_task.clone();
+                                status.stage = "Download complete (warmup warning).".to_string();
+                                status.message = format!(
+                                    "{download_details} Native Parakeet warmup skipped: {}",
+                                    clip_text(&single_line(&warmup_error), 360)
+                                );
+                                status.current_file.clear();
+                                if status.total_bytes > 0 {
+                                    status.downloaded_bytes = status.total_bytes;
+                                }
+                                if status.files_total > 0 {
+                                    status.files_completed = status.files_total;
+                                }
+                            });
+                        }
                     }
+                } else {
+                    let _ = state_for_task.update_local_stt_download_status(|status| {
+                        status.active = false;
+                        status.completed = true;
+                        status.success = true;
+                        status.model = model_for_task.clone();
+                        status.repo_id = repo_id_for_task.clone();
+                        status.stage = "Download complete.".to_string();
+                        status.message = download_details;
+                        status.current_file.clear();
+                        if status.total_bytes > 0 {
+                            status.downloaded_bytes = status.total_bytes;
+                        }
+                        if status.files_total > 0 {
+                            status.files_completed = status.files_total;
+                        }
+                    });
                 }
             }
             Err(download_error) => {
@@ -505,18 +347,13 @@ pub(crate) async fn download_local_stt_model(
         }
     });
 
-    let provider_runs_runtime_setup = local_stt_provider_requires_python(&provider);
     let provider_runs_native_warmup = provider == "parakeet";
     Ok(LocalSttDownloadResponse {
         model,
         provider,
         method: "background_huggingface_snapshot".to_string(),
         local_path: target_dir.to_string_lossy().into_owned(),
-        details: if provider_runs_runtime_setup {
-            format!(
-                "Started local STT model download for '{repo_id}'. Runtime setup and model warmup will run automatically after download."
-            )
-        } else if provider_runs_native_warmup {
+        details: if provider_runs_native_warmup {
             format!(
                 "Started local STT model download for '{repo_id}'. Native Parakeet int8 warmup will run automatically after download."
             )
@@ -559,9 +396,8 @@ pub(crate) async fn delete_local_stt_model(
 
     let provider = infer_local_stt_provider_from_model(&model);
     let repo_id = resolve_huggingface_repo_id(&provider, &model);
-    if provider.eq_ignore_ascii_case("parakeet") {
-        let _ = audio::parakeet::unload_native_parakeet_runtime("delete-model");
-        stop_all_local_stt_bridge_daemons();
+    if audio::runtimes::engine_for_provider(&provider).is_some() {
+        let _ = audio::runtimes::unload_all();
         let _ = state.set_local_stt_runtime_loaded(false);
     }
     let models_dir = stt_models_dir(&app)?;
@@ -740,24 +576,11 @@ pub(crate) async fn warmup_local_stt_model(
         tauri::async_runtime::spawn_blocking(move || match provider_for_worker.as_str() {
             "parakeet" => crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(
                 &app_for_worker,
-                "",
                 &model_for_worker,
             ),
-            "whisper" | "moonshine" | "sensevoice" => {
-                if zero_python_mode_enabled() {
-                    return Err(ZERO_PYTHON_STT_NOTICE.to_string());
-                }
-                let python_path = crate::services::transcribe::setup_local_stt_runtime_blocking(
-                    &app_for_worker,
-                    "python",
-                )?;
-                crate::services::transcribe::warmup_local_stt_hf_model_blocking(
-                    &app_for_worker,
-                    &python_path,
-                    &model_for_worker,
-                )
-            }
-            _ => Ok("Warmup skipped (unsupported provider).".to_string()),
+            // Whichever engine serves a provider warms on first dictation, so there is
+            // nothing to pre-load for the ones without a warmup path.
+            _ => Ok("Warmup skipped (no warmup path for this provider).".to_string()),
         })
         .await
         .map_err(|error| format!("Local STT warmup task failed: {error}"));
@@ -809,34 +632,19 @@ pub(crate) async fn deactivate_local_stt_model(
         (model, provider)
     };
 
-    let worker_result = tauri::async_runtime::spawn_blocking(move || {
-        let (trimmed_count, stopped_during_trim) = trim_all_local_stt_bridge_daemon_model_caches()?;
-        let fully_stopped = stop_all_local_stt_bridge_daemons_with_count();
-        let native_unloaded =
-            audio::parakeet::unload_native_parakeet_runtime("manual-deactivate").unwrap_or(false);
-        Ok::<(usize, usize, usize, bool), String>((
-            trimmed_count,
-            stopped_during_trim,
-            fully_stopped,
-            native_unloaded,
-        ))
-    })
-    .await
-    .map_err(|error| format!("Local STT deactivate task failed: {error}"))??;
-    let (trimmed_count, stopped_during_trim, fully_stopped, native_unloaded) = worker_result;
-    let deactivated =
-        trimmed_count > 0 || stopped_during_trim > 0 || fully_stopped > 0 || native_unloaded;
+    let native_unloaded =
+        tauri::async_runtime::spawn_blocking(move || !audio::runtimes::unload_all().is_empty())
+            .await
+            .map_err(|error| format!("Local STT deactivate task failed: {error}"))?;
+    let deactivated = native_unloaded;
 
     let details = if deactivated {
         if model_for_response.is_empty() {
-            format!(
-                "Deactivated local STT runtime (native_unloaded={}, trimmed {} cache daemon(s), restarted {}, fully stopped {}).",
-                native_unloaded, trimmed_count, stopped_during_trim, fully_stopped
-            )
+            format!("Deactivated local STT runtime (native_unloaded={native_unloaded}).")
         } else {
             format!(
-                "Deactivated local STT runtime for '{}' (native_unloaded={}, trimmed {} cache daemon(s), restarted {}, fully stopped {}).",
-                model_for_response, native_unloaded, trimmed_count, stopped_during_trim, fully_stopped
+                "Deactivated local STT runtime for '{}' (native_unloaded={native_unloaded}).",
+                model_for_response
             )
         }
     } else {
@@ -863,37 +671,22 @@ pub(crate) async fn deactivate_local_stt_model(
 pub(crate) async fn get_local_stt_runtime_state(
     state: State<'_, AppState>,
 ) -> Result<LocalSttRuntimeStateResponse, String> {
-    let (daemon_count, loaded_daemon_count) = local_stt_daemon_stats();
-
     // F-017: None = lock held (inference in flight), so the state is unknown
     // rather than a guessed "loaded".
-    let native_loaded = match audio::parakeet::native_parakeet_runtime_loaded() {
-        Some(loaded) => loaded.to_string(),
-        None => "busy".to_string(),
-    };
+    let engine_states = audio::runtimes::states();
+    let native_loaded = engine_states
+        .iter()
+        .map(|(label, state)| format!("{label}={state}"))
+        .collect::<Vec<String>>()
+        .join(" ");
     let loaded = state.local_stt_runtime_loaded_snapshot()?;
     let details = if loaded {
-        format!(
-            "Local STT is loaded (native_parakeet_loaded={}, {} active model cache daemon(s), {} daemon(s) total).",
-            native_loaded,
-            loaded_daemon_count,
-            daemon_count
-        )
-    } else if daemon_count > 0 || native_loaded == "true" {
-        format!(
-            "Local STT is unloaded (native_parakeet_loaded={}, {} warm daemon(s) remain ready).",
-            native_loaded, daemon_count
-        )
+        format!("Local STT is loaded (engines: {native_loaded}).")
     } else {
         "Local STT is unloaded.".to_string()
     };
 
-    Ok(LocalSttRuntimeStateResponse {
-        loaded,
-        daemon_count,
-        loaded_daemon_count,
-        details,
-    })
+    Ok(LocalSttRuntimeStateResponse { loaded, details })
 }
 
 #[tauri::command]

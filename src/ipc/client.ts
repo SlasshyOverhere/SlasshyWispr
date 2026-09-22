@@ -28,6 +28,12 @@ import type {
   SttTimeoutBoundsResponse,
   TemperatureBoundsResponse,
   TtsSetupStatusResponse,
+  VoiceCloneEngineResponse,
+  VoiceCloneListResponse,
+  VoiceCloneModelResponse,
+  VoiceClonePreviewResponse,
+  VoiceCloneResponse,
+  VoiceCloneStatusResponse,
   VoiceInstallResponse,
 } from "../types";
 
@@ -330,12 +336,51 @@ export function getTtsRuntimeSetupStatus(): Promise<TtsSetupStatusResponse> {
   return invoke<TtsSetupStatusResponse>(IPC_COMMANDS.getTtsRuntimeSetupStatus);
 }
 
-export function startTtsRuntimeSetup(request: { pythonPath?: string | null; useGpu?: boolean }): Promise<TtsSetupStatusResponse> {
-  return invoke<TtsSetupStatusResponse>(IPC_COMMANDS.startTtsRuntimeSetup, { request });
+export function startTtsRuntimeSetup(): Promise<TtsSetupStatusResponse> {
+  return invoke<TtsSetupStatusResponse>(IPC_COMMANDS.startTtsRuntimeSetup);
 }
 
-export function setupCoquiRuntime(request: Record<string, unknown>): Promise<unknown> {
-  return invoke(IPC_COMMANDS.setupCoquiRuntime, { request });
+// ===== Native voice cloning =====
+
+export function getVoiceCloneStatus(): Promise<VoiceCloneStatusResponse> {
+  return invoke<VoiceCloneStatusResponse>(IPC_COMMANDS.getVoiceCloneStatus);
+}
+
+export function ensureVoiceCloneModel(): Promise<VoiceCloneModelResponse> {
+  return invoke<VoiceCloneModelResponse>(IPC_COMMANDS.ensureVoiceCloneModel);
+}
+
+export function listVoiceClones(): Promise<VoiceCloneListResponse> {
+  return invoke<VoiceCloneListResponse>(IPC_COMMANDS.listVoiceClones);
+}
+
+export function cloneVoice(request: {
+  speakerId: string;
+  audioBase64: string;
+  fileName?: string | null;
+  referenceText?: string | null;
+  previewText?: string | null;
+  speed?: number;
+}): Promise<VoiceCloneResponse> {
+  return invoke<VoiceCloneResponse>(IPC_COMMANDS.cloneVoice, { request });
+}
+
+export function previewClonedVoice(request: {
+  speakerId: string;
+  text?: string | null;
+  speed?: number;
+}): Promise<VoiceClonePreviewResponse> {
+  return invoke<VoiceClonePreviewResponse>(IPC_COMMANDS.previewClonedVoice, { request });
+}
+
+export function deleteVoiceClone(request: {
+  speakerId: string;
+}): Promise<VoiceCloneListResponse> {
+  return invoke<VoiceCloneListResponse>(IPC_COMMANDS.deleteVoiceClone, { request });
+}
+
+export function unloadVoiceCloneModel(): Promise<VoiceCloneEngineResponse> {
+  return invoke<VoiceCloneEngineResponse>(IPC_COMMANDS.unloadVoiceCloneModel);
 }
 
 // ===== Pipeline =====

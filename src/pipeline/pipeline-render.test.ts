@@ -3,7 +3,7 @@
  *
  * Pins renderPipelineResponse branching (rewrite/pending/selection/
  * assistant/dictation speaker labels, history cap, incognito skip,
- * notes-button quick-note) and the pure conversation-entry list fold.
+ * intent label) and the pure conversation-entry list fold.
  */
 import { describe, it, expect } from "bun:test";
 import { MAX_HISTORY_ITEMS } from "../constants";
@@ -47,7 +47,6 @@ function wireHarness(state: {
     totalLatency: fakeElement(),
   };
   const usage: string[] = [];
-  const notes: string[] = [];
   let history = state.history ?? [];
   const recent: Array<{ speaker: string; content: string }> = [];
   initPipelineRender(elements, {
@@ -59,9 +58,6 @@ function wireHarness(state: {
     trackUsage: (transcript) => {
       usage.push(transcript);
     },
-    addQuickNote: (text) => {
-      notes.push(text);
-    },
     getHomeHistory: () => history,
     setHomeHistory: (entries) => {
       history = entries;
@@ -70,7 +66,7 @@ function wireHarness(state: {
     notifyStoreUpdated: () => {},
     getRecentTurns: () => recent,
   });
-  return { elements, usage, notes, getHistory: () => history, getRecent: () => recent };
+  return { elements, usage, getHistory: () => history, getRecent: () => recent };
 }
 
 describe("appendConversationEntryToLists", () => {
@@ -120,11 +116,10 @@ describe("renderPipelineResponse", () => {
     expect(selection.getHistory().map((entry) => entry.speaker)).toEqual(["Selection"]);
   });
 
-  it("records nothing in incognito — no history, usage, or notes (F-003)", () => {
-    const harness = wireHarness({ incognito: true, intentLabel: "notes-button" });
+  it("records nothing in incognito — no history and no usage (F-003)", () => {
+    const harness = wireHarness({ incognito: true });
     renderPipelineResponse(fakeResponse());
     expect(harness.getHistory()).toEqual([]);
     expect(harness.usage).toEqual([]);
-    expect(harness.notes).toEqual([]);
   });
 });

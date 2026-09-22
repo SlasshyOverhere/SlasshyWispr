@@ -131,3 +131,39 @@ pub(crate) fn find_local_parakeet_model_root(root: &std::path::Path) -> Result<P
         root.display()
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pipeline::routing::built_in_local_stt_model_catalog;
+
+    /// A catalog entry with no download source strands the user on a model the app
+    /// lists but cannot install. That the source *exists* is a network question —
+    /// `scripts/verify-stt-mirrors.mjs` answers it against the release manifest.
+    #[test]
+    fn every_catalog_model_has_an_archive_source() {
+        for model in built_in_local_stt_model_catalog() {
+            let source = local_parakeet_archive_source(&model)
+                .unwrap_or_else(|| panic!("catalog model '{model}' has no archive source"));
+            assert!(source.archive_url.starts_with("https://"));
+            assert!(!source.expected_root_dir.trim().is_empty());
+        }
+    }
+
+    /// `expected_root_dir` is both the archive filename and the directory cleared before
+    /// extraction, so two models sharing one would overwrite each other's files.
+    #[test]
+    fn archive_root_dirs_are_distinct() {
+        let mut seen: Vec<&str> = Vec::new();
+        for model in built_in_local_stt_model_catalog() {
+            if let Some(source) = local_parakeet_archive_source(&model) {
+                assert!(
+                    !seen.contains(&source.expected_root_dir),
+                    "duplicate archive root dir '{}'",
+                    source.expected_root_dir
+                );
+                seen.push(source.expected_root_dir);
+            }
+        }
+    }
+}

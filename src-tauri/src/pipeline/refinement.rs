@@ -1,9 +1,8 @@
 //! Pure transcript refinement pipeline.
 //!
 //! Transforms raw STT output through a configurable chain of text
-//! normalizations: snippet expansion, dictionary substitution, backtrack
-//! correction, filler-word removal, numbered-list formatting, and
-//! automatic punctuation.
+//! normalizations: backtrack correction, filler-word removal,
+//! numbered-list formatting, and automatic punctuation.
 //!
 //! This module is **entirely pure** — no Tauri, no AppState, no I/O,
 //! no global state. It depends only on `pipeline::tts::normalize_spacing`
@@ -14,15 +13,10 @@ use crate::pipeline::tts::normalize_spacing;
 /// Configuration for the transcript refinement pipeline.
 ///
 /// Each field controls whether a specific transformation stage is active.
-/// Snippet and dictionary entries provide user-defined text substitutions.
 #[derive(Debug, Clone)]
 pub struct RefinementConfig {
     /// When true, skip all refinement except basic spacing normalization.
     pub raw_mode: bool,
-    /// Apply case-insensitive snippet expansions (trigger → expansion).
-    pub snippet_entries: Vec<RefinementSnippetEntry>,
-    /// Apply case-insensitive dictionary substitutions (source → target).
-    pub dictionary_entries: Vec<RefinementDictionaryEntry>,
     /// Remove trailing backtrack phrases ("scratch that", "delete that", etc.).
     pub apply_backtrack: bool,
     /// Remove filler words ("um", "uh", "you know", etc.).
@@ -33,47 +27,21 @@ pub struct RefinementConfig {
     pub auto_punctuation: bool,
 }
 
-/// A user-defined snippet expansion: when `trigger` appears in the transcript
-/// (case-insensitive), it is replaced with `expansion`.
-#[derive(Debug, Clone)]
-pub struct RefinementSnippetEntry {
-    pub trigger: String,
-    pub expansion: String,
-}
-
-/// A user-defined dictionary substitution: when `source` appears in the
-/// transcript (case-insensitive), it is replaced with `target`.
-#[derive(Debug, Clone)]
-pub struct RefinementDictionaryEntry {
-    pub source: String,
-    pub target: String,
-}
-
 /// Apply the full transcript refinement pipeline.
 ///
 /// Transformation order (preserved exactly from the original implementation):
 /// 1. Trim input
 /// 2. If `raw_mode`, return with only spacing normalization
-/// 3. Snippet expansions
-/// 4. Dictionary substitutions
-/// 5. Backtrack correction
-/// 6. Filler-word removal
-/// 7. Numbered-list formatting
-/// 8. Auto-punctuation
-/// 9. Final spacing normalization
+/// 3. Backtrack correction
+/// 4. Filler-word removal
+/// 5. Numbered-list formatting
+/// 6. Auto-punctuation
+/// 7. Final spacing normalization
 pub fn refine_transcript(input: &str, config: &RefinementConfig) -> String {
     let mut transcript = input.trim().to_string();
 
     if config.raw_mode {
         return normalize_spacing(&transcript);
-    }
-
-    if !config.snippet_entries.is_empty() {
-        transcript = apply_snippet_expansions(&transcript, &config.snippet_entries);
-    }
-
-    if !config.dictionary_entries.is_empty() {
-        transcript = apply_dictionary_terms(&transcript, &config.dictionary_entries);
     }
 
     if config.apply_backtrack {
@@ -93,34 +61,6 @@ pub fn refine_transcript(input: &str, config: &RefinementConfig) -> String {
     }
 
     normalize_spacing(&transcript)
-}
-
-/// Replace each snippet trigger with its expansion (case-insensitive ASCII matching).
-fn apply_snippet_expansions(input: &str, snippets: &[RefinementSnippetEntry]) -> String {
-    let mut current = input.to_string();
-    for snippet in snippets {
-        let trigger = snippet.trigger.trim();
-        let expansion = snippet.expansion.trim();
-        if trigger.is_empty() || expansion.is_empty() {
-            continue;
-        }
-        current = replace_case_insensitive_ascii(&current, trigger, expansion);
-    }
-    current
-}
-
-/// Replace each dictionary source term with its target (case-insensitive ASCII matching).
-fn apply_dictionary_terms(input: &str, entries: &[RefinementDictionaryEntry]) -> String {
-    let mut current = input.to_string();
-    for entry in entries {
-        let source = entry.source.trim();
-        let target = entry.target.trim();
-        if source.is_empty() || target.is_empty() {
-            continue;
-        }
-        current = replace_case_insensitive_ascii(&current, source, target);
-    }
-    current
 }
 
 /// Remove the last backtrack phrase and everything after it.
@@ -311,8 +251,6 @@ mod tests {
     ) -> RefinementConfig {
         RefinementConfig {
             raw_mode: false,
-            snippet_entries: Vec::new(),
-            dictionary_entries: Vec::new(),
             apply_backtrack: backtrack,
             remove_fillers: fillers,
             auto_numbered_lists: numbered_lists,
@@ -540,45 +478,5 @@ mod tests {
     fn preserves_existing_punctuation() {
         let output = apply_auto_punctuation("hello world?");
         assert_eq!(output, "hello world?");
-    }
-
-    // ===== snippet expansion =====
-
-    #[test]
-    fn snippet_expansion_replaces_trigger() {
-        let cfg = RefinementConfig {
-            raw_mode: false,
-            snippet_entries: vec![RefinementSnippetEntry {
-                trigger: "btw".to_string(),
-                expansion: "by the way".to_string(),
-            }],
-            dictionary_entries: Vec::new(),
-            apply_backtrack: false,
-            remove_fillers: false,
-            auto_numbered_lists: false,
-            auto_punctuation: false,
-        };
-        let output = refine_transcript("Hello btw world", &cfg);
-        assert_eq!(output, "Hello by the way world");
-    }
-
-    // ===== dictionary expansion =====
-
-    #[test]
-    fn dictionary_expansion_replaces_source() {
-        let cfg = RefinementConfig {
-            raw_mode: false,
-            snippet_entries: Vec::new(),
-            dictionary_entries: vec![RefinementDictionaryEntry {
-                source: "foo".to_string(),
-                target: "bar".to_string(),
-            }],
-            apply_backtrack: false,
-            remove_fillers: false,
-            auto_numbered_lists: false,
-            auto_punctuation: false,
-        };
-        let output = refine_transcript("Hello foo world", &cfg);
-        assert_eq!(output, "Hello bar world");
     }
 }

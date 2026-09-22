@@ -35,10 +35,6 @@ export interface AvailabilityElements {
   commandHotkeyInput: HTMLInputElement;
   toggleMicEditorBtn: HTMLButtonElement;
   toggleHotkeyEditorBtn: HTMLButtonElement;
-  dictionaryAddBtn: HTMLButtonElement;
-  dictionaryAddBtnTop: HTMLButtonElement;
-  snippetAddBtn: HTMLButtonElement;
-  snippetsAddBtnTop: HTMLButtonElement;
 }
 
 export interface AvailabilityDeps {
@@ -146,11 +142,7 @@ export function syncActionAvailability(): void {
   formRefs.numberedListsToggle.disabled = busy;
   availabilityElements.toggleMicEditorBtn.disabled = busy;
   availabilityElements.toggleHotkeyEditorBtn.disabled = busy;
-  availabilityElements.dictionaryAddBtn.disabled = busy;
-  availabilityElements.dictionaryAddBtnTop.disabled = busy;
-  availabilityElements.snippetAddBtn.disabled = busy;
   availabilityDeps.renderLocalSttSettingsStatus();
-  availabilityElements.snippetsAddBtnTop.disabled = busy;
 
   const allRuntimeLocal = availabilityDeps.getSttRuntimeMode() === "local" && availabilityDeps.getAiRuntimeMode() === "local";
   availabilityElements.fetchProviderModelsBtn.disabled = availabilityElements.fetchProviderModelsBtn.disabled || allRuntimeLocal;

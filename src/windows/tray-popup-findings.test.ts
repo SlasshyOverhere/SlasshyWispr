@@ -192,8 +192,8 @@ describe("F-030 popup a11y + focus trap math", () => {
 });
 
 describe("F-026 window floor + breakpoints", () => {
-  it("declares the 1024x640 floor and the compact breakpoint", () => {
-    expect(geometry.MAIN_WINDOW_MIN_SIZE).toEqual({ width: 1024, height: 640 });
+  it("declares the 780x600 window and the compact breakpoint", () => {
+    expect(geometry.MAIN_WINDOW_MIN_SIZE).toEqual({ width: 780, height: 600 });
     expect(geometry.dockCompactForViewport(1000)).toBe(true);
     expect(geometry.dockCompactForViewport(1366)).toBe(false);
     expect(geometry.dockCompactForViewport(Number.NaN)).toBe(false);

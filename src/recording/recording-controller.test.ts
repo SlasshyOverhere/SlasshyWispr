@@ -7,19 +7,48 @@
  * saveDictationAudio (non-Tauri early return, recording-id shape,
  * base64 data-URL strip, saved-id commit).
  */
-import { describe, it, expect, beforeEach } from "bun:test";
-import { defaultSettings } from "../state/settings-store";
-import {
+import { describe, it, expect, mock, beforeEach } from "bun:test";
+import type { RecordingControllerDeps } from "./recording-controller";
+
+// Native capture reaches Rust over IPC, so the invoke layer is stubbed here
+// (same pattern as ipc/client.test.ts) and every command is recorded.
+const nativeCommands: string[] = [];
+
+mock.module("@tauri-apps/api/core", () => ({
+  invoke: (command: string) => {
+    nativeCommands.push(command);
+    switch (command) {
+      case "start_native_capture":
+        return Promise.resolve({ deviceName: "USB Audio Device", sampleRate: 48_000, fallbackUsed: false });
+      case "native_capture_level":
+        return Promise.resolve(0.5);
+      case "stop_native_capture":
+        return Promise.resolve({
+          rawPcmBase64: "",
+          wavBase64: btoa("RIFF"),
+          sampleRate: 16_000,
+          sampleCount: 2,
+          durationMs: 1,
+        });
+      default:
+        return Promise.resolve(null);
+    }
+  },
+}));
+
+// Import after the mock so ipc/client binds the stubbed invoke.
+const { defaultSettings } = await import("../state/settings-store");
+const {
   cancelPipeline,
   getActivePipelineGen,
   initRecordingController,
+  isCaptureActive,
   finalizeRecording,
   saveDictationAudio,
   startRecording,
   stopRecording,
-  type RecordingControllerDeps,
-} from "./recording-controller";
-import { initCaptureMonitors } from "./capture-monitors";
+} = await import("./recording-controller");
+const { initCaptureMonitors } = await import("./capture-monitors");
 
 function wireHarness(overrides: Partial<RecordingControllerDeps> = {}) {
   const transitions: unknown[] = [];
@@ -124,6 +153,7 @@ function wireHarness(overrides: Partial<RecordingControllerDeps> = {}) {
     availabilitySyncs: () => availabilitySyncs,
     getSavedId: () => savedId,
     getLastPipeline: () => lastPipeline,
+    getRecorderState: () => recorder?.state ?? null,
     setChunks: (next: Blob[]) => {
       chunks = next;
     },
@@ -228,6 +258,51 @@ describe("finalizeRecording", () => {
     expect(harness.getLastPipeline()).toBeNull();
   });
 
+  it("blames the microphone, not STT, when the capture has no signal", async () => {
+    const harness = wireHarness({ captureIsSilent: async () => true });
+    harness.setChunks([new Blob(["abc"], { type: "audio/webm" })]);
+    await finalizeRecording();
+    expect(harness.transitions).toEqual([{ type: "audio-empty" }]);
+    expect(harness.getLastPipeline()).toBeNull();
+    // Nothing to keep either: a silent clip is not worth saving.
+    expect(harness.saved.length).toBe(0);
+    expect(harness.notices.length).toBe(1);
+    expect(harness.notices[0].isError).toBe(true);
+    expect(harness.notices[0].message).toContain("No audio came from");
+    expect(harness.notices[0].message).toContain("the selected microphone");
+    expect(harness.notices[0].message).toContain("muted in Windows");
+  });
+
+  it("names the device that delivered no audio", async () => {
+    (globalThis as unknown as { navigator: unknown }).navigator = {
+      mediaDevices: {
+        getUserMedia: async () => ({
+          getAudioTracks: () => [{ label: "Yeti Off (USB)" }],
+          getTracks: () => [],
+          active: true,
+        }),
+      },
+    };
+    (globalThis as unknown as { MediaRecorder: unknown }).MediaRecorder = class {
+      static isTypeSupported = () => true;
+      state = "inactive";
+      mimeType = "audio/webm";
+      addEventListener() {}
+      start() {}
+      stop() {}
+    };
+
+    const harness = wireHarness({
+      captureIsSilent: async () => true,
+      readSettings: () => ({ ...defaultSettings, apiKey: "sk-test" }),
+    });
+    await startRecording();
+    harness.setChunks([new Blob(["abc"], { type: "audio/webm" })]);
+    await finalizeRecording();
+
+    expect(harness.notices[0].message).toContain('"Yeti Off (USB)"');
+  });
+
   it("saves recordings then runs the pipeline with the mime", async () => {
     const harness = wireHarness();
     harness.setChunks([new Blob(["abc"], { type: "audio/webm" })]);
@@ -306,6 +381,68 @@ describe("cancelPipeline (F-007 generation guard)", () => {
     const harness = wireHarness();
     expect(cancelPipeline(getActivePipelineGen())).toBe(true);
     expect(harness.transitions).toEqual([{ type: "stop-recording", cancelPipeline: true }]);
+  });
+});
+
+describe("native capture backend", () => {
+  it("stops through Rust and finalizes on release", async () => {
+    // The shell owns neither a recorder nor a stream here, so the amplitude
+    // monitor is the only thing that needs a frame clock.
+    const globals = globalThis as unknown as Record<string, unknown>;
+    globals.window = globalThis;
+    globals.requestAnimationFrame = () => 1;
+    globals.cancelAnimationFrame = () => {};
+    nativeCommands.length = 0;
+
+    const harness = wireHarness({
+      readSettings: () => ({ ...defaultSettings, apiKey: "sk-test", captureBackend: "native" }),
+    });
+    await startRecording();
+    expect(nativeCommands).toEqual(["start_native_capture"]);
+
+    stopRecording();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // Released capture must be stopped in Rust — that is what yields the audio
+    // — and the pipeline must then run on it.
+    expect(nativeCommands).toContain("stop_native_capture");
+    expect(harness.getLastPipeline()).not.toBeNull();
+    expect(harness.getLastPipeline()!.mime).toBe("audio/wav");
+  });
+
+  it("reports a live capture with no MediaRecorder to probe", async () => {
+    const globals = globalThis as unknown as Record<string, unknown>;
+    globals.window = globalThis;
+    globals.requestAnimationFrame = () => 1;
+    globals.cancelAnimationFrame = () => {};
+
+    const harness = wireHarness({
+      readSettings: () => ({ ...defaultSettings, apiKey: "sk-test", captureBackend: "native" }),
+    });
+
+    expect(isCaptureActive()).toBe(false);
+    await startRecording();
+    // The regression this pins: the recorder is null on this backend, so
+    // anything asking the recorder whether capture began is told "no".
+    expect(harness.getRecorderState()).toBeNull();
+    expect(isCaptureActive()).toBe(true);
+
+    stopRecording();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(isCaptureActive()).toBe(false);
+  });
+});
+
+describe("isCaptureActive (webview backend)", () => {
+  it("follows the recorder it actually owns", () => {
+    const harness = wireHarness({ isTauri: () => false });
+    expect(isCaptureActive()).toBe(false);
+
+    harness.setRecorder({ state: "recording" });
+    expect(isCaptureActive()).toBe(true);
+
+    harness.setRecorder({ state: "inactive" });
+    expect(isCaptureActive()).toBe(false);
   });
 });
 

@@ -174,7 +174,6 @@ export function applyTtsSetupStatus(status: TtsSetupStatusResponse): void {
 
   if (!status.running && status.completed) {
     if (status.success) {
-      ttsDeps.setNotice("Piper runtime is ready.");
       if (ttsDeps.getStage() !== "recording") {
         ttsDeps.setStage("idle", "TTS setup complete.");
       }
@@ -244,7 +243,7 @@ export async function handleSetupAllTts(): Promise<void> {
   ttsDeps.syncAvailability();
 
   try {
-    const status = await ipcStartTtsRuntimeSetup({ pythonPath: null, useGpu: false });
+    const status = await ipcStartTtsRuntimeSetup();
     applyTtsSetupStatus(status);
     startTtsSetupPolling();
     await pollTtsSetupStatusOnce();

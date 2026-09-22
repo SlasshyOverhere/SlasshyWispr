@@ -1,4 +1,4 @@
-use log::{info, warn};
+use log::{error, info, warn};
 use std::fs;
 use tauri::{Emitter, Manager};
 
@@ -13,23 +13,24 @@ pub mod state;
 pub mod updater;
 use commands::{
     cancel_native_capture, capture_selected_text, check_for_app_update, clear_dictation_recordings,
-    clone_coqui_voice, configure_launch_at_login, configure_shell_integration,
-    control_media_playback, deactivate_local_stt_model, delete_local_stt_model,
-    download_and_install_app_update, download_local_stt_model, ensure_voice_model,
-    fetch_local_stt_models, fetch_ollama_models, fetch_provider_models, get_assistant_info,
-    get_coqui_status, get_dictation_recording, get_foreground_input_block_status,
+    clone_voice, configure_launch_at_login, configure_shell_integration, control_media_playback,
+    deactivate_local_stt_model, delete_local_stt_model, delete_voice_clone,
+    download_and_install_app_update, download_local_stt_model, ensure_voice_clone_model,
+    ensure_voice_model, fetch_local_stt_models, fetch_ollama_models, fetch_provider_models,
+    get_assistant_info, get_dictation_recording, get_foreground_input_block_status,
     get_local_stt_download_status, get_local_stt_hardware_advice, get_local_stt_model_status,
-    get_local_stt_runtime_state, get_ollama_status, get_tts_runtime_setup_status, install_ollama,
-    launch_at_login_status, list_coqui_models, list_coqui_voices, list_dictation_recording_ids,
-    list_dictation_recordings_stats, load_persisted_local_settings, log_client_event,
-    max_tokens_bounds, mute_system_audio, native_capture_level, note_paste_target,
-    open_local_stt_model_path, paste_clipboard_text, paste_text_via_clipboard, preview_coqui_voice,
-    pull_ollama_model, read_audio_file_base64, run_assistant_pipeline, save_dictation_recording,
-    save_persisted_local_settings, set_clipboard_text, set_tray_update_available,
-    setup_assistant_runtime, setup_coqui_runtime, shell_integration_status, show_update_settings,
-    start_native_capture, start_tts_runtime_setup, stop_native_capture, stt_timeout_bounds,
-    take_pending_transcribe_file, temperature_bounds, toggle_main_window_visibility,
-    validate_coqui, validate_piper, warmup_local_stt_model, TtsSetupState,
+    get_local_stt_runtime_state, get_ollama_status, get_tts_runtime_setup_status,
+    get_voice_clone_status, install_ollama, launch_at_login_status, list_dictation_recording_ids,
+    list_dictation_recordings_stats, list_voice_clones, load_persisted_local_settings,
+    log_client_event, max_tokens_bounds, mute_system_audio, native_capture_level,
+    note_paste_target, open_local_stt_model_path, paste_clipboard_text, paste_text_via_clipboard,
+    preview_cloned_voice, pull_ollama_model, read_audio_file_base64, run_assistant_pipeline,
+    save_dictation_recording, save_persisted_local_settings, set_clipboard_text,
+    set_tray_update_available, setup_assistant_runtime, shell_integration_status,
+    show_update_settings, start_native_capture, start_tts_runtime_setup, stop_native_capture,
+    stt_timeout_bounds, take_pending_transcribe_file, temperature_bounds,
+    toggle_main_window_visibility, unload_voice_clone_model, validate_piper,
+    warmup_local_stt_model, TtsSetupState,
 };
 use state::AppState;
 
@@ -51,6 +52,13 @@ pub fn run() {
             pipeline::log::clip_text(&path, 200)
         );
         app_state.set_pending_transcribe_file(path);
+    }
+
+    let bench_args = services::stt_bench::parse_bench_args(&startup_args);
+    // A measurement run has no UI: building the window would flash one on screen.
+    let mut context = tauri::generate_context!();
+    if bench_args.is_some() {
+        context.config_mut().app.windows.clear();
     }
 
     let mut builder = tauri::Builder::default();
@@ -93,6 +101,11 @@ pub fn run() {
     builder
         .manage(app_state)
         .manage(tts_setup_state)
+        // Every webview, including the dock created at runtime, gets the same
+        // frame treatment; DWM draws the border per window.
+        .on_page_load(|webview, _| {
+            platform::window_frame::restyle_system_frame(&webview.window());
+        })
         .setup(move |app| {
             #[cfg(desktop)]
             {
@@ -106,9 +119,27 @@ pub fn run() {
                     .build(),
             )?;
 
+            if let Some(bench_args) = bench_args.clone() {
+                let bench_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let code = match services::stt_bench::run(&bench_handle, &bench_args).await {
+                        Ok(path) => {
+                            info!("[stt.bench] results written to {}", path.display());
+                            0
+                        }
+                        Err(message) => {
+                            error!("[stt.bench] {}", pipeline::log::single_line(&message));
+                            1
+                        }
+                    };
+                    bench_handle.exit(code);
+                });
+                return Ok(());
+            }
+
             let app_handle = app.handle().clone();
             commands::windows::build_tray_icon(&app_handle)?;
-            crate::pipeline::daemon::ensure_local_stt_daemon_idle_sweeper();
+            audio::runtimes::ensure_idle_sweeper();
             services::startup::start_local_stt_boot_warmup(app_handle.clone());
 
             if let Some(main_window) = app.get_webview_window(crate::constants::MAIN_WINDOW_LABEL) {
@@ -257,13 +288,13 @@ pub fn run() {
             setup_assistant_runtime,
             ensure_voice_model,
             validate_piper,
-            get_coqui_status,
-            setup_coqui_runtime,
-            validate_coqui,
-            list_coqui_voices,
-            list_coqui_models,
-            clone_coqui_voice,
-            preview_coqui_voice,
+            get_voice_clone_status,
+            ensure_voice_clone_model,
+            list_voice_clones,
+            clone_voice,
+            preview_cloned_voice,
+            delete_voice_clone,
+            unload_voice_clone_model,
             start_tts_runtime_setup,
             get_tts_runtime_setup_status,
             run_assistant_pipeline,
@@ -279,6 +310,6 @@ pub fn run() {
             take_pending_transcribe_file,
             read_audio_file_base64,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }

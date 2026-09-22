@@ -52,6 +52,12 @@ const WIRE_TYPES = [
   "SttTimeoutBoundsResponse",
   "TemperatureBoundsResponse",
   "TtsSetupStatusResponse",
+  "VoiceCloneEngineResponse",
+  "VoiceCloneListResponse",
+  "VoiceCloneModelResponse",
+  "VoiceClonePreviewResponse",
+  "VoiceCloneResponse",
+  "VoiceCloneStatusResponse",
   "VoiceInstallResponse",
 ];
 

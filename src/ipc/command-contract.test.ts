@@ -24,20 +24,14 @@ const LIB_RS = `${RUST_SRC}/lib.rs`;
 const COMMANDS_TS = "src/ipc/commands.ts";
 
 /**
- * Commands the backend registers without a frontend caller: tray actions, media
- * control, and the Coqui runtime (which Rust drives itself). Named explicitly so
- * a new command has to be classified rather than silently skipped.
+ * Commands the backend registers without a frontend caller: tray actions and
+ * media control. Named explicitly so a new command has to be classified rather
+ * than silently skipped.
  */
 const RUST_ONLY_COMMANDS = [
-  "clone_coqui_voice",
   "control_media_playback",
-  "get_coqui_status",
-  "list_coqui_models",
-  "list_coqui_voices",
-  "preview_coqui_voice",
   "set_tray_update_available",
   "show_update_settings",
-  "validate_coqui",
 ];
 
 function readSource(path: string): string {

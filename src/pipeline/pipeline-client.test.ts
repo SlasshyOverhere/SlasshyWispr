@@ -113,7 +113,6 @@ function wireHarness(options: {
       getLastSavedRecordingId: () => null,
       getLastCaptureIntentLabel: () => "",
       trackUsage: () => {},
-      addQuickNote: () => {},
       getHomeHistory: () => [],
       setHomeHistory: () => {},
       persistHomeHistory: () => {},
@@ -148,8 +147,6 @@ function wireHarness(options: {
       getLastWarmedLocalSttModel: () => settings.localSttModel,
       setLastWarmedLocalSttModel: () => {},
       ensureLocalOllamaModelSelected: async () => settings.localOllamaModel,
-      getDictionaryTerms: () => [],
-      getSnippets: () => [],
       nextSelectionPopupToken: () => 1,
       dismissSelectionPopup: async () => {},
       showSelectionAssistantPopup: async () => false,
@@ -249,8 +246,6 @@ describe("runPipeline capture-gate release", () => {
         getLastWarmedLocalSttModel: () => "",
         setLastWarmedLocalSttModel: () => {},
         ensureLocalOllamaModelSelected: async () => "",
-        getDictionaryTerms: () => [],
-        getSnippets: () => [],
         nextSelectionPopupToken: () => 1,
         dismissSelectionPopup: async () => {},
         showSelectionAssistantPopup: async () => false,
@@ -290,8 +285,8 @@ describe("runPipeline invoke shape", () => {
     expect(request.commandMode).toBe(false);
     expect(request.temperature).toBe(makeDefaultSettings().temperature);
     expect(request.maxTokens).toBe(makeDefaultSettings().maxTokens);
-    expect(request.ttsEngine).toBe("piper");
-    expect(request.coqui).toBeNull();
+    expect(request.ttsEngine).toBe(makeDefaultSettings().ttsEngine);
+    expect(request.voiceClone).toBeNull();
     expect("audio_base64" in request).toBe(false);
   });
 });

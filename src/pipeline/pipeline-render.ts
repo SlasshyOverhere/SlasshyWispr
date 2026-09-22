@@ -34,7 +34,6 @@ export interface PipelineRenderDeps {
   getLastSavedRecordingId: () => string | null;
   getLastCaptureIntentLabel: () => string;
   trackUsage: (transcript: string) => void;
-  addQuickNote: (text: string) => void;
   getHomeHistory: () => HomeHistoryEntry[];
   setHomeHistory: (entries: HomeHistoryEntry[]) => void;
   persistHomeHistory: () => void;
@@ -152,15 +151,11 @@ export function renderPipelineResponse(response: AssistantPipelineResponse): voi
     }
   }
 
-  // F-003: incognito suppresses the history etc. above; usage, sessions and
-  // notes are the same promise, so they are gated here too (trackUsage also
-  // guards, but the notes write has no other check).
+  // F-003: incognito suppresses the history etc. above, and usage follows the
+  // same promise, so it is gated here too.
   if (renderDeps.isIncognito()) {
     return;
   }
 
   renderDeps.trackUsage(response.transcript);
-  if (renderDeps.getLastCaptureIntentLabel() === "notes-button") {
-    renderDeps.addQuickNote(response.transcript);
-  }
 }

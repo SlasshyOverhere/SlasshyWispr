@@ -770,7 +770,6 @@ describe("Recording lifecycle integration: full flow", () => {
     expect(actionTypes).toContain("set-recording-started-at");
     expect(actionTypes).toContain("begin-recording-ticker");
     expect(actionTypes).toContain("set-stage");
-    expect(actionTypes).toContain("set-notice");
     expect(actionTypes).toContain("publish-dock-state");
   });
 

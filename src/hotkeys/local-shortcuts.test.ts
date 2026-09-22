@@ -86,7 +86,6 @@ function wireHarness(options: {
   ignoreRecent?: boolean;
 } = {}) {
   const buttons = {
-    toggleSidebarBtn: fakeButton(),
     sidebarToggleLocalSttBtn: fakeButton(),
     openSettingsBtn: fakeButton(),
   };
@@ -160,9 +159,7 @@ describe("handleLocalKeydown", () => {
   it("navigates pages on Alt+digit and side buttons on Alt+letter", () => {
     const harness = wireHarness();
     handleLocalKeydown(fakeKeyEvent({ key: "3", altKey: true, target: null }));
-    expect(harness.pages).toEqual(["dictionary"]);
-    handleLocalKeydown(fakeKeyEvent({ key: "b", altKey: true, target: null }));
-    expect(harness.buttons.toggleSidebarBtn.clicks).toBe(1);
+    expect(harness.pages).toEqual(["analytics"]);
     handleLocalKeydown(fakeKeyEvent({ key: "s", altKey: true, target: null }));
     expect(harness.buttons.openSettingsBtn.clicks).toBe(1);
   });

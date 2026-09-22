@@ -159,7 +159,7 @@ pub(crate) fn validate_settings_payload(parsed: &serde_json::Value) -> Result<()
         "styleProfile",
         &["adaptive", "professional", "casual", "concise", "developer"],
     )?;
-    allowed("ttsEngine", &["piper"])?;
+    allowed("ttsEngine", &["piper", "zipvoice"])?;
     allowed("dictationLanguageMode", &["single", "multiple"])?;
     allowed("piperQuality", &["fast", "balanced", "high"])?;
     allowed(

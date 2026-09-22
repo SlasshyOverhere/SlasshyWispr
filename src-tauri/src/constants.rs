@@ -17,15 +17,22 @@ pub const VOICE_CONFIG_FILE: &str = "en_US-hfc_female-medium.onnx.json";
 pub const PIPER_DEFAULT_SPEED: f32 = 1.08;
 pub const PIPER_DEFAULT_QUALITY: &str = "fast";
 pub const PIPER_DEFAULT_EMOTION: &str = "neutral";
-pub const COQUI_DEFAULT_MODEL: &str = "tts_models/multilingual/multi-dataset/xtts_v2";
-pub const COQUI_DEFAULT_LANGUAGE: &str = "en";
-pub const COQUI_DEFAULT_QUALITY: &str = "balanced";
-pub const COQUI_DEFAULT_EMOTION: &str = "neutral";
-pub const COQUI_MAX_REFERENCE_SECONDS: f32 = 30.0;
+/// ZipVoice-Distill int8 (zh+en), Apache-2.0, trained on Emilia (CC-BY-4.0).
+pub const VOICE_CLONE_ARCHIVE_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2";
+pub const VOICE_CLONE_VOCODER_URL: &str =
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx";
+pub const VOICE_CLONE_VOCODER_FILE: &str = "vocos_24khz.onnx";
+pub const VOICE_CLONE_ARCHIVE_FILE: &str = "zipvoice-distill-int8-zh-en-emilia.tar.bz2";
+/// Flow-matching steps: 4 is the distill model's designed operating point (and what we
+/// measured at RTF ~0.9-1.15 on CPU); more steps cost latency for little gain.
+pub const VOICE_CLONE_NUM_STEPS: i32 = 4;
+pub const VOICE_CLONE_MAX_REFERENCE_SECONDS: f32 = 30.0;
+pub const VOICE_CLONE_REFERENCE_AUDIO_FILE: &str = "reference.wav";
+pub const VOICE_CLONE_REFERENCE_TEXT_FILE: &str = "reference.txt";
 pub const MAX_TTS_INPUT_LENGTH: usize = 2000;
 pub const PENDING_SELECTION_REWRITE_TTL_SECS: u64 = 90;
 pub const RECENT_SELECTION_CONTEXT_TTL_SECS: u64 = 240;
-pub const LOCAL_STT_BRIDGE_SCRIPT: &str = include_str!("../local_stt_bridge.py");
+
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const TRAY_ID: &str = "slasshywispr-tray";
 pub const TRAY_MENU_COPY_LAST_TRANSCRIPTION_ID: &str = "copy-last-transcription";
@@ -59,15 +66,6 @@ pub const LOCAL_STT_DAEMON_IDLE_TIMEOUT_ENV: &str = "SLASSHYWISPR_STT_DAEMON_IDL
 pub const LOCAL_STT_DAEMON_SWEEP_INTERVAL_ENV: &str = "SLASSHYWISPR_STT_DAEMON_SWEEP_INTERVAL_SECS";
 pub const LOCAL_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE_ENV: &str =
     "SLASSHYWISPR_STT_PARAKEET_UNLOAD_AFTER_TRANSCRIBE";
-pub const LOCAL_STT_PARAKEET_CPU_INT8_ENV: &str = "SLASSHYWISPR_STT_PARAKEET_CPU_INT8";
-pub const LOCAL_STT_PARAKEET_FORCE_CPU_ENV: &str = "SLASSHYWISPR_STT_PARAKEET_FORCE_CPU";
-pub const LOCAL_STT_RUNTIME_READY_MARKER_FILE: &str = "runtime.ready.v2";
-pub const LOCAL_STT_RUNTIME_READY_MARKER_CONTENT: &str = "nemo+faster-whisper+torch";
-pub const ZERO_PYTHON_MODE_ENV: &str = "SLASSHYWISPR_ZERO_PYTHON_MODE";
-pub const ZERO_PYTHON_STT_NOTICE: &str =
-    "Zero-Python mode is enabled. Only native Parakeet local STT models are supported.";
-pub const ZERO_PYTHON_COQUI_NOTICE: &str =
-    "Coqui TTS is disabled in zero-Python mode. Use Piper TTS.";
 #[cfg(target_os = "windows")]
 pub const STARTUP_RUN_VALUE_NAME: &str = "SlasshyWispr";
 #[cfg(target_os = "windows")]

@@ -47,7 +47,7 @@ function wireHarness(overrides: Partial<CaptureTriggerDeps> = {}) {
     setCaptureIntent: (startedAt, label) => {
       intents.push({ startedAt, label });
     },
-    getRecorderState: () => (stage === "recording" ? "recording" : null),
+    isCaptureActive: () => stage === "recording",
     syncAvailability: () => {},
     isHotkeyCaptureActive: () => hotkeyCapture,
     performanceNow: () => 1000,
@@ -143,12 +143,10 @@ beforeEach(() => {
 });
 
 describe("handleRecordToggle", () => {
-  it("ignores in push-to-talk mode with a notice", async () => {
+  it("ignores in push-to-talk mode without a notice", async () => {
     const harness = wireHarness({ getCaptureMode: () => "push-to-talk" });
     await handleRecordToggle();
-    expect(harness.notices).toEqual([
-      { message: "Push-to-talk is enabled. Hold the hotkey or mic button while speaking.", isError: undefined },
-    ]);
+    expect(harness.notices).toEqual([]);
     expect(harness.intents).toEqual([]);
   });
 
@@ -168,10 +166,11 @@ describe("handleDockMicToggle", () => {
     expect(harness.intents).toEqual([]);
   });
 
-  it("notices in push-to-talk mode instead of toggling", async () => {
+  it("ignores in push-to-talk mode without a notice", async () => {
     const harness = wireHarness({ getCaptureMode: () => "push-to-talk" });
     await handleDockMicToggle();
-    expect(harness.notices.length).toBe(1);
+    expect(harness.notices).toEqual([]);
+    expect(harness.intents).toEqual([]);
   });
 });
 
@@ -198,5 +197,24 @@ describe("push-to-talk holds", () => {
     expect(getPushToTalkHoldCount()).toBe(0);
     expect(harness.transitions).toEqual([]);
     expect(harness.logs.some((line) => line.includes("not active"))).toBe(true);
+  });
+
+  it("keeps the hold when capture is live, whichever backend owns it", async () => {
+    const harness = wireHarness({
+      getCaptureMode: () => "push-to-talk",
+      getStage: () => "recording",
+      isCaptureActive: () => true,
+    });
+    await engagePushToTalk("hotkey");
+    expect(getPushToTalkHoldCount()).toBe(1);
+    expect(harness.logs.some((line) => line.includes("began no capture"))).toBe(false);
+    clearPushToTalkHolds();
+  });
+
+  it("drops the hold when no capture began", async () => {
+    const harness = wireHarness({ getCaptureMode: () => "push-to-talk" });
+    await engagePushToTalk("hotkey");
+    expect(getPushToTalkHoldCount()).toBe(0);
+    expect(harness.logs.some((line) => line.includes("began no capture"))).toBe(true);
   });
 });

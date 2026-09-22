@@ -3,26 +3,21 @@ import {
   ACTIVE_PAGE_STORAGE_KEY,
   HOME_HISTORY_STORAGE_KEY,
   SETTINGS_STORAGE_KEY,
-  SIDEBAR_COLLAPSED_STORAGE_KEY,
 } from './constants';
 import { parseJson } from './state/storage';
 import { loadHistory } from './state/history';
-import { loadDictionary, loadSnippets, loadNotes } from './state/collections';
 import { loadUsageStats, loadAnalyticsSessions } from './state/usage';
 import type {
   AchievementState,
   AnalyticsSessionDetail,
-  DictionaryTerm,
   HomeHistoryEntry,
   MainPage,
-  QuickNoteEntry,
-  SnippetEntry,
   UsageStats,
 } from './types';
 
 function loadActivePage(): MainPage {
   const raw = localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY);
-  if (raw === 'home' || raw === 'history' || raw === 'dictionary' || raw === 'snippets' || raw === 'notes' || raw === 'analytics') {
+  if (raw === 'home' || raw === 'history' || raw === 'analytics') {
     return raw;
   }
   return 'home';
@@ -30,12 +25,8 @@ function loadActivePage(): MainPage {
 
 export interface UIState {
   activePage: MainPage;
-  sidebarCollapsed: boolean;
   usage: UsageStats;
   history: HomeHistoryEntry[];
-  dictionary: DictionaryTerm[];
-  snippets: SnippetEntry[];
-  notes: QuickNoteEntry[];
   analyticsSessions: AnalyticsSessionDetail[];
   achievementStates: AchievementState[];
   incognitoMode: boolean;
@@ -106,12 +97,8 @@ function loadIncognitoMode(): boolean {
 function loadInitialState(): UIState {
   return {
     activePage: loadActivePage(),
-    sidebarCollapsed: localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true',
     usage: loadUsageStats(),
     history: loadHistory(),
-    dictionary: loadDictionary(),
-    snippets: loadSnippets(),
-    notes: loadNotes(),
     analyticsSessions: loadAnalyticsSessions(),
     achievementStates: loadAchievementStates(),
     incognitoMode: loadIncognitoMode(),

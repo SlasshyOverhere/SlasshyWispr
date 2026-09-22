@@ -19,6 +19,7 @@ import {
   asStyleProfile,
   asCaptureBackend,
   asThemeMode,
+  asTtsEngine,
   coerceInteger,
   coerceNumber,
   normalizeDictationLanguageAllowList,
@@ -70,7 +71,7 @@ export function readSettingsFromForm(
     dictationLanguageMode === "multiple"
       ? primaryDictationLanguage || dictationLanguageAllowList[0] || ""
       : primaryDictationLanguage;
-  const resolvedTtsEngine: TtsEngine = "piper";
+  const resolvedTtsEngine: TtsEngine = asTtsEngine(refs.ttsEngineSelect.value);
 
   return {
     apiKey: refs.apiKeyInput.value.trim(),
@@ -91,6 +92,9 @@ export function readSettingsFromForm(
     piperSpeed: coerceNumber(Number(refs.piperSpeedInput.value), DEFAULT_PIPER_SPEED, 0.5, 2),
     piperQuality: asPiperQuality(refs.piperQualitySelect.value),
     piperEmotion: asPiperEmotion(refs.piperEmotionSelect.value),
+    // Owned by the voice-clone panel, not this form; carried through unchanged.
+    voiceCloneSpeakerId: deps.currentSettings().voiceCloneSpeakerId,
+    voiceCloneSpeed: deps.currentSettings().voiceCloneSpeed,
     microphoneDeviceId: refs.microphoneSelect.value,
     pushToTalkHotkey: deps.isCapturingHotkey()
       ? deps.currentSettings().pushToTalkHotkey

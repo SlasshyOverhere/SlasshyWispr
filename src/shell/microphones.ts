@@ -45,6 +45,13 @@ export function updateMicrophoneSummary(): void {
   micElements.summary.textContent = selected?.textContent?.trim() || "Auto-detect";
 }
 
+/// Label of the selected microphone, as the device list shows it. The native
+/// backend matches real device names, so it is handed this and not the
+/// webview's opaque device id, which no audio API can resolve.
+export function selectedMicrophoneLabel(): string {
+  return micElements?.select?.selectedOptions.item(0)?.textContent?.trim() ?? "";
+}
+
 export async function refreshMicrophones(requestPermission: boolean): Promise<void> {
   if (!navigator.mediaDevices?.enumerateDevices) {
     micElements.select.innerHTML = "<option value=''>Microphone listing not supported</option>";

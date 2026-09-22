@@ -100,66 +100,67 @@ function formatWpm(wpm: number): string {
   return `${Math.round(wpm)}`;
 }
 
-function ActivityHeatmap({ sessions, range }: { sessions: AnalyticsSessionDetail[]; range: AnalyticsRange }) {
-  const weeks = useMemo(() => {
-    const maxDays = range === '7d' ? 7 : range === '30d' ? 30 : 84;
-    const activeDays = new Map<string, number>();
+/* One column per day, scaled to the range's peak. The old grid grouped
+   days into week-rows and stretched each cell with `flex: 1`, so any
+   range under a week painted seven identical full-width bars. */
+function DailyActivity({ sessions, range }: { sessions: AnalyticsSessionDetail[]; range: AnalyticsRange }) {
+  const days = useMemo(() => {
+    const span = range === '7d' ? 7 : 30;
+    const totals = new Map<string, number>();
     for (const s of sessions) {
       const key = getDayKey(new Date(s.date));
-      activeDays.set(key, (activeDays.get(key) || 0) + s.words);
+      totals.set(key, (totals.get(key) || 0) + s.words);
     }
-    const rows: Array<Array<{ key: string; count: number; label: string }>> = [[], [], [], [], [], [], []];
-    const now = new Date();
-    now.setHours(23, 59, 59, 999);
-    const startDay = new Date(now);
-    startDay.setDate(startDay.getDate() - maxDays);
-    const dayOfWeek = startDay.getDay();
-    startDay.setDate(startDay.getDate() - dayOfWeek);
-    const cell = new Date(startDay);
-    while (rows[6].length < Math.ceil((maxDays + dayOfWeek) / 7)) {
-      for (let r = 0; r < 7; r++) {
-        if (!rows[r]) rows[r] = [];
-        const key = getDayKey(cell);
-        const count = activeDays.get(key) || 0;
-        const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const cellMidnight = new Date(cell.getFullYear(), cell.getMonth(), cell.getDate());
-        const diff = Math.floor((nowMidnight.getTime() - cellMidnight.getTime()) / (1000 * 60 * 60 * 24));
-        if (diff > maxDays) {
-          rows[r].push({ key, count: -1, label: '' });
-        } else {
-          rows[r].push({ key, count, label: cell.getDate().toString() });
-        }
-        cell.setDate(cell.getDate() + 1);
-      }
+    const out: Array<{ key: string; words: number; label: string; dateLabel: string; isToday: boolean }> = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (let i = span - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const key = getDayKey(d);
+      out.push({
+        key,
+        words: totals.get(key) || 0,
+        label: d.toLocaleDateString(undefined, { weekday: 'narrow' }),
+        dateLabel: d.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }),
+        isToday: i === 0,
+      });
     }
-    return rows;
+    return out;
   }, [sessions, range]);
 
-  const maxCount = Math.max(...weeks.flat().map(c => c.count), 1);
-
-  function intensity(count: number): string {
-    if (count < 0) return 'cell-outside';
-    if (count === 0) return 'cell-empty';
-    const ratio = count / maxCount;
-    if (ratio > 0.66) return 'cell-high';
-    if (ratio > 0.33) return 'cell-mid';
-    return 'cell-low';
-  }
+  const peak = Math.max(...days.map(d => d.words), 1);
+  const span = days.length;
+  const showLabels = span <= 10;
+  const empty = days.every(d => d.words === 0);
 
   return (
-    <div className="analytics-heatmap-section">
-      <h3 className="analytics-section-title">Activity</h3>
-      <div className="analytics-heatmap-grid">
-        {weeks.map((row, ri) => (
-          <div key={ri} className="analytics-heatmap-row">
-            <span className="analytics-heatmap-day-label">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][ri]}</span>
-            {row.map((cell) => (
-              <span key={cell.key} className={`analytics-heatmap-cell ${intensity(cell.count)}`} title={`${cell.key}: ${cell.count} words`} />
-            ))}
+    <section className="analytics-activity">
+      <div className="analytics-activity-head">
+        <h3 className="analytics-section-title">Daily activity</h3>
+        <span className="analytics-activity-meta">
+          {empty ? 'No dictation in this range' : `Last ${span} days · peak ${peak.toLocaleString()}`}
+        </span>
+      </div>
+      <div className="analytics-activity-bars" role="img" aria-label={`Words per day over the last ${span} days`}>
+        {days.map((d, i) => (
+          <div
+            key={d.key}
+            className={`activity-col ${d.isToday ? 'is-today' : ''}`}
+            title={`${d.key}: ${d.words.toLocaleString()} words`}
+          >
+            <span className="activity-track">
+              <span
+                className="activity-bar"
+                style={{ height: `${d.words === 0 ? 0 : Math.max(6, Math.round((d.words / peak) * 100))}%` }}
+              />
+            </span>
+            {showLabels && <span className="activity-label">{d.label}</span>}
+            {!showLabels && (i === 0 || i === span - 1) && <span className="activity-label">{d.dateLabel}</span>}
           </div>
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -281,7 +282,7 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
       <header className="analytics-header">
         <div>
           <h1 className="analytics-title">Analytics</h1>
-          <p className="analytics-subtitle">Your dictation metrics, achievements, and activity at a glance</p>
+          <p className="analytics-subtitle">Dictation metrics, achievements and activity</p>
         </div>
         <div className="analytics-range-picker">
           <button className={`analytics-range-btn ${range === '7d' ? 'is-active' : ''}`} onClick={() => setRange('7d')} type="button">7 days</button>
@@ -310,7 +311,7 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
           <div className="streak-body">
             <div className="streak-headline">
               <span className="streak-count">{streak}</span>
-              <span className="streak-label">{streak === 1 ? 'day streak' : 'day streak'}</span>
+              <span className="streak-label">day streak</span>
             </div>
             <span className="streak-sub">{getStreakSubMessage(streak)}</span>
           </div>
@@ -348,9 +349,9 @@ export function AnalyticsPage({ usage: initialUsage, analyticsSessions: initialS
         </div>
       </div>
 
-      <RecentActivity sessions={filteredSessions} />
+      <DailyActivity sessions={filteredSessions} range={range} />
 
-      <ActivityHeatmap sessions={filteredSessions} range={range} />
+      <RecentActivity sessions={filteredSessions} />
 
       <AchievementsGrid usage={localUsage} achievementStates={localAchievements} />
     </div>

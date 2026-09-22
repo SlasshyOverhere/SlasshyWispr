@@ -46,9 +46,10 @@ pub(crate) use settings::{
     stt_timeout_bounds, temperature_bounds,
 };
 pub(crate) use tts::{
-    clone_coqui_voice, ensure_voice_model, get_coqui_status, get_tts_runtime_setup_status,
-    list_coqui_models, list_coqui_voices, preview_coqui_voice, setup_assistant_runtime,
-    setup_coqui_runtime, start_tts_runtime_setup, validate_coqui, validate_piper, TtsSetupState,
+    clone_voice, delete_voice_clone, ensure_voice_clone_model, ensure_voice_model,
+    get_tts_runtime_setup_status, get_voice_clone_status, list_voice_clones, preview_cloned_voice,
+    setup_assistant_runtime, start_tts_runtime_setup, unload_voice_clone_model, validate_piper,
+    TtsSetupState,
 };
 pub(crate) use updater::{
     check_for_app_update, download_and_install_app_update, log_client_event,

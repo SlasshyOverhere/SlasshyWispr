@@ -18,13 +18,9 @@ export const SETTINGS_STORAGE_KEY = "slasshywispr-settings-v4";
 
 /** Emitted by Rust when a second launch asks for a file to be transcribed. */
 export const APP_EVENT_TRANSCRIBE_FILE = "slasshywispr://transcribe-file";
-export const DICTIONARY_STORAGE_KEY = "slasshywispr-dictionary-v1";
-export const SNIPPETS_STORAGE_KEY = "slasshywispr-snippets-v1";
-export const NOTES_STORAGE_KEY = "slasshywispr-notes-v1";
 export const USAGE_STORAGE_KEY = "slasshywispr-usage-v1";
 export const DOCK_LAYOUT_STORAGE_KEY = "slasshywispr-dock-layout-v2";
 export const HOME_HISTORY_STORAGE_KEY = "slasshywispr-home-history-v1";
-export const SIDEBAR_COLLAPSED_STORAGE_KEY = "slasshywispr-sidebar-collapsed-v1";
 export const LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY = "slasshywispr-local-stt-hardware-advisor-v1";
 export const GITHUB_RELEASES_PAGE_URL = "https://github.com/SlasshyOverhere/SlasshyWispr/releases/latest";
 export const APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY = "slasshywispr-app-update-last-checked-at-v1";
@@ -48,6 +44,8 @@ export const DEFAULT_COMMAND_HOTKEY = "Ctrl+Shift+Space";
 export const DEFAULT_CAPTURE_MODE: CaptureMode = "push-to-talk";
 export const DEFAULT_STYLE_PROFILE: StyleProfile = "adaptive";
 export const DEFAULT_TTS_ENGINE: TtsEngine = "piper";
+export const DEFAULT_VOICE_CLONE_SPEAKER_ID = "";
+export const DEFAULT_VOICE_CLONE_SPEED = 1.0;
 export const DEFAULT_ASSISTANT_NAME = "Lily";
 export const DEFAULT_PIPER_SPEED = 1.08;
 export const DEFAULT_PIPER_QUALITY: PiperQuality = "fast";
@@ -75,7 +73,6 @@ export const LOCAL_STT_MODEL_SIZE_LABELS: Record<string, string> = {
   "nvidia/parakeet-tdt-0.6b-v3": "Parakeet v3 (478 MB)",
   "nvidia/parakeet-tdt_ctc-110m": "Parakeet v2 (473 MB)",
 };
-export const MAX_COQUI_REFERENCE_SECONDS = 30;
 export const ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS = 1_000;
 export const MAX_HISTORY_ITEMS = 100;
 export const FOREGROUND_BLOCK_CHECK_CACHE_MS = 320;

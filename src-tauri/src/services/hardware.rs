@@ -265,7 +265,8 @@ pub(crate) fn local_stt_models_for_tier(
     tier: &str,
     _nvidia_gpu_detected: bool,
 ) -> (&'static str, Vec<&'static str>, Vec<&'static str>) {
-    // Performance: strong CPU/GPU + ample RAM can handle the larger 0.6B model.
+    // Performance: strong CPU/GPU + ample RAM can handle a 0.6B model, so suggest
+    // Parakeet v3.
     // Balanced/Basic: recommend the lightweight 110m model; caution about the
     // heavier 0.6B model which may be slow on constrained hardware.
     // NOTE: Native Parakeet runs on CPU int8 regardless of GPU, so
@@ -455,6 +456,25 @@ mod tests {
     fn unknown_tier_defaults_to_lightweight() {
         let (suggested, _, _) = super::local_stt_models_for_tier("unknown", false);
         assert_eq!(suggested, "nvidia/parakeet-tdt_ctc-110m");
+    }
+
+    /// A suggestion the catalog cannot serve would strand the user with no local STT.
+    #[test]
+    fn every_tier_suggestion_is_in_the_built_in_catalog() {
+        let catalog = crate::pipeline::routing::built_in_local_stt_model_catalog();
+        for tier in ["performance", "balanced", "basic", "unknown"] {
+            let (suggested, candidates, caution) = super::local_stt_models_for_tier(tier, false);
+            assert!(
+                catalog.contains(&suggested.to_string()),
+                "tier {tier} suggests '{suggested}', which is not in the catalog"
+            );
+            for model in candidates.iter().chain(caution.iter()) {
+                assert!(
+                    catalog.contains(&model.to_string()),
+                    "tier {tier} references '{model}', which is not in the catalog"
+                );
+            }
+        }
     }
 
     // ===== HARDWARE TIER CLASSIFICATION =====

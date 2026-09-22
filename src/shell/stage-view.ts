@@ -14,7 +14,6 @@ export interface StageViewElements {
   statusPill: HTMLDivElement;
   statusDetail: HTMLParagraphElement;
   recordBtn: HTMLButtonElement;
-  notesQuickMicBtn: HTMLButtonElement;
 }
 
 export interface StageViewDeps {
@@ -99,8 +98,6 @@ export function refreshRecordButton(): void {
       captureMode === "push-to-talk" ? "Release to Stop" : "Stop Recording";
     stageElements.recordBtn.classList.add("is-recording");
     stageElements.recordBtn.disabled = false;
-    stageElements.notesQuickMicBtn.dataset.stage = "recording";
-    stageElements.notesQuickMicBtn.disabled = false;
     document.querySelector(".app-frame")?.classList.add("is-recording");
     return;
   }
@@ -109,8 +106,6 @@ export function refreshRecordButton(): void {
     stageElements.recordBtn.textContent = "Processing...";
     stageElements.recordBtn.classList.remove("is-recording");
     stageElements.recordBtn.disabled = true;
-    stageElements.notesQuickMicBtn.dataset.stage = "processing";
-    stageElements.notesQuickMicBtn.disabled = true;
     document.querySelector(".app-frame")?.classList.remove("is-recording");
     return;
   }
@@ -119,6 +114,4 @@ export function refreshRecordButton(): void {
   stageElements.recordBtn.classList.remove("is-recording");
   stageElements.recordBtn.disabled = false;
   document.querySelector(".app-frame")?.classList.remove("is-recording");
-  stageElements.notesQuickMicBtn.dataset.stage = "idle";
-  stageElements.notesQuickMicBtn.disabled = false;
 }

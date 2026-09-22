@@ -85,7 +85,6 @@ export function initOllamaClient(elements: OllamaClientElements, deps: OllamaCli
     }
     deps.setCatalogInput(selected);
     deps.commitSettings();
-    deps.setNotice(`Local Ollama model set to "${selected}".`);
   });
   elements.pullOllamaModelBtn.addEventListener("click", () => {
     void pullOllamaModel();
@@ -98,7 +97,6 @@ export function initOllamaClient(elements: OllamaClientElements, deps: OllamaCli
     }
     deps.setCatalogInput(selected);
     deps.commitSettings();
-    deps.setNotice(`AI model set to "${selected}".`);
   });
   elements.applyModelToSttBtn.addEventListener("click", () => {
     const selected = elements.providerCatalogSelect.value.trim();
@@ -108,7 +106,6 @@ export function initOllamaClient(elements: OllamaClientElements, deps: OllamaCli
     }
     deps.setCatalogInput(selected);
     deps.commitSettings();
-    deps.setNotice(`STT model set to "${selected}".`);
   });
   elements.providerCatalogSelect.addEventListener("change", () => {
     const selected = elements.providerCatalogSelect.value.trim();
@@ -152,7 +149,6 @@ export async function fetchProviderModels(): Promise<void> {
       apiBaseUrl: activeSettings.apiBaseUrl || null,
     });
     ollamaDeps.renderProviderCatalog(response.models, activeSettings.aiModelName || activeSettings.sttModelName);
-    ollamaDeps.setNotice(`Loaded ${response.models.length} provider models.`);
     ollamaDeps.setStage("idle", "Provider model list loaded.");
   } catch (error) {
     ollamaDeps.setNotice(`Unable to load provider model catalog: ${asErrorMessage(error)}`, true);
@@ -196,7 +192,6 @@ export async function refreshOllamaStatus(options: { quiet?: boolean } = {}): Pr
     });
     renderOllamaStatus(status);
     if (!quiet) {
-      ollamaDeps.setNotice(status.details || "Ollama status updated.");
       ollamaDeps.setStage("idle", "Ollama status checked.");
     }
   } catch (error) {
@@ -272,12 +267,7 @@ export async function fetchOllamaModels(
       if (fallback) {
         ollamaDeps.setCatalogInput(fallback);
         ollamaDeps.commitSettings();
-        if (!quiet) {
-          ollamaDeps.setNotice(`Auto-selected local Ollama model "${fallback}".`);
-        }
       }
-    } else if (!quiet) {
-      ollamaDeps.setNotice(`Loaded ${response.models.length} Ollama models.`);
     }
     if (!quiet) {
       ollamaDeps.setStage("idle", "Ollama model list loaded.");

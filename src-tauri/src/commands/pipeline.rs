@@ -22,10 +22,7 @@ use crate::pipeline::ai::{
 use crate::pipeline::input::{apply_noise_suppression, validate_audio_input};
 use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::process::elapsed_ms;
-use crate::pipeline::refinement::{
-    self, RefinementConfig, RefinementDictionaryEntry, RefinementSnippetEntry,
-};
-use crate::pipeline::routing::zero_python_mode_enabled;
+use crate::pipeline::refinement::{self, RefinementConfig};
 use crate::pipeline::routing::{infer_local_stt_provider_from_model, AiModeConfig, SttModeConfig};
 use crate::pipeline::selection::{
     build_selected_context_answer_prompt, seems_like_selection_context_query,
@@ -36,7 +33,8 @@ use crate::pipeline::stt::{
     normalize_stt_allowed_languages, normalize_stt_language_hint,
 };
 use crate::pipeline::tts::{
-    synthesize_with_coqui, synthesize_with_piper, CoquiPipelineRequest, PiperPipelineRequest,
+    load_clone_assets, synthesize_cloned, synthesize_with_piper, voice_clone_models_dir,
+    voice_clone_voice_dir, PiperPipelineRequest, VoiceClonePipelineRequest,
 };
 use crate::pipeline::wake::extract_wake_command;
 use crate::services::pipeline_service::resolve_pipeline_mode;
@@ -69,8 +67,6 @@ pub(crate) struct AssistantPipelineRequest {
     pub(crate) system_prompt: Option<String>,
     pub(crate) temperature: Option<f32>,
     pub(crate) max_tokens: Option<u32>,
-    pub(crate) dictionary_entries: Option<Vec<DictionaryEntryRequest>>,
-    pub(crate) snippet_entries: Option<Vec<SnippetEntryRequest>>,
     pub(crate) raw_mode: Option<bool>,
     pub(crate) apply_backtrack: Option<bool>,
     pub(crate) remove_fillers: Option<bool>,
@@ -84,25 +80,9 @@ pub(crate) struct AssistantPipelineRequest {
     pub(crate) selected_text: Option<String>,
     pub(crate) tts_engine: Option<String>,
     pub(crate) piper: Option<PiperPipelineRequest>,
-    pub(crate) coqui: Option<CoquiPipelineRequest>,
+    pub(crate) voice_clone: Option<VoiceClonePipelineRequest>,
     #[serde(flatten, default)]
     pub(crate) run: PipelineRunIdentity,
-    /// Stale replace-selection guard: frontend popup token; backend rejects
-    /// when it does not match the latest issued token.
-    #[serde(default)]
-    pub(crate) replace_token: String,
-}
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct DictionaryEntryRequest {
-    pub(crate) source: String,
-    pub(crate) target: String,
-}
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct SnippetEntryRequest {
-    pub(crate) trigger: String,
-    pub(crate) expansion: String,
 }
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -171,6 +151,39 @@ fn resolve_system_prompt(requested: Option<&str>) -> &str {
     }
 }
 
+/// Whisper-era guards: seq2seq models invent text from silence. Transducers and CTC
+/// emit nothing, so rejecting a real short phrase is the worse failure.
+fn stt_hallucination_guards_apply(mode: &SttModeConfig) -> bool {
+    match mode {
+        SttModeConfig::Online { .. } => true,
+        SttModeConfig::Local(local) => !matches!(
+            infer_local_stt_provider_from_model(&local.stt_model).as_str(),
+            "parakeet" | "sensevoice"
+        ),
+    }
+}
+
+/// Cloned-voice synthesis for the pipeline. The model must already be installed: a
+/// dictation never triggers the ~156 MB download, which belongs to the settings pane.
+async fn synthesize_with_cloned_voice(
+    app: &AppHandle,
+    clone: &VoiceClonePipelineRequest,
+    text: String,
+) -> Result<Vec<u8>, String> {
+    let models_dir = voice_clone_models_dir(app)?;
+    let assets = load_clone_assets(&models_dir)?.ok_or_else(|| {
+        "The voice-clone model is not installed. Download it from Settings first.".to_string()
+    })?;
+    let voice_dir = voice_clone_voice_dir(app, &clone.speaker_id)?;
+    let speed = clone.speed.unwrap_or(1.0);
+
+    tauri::async_runtime::spawn_blocking(move || {
+        synthesize_cloned(&assets, &voice_dir, &text, speed)
+    })
+    .await
+    .map_err(|error| format!("Voice-clone synthesis worker failed: {error}"))?
+}
+
 #[tauri::command]
 pub(crate) async fn run_assistant_pipeline(
     app: AppHandle,
@@ -187,16 +200,6 @@ pub(crate) async fn run_assistant_pipeline(
         pipeline_run_id: run_id.clone(),
         tts_status: tts_status.to_string(),
     };
-    // F-009: a superseded rewrite must not replace the selection. The frontend
-    // stamps each popup with a monotonic token; an older one is rejected here.
-    if !state.accept_replace_token(&request.replace_token)? {
-        warn!(
-            "[pipeline] rejected stale replace_token={} run_id={}",
-            clip_text(&request.replace_token, 40),
-            run_id
-        );
-        return Err("This rewrite was superseded by a newer request.".to_string());
-    }
     let pipeline_mode = resolve_pipeline_mode(&request)?;
 
     let requested_engine = request
@@ -205,14 +208,15 @@ pub(crate) async fn run_assistant_pipeline(
         .map(str::trim)
         .unwrap_or("piper")
         .to_ascii_lowercase();
-    let coqui_requested = requested_engine == "coqui";
-    let use_coqui = coqui_requested && !zero_python_mode_enabled();
-    if coqui_requested && zero_python_mode_enabled() {
-        warn!("[pipeline] coqui requested but disabled in zero-python mode; falling back to piper");
-    }
+    let use_cloned_voice = requested_engine == "zipvoice";
 
-    let piper_assets =
-        resolve_piper_assets(&app, &state.http, request.piper_path.as_deref(), use_coqui).await;
+    let piper_assets = resolve_piper_assets(
+        &app,
+        &state.http,
+        request.piper_path.as_deref(),
+        use_cloned_voice,
+    )
+    .await;
     let piper_path = piper_assets.piper_path;
     let piper_model_path = piper_assets.piper_model_path;
 
@@ -258,7 +262,7 @@ pub(crate) async fn run_assistant_pipeline(
     info!(
         "[pipeline] start mode={} engine={} audio_bytes={} mime={} stt_base_url={} stt_model={} ai_model={} stt_timeout_seconds={}",
         pipeline_label,
-        if use_coqui { "coqui" } else { "piper" },
+        if use_cloned_voice { "zipvoice" } else { "piper" },
         audio_bytes.len(),
         request.audio_mime_type,
         clip_text(&stt_base_url_for_log, 180),
@@ -306,7 +310,9 @@ pub(crate) async fn run_assistant_pipeline(
             .await?
         }
     };
-    if is_known_stt_hallucination(&transcript_raw) {
+    if stt_hallucination_guards_apply(&pipeline_mode.stt)
+        && is_known_stt_hallucination(&transcript_raw)
+    {
         warn!(
             "[pipeline] rejected known hallucination transcript='{}' chars={}",
             clip_text(&transcript_raw, 120),
@@ -317,7 +323,12 @@ pub(crate) async fn run_assistant_pipeline(
                 .to_string(),
         );
     }
-    if looks_like_repetitive_transcript_noise(&transcript_raw, effective_language_hint.as_deref()) {
+    if stt_hallucination_guards_apply(&pipeline_mode.stt)
+        && looks_like_repetitive_transcript_noise(
+            &transcript_raw,
+            effective_language_hint.as_deref(),
+        )
+    {
         warn!(
             "[pipeline] rejected noisy transcript chars={} language={}",
             transcript_raw.chars().count(),
@@ -340,32 +351,6 @@ pub(crate) async fn run_assistant_pipeline(
     }
     let refinement_config = RefinementConfig {
         raw_mode: request.raw_mode.unwrap_or(false),
-        snippet_entries: request
-            .snippet_entries
-            .as_ref()
-            .map(|entries| {
-                entries
-                    .iter()
-                    .map(|e| RefinementSnippetEntry {
-                        trigger: e.trigger.clone(),
-                        expansion: e.expansion.clone(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
-        dictionary_entries: request
-            .dictionary_entries
-            .as_ref()
-            .map(|entries| {
-                entries
-                    .iter()
-                    .map(|e| RefinementDictionaryEntry {
-                        source: e.source.clone(),
-                        target: e.target.clone(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
         apply_backtrack: request.apply_backtrack.unwrap_or(false),
         remove_fillers: request.remove_fillers.unwrap_or(false),
         auto_numbered_lists: request.auto_numbered_lists.unwrap_or(false),
@@ -773,10 +758,12 @@ pub(crate) async fn run_assistant_pipeline(
     }
 
     let tts_start = Instant::now();
-    let tts_result = if use_coqui {
-        match request.coqui.as_ref() {
-            Some(coqui) => synthesize_with_coqui(&app, coqui, assistant_response.clone()).await,
-            None => Err("Coqui settings are missing.".to_string()),
+    let tts_result = if use_cloned_voice {
+        match request.voice_clone.as_ref() {
+            Some(clone) => {
+                synthesize_with_cloned_voice(&app, clone, assistant_response.clone()).await
+            }
+            None => Err("Cloned-voice settings are missing.".to_string()),
         }
     } else {
         match (piper_path, piper_model_path) {
@@ -805,7 +792,11 @@ pub(crate) async fn run_assistant_pipeline(
     let tts_latency_ms = elapsed_ms(tts_start);
     info!(
         "[pipeline] tts done engine={} status={} latency_ms={} audio_bytes={}",
-        if use_coqui { "coqui" } else { "piper" },
+        if use_cloned_voice {
+            "zipvoice"
+        } else {
+            "piper"
+        },
         tts_status,
         tts_latency_ms,
         tts_bytes.len()
@@ -836,7 +827,35 @@ pub(crate) async fn run_assistant_pipeline(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pipeline::routing::LocalSttConfig;
     use crate::pipeline::tts::PiperPipelineRequest;
+
+    fn local_stt_mode(model: &str) -> SttModeConfig {
+        SttModeConfig::Local(LocalSttConfig {
+            stt_model: model.to_string(),
+        })
+    }
+
+    #[test]
+    fn hallucination_guards_skip_local_engines_that_cannot_invent_text() {
+        assert!(!stt_hallucination_guards_apply(&local_stt_mode(
+            "nvidia/parakeet-tdt-0.6b-v3"
+        )));
+        assert!(!stt_hallucination_guards_apply(&local_stt_mode(
+            "iic/SenseVoiceSmall"
+        )));
+        assert!(stt_hallucination_guards_apply(&local_stt_mode(
+            "whisper-large-v3-turbo"
+        )));
+        assert!(stt_hallucination_guards_apply(&local_stt_mode(
+            "onnx-community/moonshine-base"
+        )));
+        assert!(stt_hallucination_guards_apply(&SttModeConfig::Online {
+            api_key: "k".to_string(),
+            api_base_url: "https://api.example.com".to_string(),
+            stt_model: "whisper-1".to_string(),
+        }));
+    }
 
     #[test]
     fn an_absent_or_blank_system_prompt_falls_back_to_the_built_in_one() {
@@ -882,14 +901,6 @@ mod tests {
             system_prompt: Some("You are helpful.".to_string()),
             temperature: Some(0.5),
             max_tokens: Some(256),
-            dictionary_entries: Some(vec![DictionaryEntryRequest {
-                source: "brb".to_string(),
-                target: "be right back".to_string(),
-            }]),
-            snippet_entries: Some(vec![SnippetEntryRequest {
-                trigger: "gj".to_string(),
-                expansion: "good job".to_string(),
-            }]),
             raw_mode: Some(false),
             apply_backtrack: Some(true),
             remove_fillers: Some(true),
@@ -907,7 +918,7 @@ mod tests {
                 quality: Some("fast".to_string()),
                 emotion: Some("neutral".to_string()),
             }),
-            coqui: None,
+            voice_clone: None,
             ..Default::default()
         };
 
@@ -968,14 +979,6 @@ mod tests {
         assert!(
             obj.contains_key("maxTokens"),
             "expected camelCase 'maxTokens'"
-        );
-        assert!(
-            obj.contains_key("dictionaryEntries"),
-            "expected camelCase 'dictionaryEntries'"
-        );
-        assert!(
-            obj.contains_key("snippetEntries"),
-            "expected camelCase 'snippetEntries'"
         );
         assert!(obj.contains_key("rawMode"), "expected camelCase 'rawMode'");
         assert!(
@@ -1062,8 +1065,6 @@ mod tests {
             system_prompt: None,
             temperature: None,
             max_tokens: None,
-            dictionary_entries: None,
-            snippet_entries: None,
             raw_mode: None,
             apply_backtrack: None,
             remove_fillers: None,
@@ -1077,7 +1078,7 @@ mod tests {
             selected_text: None,
             tts_engine: None,
             piper: None,
-            coqui: None,
+            voice_clone: None,
             ..Default::default()
         };
 
@@ -1094,7 +1095,7 @@ mod tests {
         assert!(obj.get("systemPrompt").unwrap().is_null());
         assert!(obj.get("temperature").unwrap().is_null());
         assert!(obj.get("piper").unwrap().is_null());
-        assert!(obj.get("coqui").unwrap().is_null());
+        assert!(obj.get("voiceClone").unwrap().is_null());
     }
 
     #[test]
@@ -1193,70 +1194,6 @@ mod tests {
     }
 
     #[test]
-    fn ipc_nested_entry_requests_serialize_correctly() {
-        let request = AssistantPipelineRequest {
-            api_key: "key".to_string(),
-            api_base_url: Some("https://api.example.com".to_string()),
-            stt_model: Some("model".to_string()),
-            ai_model: Some("model".to_string()),
-            stt_local_mode: Some(false),
-            ai_local_mode: Some(false),
-            local_ollama_base_url: None,
-            local_ollama_model: None,
-            local_stt_model: None,
-            piper_path: None,
-            audio_base64: String::new(),
-            audio_mime_type: "audio/wav".to_string(),
-            stt_timeout_seconds: None,
-            language: None,
-            allowed_languages: None,
-            system_prompt: None,
-            temperature: None,
-            max_tokens: None,
-            dictionary_entries: Some(vec![
-                DictionaryEntryRequest {
-                    source: "brb".to_string(),
-                    target: "be right back".to_string(),
-                },
-                DictionaryEntryRequest {
-                    source: "idk".to_string(),
-                    target: "I don't know".to_string(),
-                },
-            ]),
-            snippet_entries: Some(vec![SnippetEntryRequest {
-                trigger: "gj".to_string(),
-                expansion: "good job".to_string(),
-            }]),
-            raw_mode: None,
-            apply_backtrack: None,
-            remove_fillers: None,
-            auto_punctuation: None,
-            auto_numbered_lists: None,
-            noise_suppression: None,
-            raw_pcm_base64: None,
-            command_mode: None,
-            wake_word_enabled: None,
-            assistant_name: None,
-            selected_text: None,
-            tts_engine: None,
-            piper: None,
-            coqui: None,
-            ..Default::default()
-        };
-
-        let json = serde_json::to_value(&request).expect("should serialize");
-        let entries = json.get("dictionaryEntries").unwrap().as_array().unwrap();
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].get("source").unwrap(), "brb");
-        assert_eq!(entries[0].get("target").unwrap(), "be right back");
-
-        let snippets = json.get("snippetEntries").unwrap().as_array().unwrap();
-        assert_eq!(snippets.len(), 1);
-        assert_eq!(snippets[0].get("trigger").unwrap(), "gj");
-        assert_eq!(snippets[0].get("expansion").unwrap(), "good job");
-    }
-
-    #[test]
     fn ipc_round_trip_preserves_option_vs_null_distinction() {
         // When frontend sends null for optional fields, Rust should deserialize as None
         let json_str = r#"{
@@ -1277,8 +1214,6 @@ mod tests {
         "systemPrompt": null,
         "temperature": null,
         "maxTokens": null,
-        "dictionaryEntries": null,
-        "snippetEntries": null,
         "rawMode": null,
         "applyBacktrack": null,
         "removeFillers": null,
@@ -1292,7 +1227,7 @@ mod tests {
         "selectedText": null,
         "ttsEngine": null,
         "piper": null,
-        "coqui": null
+        "voiceClone": null
     }"#;
 
         let request: AssistantPipelineRequest =
@@ -1310,7 +1245,6 @@ mod tests {
         assert!(request.max_tokens.is_none());
         assert!(request.stt_timeout_seconds.is_none());
         assert!(request.system_prompt.is_none());
-        assert!(request.dictionary_entries.is_none());
         assert!(request.piper.is_none());
     }
 }

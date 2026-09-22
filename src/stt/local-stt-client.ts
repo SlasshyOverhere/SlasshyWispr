@@ -115,6 +115,8 @@ export interface LocalSttClientDeps {
   getStage: () => string;
   setStage: (stage: "idle" | "processing", detail: string) => void;
   notify: (message: string, isError?: boolean) => void;
+  /** Sticky, for a correction the user did not ask for and must not miss. */
+  queueNotice: (message: string, isError?: boolean) => void;
   log: (message: string) => void;
   syncAvailability: () => void;
   openSettings: (reason: string) => void;
@@ -122,7 +124,6 @@ export interface LocalSttClientDeps {
   refreshAssistantInfo: () => Promise<void>;
   renderFetchedCatalog: (models: string[], selected: string) => void;
   checkModelFileExists: (model: string) => Promise<boolean>;
-  checkPythonDependencies: (model: string) => Promise<boolean>;
   checkAvailableMemory: (model: string) => Promise<{ sufficient: boolean; availableMB?: number }>;
   showOfflineModeDiagnostic: (issue: string, details?: Record<string, unknown>) => void;
   ensureSelectedLocalSttModelForWarmup: () => Promise<string>;
@@ -373,7 +374,6 @@ export async function syncLocalSttRuntimeForMode(
     if (showLoadOverlay) {
       showLocalSttLoadOverlay(model);
       setLocalSttNotice(`Loading local STT model "${model}"...`);
-      clientDeps.notify(`Loading local STT model "${model}"...`);
     }
 
     try {
@@ -751,7 +751,6 @@ export async function activateSelectedLocalSttModel(): Promise<void> {
   }
   clientDeps.commitFormSettings();
   setLocalSttNotice("Loading model...");
-  clientDeps.notify("Loading model...");
   showLocalSttLoadOverlay(model);
   clientDeps.syncAvailability();
 
@@ -762,14 +761,6 @@ export async function activateSelectedLocalSttModel(): Promise<void> {
       hideLocalSttLoadOverlay();
       setLocalSttNotice(`Model files missing for ${localSttModelLabel(model)}.`, "error");
       clientDeps.showOfflineModeDiagnostic('model-file-missing', { model });
-      return;
-    }
-
-    // DIAGNOSTIC #4: Check Python dependencies
-    const pythonReady = await clientDeps.checkPythonDependencies(model);
-    if (!pythonReady) {
-      hideLocalSttLoadOverlay();
-      clientDeps.showOfflineModeDiagnostic('python-deps-missing', { model });
       return;
     }
 
@@ -790,20 +781,12 @@ export async function activateSelectedLocalSttModel(): Promise<void> {
     const selectedModelLoaded = isSelectedLocalSttModelLoaded();
     if (selectedModelLoaded) {
       setLocalSttNotice("Model loaded.", "success");
-      clientDeps.notify("Model loaded.");
     } else {
       setLocalSttNotice("Unable to load model.", "error");
       const warmupDetails = warmup?.details || "";
       const normalizedDetails = warmupDetails.toLowerCase();
       if (normalizedDetails.includes("not downloaded yet")) {
         clientDeps.showOfflineModeDiagnostic('model-file-missing', { model });
-      } else if (
-        normalizedDetails.includes("python") ||
-        normalizedDetails.includes("nemo") ||
-        normalizedDetails.includes("module") ||
-        normalizedDetails.includes("zero-python")
-      ) {
-        clientDeps.showOfflineModeDiagnostic('python-deps-missing', { model });
       } else if (normalizedDetails.includes("timed out") || normalizedDetails.includes("timeout")) {
         clientDeps.showOfflineModeDiagnostic('load-timeout', { model });
       } else {
@@ -860,9 +843,6 @@ export async function warmupActiveLocalSttModel(
       setLocalSttRuntimeLoaded(true);
       setLocalSttSelectedModelDownloaded(true);
       renderSidebarLocalSttToggle();
-      if (!quiet) {
-        clientDeps.notify(response.details || `Local STT model warmed: ${response.model}.`);
-      }
     } else if (!quiet) {
       clientDeps.notify(response.details || `Local STT model warmup skipped: ${response.model}.`, true);
     }
@@ -903,7 +883,6 @@ export async function deactivateLocalSttModel(): Promise<void> {
       setLocalSttRuntimeLoaded(false);
       renderSidebarLocalSttToggle();
       setLocalSttNotice(response.details, "success");
-      clientDeps.notify(response.details);
     } else {
       setLocalSttNotice(response.details, "error");
       clientDeps.notify(response.details, true);
@@ -1118,7 +1097,6 @@ export async function deleteLocalSttModel(): Promise<void> {
         clientDeps.commitFormSettings();
       }
       setLocalSttSelectedModelDownloaded(false);
-      clientDeps.notify(`Deleted local STT model "${response.model}".`);
       await refreshLocalSttRuntimeState({ quiet: true });
       await fetchLocalSttModels({ quiet: true, autoSelect: true });
       await refreshSelectedLocalSttModelAvailability({ quiet: true });
@@ -1152,7 +1130,6 @@ export async function openLocalSttModelPath(): Promise<void> {
 
     if (response.opened) {
       setLocalSttNotice(`Opened: ${response.localPath}`, "success");
-      clientDeps.notify(`✅ Opened model folder successfully!`);
     } else {
       // Model path doesn't exist - offer to download
       setLocalSttNotice(response.details || "Model not found", "error");
@@ -1229,12 +1206,15 @@ export async function fetchLocalSttModels(
     clientDeps.renderFetchedCatalog(response.models, activeSettings.localSttModel);
     const refreshedSettings = clientDeps.readSettings();
     if (autoSelect && !refreshedSettings.localSttModel.trim() && response.models.length > 0) {
+      // A selection that was set and is now absent was dropped from the catalog,
+      // so the app moved it without being asked to — reported even when quiet.
+      const replaced = activeSettings.localSttModel.trim();
       const fallback = await applyCatalogFallbackToForm(clientDeps.getCatalog());
-      if (fallback && !quiet) {
-        clientDeps.notify(`Auto-selected local STT model "${localSttModelLabel(fallback)}".`);
+      if (fallback && replaced && !response.models.includes(replaced)) {
+        clientDeps.queueNotice(
+          `Local STT model "${replaced}" is no longer offered; switched to "${localSttModelLabel(fallback)}".`,
+        );
       }
-    } else if (!quiet) {
-      clientDeps.notify(`Loaded ${response.models.length} local STT models.`);
     }
     await refreshSelectedLocalSttModelAvailability({ quiet: true });
     if (!quiet) {

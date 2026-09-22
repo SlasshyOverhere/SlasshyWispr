@@ -5,11 +5,16 @@
  * extracted shell modules can report without touching main.tsx globals.
  *
  * setNotice writes the status line, which replaces itself. queueNotice stacks a
- * notice, which stays on screen until it is dismissed. See notice-stack.ts for
- * the ordering rules.
+ * notice, which then clears itself after a few seconds. See notice-stack.ts for
+ * the ordering and expiry rules.
  */
 import { logClientEvent as ipcLogClientEvent } from "../ipc/client";
-import { createNoticeStack, type NoticeItem, type NoticeStack } from "./notice-stack";
+import {
+  createNoticeStack,
+  type NoticeAction,
+  type NoticeItem,
+  type NoticeStack,
+} from "./notice-stack";
 
 export interface NoticeDeps {
   isTauri: () => boolean;
@@ -32,6 +37,18 @@ function createRow(item: NoticeItem): NoticeRow {
   const text = document.createElement("p");
   text.className = "notice-item-text";
   root.appendChild(text);
+
+  // An item is never edited after it is enqueued, so binding the captured
+  // action once is safe.
+  let action: HTMLButtonElement | null = null;
+  if (item.action) {
+    action = document.createElement("button");
+    action.type = "button";
+    action.className = "notice-action";
+    action.textContent = item.action.label;
+    action.addEventListener("click", () => item.action?.run());
+    root.appendChild(action);
+  }
 
   const dismiss = document.createElement("button");
   dismiss.type = "button";
@@ -89,8 +106,8 @@ export function setNotice(message: string, isError = false): void {
   stack?.present(message, isError);
 }
 
-export function queueNotice(message: string, isError = false): void {
-  stack?.enqueue(message, isError);
+export function queueNotice(message: string, isError = false, action?: NoticeAction): void {
+  stack?.enqueue(message, isError, action);
 }
 
 export function logClientEvent(message: string): void {

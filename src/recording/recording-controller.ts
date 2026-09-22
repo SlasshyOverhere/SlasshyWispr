@@ -13,6 +13,7 @@ import { asErrorMessage, boolFlag } from "../utils";
 import {
   base64ToBytes,
   blobToBase64,
+  captureIsSilent,
   invalidRuntimeCombinationReason,
   missingApiKeyForOnlineRuntime,
   pickBestRecorderMimeType,
@@ -27,6 +28,7 @@ import {
   stopRecordingTicker,
 } from "./capture-monitors";
 import { openMicrophoneStream } from "./mic-stream";
+import { selectedMicrophoneLabel } from "../shell/microphones";
 import {
   cancelNativeCapture,
   nativeCaptureLevel,
@@ -82,6 +84,8 @@ export interface RecordingControllerDeps {
   createId: () => string;
   /** Snapshot the paste target at capture intent (best-effort, never blocks recording). */
   notePasteTarget?: () => void;
+  /** Test seam for the no-signal check. Defaults to the real decode. */
+  captureIsSilent?: (blob: Blob) => Promise<boolean>;
   saveDictationRecording: (args: {
     recordingId: string;
     mimeType: string;
@@ -117,8 +121,18 @@ let activePipelineGen = 0;
 /// True while the in-flight capture is owned by the Rust backend.
 let activeCaptureNative = false;
 
+/// Device that produced the in-flight capture, for notices about it.
+let activeCaptureDevice = "";
+
 export function getActivePipelineGen(): number {
   return activePipelineGen;
+}
+
+/// True while a capture is live, whichever backend owns it. The webview path
+/// only exists as a MediaRecorder; the native path has no recorder at all, so
+/// callers must ask this rather than probe the recorder themselves.
+export function isCaptureActive(): boolean {
+  return activeCaptureNative || controllerState.getMediaRecorder()?.state === "recording";
 }
 
 /**
@@ -228,19 +242,15 @@ export async function startRecording(): Promise<void> {
       );
       controllerDeps.clearCaptureIntent();
     }
-    if (controllerDeps.getCaptureMode() === "push-to-talk") {
-      controllerDeps.setNotice("Recording started. Release the hotkey or mic button to stop.");
-    } else {
-      controllerDeps.setNotice("Recording started. Tap again to stop.");
-    }
     controllerDeps.syncAvailability();
   };
 
   if (useNativeCapture) {
     try {
       const captureStartedAt = controllerDeps.performanceNow();
-      const info = await startNativeCapture(activeSettings.microphoneDeviceId);
+      const info = await startNativeCapture(selectedMicrophoneLabel());
       activeCaptureNative = true;
+      activeCaptureDevice = info.deviceName;
       controllerState.setMediaRecorder(null);
       controllerState.setRecordedChunks([]);
       controllerState.setRecorderMimeType("audio/wav");
@@ -284,6 +294,7 @@ export async function startRecording(): Promise<void> {
     const micOpenStartedAt = controllerDeps.performanceNow();
     const stream = await openMicrophoneStream(activeSettings.microphoneDeviceId);
     controllerState.setMediaStream(stream);
+    activeCaptureDevice = stream.getAudioTracks()[0]?.label ?? "";
     controllerDeps.setMicrophonePermissionGranted(true);
     controllerDeps.log(
       `[record.start] microphone stream opened tracks=${stream.getAudioTracks().length} openMs=${Math.round(
@@ -342,19 +353,23 @@ export function stopRecording(options: StopRecordingOptions = {}): void {
   if (activeCaptureNative) {
     controllerState.setSkipPipeline(cancelPipeline);
     controllerState.setSkipNotice(cancelPipeline ? cancelNotice || "" : "");
+    stopRecordingTicker();
+    stopAmplitudeMonitoring(true);
+
     if (cancelPipeline) {
-      // Cancelled: discard in Rust. Otherwise finalizeRecording stops the
-      // capture, because stopping is what yields the audio.
       activeCaptureNative = false;
       void cancelNativeCapture().catch((error) => {
         controllerDeps.log(`[record.stop] native cancel failed: ${asErrorMessage(error)}`);
       });
+      controllerDeps.transition({ type: "stop-recording", cancelPipeline: true });
+      controllerDeps.syncAvailability();
+      return;
     }
-    stopRecordingTicker();
-    stopAmplitudeMonitoring(true);
-    controllerDeps.transition(
-      cancelPipeline ? { type: "stop-recording", cancelPipeline: true } : { type: "stop-recording" },
-    );
+
+    // Rust owns this capture, so there is no recorder stop event to wait for:
+    // stopping is what yields the audio, and that is finalizeRecording's job.
+    controllerDeps.transition({ type: "stop-recording" });
+    void finalizeRecording();
     controllerDeps.syncAvailability();
     return;
   }
@@ -443,6 +458,20 @@ export async function finalizeRecording(): Promise<void> {
       `[record.finalize] dropping superseded generation=${finalizeGen} active=${activePipelineGen}`,
     );
     controllerDeps.transition({ type: "recording-stopped", cancelPipeline: true });
+    controllerDeps.syncAvailability();
+    return;
+  }
+
+  // A capture with no signal is a microphone problem, not a transcription one:
+  // the selected device delivered silence, so say that instead of blaming STT.
+  if (await (controllerDeps.captureIsSilent ?? captureIsSilent)(blob)) {
+    const device = activeCaptureDevice.trim();
+    controllerDeps.log(`[record.finalize] no signal from device='${device}' bytes=${blob.size}`);
+    controllerDeps.transition({ type: "audio-empty" });
+    controllerDeps.setNotice(
+      `No audio came from ${device ? `"${device}"` : "the selected microphone"}. Check that it is switched on and not muted in Windows, or choose a different microphone.`,
+      true,
+    );
     controllerDeps.syncAvailability();
     return;
   }

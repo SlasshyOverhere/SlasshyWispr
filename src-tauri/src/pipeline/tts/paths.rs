@@ -3,9 +3,6 @@
 //! Resolves `app_data_dir()` once at the Tauri boundary (`AppHandle`) and
 //! exposes the joined directory/file paths. Synthesizers take these paths
 //! as `&Path` arguments instead of re-resolving through `AppHandle`.
-//!
-//! The dead Coqui bridge-script stub was deleted here (it always errored:
-//! "Coqui TTS is disabled. The bridge script is no longer bundled.").
 
 use std::fs;
 use std::path::PathBuf;
@@ -13,8 +10,6 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 use crate::constants::{VOICE_CONFIG_FILE, VOICE_MODEL_FILE};
-use crate::pipeline::fs::file_exists_with_content;
-use crate::pipeline::process::validate_python_binary_path;
 
 fn app_data_root(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
@@ -43,79 +38,38 @@ pub fn voice_paths(app: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
     ))
 }
 
-pub fn coqui_root_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let root = app_data_root(app)?.join("coqui");
+fn voice_clone_root_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let root = app_data_root(app)?.join("voice-clone");
     fs::create_dir_all(&root)
-        .map_err(|error| format!("Failed to create Coqui root directory: {error}"))?;
+        .map_err(|error| format!("Failed to create voice-clone directory: {error}"))?;
     Ok(root)
 }
 
-pub fn coqui_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let runtime_dir = coqui_root_dir(app)?.join("runtime");
-    fs::create_dir_all(&runtime_dir)
-        .map_err(|error| format!("Failed to create Coqui runtime directory: {error}"))?;
-    Ok(runtime_dir)
+/// Where the ZipVoice archive is unpacked (encoder, decoder, tokens, espeak-ng-data, vocoder).
+pub fn voice_clone_models_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let models_dir = voice_clone_root_dir(app)?.join("models");
+    fs::create_dir_all(&models_dir)
+        .map_err(|error| format!("Failed to create voice-clone model directory: {error}"))?;
+    Ok(models_dir)
 }
 
-pub fn coqui_cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let cache_dir = coqui_root_dir(app)?.join("cache");
-    fs::create_dir_all(&cache_dir)
-        .map_err(|error| format!("Failed to create Coqui cache directory: {error}"))?;
-    Ok(cache_dir)
+/// One directory per cloned voice: the reference clip and the transcript it was read from.
+pub fn voice_clone_voices_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let voices_dir = voice_clone_root_dir(app)?.join("voices");
+    fs::create_dir_all(&voices_dir)
+        .map_err(|error| format!("Failed to create voice-clone voices directory: {error}"))?;
+    Ok(voices_dir)
 }
 
-pub fn coqui_voices_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let voice_dir = coqui_root_dir(app)?.join("voices");
-    fs::create_dir_all(&voice_dir)
-        .map_err(|error| format!("Failed to create Coqui voices directory: {error}"))?;
-    Ok(voice_dir)
+/// `voice_id` must already be sanitized by the command layer.
+pub fn voice_clone_voice_dir(app: &AppHandle, voice_id: &str) -> Result<PathBuf, String> {
+    Ok(voice_clone_voices_dir(app)?.join(voice_id))
 }
 
-pub fn coqui_uploads_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let uploads_dir = coqui_root_dir(app)?.join("uploads");
-    fs::create_dir_all(&uploads_dir)
-        .map_err(|error| format!("Failed to create Coqui uploads directory: {error}"))?;
-    Ok(uploads_dir)
-}
-
-pub fn coqui_previews_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let previews_dir = coqui_root_dir(app)?.join("previews");
+/// Where the last preview was written, so the settings pane can play it back.
+pub fn voice_clone_previews_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let previews_dir = voice_clone_root_dir(app)?.join("previews");
     fs::create_dir_all(&previews_dir)
-        .map_err(|error| format!("Failed to create Coqui previews directory: {error}"))?;
+        .map_err(|error| format!("Failed to create voice-clone previews directory: {error}"))?;
     Ok(previews_dir)
-}
-
-pub fn coqui_venv_python_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let runtime_dir = coqui_runtime_dir(app)?;
-    #[cfg(target_os = "windows")]
-    {
-        Ok(runtime_dir.join("venv").join("Scripts").join("python.exe"))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        Ok(runtime_dir.join("venv").join("bin").join("python"))
-    }
-}
-
-pub fn resolve_coqui_python_path(
-    app: &AppHandle,
-    requested_path: Option<&str>,
-) -> Result<String, String> {
-    if let Some(path) = requested_path
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        validate_python_binary_path(path)?;
-        return Ok(path.to_string());
-    }
-
-    let venv_python = coqui_venv_python_path(app)?;
-    if file_exists_with_content(&venv_python) {
-        let resolved = venv_python.to_string_lossy().into_owned();
-        validate_python_binary_path(&resolved)?;
-        return Ok(resolved);
-    }
-
-    validate_python_binary_path("python")?;
-    Ok("python".to_string())
 }

@@ -105,6 +105,9 @@ function wireHarness(options: {
       notify: (message, isError) => {
         notices.push({ message, isError });
       },
+      queueNotice: (message, isError) => {
+        notices.push({ message, isError });
+      },
       log: () => {},
       syncAvailability: () => {},
       openSettings: () => {},
@@ -112,7 +115,6 @@ function wireHarness(options: {
       refreshAssistantInfo: async () => {},
       renderFetchedCatalog: () => {},
       checkModelFileExists: async () => options.modelExists ?? true,
-      checkPythonDependencies: async () => true,
       checkAvailableMemory: async () => ({ sufficient: true }),
       showOfflineModeDiagnostic: () => {},
       ensureSelectedLocalSttModelForWarmup: async () => settings.localSttModel,

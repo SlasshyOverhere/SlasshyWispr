@@ -67,7 +67,13 @@ describe("IPC command constants match backend command names", () => {
     expect(IPC_COMMANDS.ensureVoiceModel).toBe("ensure_voice_model");
     expect(IPC_COMMANDS.getTtsRuntimeSetupStatus).toBe("get_tts_runtime_setup_status");
     expect(IPC_COMMANDS.startTtsRuntimeSetup).toBe("start_tts_runtime_setup");
-    expect(IPC_COMMANDS.setupCoquiRuntime).toBe("setup_coqui_runtime");
+    expect(IPC_COMMANDS.getVoiceCloneStatus).toBe("get_voice_clone_status");
+    expect(IPC_COMMANDS.ensureVoiceCloneModel).toBe("ensure_voice_clone_model");
+    expect(IPC_COMMANDS.listVoiceClones).toBe("list_voice_clones");
+    expect(IPC_COMMANDS.cloneVoice).toBe("clone_voice");
+    expect(IPC_COMMANDS.previewClonedVoice).toBe("preview_cloned_voice");
+    expect(IPC_COMMANDS.deleteVoiceClone).toBe("delete_voice_clone");
+    expect(IPC_COMMANDS.unloadVoiceCloneModel).toBe("unload_voice_clone_model");
     expect(IPC_COMMANDS.runAssistantPipeline).toBe("run_assistant_pipeline");
     expect(IPC_COMMANDS.toggleMainWindowVisibility).toBe("toggle_main_window_visibility");
   });
@@ -172,11 +178,23 @@ describe("IPC wrapper argument shapes", () => {
     await client.validatePiper({ piperPath: null });
     await client.ensureVoiceModel();
     await client.getTtsRuntimeSetupStatus();
-    await client.startTtsRuntimeSetup({ pythonPath: null, useGpu: false });
+    await client.startTtsRuntimeSetup();
+    await client.getVoiceCloneStatus();
+    await client.ensureVoiceCloneModel();
+    await client.listVoiceClones();
+    await client.cloneVoice({ speakerId: "my-voice", audioBase64: "AAAA", referenceText: "hi" });
+    await client.previewClonedVoice({ speakerId: "my-voice" });
+    await client.deleteVoiceClone({ speakerId: "my-voice" });
+    await client.unloadVoiceCloneModel();
     expect(calls[0]).toEqual({ command: "setup_assistant_runtime", args: undefined });
     expect(calls[1]).toEqual({ command: "validate_piper", args: { request: { piperPath: null } } });
-    expect(calls[4].args).toEqual({
-      request: { pythonPath: null, useGpu: false },
+    expect(calls[4]).toEqual({ command: "start_tts_runtime_setup", args: undefined });
+    expect(calls[5]).toEqual({ command: "get_voice_clone_status", args: undefined });
+    expect(calls[8]).toEqual({
+      command: "clone_voice",
+      args: {
+        request: { speakerId: "my-voice", audioBase64: "AAAA", referenceText: "hi" },
+      },
     });
   });
 

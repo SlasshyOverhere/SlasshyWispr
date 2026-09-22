@@ -134,8 +134,6 @@ import {
 } from "./recording/mic-stream";
 import {
   clearPushToTalkHolds as clearPushToTalkHoldsService,
-  bindPushToTalkKeyboardHold as bindPushToTalkKeyboardHoldService,
-  bindPushToTalkPointerHold as bindPushToTalkPointerHoldService,
   engagePushToTalk as engagePushToTalkService,
   getPushToTalkHoldCount,
   handleDockMicToggle as handleDockMicToggleService,
@@ -161,6 +159,7 @@ import {
 } from "./recording/capture-monitors";
 import {
   initRecordingController,
+  isCaptureActive as isCaptureActiveService,
   stopRecording as stopRecordingService,
 } from "./recording/recording-controller";
 import {
@@ -199,20 +198,6 @@ import {
   setNotice as setNoticeService,
 } from "./shell/diagnostics";
 import {
-  addDictionaryTerm as addDictionaryTermService,
-  addQuickNote as addQuickNoteService,
-  addSnippetEntry as addSnippetEntryService,
-  getDictionaryTerms as getDictionaryTermsService,
-  getSnippets as getSnippetsService,
-  initCollectionsView,
-  persistDictionaryTerms as persistDictionaryTermsService,
-  persistQuickNotes as persistQuickNotesService,
-  persistSnippets as persistSnippetsService,
-  renderDictionaryList as renderDictionaryListService,
-  renderNotesList as renderNotesListService,
-  renderSnippetsList as renderSnippetsListService,
-} from "./collections/collections-view";
-import {
   initAssistantInfo,
   initAssistantStatus,
   refreshAssistantInfoSafely as refreshAssistantInfoSafelyService,
@@ -239,10 +224,6 @@ import {
   initAvailability,
   syncActionAvailability as syncActionAvailabilityService,
 } from "./shell/availability";
-import {
-  applyPersistedSidebarCollapsed as applyPersistedSidebarCollapsedService,
-  initSidebar,
-} from "./shell/sidebar";
 import {
   describeLaunchAtLoginCorrection,
   describeShellIntegrationCorrection,
@@ -341,7 +322,6 @@ import {
 import {
   checkAvailableMemory as checkAvailableMemoryService,
   checkModelFileExists as checkModelFileExistsService,
-  checkPythonDependencies as checkPythonDependenciesService,
   initLocalSttDiagnostics,
   showOfflineModeDiagnostic as showOfflineModeDiagnosticService,
 } from "./stt/local-stt-diagnostics";
@@ -397,7 +377,6 @@ import type {
 } from "./recording-state-machine";
 
 import {
-  SIDEBAR_COLLAPSED_STORAGE_KEY,
   APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY,
   APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY,
   DEFAULT_HOTKEY,
@@ -421,10 +400,6 @@ if (!appRoot) {
   throw new Error("Missing #app root element");
 }
 
-document.body.classList.add("shadcn-ui");
-document.body.classList.add("mono-ui");
-document.body.classList.add("overhaul-v3");
-
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { App } from './App';
@@ -433,8 +408,8 @@ flushSync(() => {
   createRoot(appRoot).render(<App />);
 });
 
-const BASE_WINDOW_WIDTH = 1280;
-const BASE_WINDOW_HEIGHT = 832;
+const BASE_WINDOW_WIDTH = 780;
+const BASE_WINDOW_HEIGHT = 600;
 const BASE_DPI = 96;
 
 async function initializeDpiAwareWindowSize(): Promise<void> {
@@ -487,7 +462,6 @@ function requiredElement<T extends Element>(selector: string): T {
 
 
 const settingsOverlay = requiredElement<HTMLDivElement>("#settingsOverlay");
-const toggleSidebarBtn = requiredElement<HTMLButtonElement>("#toggleSidebarBtn");
 const openSettingsBtn = requiredElement<HTMLButtonElement>("#openSettingsBtn");
 const sidebarToggleLocalSttBtn = requiredElement<HTMLButtonElement>("#sidebarToggleLocalSttBtn");
 const sidebarToggleLocalSttGlyph = requiredElement<HTMLSpanElement>("#sidebarToggleLocalSttGlyph");
@@ -521,10 +495,6 @@ const settingsNavButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>("[data-settings-pane-nav]"),
 );
 const settingsPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-settings-pane]"));
-const sidebarLabeledButtons = Array.from(
-  document.querySelectorAll<HTMLElement>(".flow-sidebar [data-label]"),
-);
-
 const statusPill = requiredElement<HTMLDivElement>("#statusPill");
 const statusDetail = requiredElement<HTMLParagraphElement>("#statusDetail");
 const noticeStack = requiredElement<HTMLElement>("#noticeStack");
@@ -537,27 +507,6 @@ const timeTrend = requiredElement<HTMLElement>("#timeTrend");
 const sessionsTrend = requiredElement<HTMLElement>("#sessionsTrend");
 const wpmTrend = requiredElement<HTMLElement>("#wpmTrend");
 
-const dictionaryList = requiredElement<HTMLDivElement>("#dictionaryList");
-const dictionaryForm = requiredElement<HTMLFormElement>("#dictionaryForm");
-const dictionaryFormCard = requiredElement<HTMLElement>("#dictionaryFormCard");
-const dictionaryFormCloseBtn = requiredElement<HTMLButtonElement>("#dictionaryFormCloseBtn");
-const dictionaryCount = requiredElement<HTMLSpanElement>("#dictionaryCount");
-const dictionarySourceInput = requiredElement<HTMLInputElement>("#dictionarySourceInput");
-const dictionaryTargetInput = requiredElement<HTMLInputElement>("#dictionaryTargetInput");
-const dictionaryAddBtn = requiredElement<HTMLButtonElement>("#dictionaryAddBtn");
-const dictionaryAddBtnTop = requiredElement<HTMLButtonElement>("#dictionaryAddBtnTop");
-
-
-const snippetsList = requiredElement<HTMLDivElement>("#snippetsList");
-const snippetFormContainer = requiredElement<HTMLElement>("#snippetFormContainer");
-const snippetForm = requiredElement<HTMLFormElement>("#snippetForm");
-const snippetTriggerInput = requiredElement<HTMLInputElement>("#snippetTriggerInput");
-const snippetExpansionInput = requiredElement<HTMLInputElement>("#snippetExpansionInput");
-const snippetAddBtn = requiredElement<HTMLButtonElement>("#snippetAddBtn");
-const snippetsAddBtnTop = requiredElement<HTMLButtonElement>("#snippetsAddBtnTop");
-
-
-const notesList = requiredElement<HTMLDivElement>("#notesList");
 const settingsVersionText = requiredElement<HTMLParagraphElement>("#settingsVersionText");
 
 const providerModelCatalogSelect = requiredElement<HTMLSelectElement>("#providerModelCatalogSelect");
@@ -634,7 +583,6 @@ const clearHistoryBtn = requiredElement<HTMLButtonElement>("#clearHistoryBtn");
 const clearHistoryBtnFull = requiredElement<HTMLButtonElement>("#clearHistoryBtnFull");
 const viewFullHistoryBtn = requiredElement<HTMLButtonElement>("#viewFullHistoryBtn");
 const clearStatsBtn = requiredElement<HTMLButtonElement>("#clearStatsBtn");
-const notesQuickMicBtn = requiredElement<HTMLButtonElement>("#notesQuickMicBtn");
 
 const toggleHotkeyEditorBtn = requiredElement<HTMLButtonElement>("#toggleHotkeyEditorBtn");
 const toggleMicEditorBtn = requiredElement<HTMLButtonElement>("#toggleMicEditorBtn");
@@ -693,13 +641,6 @@ import {
   snoozeUpdateFor24Hours,
 } from "./updater/updater-client";
 
-const NOTE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
 const systemThemeMediaQuery =
   typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: light)")
@@ -745,7 +686,6 @@ initPipelineRender(
     getLastSavedRecordingId: () => lastSavedRecordingId,
     getLastCaptureIntentLabel: () => lastCaptureIntentLabel,
     trackUsage: (transcript) => trackUsageService(transcript),
-    addQuickNote: (text) => addQuickNoteService(text),
     getHomeHistory: () => homeHistoryEntries,
     setHomeHistory: (entries) => {
       homeHistoryEntries = entries;
@@ -805,7 +745,7 @@ initCaptureTriggers({
     lastCaptureIntentStartedAt = startedAt;
     lastCaptureIntentLabel = label;
   },
-  getRecorderState: () => mediaRecorder?.state ?? null,
+  isCaptureActive: () => isCaptureActiveService(),
   syncAvailability: () => syncActionAvailabilityService(),
   isHotkeyCaptureActive: () => isAnyHotkeyCaptureActive(),
   performanceNow: () => performance.now(),
@@ -932,8 +872,6 @@ initPipelineClient(
       lastWarmedLocalSttModel = model;
     },
     ensureLocalOllamaModelSelected: (options) => ensureLocalOllamaModelSelectedService(options),
-    getDictionaryTerms: () => getDictionaryTermsService(),
-    getSnippets: () => getSnippetsService(),
     nextSelectionPopupToken: () => nextSelectionPopupTokenService(),
     dismissSelectionPopup: () => dismissSelectionPopupService(),
     showSelectionAssistantPopup: (payload) => showSelectionAssistantPopupService(payload),
@@ -1110,6 +1048,7 @@ initLocalSttClient(
     getStage: () => stage,
     setStage: (next, detail) => setStageService(next, detail),
     notify: (message, isError) => setNoticeService(message, isError),
+    queueNotice: (message, isError) => queueNoticeService(message, isError),
     log: (message) => logClientEventService(message),
     syncAvailability: () => syncActionAvailabilityService(),
     openSettings: (reason) => openSettingsService(reason),
@@ -1117,7 +1056,6 @@ initLocalSttClient(
     refreshAssistantInfo: () => refreshAssistantInfoSafelyService(),
     renderFetchedCatalog: (models, selected) => renderLocalSttModelCatalogService(models, selected),
     checkModelFileExists: (model) => checkModelFileExistsService(model),
-    checkPythonDependencies: (model) => checkPythonDependenciesService(model),
     checkAvailableMemory: (model) => checkAvailableMemoryService(model),
     showOfflineModeDiagnostic: (issue, details) => showOfflineModeDiagnosticService(issue, details),
     ensureSelectedLocalSttModelForWarmup: () => ensureSelectedLocalSttModelService({ quiet: true }),
@@ -1170,16 +1108,6 @@ initTauriShell(
   },
 );
 
-initSidebar(
-  { toggleButton: toggleSidebarBtn, labeledButtons: sidebarLabeledButtons },
-  {
-    readCollapsed: () => localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1",
-    writeCollapsed: (collapsed) => {
-      localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, collapsed ? "1" : "0");
-    },
-  },
-);
-
 initAvailability(
   {
     refreshMicsBtn,
@@ -1209,10 +1137,6 @@ initAvailability(
     commandHotkeyInput,
     toggleMicEditorBtn,
     toggleHotkeyEditorBtn,
-    dictionaryAddBtn,
-    dictionaryAddBtnTop,
-    snippetAddBtn,
-    snippetsAddBtnTop,
   },
   {
     isPipelineRunning: () => pipelineRunning,
@@ -1230,7 +1154,7 @@ initAvailability(
   },
 );
 initStageView(
-  { statusPill, statusDetail, recordBtn, notesQuickMicBtn },
+  { statusPill, statusDetail, recordBtn },
   {
     getStage: () => stage,
     setStageState: (next) => {
@@ -1302,28 +1226,6 @@ initClipboard({
   isTauri: isTauriEnvironment,
   notify: (message, isError) => setNoticeService(message, isError),
 });
-
-initCollectionsView(
-  {
-    dictionaryList,
-    dictionaryFormCard,
-    dictionaryCount,
-    dictionarySourceInput,
-    dictionaryTargetInput,
-    dictionaryAddBtnTop,
-    snippetsList,
-    snippetFormContainer,
-    snippetTriggerInput,
-    snippetExpansionInput,
-    snippetsAddBtnTop,
-    notesList,
-  },
-  {
-    isIncognito: () => settings.incognitoMode,
-    notify: (message, isError) => setNoticeService(message, isError),
-    formatNoteTime: (createdAt) => NOTE_TIME_FORMATTER.format(createdAt),
-  },
-);
 
 initDesktopNotice({
   setNotice: (message, isError) => setNoticeService(message, isError),
@@ -1408,7 +1310,7 @@ initUpdaterFlow(
   },
   {
     isTauri: isTauriEnvironment,
-    notify: (message, isError) => setNoticeService(message, isError),
+    queueUpdateNotice: (message, action) => queueNoticeService(message, false, action),
     log: (message) => logClientEventService(message),
     openUpdateSettings: (reason) => {
       openSettingsService(reason);
@@ -1547,7 +1449,6 @@ initSettingsChange({
   refreshRecordButton: () => refreshRecordButtonService(),
   syncActionAvailability: () => syncActionAvailabilityService(),
   updateMicrophoneSummary: () => updateMicrophoneSummaryService(),
-  renderNotesList: () => renderNotesListService(),
   renderAssistantInfo: (info) => renderAssistantInfoService(info),
   setActiveTtsProfile: (profile) => setActiveTtsProfileService(profile),
   setCatalogSelects: (next, catalogs) => {
@@ -1639,9 +1540,6 @@ renderLocalOllamaModelCatalogService([], settings.localOllamaModel);
 renderLocalSttModelCatalogService([], settings.localSttModel);
 setActiveTtsProfileService("piper");
 updateTtsSetupGateService();
-persistDictionaryTermsService();
-persistSnippetsService();
-persistQuickNotesService();
 persistUsageStatsService();
 
 if (systemThemeMediaQuery) {
@@ -1656,9 +1554,6 @@ if (systemThemeMediaQuery) {
 
 setActivePageService(getActivePageService());
 setActiveSettingsPaneService(getActiveSettingsPaneService());
-renderDictionaryListService();
-renderSnippetsListService();
-renderNotesListService();
 initAnalyticsRender(
   {
     words: metricWords,
@@ -1694,7 +1589,6 @@ void reconcileShellIntegrationWithOs().then((correction) => {
   }
 });
 startBlockedAppShortcutSuppressionMonitorService();
-applyPersistedSidebarCollapsedService();
 
 
 checkUpdatesBtn.addEventListener("click", () => {
@@ -1847,7 +1741,7 @@ initGlobalShortcutDispatch({
 });
 
 initLocalShortcuts(
-  { toggleSidebarBtn, sidebarToggleLocalSttBtn, openSettingsBtn },
+  { sidebarToggleLocalSttBtn, openSettingsBtn },
   {
     getSettings: () => settings,
     getStage: () => stage,
@@ -1937,61 +1831,6 @@ localSttModelCatalogSelect.addEventListener("change", () => {
   handleSettingsChangeService();
   void refreshSelectedLocalSttModelAvailabilityService({ quiet: true });
 });
-
-dictionaryForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  addDictionaryTermService();
-});
-
-dictionaryAddBtnTop.addEventListener("click", () => {
-  const isCollapsed = dictionaryFormCard.classList.contains("is-collapsed");
-  if (isCollapsed) {
-    dictionaryFormCard.classList.remove("is-collapsed");
-    dictionaryAddBtnTop.classList.add("is-active");
-    dictionarySourceInput.focus();
-  } else {
-    dictionaryFormCard.classList.add("is-collapsed");
-    dictionaryAddBtnTop.classList.remove("is-active");
-  }
-});
-
-dictionaryFormCloseBtn.addEventListener("click", () => {
-  dictionaryFormCard.classList.add("is-collapsed");
-  dictionaryAddBtnTop.classList.remove("is-active");
-});
-
-
-snippetForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  addSnippetEntryService();
-});
-
-snippetsAddBtnTop.addEventListener("click", () => {
-  const isCollapsed = snippetFormContainer.classList.contains("is-collapsed");
-  if (isCollapsed) {
-    snippetFormContainer.classList.remove("is-collapsed");
-    snippetsAddBtnTop.classList.add("is-active");
-    snippetsAddBtnTop.textContent = "Close";
-    snippetTriggerInput.focus();
-  } else {
-    snippetFormContainer.classList.add("is-collapsed");
-    snippetsAddBtnTop.classList.remove("is-active");
-    snippetsAddBtnTop.textContent = "Add new";
-  }
-});
-
-
-notesQuickMicBtn.addEventListener("click", () => {
-  if (settings.captureMode === "push-to-talk") {
-    setNoticeService("Hold the note button while speaking in push-to-talk mode.");
-    return;
-  }
-
-  void handleRecordToggleService();
-});
-
-bindPushToTalkPointerHoldService(notesQuickMicBtn, "notes-button");
-bindPushToTalkKeyboardHoldService(notesQuickMicBtn, "notes-button");
 
 refreshMicsBtn.addEventListener("click", () => {
   void refreshMicrophonesService(true);
@@ -2171,7 +2010,6 @@ async function bootstrap(): Promise<void> {
     renderAssistantInfoService(info);
 
     if (info.piperInstalled && info.voiceInstalled) {
-      queueNoticeService("Piper runtime is ready.");
       setStageService("idle", "Ready for voice input.");
     } else {
       queueNoticeService("Piper runtime incomplete. Open Settings > Models and complete runtime setup.");

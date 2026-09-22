@@ -96,9 +96,7 @@ export function initSelectionPopup(deps: SelectionPopupDeps, channel: BroadcastC
           }
 
           const replaced = await popupDeps.replaceSelection(latest.text);
-          if (replaced) {
-            popupDeps.notify("Selected text replaced from popup.");
-          } else {
+          if (!replaced) {
             popupDeps.notify("Unable to replace selection automatically from popup.", true);
           }
         })();
@@ -307,7 +305,6 @@ export async function showSelectionAssistantPopup(payload: SelectionPopupPayload
         reducedMotion,
       });
     }, 120);
-    popupDeps.notify("SlasshyWispr popup opened.");
     return true;
   } catch (error) {
     popupDeps.notify(`Unable to open selection popup: ${asErrorMessage(error)}`, true);

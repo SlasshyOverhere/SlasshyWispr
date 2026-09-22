@@ -23,8 +23,10 @@ export function PaceSparkline({ points }: { points: number[] }) {
   if (points.length === 0) {
     return null;
   }
-  const width = 240;
-  const height = 72;
+  // viewBox aspect matches its column so a uniform scale fills the width
+  // instead of letterboxing, and the day labels stay legible at ~272px.
+  const width = 300;
+  const height = 112;
   const padding = 4;
   const labelH = 12;
   const innerW = width - padding * 2;
@@ -42,15 +44,13 @@ export function PaceSparkline({ points }: { points: number[] }) {
   return (
     <svg
       className="home-sparkline"
-      width={width}
-      height={height}
       viewBox={`0 0 ${width} ${height}`}
       role="img"
       aria-label="Words spoken over the last 7 days"
     >
       <defs>
         <linearGradient id="paceArea" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="currentColor" stopOpacity="0.32" />
+          <stop offset="0%" stopColor="currentColor" stopOpacity="0.22" />
           <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
         </linearGradient>
       </defs>

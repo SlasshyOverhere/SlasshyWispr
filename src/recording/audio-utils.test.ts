@@ -1,5 +1,28 @@
 import { describe, expect, it } from "bun:test";
-import { base64ToBytes } from "./audio-utils";
+import { base64ToBytes, isSilentSamples, NO_SIGNAL_PEAK, peakAmplitude } from "./audio-utils";
+
+describe("no-signal detection", () => {
+  it("reports a muted or dead device as silent", () => {
+    expect(isSilentSamples(new Float32Array(4800))).toBe(true);
+    expect(isSilentSamples(new Float32Array([0, 0, 1e-6, -1e-6]))).toBe(true);
+  });
+
+  it("keeps quiet speech", () => {
+    expect(isSilentSamples(new Float32Array([0, 0.02, -0.03, 0.01]))).toBe(false);
+  });
+
+  it("treats the peak, not the average, as the signal", () => {
+    // One loud sample in an otherwise quiet clip is speech, not silence.
+    const samples = new Float32Array(10_000);
+    samples[4_321] = 0.4;
+    expect(peakAmplitude(samples)).toBeCloseTo(0.4, 6);
+    expect(isSilentSamples(samples)).toBe(false);
+  });
+
+  it("puts the line below any audible level", () => {
+    expect(NO_SIGNAL_PEAK).toBeLessThan(0.01);
+  });
+});
 
 describe("base64ToBytes", () => {
   it("decodes back to the original bytes", () => {

@@ -21,6 +21,7 @@ import type {
   AppUpdateInstallProgressEvent,
   InstallAppUpdateRequest,
 } from "../types";
+import type { NoticeAction } from "../shell/notice-stack";
 import { asErrorMessage, formatBytes } from "../utils";
 import {
   APP_UPDATE_CHECK_INTERVAL_MS,
@@ -42,7 +43,8 @@ export type UpdateSource = "startup" | "interval" | "manual";
 
 export interface UpdaterFlowDeps {
   isTauri: () => boolean;
-  notify: (message: string, isError?: boolean) => void;
+  /** Sticky, with a call to action — an update can wait to be read. */
+  queueUpdateNotice: (message: string, action: NoticeAction) => void;
   log: (message: string) => void;
   openUpdateSettings: (reason: string) => void;
   confirmInstall: (version: string) => Promise<boolean>;
@@ -116,8 +118,11 @@ export function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source:
   }
 
   notifiedVersionsThisSession.add(version);
-  const message = `Update ${version} is available. Open Updates to download and install it.`;
-  flowDeps.notify(message);
+  const message = `Update ${version} is available.`;
+  flowDeps.queueUpdateNotice(message, {
+    label: "Open Updates",
+    run: () => openUpdateSettings(`update-notice-${source}`),
+  });
 
   if (typeof Notification === "undefined") {
     return;
@@ -126,7 +131,7 @@ export function notifyAppUpdateAvailable(result: AppUpdateCheckResponse, source:
   const showNotification = (): void => {
     try {
       const notification = new Notification("SlasshyWispr update available", {
-        body: message,
+        body: `${message} Open Updates in Settings to install it.`,
       });
       notification.onclick = () => {
         window.focus();

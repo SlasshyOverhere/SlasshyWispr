@@ -121,24 +121,11 @@ pub(crate) fn start_local_stt_boot_warmup(app: AppHandle) {
         {
             "parakeet" => crate::services::transcribe::warmup_local_stt_parakeet_model_blocking(
                 &app_for_worker,
-                "",
                 &model_for_worker,
             ),
-            "whisper" | "moonshine" | "sensevoice" => {
-                if crate::pipeline::routing::zero_python_mode_enabled() {
-                    return Err(crate::constants::ZERO_PYTHON_STT_NOTICE.to_string());
-                }
-                let python_path = crate::services::transcribe::setup_local_stt_runtime_blocking(
-                    &app_for_worker,
-                    "python",
-                )?;
-                crate::services::transcribe::warmup_local_stt_hf_model_blocking(
-                    &app_for_worker,
-                    &python_path,
-                    &model_for_worker,
-                )
-            }
-            _ => Ok("Warmup skipped (unsupported provider).".to_string()),
+            // Only Parakeet has a warmup path. Skipping still counts as ready, so the
+            // first dictation pays the model load instead of boot.
+            _ => Ok("Warmup skipped (no warmup path for this provider).".to_string()),
         })
         .await
         .map_err(|error| format!("Local STT startup warmup worker failed: {error}"))

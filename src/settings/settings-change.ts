@@ -60,7 +60,6 @@ export interface SettingsChangeDeps {
   refreshRecordButton: () => void;
   syncActionAvailability: () => void;
   updateMicrophoneSummary: () => void;
-  renderNotesList: () => void;
   renderAssistantInfo: (info: AssistantInfoResponse) => void;
   setActiveTtsProfile: (profile: "piper") => void;
   setCatalogSelects: (next: PersistedSettings, catalogs: SettingsCatalogs) => void;
@@ -344,7 +343,6 @@ export const settingsHandleEffects: SettingsHandleEffects = {
     changeDeps.refreshRecordButton();
     changeDeps.syncActionAvailability();
     changeDeps.updateMicrophoneSummary();
-    changeDeps.renderNotesList();
     const nextShortcutSignature = buildShortcutSyncSignature(next);
     if (previousShortcutSignature !== nextShortcutSignature) {
       changeDeps.requestGlobalShortcutSync();

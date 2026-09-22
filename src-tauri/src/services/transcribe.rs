@@ -7,36 +7,25 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use log::{info, warn};
+use log::info;
 use reqwest::{multipart, Client};
-use serde_json::{json, Value};
+use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
 use crate::audio;
 use crate::audio::vad;
-use crate::constants::{
-    LOCAL_STT_BRIDGE_SCRIPT, LOCAL_STT_RUNTIME_READY_MARKER_CONTENT,
-    LOCAL_STT_RUNTIME_READY_MARKER_FILE, ZERO_PYTHON_STT_NOTICE,
-};
-use crate::pipeline::daemon::{run_local_stt_bridge_via_daemon, stop_all_local_stt_bridge_daemons};
-use crate::pipeline::fs::file_exists_with_content;
 use crate::pipeline::log::{clip_text, single_line};
-use crate::pipeline::process::{
-    apply_no_window, elapsed_ms, merge_process_output, validate_python_binary_path,
-};
+use crate::pipeline::process::{apply_no_window, elapsed_ms};
 use crate::pipeline::routing::{
-    canonical_local_stt_model_id, infer_local_stt_provider_from_model, zero_python_mode_enabled,
-    LocalSttConfig,
+    canonical_local_stt_model_id, infer_local_stt_provider_from_model, LocalSttConfig,
 };
 use crate::pipeline::stt::{
     looks_like_repetitive_transcript_noise, normalize_stt_allowed_languages,
     normalize_stt_language_hint,
 };
 use crate::pipeline::stt_download::archive::find_local_parakeet_model_root;
-use crate::pipeline::stt_download::progress::now_unix_ms;
 use crate::pipeline::stt_download::resolve::{
     legacy_huggingface_repo_id_for_model, resolve_huggingface_repo_id,
     sanitize_model_cache_dir_name,
@@ -83,163 +72,6 @@ pub(crate) fn resolve_local_stt_repo_and_dir(
     Ok((repo_id, target_dir))
 }
 
-pub(crate) fn stt_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let runtime_dir = stt_root_dir(app)?.join("runtime");
-    fs::create_dir_all(&runtime_dir)
-        .map_err(|error| format!("Failed to create STT runtime directory: {error}"))?;
-    Ok(runtime_dir)
-}
-
-pub(crate) fn stt_cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let cache_dir = stt_root_dir(app)?.join("cache");
-    fs::create_dir_all(&cache_dir)
-        .map_err(|error| format!("Failed to create STT cache directory: {error}"))?;
-    Ok(cache_dir)
-}
-
-pub(crate) fn stt_venv_python_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let runtime_dir = stt_runtime_dir(app)?;
-    #[cfg(target_os = "windows")]
-    {
-        Ok(runtime_dir.join("venv").join("Scripts").join("python.exe"))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        Ok(runtime_dir.join("venv").join("bin").join("python"))
-    }
-}
-
-pub(crate) fn ensure_local_stt_bridge_script(app: &AppHandle) -> Result<PathBuf, String> {
-    let runtime_dir = stt_runtime_dir(app)?;
-    let script_path = runtime_dir.join("local_stt_bridge.py");
-    let should_write = fs::read_to_string(&script_path)
-        .map(|existing| existing != LOCAL_STT_BRIDGE_SCRIPT)
-        .unwrap_or(true);
-    if should_write {
-        fs::write(&script_path, LOCAL_STT_BRIDGE_SCRIPT)
-            .map_err(|error| format!("Failed to write local STT bridge script: {error}"))?;
-        stop_all_local_stt_bridge_daemons();
-    }
-    Ok(script_path)
-}
-
-pub(crate) fn local_stt_runtime_ready_marker_path(runtime_dir: &Path) -> PathBuf {
-    runtime_dir.join(LOCAL_STT_RUNTIME_READY_MARKER_FILE)
-}
-
-pub(crate) fn write_local_stt_runtime_ready_marker(runtime_dir: &Path) -> Result<(), String> {
-    let marker_path = local_stt_runtime_ready_marker_path(runtime_dir);
-    fs::write(&marker_path, LOCAL_STT_RUNTIME_READY_MARKER_CONTENT).map_err(|error| {
-        format!(
-            "Failed to write local STT runtime ready marker '{}': {error}",
-            marker_path.display()
-        )
-    })
-}
-
-pub(crate) fn clear_local_stt_runtime_ready_marker(runtime_dir: &Path) {
-    let marker_path = local_stt_runtime_ready_marker_path(runtime_dir);
-    let _ = fs::remove_file(marker_path);
-}
-
-fn try_install_local_stt_cuda_torch(
-    python_path: &str,
-    cache_dir: &Path,
-    runtime_dir: &Path,
-    reason_label: &str,
-) -> Result<bool, String> {
-    if !detect_nvidia_gpu_available() {
-        return Ok(false);
-    }
-
-    if local_stt_torch_cuda_available(python_path, cache_dir).unwrap_or(false) {
-        return Ok(true);
-    }
-
-    let failed_marker = runtime_dir.join("cuda-torch-install.failed");
-    if failed_marker.exists() {
-        return Ok(false);
-    }
-
-    info!(
-        "[local.stt.runtime] nvidia gpu detected but torch cuda unavailable; installing cuda torch ({})",
-        reason_label
-    );
-    let install_result = run_local_stt_python_command(
-        python_path,
-        &[
-            "-m",
-            "pip",
-            "install",
-            "--upgrade",
-            "--index-url",
-            "https://download.pytorch.org/whl/cu128",
-            "torch==2.8.0+cu128",
-            "torchaudio==2.8.0+cu128",
-        ],
-        cache_dir,
-    );
-    match install_result {
-        Ok(output) => {
-            if !output.trim().is_empty() {
-                info!(
-                    "[local.stt.runtime] cuda torch install output={}",
-                    clip_text(&single_line(&output), 260)
-                );
-            }
-        }
-        Err(error) => {
-            warn!(
-                "[local.stt.runtime] cuda torch install failed ({}): {}",
-                reason_label,
-                clip_text(&single_line(&error), 320)
-            );
-            let _ = fs::write(&failed_marker, now_unix_ms().to_string());
-            return Ok(false);
-        }
-    }
-
-    let available = local_stt_torch_cuda_available(python_path, cache_dir).unwrap_or(false);
-    if available {
-        let _ = fs::remove_file(&failed_marker);
-        stop_all_local_stt_bridge_daemons();
-        info!("[local.stt.runtime] cuda torch enabled");
-        return Ok(true);
-    }
-
-    warn!(
-        "[local.stt.runtime] cuda torch install completed but torch.cuda.is_available() is still false"
-    );
-    let _ = fs::write(&failed_marker, now_unix_ms().to_string());
-    Ok(false)
-}
-
-pub(crate) fn run_local_stt_python_command(
-    python_path: &str,
-    args: &[&str],
-    cache_dir: &Path,
-) -> Result<String, String> {
-    validate_python_binary_path(python_path)?;
-    let mut command = Command::new(python_path);
-    apply_no_window(&mut command);
-    command.args(args);
-    command
-        .env("HF_HOME", cache_dir)
-        .env("NEMO_CACHE_DIR", cache_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let output = command
-        .output()
-        .map_err(|error| format!("Failed to run local STT Python command: {error}"))?;
-    if !output.status.success() {
-        let merged = merge_process_output(&output.stdout, &output.stderr);
-        return Err(format!(
-            "Local STT Python command failed: {}",
-            clip_text(merged.trim(), 460)
-        ));
-    }
-    Ok(merge_process_output(&output.stdout, &output.stderr))
-}
 pub(crate) fn detect_nvidia_gpu_available() -> bool {
     let mut command = Command::new("nvidia-smi");
     apply_no_window(&mut command);
@@ -254,279 +86,8 @@ pub(crate) fn detect_nvidia_gpu_available() -> bool {
         _ => false,
     }
 }
-pub(crate) fn local_stt_torch_cuda_available(
-    python_path: &str,
-    cache_dir: &Path,
-) -> Result<bool, String> {
-    let output = run_local_stt_python_command(
-        python_path,
-        &[
-            "-c",
-            "import torch; print('CUDA_AVAILABLE=' + ('1' if torch.cuda.is_available() else '0'))",
-        ],
-        cache_dir,
-    )?;
-    let available = output
-        .lines()
-        .any(|line| line.trim().eq_ignore_ascii_case("CUDA_AVAILABLE=1"));
-    Ok(available)
-}
-static LOCAL_STT_RUNTIME_PYTHON_CACHE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
-
-fn local_stt_runtime_python_cache() -> &'static Mutex<Option<String>> {
-    LOCAL_STT_RUNTIME_PYTHON_CACHE.get_or_init(|| Mutex::new(None))
-}
-
-pub(crate) fn setup_local_stt_runtime_blocking(
-    app: &AppHandle,
-    bootstrap_python: &str,
-) -> Result<String, String> {
-    validate_python_binary_path(bootstrap_python)?;
-    let runtime_dir = stt_runtime_dir(app)?;
-    let cache_dir = stt_cache_dir(app)?;
-    let venv_dir = runtime_dir.join("venv");
-    let venv_python_path = stt_venv_python_path(app)?;
-    let venv_python = venv_python_path.to_string_lossy().to_string();
-    let runtime_ready_marker_path = local_stt_runtime_ready_marker_path(&runtime_dir);
-    let marker_ready = file_exists_with_content(&runtime_ready_marker_path);
-
-    if let Ok(guard) = local_stt_runtime_python_cache().lock() {
-        if let Some(cached_python) = guard.as_ref() {
-            let same_path = {
-                #[cfg(target_os = "windows")]
-                {
-                    cached_python.eq_ignore_ascii_case(&venv_python)
-                }
-                #[cfg(not(target_os = "windows"))]
-                {
-                    cached_python == &venv_python
-                }
-            };
-            if same_path && file_exists_with_content(&venv_python_path) && marker_ready {
-                info!(
-                    "[local.stt.runtime] ready python={} cached=true marker=true",
-                    clip_text(cached_python, 220)
-                );
-                return Ok(cached_python.clone());
-            }
-        }
-    }
-
-    if file_exists_with_content(&venv_python_path) && marker_ready {
-        info!(
-            "[local.stt.runtime] ready python={} marker=true",
-            clip_text(&venv_python, 220)
-        );
-        if let Ok(mut guard) = local_stt_runtime_python_cache().lock() {
-            *guard = Some(venv_python.clone());
-        }
-        return Ok(venv_python);
-    }
-
-    if !file_exists_with_content(&venv_python_path) {
-        clear_local_stt_runtime_ready_marker(&runtime_dir);
-        let mut create_venv = Command::new(bootstrap_python);
-        apply_no_window(&mut create_venv);
-        create_venv
-            .arg("-m")
-            .arg("venv")
-            .arg(&venv_dir)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let output = create_venv
-            .output()
-            .map_err(|error| format!("Failed to create local STT virtualenv: {error}"))?;
-        if !output.status.success() {
-            let merged = merge_process_output(&output.stdout, &output.stderr);
-            return Err(format!(
-                "Local STT virtualenv creation failed: {}",
-                clip_text(merged.trim(), 460)
-            ));
-        }
-    }
-
-    let probe_nemo = run_local_stt_python_command(
-        &venv_python,
-        &["-c", "import nemo.collections.asr"],
-        &cache_dir,
-    );
-    let probe_faster_whisper =
-        run_local_stt_python_command(&venv_python, &["-c", "import faster_whisper"], &cache_dir);
-    if probe_nemo.is_ok() && probe_faster_whisper.is_ok() {
-        let _ = try_install_local_stt_cuda_torch(
-            &venv_python,
-            &cache_dir,
-            &runtime_dir,
-            "runtime-ready",
-        );
-        let cuda_available =
-            local_stt_torch_cuda_available(&venv_python, &cache_dir).unwrap_or(false);
-        info!(
-            "[local.stt.runtime] ready python={} cuda={}",
-            clip_text(&venv_python, 220),
-            cuda_available
-        );
-        if let Ok(mut guard) = local_stt_runtime_python_cache().lock() {
-            *guard = Some(venv_python.clone());
-        }
-        if let Err(error) = write_local_stt_runtime_ready_marker(&runtime_dir) {
-            warn!(
-                "[local.stt.runtime] unable to persist runtime-ready marker: {}",
-                clip_text(&single_line(&error), 260)
-            );
-        }
-        return Ok(venv_python);
-    }
-    if probe_nemo.is_ok() && probe_faster_whisper.is_err() {
-        info!(
-            "[local.stt.runtime] installing faster-whisper acceleration packages for local Whisper models"
-        );
-        let install_output = run_local_stt_python_command(
-            &venv_python,
-            &[
-                "-m",
-                "pip",
-                "install",
-                "--upgrade",
-                "ctranslate2>=4.5",
-                "faster-whisper>=1.1.0",
-            ],
-            &cache_dir,
-        )?;
-        if !install_output.trim().is_empty() {
-            info!(
-                "[local.stt.runtime] faster-whisper install output={}",
-                clip_text(&single_line(&install_output), 260)
-            );
-        }
-        let recheck_faster_whisper = run_local_stt_python_command(
-            &venv_python,
-            &["-c", "import faster_whisper"],
-            &cache_dir,
-        );
-        if recheck_faster_whisper.is_ok() {
-            let _ = try_install_local_stt_cuda_torch(
-                &venv_python,
-                &cache_dir,
-                &runtime_dir,
-                "runtime-ready",
-            );
-            let cuda_available =
-                local_stt_torch_cuda_available(&venv_python, &cache_dir).unwrap_or(false);
-            info!(
-                "[local.stt.runtime] ready python={} cuda={} faster_whisper=true",
-                clip_text(&venv_python, 220),
-                cuda_available
-            );
-            if let Ok(mut guard) = local_stt_runtime_python_cache().lock() {
-                *guard = Some(venv_python.clone());
-            }
-            if let Err(error) = write_local_stt_runtime_ready_marker(&runtime_dir) {
-                warn!(
-                    "[local.stt.runtime] unable to persist runtime-ready marker: {}",
-                    clip_text(&single_line(&error), 260)
-                );
-            }
-            return Ok(venv_python);
-        }
-        warn!(
-            "[local.stt.runtime] faster-whisper import still failing after install; continuing with full dependency bootstrap"
-        );
-    }
-    info!(
-        "[local.stt.runtime] installing runtime packages for Parakeet STT (first run may take several minutes)"
-    );
-
-    let _ = run_local_stt_python_command(
-        &venv_python,
-        &[
-            "-m",
-            "pip",
-            "install",
-            "--upgrade",
-            "pip",
-            "setuptools",
-            "wheel",
-        ],
-        &cache_dir,
-    )?;
-
-    let cuda_torch_installed =
-        try_install_local_stt_cuda_torch(&venv_python, &cache_dir, &runtime_dir, "first-install")
-            .unwrap_or(false);
-    if !cuda_torch_installed {
-        let torch_install_output = run_local_stt_python_command(
-            &venv_python,
-            &[
-                "-m",
-                "pip",
-                "install",
-                "--upgrade",
-                "torch==2.8.0",
-                "torchaudio==2.8.0",
-            ],
-            &cache_dir,
-        )?;
-        if !torch_install_output.trim().is_empty() {
-            info!(
-                "[local.stt.runtime] torch install output={}",
-                clip_text(&single_line(&torch_install_output), 260)
-            );
-        }
-    }
-
-    let deps_install_output = run_local_stt_python_command(
-        &venv_python,
-        &[
-            "-m",
-            "pip",
-            "install",
-            "--upgrade",
-            "nemo_toolkit[asr]>=2,<3",
-            "soundfile",
-            "transformers>=4.45",
-            "accelerate",
-            "ctranslate2>=4.5",
-            "faster-whisper>=1.1.0",
-        ],
-        &cache_dir,
-    )?;
-    if !deps_install_output.trim().is_empty() {
-        info!(
-            "[local.stt.runtime] deps install output={}",
-            clip_text(&single_line(&deps_install_output), 260)
-        );
-    }
-
-    run_local_stt_python_command(
-        &venv_python,
-        &["-c", "import nemo.collections.asr"],
-        &cache_dir,
-    )
-    .map_err(|error| format!("Local STT runtime validation failed: {error}"))?;
-    let cuda_available = local_stt_torch_cuda_available(&venv_python, &cache_dir).unwrap_or(false);
-    info!(
-        "[local.stt.runtime] install complete python={} cuda={}",
-        clip_text(&venv_python, 220),
-        cuda_available
-    );
-    stop_all_local_stt_bridge_daemons();
-    if let Ok(mut guard) = local_stt_runtime_python_cache().lock() {
-        *guard = Some(venv_python.clone());
-    }
-    if let Err(error) = write_local_stt_runtime_ready_marker(&runtime_dir) {
-        warn!(
-            "[local.stt.runtime] unable to persist runtime-ready marker: {}",
-            clip_text(&single_line(&error), 260)
-        );
-    }
-
-    Ok(venv_python)
-}
-
 pub(crate) fn warmup_local_stt_parakeet_model_blocking(
     app: &AppHandle,
-    _python_path: &str,
     model: &str,
 ) -> Result<String, String> {
     let canonical_model = canonical_local_stt_model_id(model);
@@ -552,61 +113,6 @@ pub(crate) fn warmup_local_stt_parakeet_model_blocking(
 
     Ok(format!(
         "Warmup ready (device={device}, precision={precision}, cached={model_cached})."
-    ))
-}
-
-pub(crate) fn warmup_local_stt_hf_model_blocking(
-    app: &AppHandle,
-    python_path: &str,
-    model: &str,
-) -> Result<String, String> {
-    let canonical_model = canonical_local_stt_model_id(model);
-    let provider = infer_local_stt_provider_from_model(&canonical_model);
-    if provider != "whisper" && provider != "moonshine" && provider != "sensevoice" {
-        return Ok("Warmup skipped (non-HF-ASR model).".to_string());
-    }
-
-    let (repo_id, model_dir) = resolve_local_stt_repo_and_dir(app, &provider, &canonical_model)?;
-    if !model_dir.exists() {
-        return Err(format!(
-            "Local STT model directory does not exist: {}",
-            model_dir.display()
-        ));
-    }
-
-    let script_path = ensure_local_stt_bridge_script(app)?;
-    let cache_dir = stt_cache_dir(app)?;
-    let payload = json!({
-        "action": "warmup_hf_asr",
-        "provider": provider.clone(),
-        "modelId": canonical_model.clone(),
-        "modelPath": model_dir.to_string_lossy().to_string(),
-    });
-    let result = run_local_stt_bridge_via_daemon(
-        python_path,
-        &script_path,
-        &cache_dir,
-        "warmup_hf_asr",
-        &payload,
-    )?;
-    let model_cached = result
-        .get("modelCached")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let device = result
-        .get("device")
-        .and_then(Value::as_str)
-        .unwrap_or("cpu");
-    info!(
-        "[local.stt.hf] warmup complete model={} repo={} cached={} device={}",
-        clip_text(&canonical_model, 140),
-        clip_text(&repo_id, 140),
-        model_cached,
-        clip_text(device, 40)
-    );
-
-    Ok(format!(
-        "Warmup ready (device={device}, cached={model_cached})."
     ))
 }
 
@@ -843,17 +349,22 @@ pub(crate) async fn transcribe_audio_local(
         return transcribe_audio_local_parakeet(app, local, audio_bytes, audio_mime_type, language)
             .await;
     }
-    if provider == "whisper" || provider == "moonshine" || provider == "sensevoice" {
-        if zero_python_mode_enabled() {
-            return Err(ZERO_PYTHON_STT_NOTICE.to_string());
-        }
-        return transcribe_audio_local_hf_asr(
+    if matches!(provider.as_str(), "whisper" | "moonshine" | "sensevoice") {
+        // Resolved once, the same way for every engine.
+        let language_hint = normalize_stt_language_hint(language).or_else(|| {
+            normalize_stt_allowed_languages(allowed_languages)
+                .first()
+                .cloned()
+        });
+        // Every local model is native, so a failure here is the answer rather than a
+        // reason to reach for the Python bridge that used to serve these providers.
+        return transcribe_audio_local_in_process(
             app,
+            &provider,
             local,
             audio_bytes,
             audio_mime_type,
-            language,
-            allowed_languages,
+            language_hint.as_deref(),
         )
         .await;
     }
@@ -920,100 +431,65 @@ pub(crate) async fn transcribe_audio_local_parakeet(
     native_result
 }
 
-pub(crate) async fn transcribe_audio_local_hf_asr(
+/// Transcribe through an in-process engine, so no Python runtime is involved.
+///
+/// The model directory is the download target for the resolved repo, and each engine
+/// finds its own file set inside it — a snapshot keeps the repo's nesting, so the
+/// directory the engine is handed is rarely the snapshot root.
+async fn transcribe_audio_local_in_process(
     app: &AppHandle,
+    provider: &str,
     local: &LocalSttConfig,
     audio_bytes: &[u8],
     audio_mime_type: &str,
     language: Option<&str>,
-    allowed_languages: Option<&[String]>,
 ) -> Result<String, String> {
     let model = canonical_local_stt_model_id(&local.stt_model);
-    let provider = infer_local_stt_provider_from_model(&model);
-    let allowed_language_hints = normalize_stt_allowed_languages(allowed_languages);
-    let language_hint =
-        normalize_stt_language_hint(language).or_else(|| allowed_language_hints.first().cloned());
-    let (repo_id, model_dir) = resolve_local_stt_repo_and_dir(app, &provider, &model)?;
+    let repo_id = resolve_huggingface_repo_id(provider, &model);
+    let model_dir = stt_models_dir(app)?.join(sanitize_model_cache_dir_name(&repo_id));
     if !model_dir.exists() {
         return Err(format!(
             "Local STT model is not downloaded yet. Download '{model}' first."
         ));
     }
-    info!(
-        "[local.stt.hf] model={} provider={} repo={} model_dir={} bytes={}",
-        clip_text(&model, 140),
-        clip_text(&provider, 40),
-        clip_text(&repo_id, 140),
-        clip_text(&model_dir.to_string_lossy(), 220),
-        audio_bytes.len()
-    );
 
-    let runtime_dir = stt_runtime_dir(app)?;
-    let stamp = now_unix_ms();
-    let extension = mime_to_extension(audio_mime_type);
-    let audio_path = runtime_dir.join(format!("local-stt-audio-{stamp}.{extension}"));
-    fs::write(&audio_path, audio_bytes)
-        .map_err(|error| format!("Failed to write local STT audio file: {error}"))?;
+    let samples =
+        audio::processing::decode_local_stt_audio_to_mono_f32(audio_bytes, audio_mime_type)?;
+    let provider = provider.to_string();
+    let language = language.map(str::to_string);
 
-    let app_for_worker = app.clone();
-    let provider_for_worker = provider.clone();
-    let model_for_worker = model.clone();
-    let model_dir_for_worker = model_dir.clone();
-    let audio_path_for_worker = audio_path.clone();
-    let language_hint_for_worker = language_hint.clone();
-    let allowed_language_hints_for_worker = allowed_language_hints.clone();
-    let bridge_result = tauri::async_runtime::spawn_blocking(move || {
-        let python_path = setup_local_stt_runtime_blocking(&app_for_worker, "python")?;
-        let script_path = ensure_local_stt_bridge_script(&app_for_worker)?;
-        let cache_dir = stt_cache_dir(&app_for_worker)?;
-        let payload = json!({
-            "action": "transcribe_hf_asr",
-            "provider": provider_for_worker,
-            "modelId": model_for_worker,
-            "language": language_hint_for_worker,
-            "allowedLanguages": allowed_language_hints_for_worker,
-            "modelPath": model_dir_for_worker.to_string_lossy().to_string(),
-            "audioPath": audio_path_for_worker.to_string_lossy().to_string(),
-        });
-        let response = run_local_stt_bridge_via_daemon(
-            &python_path,
-            &script_path,
-            &cache_dir,
-            "transcribe_hf_asr",
-            &payload,
-        )?;
-        let transcript = response
-            .get("text")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .trim()
-            .to_string();
-        if transcript.is_empty() {
-            return Err("Local STT model returned an empty transcript.".to_string());
-        }
-        let model_cached = response
-            .get("modelCached")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let device = response
-            .get("device")
-            .and_then(Value::as_str)
-            .unwrap_or("cpu");
-        info!(
-            "[local.stt.hf] daemon success transcript_chars={} model_cached={} device={}",
-            transcript.chars().count(),
-            model_cached,
-            clip_text(device, 40)
-        );
-
-        Ok(transcript)
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = match provider.as_str() {
+            "moonshine" => audio::moonshine::transcribe_moonshine(&model, &model_dir, &samples),
+            "sensevoice" => audio::sense_voice::transcribe_sense_voice(
+                &model,
+                &model_dir,
+                &samples,
+                language.as_deref(),
+            ),
+            "whisper" => {
+                #[cfg(all(windows, target_arch = "x86_64"))]
+                {
+                    audio::whisper::transcribe_whisper(
+                        &model,
+                        &model_dir,
+                        &samples,
+                        language.as_deref(),
+                    )
+                }
+                #[cfg(not(all(windows, target_arch = "x86_64")))]
+                {
+                    Err("Whisper's native engine is only built for Windows x86_64.".to_string())
+                }
+            }
+            other => Err(format!(
+                "Unsupported in-process local STT provider '{other}'."
+            )),
+        }?;
+        Ok::<String, String>(result.0)
     })
     .await
-    .map_err(|error| format!("Local STT worker failed: {error}"))?;
-
-    let _ = fs::remove_file(&audio_path);
-
-    bridge_result
+    .map_err(|error| format!("Local STT worker failed: {error}"))?
 }
 
 pub(crate) fn apply_optional_bearer_auth(
