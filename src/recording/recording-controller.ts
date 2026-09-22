@@ -13,6 +13,7 @@ import { asErrorMessage, boolFlag } from "../utils";
 import {
   base64ToBytes,
   blobToBase64,
+  captureIsSilent,
   invalidRuntimeCombinationReason,
   missingApiKeyForOnlineRuntime,
   pickBestRecorderMimeType,
@@ -82,6 +83,8 @@ export interface RecordingControllerDeps {
   createId: () => string;
   /** Snapshot the paste target at capture intent (best-effort, never blocks recording). */
   notePasteTarget?: () => void;
+  /** Test seam for the no-signal check. Defaults to the real decode. */
+  captureIsSilent?: (blob: Blob) => Promise<boolean>;
   saveDictationRecording: (args: {
     recordingId: string;
     mimeType: string;
@@ -116,6 +119,9 @@ let activePipelineGen = 0;
 
 /// True while the in-flight capture is owned by the Rust backend.
 let activeCaptureNative = false;
+
+/// Device that produced the in-flight capture, for notices about it.
+let activeCaptureDevice = "";
 
 export function getActivePipelineGen(): number {
   return activePipelineGen;
@@ -236,6 +242,7 @@ export async function startRecording(): Promise<void> {
       const captureStartedAt = controllerDeps.performanceNow();
       const info = await startNativeCapture(activeSettings.microphoneDeviceId);
       activeCaptureNative = true;
+      activeCaptureDevice = info.deviceName;
       controllerState.setMediaRecorder(null);
       controllerState.setRecordedChunks([]);
       controllerState.setRecorderMimeType("audio/wav");
@@ -279,6 +286,7 @@ export async function startRecording(): Promise<void> {
     const micOpenStartedAt = controllerDeps.performanceNow();
     const stream = await openMicrophoneStream(activeSettings.microphoneDeviceId);
     controllerState.setMediaStream(stream);
+    activeCaptureDevice = stream.getAudioTracks()[0]?.label ?? "";
     controllerDeps.setMicrophonePermissionGranted(true);
     controllerDeps.log(
       `[record.start] microphone stream opened tracks=${stream.getAudioTracks().length} openMs=${Math.round(
@@ -438,6 +446,20 @@ export async function finalizeRecording(): Promise<void> {
       `[record.finalize] dropping superseded generation=${finalizeGen} active=${activePipelineGen}`,
     );
     controllerDeps.transition({ type: "recording-stopped", cancelPipeline: true });
+    controllerDeps.syncAvailability();
+    return;
+  }
+
+  // A capture with no signal is a microphone problem, not a transcription one:
+  // the selected device delivered silence, so say that instead of blaming STT.
+  if (await (controllerDeps.captureIsSilent ?? captureIsSilent)(blob)) {
+    const device = activeCaptureDevice.trim();
+    controllerDeps.log(`[record.finalize] no signal from device='${device}' bytes=${blob.size}`);
+    controllerDeps.transition({ type: "audio-empty" });
+    controllerDeps.setNotice(
+      `No audio came from ${device ? `"${device}"` : "the selected microphone"}. Check that it is switched on and not muted in Windows, or choose a different microphone.`,
+      true,
+    );
     controllerDeps.syncAvailability();
     return;
   }

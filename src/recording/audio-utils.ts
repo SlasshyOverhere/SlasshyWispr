@@ -24,6 +24,38 @@ export async function decodeAudioSample(file: Blob): Promise<AudioBuffer> {
   }
 }
 
+/// Peak |sample| below this counts as no signal at all (-46 dBFS). Speech,
+/// even quiet speech through auto gain control, crosses it comfortably.
+export const NO_SIGNAL_PEAK = 0.005;
+
+export function peakAmplitude(samples: ArrayLike<number>): number {
+  let peak = 0;
+  for (let index = 0; index < samples.length; index += 1) {
+    const magnitude = Math.abs(samples[index]);
+    if (magnitude > peak) peak = magnitude;
+  }
+  return peak;
+}
+
+/**
+ * True when every sample sits at the noise floor, i.e. the device delivered
+ * nothing. Tells a dead or muted input apart from a failed transcription.
+ */
+export function isSilentSamples(samples: ArrayLike<number>): boolean {
+  return peakAmplitude(samples) < NO_SIGNAL_PEAK;
+}
+
+/// Unmeasurable audio is reported as "has signal": a decode we cannot perform
+/// must never be the reason a dictation is dropped.
+export async function captureIsSilent(blob: Blob): Promise<boolean> {
+  try {
+    const decoded = await decodeAudioSample(blob);
+    return decoded.length > 0 && isSilentSamples(decoded.getChannelData(0));
+  } catch {
+    return false;
+  }
+}
+
 function writeAscii(view: DataView, offset: number, text: string): void {
   for (let index = 0; index < text.length; index += 1) {
     view.setUint8(offset + index, text.charCodeAt(index));

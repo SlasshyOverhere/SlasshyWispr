@@ -228,6 +228,51 @@ describe("finalizeRecording", () => {
     expect(harness.getLastPipeline()).toBeNull();
   });
 
+  it("blames the microphone, not STT, when the capture has no signal", async () => {
+    const harness = wireHarness({ captureIsSilent: async () => true });
+    harness.setChunks([new Blob(["abc"], { type: "audio/webm" })]);
+    await finalizeRecording();
+    expect(harness.transitions).toEqual([{ type: "audio-empty" }]);
+    expect(harness.getLastPipeline()).toBeNull();
+    // Nothing to keep either: a silent clip is not worth saving.
+    expect(harness.saved.length).toBe(0);
+    expect(harness.notices.length).toBe(1);
+    expect(harness.notices[0].isError).toBe(true);
+    expect(harness.notices[0].message).toContain("No audio came from");
+    expect(harness.notices[0].message).toContain("the selected microphone");
+    expect(harness.notices[0].message).toContain("muted in Windows");
+  });
+
+  it("names the device that delivered no audio", async () => {
+    (globalThis as unknown as { navigator: unknown }).navigator = {
+      mediaDevices: {
+        getUserMedia: async () => ({
+          getAudioTracks: () => [{ label: "Yeti Off (USB)" }],
+          getTracks: () => [],
+          active: true,
+        }),
+      },
+    };
+    (globalThis as unknown as { MediaRecorder: unknown }).MediaRecorder = class {
+      static isTypeSupported = () => true;
+      state = "inactive";
+      mimeType = "audio/webm";
+      addEventListener() {}
+      start() {}
+      stop() {}
+    };
+
+    const harness = wireHarness({
+      captureIsSilent: async () => true,
+      readSettings: () => ({ ...defaultSettings, apiKey: "sk-test" }),
+    });
+    await startRecording();
+    harness.setChunks([new Blob(["abc"], { type: "audio/webm" })]);
+    await finalizeRecording();
+
+    expect(harness.notices[0].message).toContain('"Yeti Off (USB)"');
+  });
+
   it("saves recordings then runs the pipeline with the mime", async () => {
     const harness = wireHarness();
     harness.setChunks([new Blob(["abc"], { type: "audio/webm" })]);
