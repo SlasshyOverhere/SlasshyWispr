@@ -362,16 +362,12 @@ p { line-height: 1.55; }
   align-items: center;
   gap: 2px;
 }
-/* Floating tab group — the active page is a filled pill, not a rail row.
+/* Floating tab group — the active page is a filled pill, not a rail row, and
+   the buttons sit straight on the strip with no container around them.
    Absolutely centered in the strip so it sits in the top middle no matter
    how wide the brand and action clusters are. */
 .nav-main {
   flex: 0 0 auto;
-  padding: 3px;
-  border: 1px solid var(--border-line);
-  border-radius: 999px;
-  background: var(--bg-recess);
-  box-shadow: 0 12px 26px -18px rgb(0 0 0 / 0.95);
   position: absolute;
   left: 50%;
   top: 50%;
