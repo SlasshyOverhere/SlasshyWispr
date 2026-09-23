@@ -7,6 +7,7 @@ Desktop voice dictation. Tauri v2 (Rust) + React 19 + Vite 8 + Tailwind CSS 4.
 | Command | What it does |
 |---------|-------------|
 | `npm run dev` | Vite dev server only |
+| `npm run setup` | Verify the toolchain (Node, Rust, MSVC, Vulkan SDK, CMake) and install CMake if it is missing |
 | `npm run build` | `prebuild` gate, then `tsc && vite build` (typecheck then bundle) |
 | `npm run tauri:dev` | Full Tauri dev — runs `pretauri:dev`, then `tauri dev --config src-tauri/tauri.conf.dev.json`. Uses identifier `online.slasshy.slasshywispr.dev` and window title "SlasshyWispr Dev", so it runs independently of the installed production build. |
 | `npm run tauri:build` | Production build (NSIS installer on Windows), using the default `tauri.conf.json`. |
@@ -37,6 +38,7 @@ Single-instance enforcement (per spec `2026-07-07-tray-window-toggle-and-single-
 - `src/**/*.test.ts` is excluded from type checking.
 - Path alias `@/` maps to `./src/*`.
 - `pretauri:dev` (`scripts/ensure-valid-dev-exe.mjs`) deletes corrupted Windows dev binaries (`app.exe`/`app.pdb`) before `tauri dev`.
+- `tauri:dev` and `tauri:build` are wrapped by `scripts/with-toolchain.mjs`, which reconciles the environment against the registry before spawning: Windows only reads `PATH` once, at process launch, so a terminal opened before CMake was installed keeps failing with `is cmake not installed?`. Do not simplify either script back to invoking `tauri` directly, and do not move this into a `pre` hook: npm runs hooks as *sibling* processes, so the environment they set is never seen by the real command.
 - `prebuild` runs two gates: `scripts/check-backend-bounds-fallbacks.mjs` fails the build if any TS bounds fallback (`stt-timeout-bounds.ts`, `max-tokens-bounds.ts`, `temperature-bounds.ts`) stops being superseded by the backend answer over IPC (static, because the backend's bounds currently equal the fallbacks and no value comparison could tell them apart), and `scripts/generate-wire-types.mjs --check` fails if `src/generated/ipc-wire-types.ts` is not current with the Rust structs. `npm run generate:wire-types` regenerates that file.
 - Native Whisper (`transcribe-cpp` → whisper.cpp) is a **Windows x86_64 only** dependency, and it needs the LunarG Vulkan SDK plus `cmake` on `PATH`. `build.rs` adds `$VULKAN_SDK/Lib` to the link search path because the SDK installer sets `VULKAN_SDK` but never `LIB`, which otherwise leaves `vulkan-1.lib` unresolvable at link time.
 - Tauri v2 dev URL `http://localhost:1421` is hardcoded in `vite.config.ts`.

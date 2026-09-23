@@ -64,6 +64,20 @@ Note: Coqui TTS is disabled in this build. Piper is the only TTS engine.
 - In-app: **Settings > Update and Security**
 - Manual: download from the Releases page
 
+## Development
+
+Windows only. The toolchain is Node, Rust (MSVC), the VS 2022 Build Tools, the LunarG Vulkan SDK, and CMake.
+
+```sh
+npm install
+npm run setup      # verify the toolchain, install CMake if it is missing
+npm run tauri:dev
+```
+
+`npm run setup` reports what it found for every requirement, then offers to install CMake (pinned to a verified version) when it is missing. A non-interactive run prints the command instead of prompting, so it never hangs.
+
+Windows only hands a process its `PATH` when it launches and never re-reads it, so a terminal opened before CMake was installed keeps failing with `is cmake not installed?` no matter how many times you retry. `npm run tauri:dev` and `npm run tauri:build` run through `scripts/with-toolchain.mjs`, which reconciles against the registry first. No terminal restart is needed.
+
 ## Support
 
 - Issues: https://github.com/SlasshyOverhere/SlasshyWispr/issues
