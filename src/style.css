@@ -753,18 +753,23 @@ input[type="checkbox"]:checked::after,
 
 /* The stream is the primary surface, so it leads in column 1; the numbers
    and weekly pace sit in a fixed instrument panel to its right. Placement
-   is explicit because the panel is declared first in the DOM. */
+   is explicit because the panel is declared first in the DOM. The grid fills
+   the page height so the transcript column can scroll on its own while the
+   panel stays pinned. */
 .home-main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 296px;
   align-items: start;
   gap: 12px;
+  flex: 1;
   min-height: 0;
 }
 .home-stream {
   grid-column: 1;
   grid-row: 1;
+  align-self: stretch;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -772,6 +777,10 @@ input[type="checkbox"]:checked::after,
 .home-side {
   grid-column: 2;
   grid-row: 1;
+  align-self: start;
+  max-height: 100%;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -905,7 +914,7 @@ input[type="checkbox"]:checked::after,
 .home-list-head-r { display: flex; align-items: center; gap: 6px; }
 .home-list-head-icon { display: grid; place-items: center; color: var(--ink-faint); }
 
-.home-log { flex: 1; min-height: 0; }
+.home-log { flex: 1; min-height: 0; overflow-y: auto; }
 .conversation-log { display: flex; flex-direction: column; gap: 2px; }
 
 .home-list { list-style: none; display: flex; flex-direction: column; gap: 2px; }
@@ -1009,6 +1018,10 @@ input[type="checkbox"]:checked::after,
 .home-empty-sub { font-size: 11.5px; color: var(--ink-faint); max-width: 340px; line-height: 1.55; }
 .empty-hint { font-size: 12px; }
 .home-page { gap: 12px; }
+/* Home never scrolls as a page: the transcript log owns the one scrollbar
+   and the instrument panel stays pinned beside it. */
+.flow-page[data-page="home"] { overflow: hidden; }
+.flow-page-inner.home-page { height: 100%; min-height: 0; overflow: hidden; }
 .home-pace { gap: 9px; }
 .hist-count {
   padding: 1px 6px;
