@@ -321,12 +321,15 @@ p { line-height: 1.55; }
   width: 20px;
   height: 20px;
   border-radius: 6px;
-  display: grid;
-  place-items: center;
+  overflow: hidden;
   flex-shrink: 0;
-  color: var(--ink-inverse);
-  background: var(--accent-live);
   position: relative;
+}
+.brand-glyph img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 .app-frame.is-recording .brand-glyph::after {
   content: "";
@@ -359,7 +362,9 @@ p { line-height: 1.55; }
   align-items: center;
   gap: 2px;
 }
-/* Floating tab group — the active page is a filled pill, not a rail row. */
+/* Floating tab group — the active page is a filled pill, not a rail row.
+   Absolutely centered in the strip so it sits in the top middle no matter
+   how wide the brand and action clusters are. */
 .nav-main {
   flex: 0 0 auto;
   padding: 3px;
@@ -367,6 +372,10 @@ p { line-height: 1.55; }
   border-radius: 999px;
   background: var(--bg-recess);
   box-shadow: 0 12px 26px -18px rgb(0 0 0 / 0.95);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }
 .nav-secondary { margin-left: auto; flex: 0 0 auto; }
 
