@@ -164,8 +164,8 @@ fn resolve_device(
         return Ok((default_device()?, false));
     };
 
-    // The webview hands over the device's label; cpal matches on name. Fall
-    // back to the default rather than failing the whole recording.
+    // The webview hands over the device's label; cpal matches on name. An
+    // explicit selection is a lock: never substitute another input device.
     if let Ok(devices) = host.input_devices() {
         for device in devices {
             let name = match device.name() {
@@ -178,8 +178,7 @@ fn resolve_device(
         }
     }
 
-    warn!("[capture] requested device '{requested}' not found; using default");
-    Ok((default_device()?, true))
+    Err(format!("Selected microphone '{requested}' is unavailable."))
 }
 
 fn build_stream(
@@ -466,6 +465,17 @@ mod tests {
         // A short or empty hint must never match loosely.
         assert!(!matches_device_name("mic", "Microphone (Realtek Audio)"));
         assert!(!matches_device_name("", "Microphone (Realtek Audio)"));
+    }
+
+    #[test]
+    fn explicit_missing_device_does_not_fall_back_to_default() {
+        let host = cpal::default_host();
+        let result = resolve_device(&host, Some("__slasshy_missing_device__"));
+
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert!(error.contains("unavailable"), "unexpected error: {error}");
+        }
     }
 
     #[test]

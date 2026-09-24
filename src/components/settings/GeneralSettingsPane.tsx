@@ -60,7 +60,7 @@ export function GeneralSettingsPane() {
         </label>
       </div>
 
-      <div className="s-row" title="Which input device records your voice.">
+      <div className="s-row" title="Choose a microphone and lock it. Choose Auto-detect to follow the system default.">
         <span className="s-row-label">Microphone <span className="s-row-hint" id="microphoneSummary">Auto-detect</span></span>
         <button id="toggleMicEditorBtn" className="btn" type="button">Change</button>
       </div>

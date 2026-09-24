@@ -2,7 +2,7 @@
  * Mic-stream move-boundary test — Phase 5 shell decomposition.
  *
  * Pins openMicrophoneStream behavior: pre-warmed reuse (clone, no fresh
- * getUserMedia), device-fallback notice on exact-device failure, and
+ * getUserMedia), exact-device failure without a default fallback, and
  * preWarm reuse/release transitions. Uses injectable navigator stubs.
  */
 import { describe, it, expect, beforeEach } from "bun:test";
@@ -102,21 +102,21 @@ describe("openMicrophoneStream", () => {
     expect(logs.some((line) => line.includes("reusing pre-warmed stream"))).toBe(true);
   });
 
-  it("falls back to default device with notice when exact device fails", async () => {
-    const fallback = fakeStream(true);
-    getUserMediaImpl = async (constraints) => {
-      const audio = constraints.audio as Record<string, unknown>;
-      if (audio && typeof audio === "object" && "deviceId" in audio) {
-        throw new Error("device gone");
-      }
-      return fallback;
+  it("rejects an exact-device failure instead of falling back to the default", async () => {
+    getUserMediaImpl = async () => {
+      throw new Error("device gone");
     };
 
-    const opened = await openMicrophoneStream("missing-mic");
-    expect(opened as unknown as FakeStream).toBe(fallback as unknown as FakeStream);
-    expect(notices).toEqual([
-      { message: "Selected microphone is unavailable. Falling back to default device.", isError: true },
-    ]);
+    let error: unknown;
+    try {
+      await openMicrophoneStream("missing-mic");
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect((error as Error).message).toBe("device gone");
+    expect(getUserMediaCalls).toBe(1);
+    expect(notices).toEqual([]);
   });
 
   it("keeps the pre-warm TTL armed after a reuse", async () => {

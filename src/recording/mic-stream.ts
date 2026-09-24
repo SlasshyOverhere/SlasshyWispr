@@ -100,16 +100,12 @@ export async function openMicrophoneStream(preferredDeviceId: string): Promise<M
   };
 
   if (preferredDeviceId) {
-    try {
-      return await navigator.mediaDevices.getUserMedia({
-        audio: {
-          ...baseConstraints,
-          deviceId: { exact: preferredDeviceId },
-        },
-      });
-    } catch {
-      micDeps.notify("Selected microphone is unavailable. Falling back to default device.", true);
-    }
+    return navigator.mediaDevices.getUserMedia({
+      audio: {
+        ...baseConstraints,
+        deviceId: { exact: preferredDeviceId },
+      },
+    });
   }
 
   return navigator.mediaDevices.getUserMedia({ audio: baseConstraints });

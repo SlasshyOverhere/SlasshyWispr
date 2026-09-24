@@ -150,6 +150,22 @@ describe("readSettingsFromForm", () => {
     expect(next.themeMode).toBe("dark");
   });
 
+  it("keeps the saved microphone while the device list is still empty", () => {
+    const refs = fakeRefs();
+    refs.microphoneSelect.value = "";
+    const stored: PersistedSettings = {
+      ...defaultSettings(),
+      microphoneDeviceId: "pinned-mic",
+    };
+
+    const next = readSettingsFromForm(refs, {
+      ...baseDeps(),
+      currentSettings: () => stored,
+    });
+
+    expect(next.microphoneDeviceId).toBe("pinned-mic");
+  });
+
   it("keeps the stored hotkey while capture is active", () => {
     const refs = fakeRefs();
     refs.hotkeyInput.value = "garbage-during-capture";
@@ -187,6 +203,19 @@ describe("normalizeHotkeyLabelsInPlace", () => {
 });
 
 describe("applySettingsToForm", () => {
+  it("keeps automatic microphone input selected when the list is populated", () => {
+    const refs = fakeRefs();
+    refs.microphoneSelect.value = "mic-1";
+    (refs.microphoneSelect.options as unknown as Array<{ value: string }>).push(
+      { value: "" },
+      { value: "mic-1" },
+    );
+
+    applySettingsToForm(refs, baseDeps(), defaultSettings());
+
+    expect(refs.microphoneSelect.value).toBe("");
+  });
+
   it("writes fields back and refreshes General display text", () => {
     const refs = fakeRefs();
     const next: PersistedSettings = {
