@@ -80,7 +80,7 @@ pub const UPDATE_GITHUB_TOKEN_ENV: &str = "SLASSHYWISPR_UPDATE_GITHUB_TOKEN";
 /// Minisign public key (base64) trusted to sign release installers.
 /// Empty means unprovisioned, and the updater then refuses to execute any
 /// installer rather than running one it cannot verify.
-pub const UPDATE_SIGNING_PUBKEY: &str = "";
+pub const UPDATE_SIGNING_PUBKEY: &str = "RWQmglb8/flENyaNz4vEgKwYJMFK7hfYlIAPvGkyYIykbgyRCflNdDbn";
 pub const UPDATE_SIGNING_PUBKEY_ENV: &str = "SLASSHYWISPR_UPDATE_SIGNING_PUBKEY";
 pub const UPDATE_HTTP_USER_AGENT: &str = "SlasshyWispr-Updater";
 pub const PERSISTED_SETTINGS_DIR_NAME: &str = "SlasshyWisprData";
