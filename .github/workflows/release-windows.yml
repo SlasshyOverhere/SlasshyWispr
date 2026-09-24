@@ -46,8 +46,7 @@ jobs:
       - name: Install Vulkan SDK
         uses: humbletim/install-vulkan-sdk@v1.2
         with:
-          version: 1.4.309.0
-          cache: true
+          version: 1.4.357.0
 
       - name: Verify Vulkan build tools
         shell: pwsh
@@ -56,6 +55,10 @@ jobs:
           $library = Join-Path $env:VULKAN_SDK "Lib/vulkan-1.lib"
           if (-not (Test-Path $library)) {
             throw "Vulkan import library not found at $library."
+          }
+          $spirvConfig = Join-Path $env:VULKAN_SDK "Lib/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"
+          if (-not (Test-Path $spirvConfig)) {
+            throw "SPIRV-Headers package config not found at $spirvConfig."
           }
           if (-not (Get-Command glslc -ErrorAction SilentlyContinue)) {
             throw "glslc is not on PATH."
