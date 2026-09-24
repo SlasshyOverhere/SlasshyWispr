@@ -1,6 +1,5 @@
 use app_lib::security::*;
 use std::fs;
-use std::path::PathBuf;
 use tempfile::TempDir;
 
 #[test]
@@ -189,7 +188,6 @@ fn test_sha256_hash_produces_correct_length() {
 #[test]
 fn test_path_validation_prevents_traversal() {
     let temp_dir = TempDir::new().unwrap();
-    let parent = temp_dir.path().parent().unwrap();
 
     // Try to access a file outside the allowed directory
     let traversal_path = temp_dir.path().join("../outside.txt");

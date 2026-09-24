@@ -1,0 +1,130 @@
+name: Rust Tests
+
+on:
+  push:
+    branches: [main, master, beta]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/rust-tests.yml"
+  pull_request:
+    branches: [main, master, beta]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/rust-tests.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: rust-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-check:
+    name: Rust check and test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: src-tauri
+
+    env:
+      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+      CI: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "1.4.357.0"
+          $expectedSha256 = "81f474711e9042f4cd22b31b2f7a8870db2e428b21586fb43dd80150be97310d"
+          $sdk = Join-Path $env:RUNNER_TEMP "VulkanSDK\$version"
+          $installer = Join-Path $env:RUNNER_TEMP "vulkan_sdk-$version.exe"
+          $url = "https://sdk.lunarg.com/sdk/download/$version/windows/vulkansdk-windows-X64-$version.exe"
+
+          & "$env:SystemRoot\System32\curl.exe" -fsSL --retry 3 --output $installer $url
+          if ($LASTEXITCODE -ne 0) {
+            throw "Vulkan SDK download failed with exit code $LASTEXITCODE."
+          }
+          $actualSha256 = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            throw "Vulkan SDK checksum mismatch: got $actualSha256, expected $expectedSha256."
+          }
+
+          $arguments = @(
+            "--root", $sdk,
+            "--accept-licenses",
+            "--accept-messages",
+            "--confirm-command", "install",
+            "copy_only=1"
+          )
+          $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) {
+            throw "Vulkan SDK installer exited with code $($process.ExitCode)."
+          }
+          Remove-Item $installer -Force
+
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "VULKAN_SDK_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Verify Vulkan build tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $library = Join-Path $env:VULKAN_SDK "Lib/vulkan-1.lib"
+          if (-not (Test-Path $library)) {
+            throw "Vulkan import library not found at $library."
+          }
+          $spirvConfig = Join-Path $env:VULKAN_SDK "Lib/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"
+          if (-not (Test-Path $spirvConfig)) {
+            throw "SPIRV-Headers package config not found at $spirvConfig."
+          }
+          if (-not (Get-Command glslc -ErrorAction SilentlyContinue)) {
+            throw "glslc is not on PATH."
+          }
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: cargo check
+        run: cargo check
+
+      - name: cargo test
+        run: cargo test
+
+      - name: cargo fmt
+        run: cargo fmt --check
+
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: production CSP gate (F-032)
+        shell: bash
+        working-directory: src-tauri
+        run: |
+          set -euo pipefail
+          csp=$(python3 -c "import json;print(json.load(open('tauri.conf.json'))['app']['security']['csp'])")
+          echo "CSP: $csp"
+          case "$csp" in
+            *'unsafe-eval'*|*blob:*|*https:*connect-src*|*script-src*http*) echo 'prod CSP regression: overly broad script/connect source' >&2; exit 1;;
+          esac
+          case "$csp" in
+            *default-src'self'*|*default-src*'self'*) ;;
+            *) echo 'prod CSP regression: default-src missing self lockdown' >&2; exit 1;;
+          esac
+
+      - name: Debug redaction gate (F-033)
+        shell: bash
+        working-directory: src-tauri
+        run: |
+          set -euo pipefail
+          if grep -rn 'derive.*Debug' src/commands/pipeline.rs | grep -qi 'api_key\|apiKey'; then echo 'Debug on key struct?' >&2; exit 1; fi
+          grep -rn 'REDACTED' src/commands/ipc_types.rs src/pipeline/routing.rs >/dev/null || { echo 'redacting Debug impls missing' >&2; exit 1; }

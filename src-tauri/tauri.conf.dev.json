@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "SlasshyWispr",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "identifier": "online.slasshy.slasshywispr.dev",
   "build": {
     "frontendDist": "../dist",
@@ -13,9 +13,10 @@
     "windows": [
       {
         "title": "SlasshyWispr",
-        "width": 1280,
-        "height": 832,
+        "width": 780,
+        "height": 600,
         "decorations": false,
+        "shadow": true,
         "resizable": false,
         "maximizable": false,
         "minimizable": true,

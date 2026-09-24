@@ -3,9 +3,6 @@ import {
   buildAgentOperatingCorePrompt,
   captureModeLabel,
   type CaptureMode,
-  expandSnippetsInText,
-  normalizeDictionaryEntries,
-  normalizeSnippetEntries,
   validateApiBaseUrl,
   validateAssistantName,
 } from "./utils";
@@ -90,139 +87,8 @@ describe("Performance: Date Formatting", () => {
   });
 });
 
-describe("Validation: Dictionary Entry", () => {
-  function validateDictionaryEntry(source: string, target: string): { valid: boolean; error?: string } {
-    if (!source.trim() || !target.trim()) {
-      return { valid: false, error: "Both source and target are required" };
-    }
 
-    if (source.length > 100) {
-      return { valid: false, error: "Source term must be 100 characters or less" };
-    }
 
-    if (target.length > 200) {
-      return { valid: false, error: "Target term must be 200 characters or less" };
-    }
-
-    // Check for HTML/script injection
-    if (source.includes("<script") || target.includes("<script")) {
-      return { valid: false, error: "Script tags are not allowed" };
-    }
-
-    return { valid: true };
-  }
-
-  it("should accept valid dictionary entries", () => {
-    const result = validateDictionaryEntry("slashy", "Slasshy");
-    expect(result.valid).toBe(true);
-  });
-
-  it("should reject empty source", () => {
-    const result = validateDictionaryEntry("", "target");
-    expect(result.valid).toBe(false);
-    expect(result.error).toContain("required");
-  });
-
-  it("should reject empty target", () => {
-    const result = validateDictionaryEntry("source", "");
-    expect(result.valid).toBe(false);
-  });
-
-  it("should reject overly long source", () => {
-    const result = validateDictionaryEntry("A".repeat(101), "target");
-    expect(result.valid).toBe(false);
-    expect(result.error).toContain("100 characters");
-  });
-
-  it("should reject script injection attempts", () => {
-    const result = validateDictionaryEntry("<script>alert('xss')</script>", "target");
-    expect(result.valid).toBe(false);
-    expect(result.error).toContain("Script tags");
-  });
-});
-
-describe("Validation: Snippet Entry", () => {
-  function validateSnippetEntry(trigger: string, expansion: string): { valid: boolean; error?: string } {
-    if (!trigger.trim()) {
-      return { valid: false, error: "Trigger phrase is required" };
-    }
-
-    if (!expansion.trim()) {
-      return { valid: false, error: "Expansion text is required" };
-    }
-
-    if (trigger.length > 50) {
-      return { valid: false, error: "Trigger must be 50 characters or less" };
-    }
-
-    if (expansion.length > 1000) {
-      return { valid: false, error: "Expansion must be 1000 characters or less" };
-    }
-
-    return { valid: true };
-  }
-
-  it("should accept valid snippets", () => {
-    const result = validateSnippetEntry("intro", "Hello, my name is...");
-    expect(result.valid).toBe(true);
-  });
-
-  it("should reject empty trigger", () => {
-    const result = validateSnippetEntry("", "expansion");
-    expect(result.valid).toBe(false);
-  });
-
-  it("should reject empty expansion", () => {
-    const result = validateSnippetEntry("trigger", "");
-    expect(result.valid).toBe(false);
-  });
-
-  it("should enforce trigger length limit", () => {
-    const result = validateSnippetEntry("A".repeat(51), "expansion");
-    expect(result.valid).toBe(false);
-    expect(result.error).toContain("50 characters");
-  });
-
-  it("should enforce expansion length limit", () => {
-    const result = validateSnippetEntry("trigger", "A".repeat(1001));
-    expect(result.valid).toBe(false);
-    expect(result.error).toContain("1000 characters");
-  });
-});
-
-describe("Validation: Quick Note", () => {
-  function validateQuickNote(text: string): { valid: boolean; error?: string } {
-    if (!text.trim()) {
-      return { valid: false, error: "Note text is required" };
-    }
-
-    if (text.length > 5000) {
-      return { valid: false, error: "Note must be 5000 characters or less" };
-    }
-
-    return { valid: true };
-  }
-
-  it("should accept valid notes", () => {
-    const result = validateQuickNote("This is a quick note");
-    expect(result.valid).toBe(true);
-  });
-
-  it("should reject empty notes", () => {
-    const result = validateQuickNote("");
-    expect(result.valid).toBe(false);
-  });
-
-  it("should enforce max length", () => {
-    const result = validateQuickNote("A".repeat(5001));
-    expect(result.valid).toBe(false);
-  });
-
-  it("should allow multiline notes", () => {
-    const result = validateQuickNote("Line 1\nLine 2\nLine 3");
-    expect(result.valid).toBe(true);
-  });
-});
 
 describe("Security: Settings Validation", () => {
   it("should reject invalid API base URL via shared validator", () => {
@@ -330,36 +196,6 @@ describe("Security: Settings Validation", () => {
   });
 });
 
-describe("Data Normalization", () => {
-  it("deduplicates dictionary entries case-insensitively", () => {
-    const normalized = normalizeDictionaryEntries([
-      { id: "1", source: "slashy", target: "Slasshy", createdAt: 1 },
-      { id: "2", source: "Slashy", target: "Duplicate", createdAt: 2 },
-    ]);
-
-    expect(normalized).toHaveLength(1);
-    expect(normalized[0].target).toBe("Slasshy");
-  });
-
-  it("deduplicates snippets case-insensitively", () => {
-    const normalized = normalizeSnippetEntries([
-      { id: "1", trigger: "/sig", expansion: "One", createdAt: 1 },
-      { id: "2", trigger: "/SIG", expansion: "Two", createdAt: 2 },
-    ]);
-
-    expect(normalized).toHaveLength(1);
-    expect(normalized[0].expansion).toBe("One");
-  });
-
-  it("expands snippets in dictation text", () => {
-    const expanded = expandSnippetsInText("Please add /sig here.", [
-      { id: "1", trigger: "/sig", expansion: "Kind regards,\nSlasshy", createdAt: 1 },
-    ]);
-
-    expect(expanded).toContain("Kind regards,");
-    expect(expanded).not.toContain("/sig");
-  });
-});
 
 describe("Performance: Constants and Defaults", () => {
   it("should have consistent default values", () => {

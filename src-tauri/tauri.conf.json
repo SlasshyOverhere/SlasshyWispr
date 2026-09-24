@@ -1,21 +1,23 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "SlasshyWispr",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "identifier": "online.slasshy.slasshywispr",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1421",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build",
+    "beforeBundleCommand": "npm run stage-sherpa-runtime"
   },
   "app": {
     "windows": [
       {
         "title": "SlasshyWispr",
-        "width": 1280,
-        "height": 832,
+        "width": 780,
+        "height": 600,
         "decorations": false,
+        "shadow": true,
         "resizable": false,
         "maximizable": false,
         "minimizable": true,
@@ -35,6 +37,9 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": {
+      "sherpa-runtime": "."
+    }
   }
 }

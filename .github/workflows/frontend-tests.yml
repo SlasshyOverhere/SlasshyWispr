@@ -1,0 +1,78 @@
+name: Frontend Tests
+
+# src-tauri is listed because contract tests under src/ read Rust sources
+# (e.g. the STT timeout bounds pin). A Rust-only change has to run this job or
+# the contract can drift unnoticed, which is the exact failure they exist for.
+on:
+  push:
+    branches: [main, master, beta]
+    paths:
+      - "src/**"
+      - "src-tauri/**"
+      - "package.json"
+      - "package-lock.json"
+      - "bunfig.toml"
+      - "tsconfig.json"
+      - "vite.config.ts"
+      - "index.html"
+      - ".github/workflows/frontend-tests.yml"
+  pull_request:
+    branches: [main, master, beta]
+    paths:
+      - "src/**"
+      - "src-tauri/**"
+      - "package.json"
+      - "package-lock.json"
+      - "bunfig.toml"
+      - "tsconfig.json"
+      - "vite.config.ts"
+      - "index.html"
+      - ".github/workflows/frontend-tests.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: frontend-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend-check:
+    name: Typecheck and test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    env:
+      CI: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Runs in `prebuild` too, but this job never builds, and the guard is
+      # only worth having if it fails before merge rather than at release.
+      - name: Backend bounds fallback gate
+        run: node scripts/check-backend-bounds-fallbacks.mjs
+
+      # Also a prebuild step: a payload type that only exists in Rust would
+      # otherwise go unnoticed until the next release build.
+      - name: Generated wire types are current
+        run: node scripts/generate-wire-types.mjs --check
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: bun test

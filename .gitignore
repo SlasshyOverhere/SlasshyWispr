@@ -17,6 +17,8 @@ dist/
 dist-ssr/
 release-assets/
 src-tauri/target/
+__pycache__/
+*.pyc
 tmp-voices/
 prompts/
 *.local
@@ -55,3 +57,15 @@ Desktop.ini
 .impeccable/
 docs/superpowers/
 jules/
+.jules/
+.guimux-pastes/
+
+# Temporary local artifacts
+Online
+sidebar.patch
+sidebar-only.patch
+
+# Staged sherpa-onnx runtime DLLs (script-generated, bundled as resources).
+# The directory itself is tracked via .gitkeep: `bundle.resources` names it, and
+# Tauri's build script fails when a configured resource path does not exist.
+src-tauri/sherpa-runtime/*.dll

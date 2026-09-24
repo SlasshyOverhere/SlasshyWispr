@@ -1,23 +1,27 @@
 import { useEffect, useState } from 'react';
+import { SETTINGS_STORAGE_KEY } from '../constants';
+import { parseJson } from '../state/storage';
+import type { PersistedSettings } from '../types';
 
-const ONBOARDING_DISMISSED_KEY = 'slasshy-wispr-onboarding-dismissed-v1';
+const ONBOARDING_DISMISSED_KEY = 'slasshywispr-onboarding-dismissed-v1';
+
+/** Quarantines a corrupt settings blob instead of throwing mid-render. */
+function readStoredSettings(): Partial<PersistedSettings> {
+  return parseJson<Partial<PersistedSettings>>(SETTINGS_STORAGE_KEY, {});
+}
 
 type Step = 'welcome' | 'hotkey' | 'tts' | 'done';
 
 export function OnboardingWizard() {
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState<Step>('welcome');
+  const [assistantName, setAssistantName] = useState('Lily');
 
   useEffect(() => {
     if (localStorage.getItem(ONBOARDING_DISMISSED_KEY)) return;
-    const raw = localStorage.getItem('slasshy-desktop-assistant-settings-v4');
-    if (!raw) setVisible(true);
-    else {
-      try {
-        const s = JSON.parse(raw);
-        if (!s.apiKey && !s.localSttModel) setVisible(true);
-      } catch { setVisible(true); }
-    }
+    const stored = readStoredSettings();
+    setAssistantName(stored.assistantName?.trim() || 'Lily');
+    if (!stored.apiKey && !stored.localSttModel) setVisible(true);
   }, []);
 
   const dismiss = () => {
@@ -33,7 +37,7 @@ export function OnboardingWizard() {
         {step === 'welcome' && (
           <>
             <h2 id="onboardingTitle">Welcome to SlasshyWispr</h2>
-            <p>Your voice dictation and AI assistant. Take 30s to set up.</p>
+            <p>Your voice dictation for SlasshyWispr. Take 30s to set up.</p>
             <ol className="onboarding-steps">
               <li>Set your push-to-talk hotkey</li>
               <li>Configure speech output (TTS)</li>
@@ -77,7 +81,7 @@ export function OnboardingWizard() {
         {step === 'done' && (
           <>
             <h2 id="onboardingTitle">You're all set!</h2>
-            <p>Press your hotkey to start dictating, or say <strong>"Hey {localStorage.getItem('slasshy-desktop-assistant-settings-v4') ? JSON.parse(localStorage.getItem('slasshy-desktop-assistant-settings-v4') || '{}').assistantName || 'Lily' : 'Lily'}"</strong> for assistant mode.</p>
+            <p>Press your hotkey to start dictating, or say <strong>"Hey {assistantName}"</strong> for assistant mode.</p>
             <p className="onboarding-hint">Need help? Check Settings or hit <kbd>Alt+S</kbd>.</p>
             <div className="onboarding-actions">
               <button className="dark-action" type="button" onClick={dismiss}>Start dictating</button>
@@ -87,7 +91,7 @@ export function OnboardingWizard() {
 
         <div className="onboarding-dots">
           {(['welcome', 'hotkey', 'tts', 'done'] as const).map(s => (
-            <span key={s} className={`onboarding-dot ${step === s ? 'active' : ''}`} />
+            <span key={s} className={`onboarding-dot ${step === s ? 'is-active' : ''}`} />
           ))}
         </div>
       </div>

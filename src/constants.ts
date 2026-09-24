@@ -14,28 +14,26 @@ export const SELECTION_POPUP_MIN_HEIGHT = 120;
 export const SELECTION_POPUP_MAX_HEIGHT = 560;
 export const SELECTION_POPUP_CHARS_PER_LINE = 68;
 
-export const SETTINGS_STORAGE_KEY = "slasshy-desktop-assistant-settings-v4";
-export const DICTIONARY_STORAGE_KEY = "slasshy-wispr-dictionary-v1";
-export const SNIPPETS_STORAGE_KEY = "slasshy-wispr-snippets-v1";
-export const NOTES_STORAGE_KEY = "slasshy-wispr-notes-v1";
-export const USAGE_STORAGE_KEY = "slasshy-wispr-usage-v1";
-export const DOCK_LAYOUT_STORAGE_KEY = "slasshy-wispr-dock-layout-v2";
-export const HOME_HISTORY_STORAGE_KEY = "slasshy-wispr-home-history-v1";
-export const SIDEBAR_COLLAPSED_STORAGE_KEY = "slasshy-wispr-sidebar-collapsed-v1";
-export const LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY = "slasshy-wispr-local-stt-hardware-advisor-v1";
+export const SETTINGS_STORAGE_KEY = "slasshywispr-settings-v4";
+
+/** Emitted by Rust when a second launch asks for a file to be transcribed. */
+export const APP_EVENT_TRANSCRIBE_FILE = "slasshywispr://transcribe-file";
+export const USAGE_STORAGE_KEY = "slasshywispr-usage-v1";
+export const DOCK_LAYOUT_STORAGE_KEY = "slasshywispr-dock-layout-v2";
+export const HOME_HISTORY_STORAGE_KEY = "slasshywispr-home-history-v1";
+export const LOCAL_STT_HARDWARE_ADVISOR_STORAGE_KEY = "slasshywispr-local-stt-hardware-advisor-v1";
 export const GITHUB_RELEASES_PAGE_URL = "https://github.com/SlasshyOverhere/SlasshyWispr/releases/latest";
-export const APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY = "slasshy-wispr-app-update-last-checked-at-v1";
-export const APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY = "slasshy-wispr-app-update-last-notified-version-v1";
-export const APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY = "slasshy-wispr-app-update-snoozed-until-v1";
-export const APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY = "slasshy-wispr-app-update-auto-check-enabled-v1";
-export const ANALYTICS_SESSIONS_KEY = "slasshy-wispr-analytics-sessions-v1";
-export const ACHIEVEMENTS_STATE_KEY = "slasshy-wispr-achievements-state-v1";
-export const ACTIVE_PAGE_STORAGE_KEY = "slasshy-wispr-active-page-v1";
+export const APP_UPDATE_LAST_CHECKED_AT_STORAGE_KEY = "slasshywispr-app-update-last-checked-at-v1";
+export const APP_UPDATE_LAST_NOTIFIED_VERSION_STORAGE_KEY = "slasshywispr-app-update-last-notified-version-v1";
+export const APP_UPDATE_SNOOZED_UNTIL_STORAGE_KEY = "slasshywispr-app-update-snoozed-until-v1";
+export const APP_UPDATE_AUTO_CHECK_ENABLED_STORAGE_KEY = "slasshywispr-app-update-auto-check-enabled-v1";
+export const ANALYTICS_SESSIONS_KEY = "slasshywispr-analytics-sessions-v1";
+export const ACHIEVEMENTS_STATE_KEY = "slasshywispr-achievements-state-v1";
+export const ACTIVE_PAGE_STORAGE_KEY = "slasshywispr-active-page-v1";
 export const EMPTY_HISTORY_HINT = "No turns yet. Start dictating to see your recent activity.";
-export const DEFAULT_SYSTEM_PROMPT =
-  "You are SlasshyWispr, a helpful desktop voice assistant. Keep replies concise and easy to speak aloud.";
-export const DEFAULT_TEMPERATURE = 0.35;
-export const DEFAULT_MAX_TOKENS = 320;
+// No DEFAULT_SYSTEM_PROMPT here on purpose: the built-in prompt is owned by the
+// backend (src-tauri/src/constants.rs) and an empty setting means "use it".
+
 export const DEFAULT_API_BASE_URL = "";
 export const DEFAULT_STT_MODEL_NAME = "";
 export const DEFAULT_AI_MODEL_NAME = "";
@@ -46,6 +44,8 @@ export const DEFAULT_COMMAND_HOTKEY = "Ctrl+Shift+Space";
 export const DEFAULT_CAPTURE_MODE: CaptureMode = "push-to-talk";
 export const DEFAULT_STYLE_PROFILE: StyleProfile = "adaptive";
 export const DEFAULT_TTS_ENGINE: TtsEngine = "piper";
+export const DEFAULT_VOICE_CLONE_SPEAKER_ID = "";
+export const DEFAULT_VOICE_CLONE_SPEED = 1.0;
 export const DEFAULT_ASSISTANT_NAME = "Lily";
 export const DEFAULT_PIPER_SPEED = 1.08;
 export const DEFAULT_PIPER_QUALITY: PiperQuality = "fast";
@@ -73,7 +73,6 @@ export const LOCAL_STT_MODEL_SIZE_LABELS: Record<string, string> = {
   "nvidia/parakeet-tdt-0.6b-v3": "Parakeet v3 (478 MB)",
   "nvidia/parakeet-tdt_ctc-110m": "Parakeet v2 (473 MB)",
 };
-export const MAX_COQUI_REFERENCE_SECONDS = 30;
 export const ACCIDENTAL_PTT_HOTKEY_MAX_HOLD_MS = 1_000;
 export const MAX_HISTORY_ITEMS = 100;
 export const FOREGROUND_BLOCK_CHECK_CACHE_MS = 320;

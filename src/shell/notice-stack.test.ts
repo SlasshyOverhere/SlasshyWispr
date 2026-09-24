@@ -1,0 +1,276 @@
+/**
+ * Notice stack tests.
+ *
+ * The rules that matter are the ones a stack makes easy to get wrong: that
+ * every notice stays visible instead of waiting its turn, that a dismiss names
+ * exactly one item, that status replaces itself rather than piling up behind
+ * the notices, and that nothing outstays its welcome.
+ */
+import { describe, expect, it } from "bun:test";
+import {
+  createNoticeStack,
+  NOTICE_ERROR_TTL_MS,
+  NOTICE_TTL_MS,
+  type NoticeItem,
+} from "./notice-stack";
+
+function makeHarness() {
+  const renders: NoticeItem[][] = [];
+  // A hand-wound clock: nothing expires unless a test says time passed.
+  const timers = new Map<
+    number,
+    { run: () => void; due: number; cancelled: boolean }
+  >();
+  let nextHandle = 1;
+  let elapsed = 0;
+  const stack = createNoticeStack({
+    render: (items) => renders.push(items),
+    schedule: (run, ms) => {
+      const handle = nextHandle;
+      nextHandle += 1;
+      timers.set(handle, { run, due: elapsed + ms, cancelled: false });
+      return handle as unknown as ReturnType<typeof setTimeout>;
+    },
+    cancelScheduled: (handle) => {
+      const timer = timers.get(handle as unknown as number);
+      if (timer) timer.cancelled = true;
+    },
+  });
+  return {
+    stack,
+    renders,
+    /** What the area shows, in order. */
+    texts: () => stack.items().map((item) => item.message),
+    lastRender: () => renders.at(-1) ?? [],
+    /** Let `ms` pass, firing every timer that comes due. */
+    advance: (ms: number) => {
+      elapsed += ms;
+      for (const [handle, timer] of [...timers]) {
+        if (timer.cancelled || timer.due > elapsed) continue;
+        timers.delete(handle);
+        timer.run();
+      }
+    },
+    /** How long each live row has left before it clears itself. */
+    deadlines: () =>
+      [...timers.values()]
+        .filter((timer) => !timer.cancelled)
+        .map((timer) => timer.due - elapsed),
+  };
+}
+
+describe("notice stack", () => {
+  it("keeps every notice visible at once instead of one at a time", () => {
+    const h = makeHarness();
+    h.stack.enqueue("timeout corrected");
+    h.stack.enqueue("verb registry repaired");
+    h.stack.enqueue("piper runtime incomplete");
+
+    expect(h.texts()).toEqual([
+      "timeout corrected",
+      "verb registry repaired",
+      "piper runtime incomplete",
+    ]);
+  });
+
+  it("gives each item its own id", () => {
+    const h = makeHarness();
+    h.stack.enqueue("first");
+    h.stack.enqueue("second");
+
+    const ids = h.stack.items().map((item) => item.id);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it("dismisses exactly the item asked for and keeps the rest in order", () => {
+    const h = makeHarness();
+    h.stack.enqueue("first");
+    h.stack.enqueue("second");
+    h.stack.enqueue("third");
+    const middle = h.stack.items()[1].id;
+
+    h.stack.dismiss(middle);
+    expect(h.texts()).toEqual(["first", "third"]);
+  });
+
+  it("ignores a dismiss for an id that is gone", () => {
+    const h = makeHarness();
+    h.stack.enqueue("only");
+    const id = h.stack.items()[0].id;
+
+    h.stack.dismiss(id);
+    h.stack.dismiss(id);
+
+    expect(h.texts()).toEqual([]);
+    expect(h.renders).toHaveLength(2);
+  });
+
+  it("renders a copy, so a reader cannot mutate the stack", () => {
+    const h = makeHarness();
+    h.stack.enqueue("first");
+    h.lastRender().push({
+      id: 999,
+      message: "injected",
+      isError: false,
+      transient: false,
+    });
+
+    expect(h.stack.items()).toHaveLength(1);
+    expect(h.texts()).toEqual(["first"]);
+  });
+
+  it("does not stack the same message twice", () => {
+    const h = makeHarness();
+    h.stack.enqueue("same problem");
+    h.stack.enqueue("same problem");
+
+    expect(h.texts()).toEqual(["same problem"]);
+  });
+
+  it("carries the error tone on the item", () => {
+    const h = makeHarness();
+    h.stack.enqueue("soft");
+    h.stack.enqueue("hard", true);
+
+    expect(h.stack.items().map((item) => item.isError)).toEqual([false, true]);
+  });
+});
+
+describe("notice expiry", () => {
+  it("clears a notice on its own once its time is up", () => {
+    const h = makeHarness();
+    h.stack.enqueue("timeout corrected");
+    h.advance(NOTICE_TTL_MS - 1);
+    expect(h.texts()).toEqual(["timeout corrected"]);
+
+    h.advance(1);
+    expect(h.texts()).toEqual([]);
+  });
+
+  it("gives an error longer than a plain notice", () => {
+    const h = makeHarness();
+    h.stack.enqueue("soft");
+    h.stack.enqueue("hard", true);
+
+    h.advance(NOTICE_TTL_MS);
+    expect(h.texts()).toEqual(["hard"]);
+
+    h.advance(NOTICE_ERROR_TTL_MS);
+    expect(h.texts()).toEqual([]);
+  });
+
+  it("restarts the clock when the status line is replaced", () => {
+    const h = makeHarness();
+    h.stack.present("Recording started");
+    h.advance(NOTICE_TTL_MS - 1000);
+
+    h.stack.present("Processing");
+
+    // The deadline went with the text it was armed for, so the new status gets
+    // a full window instead of inheriting the old one.
+    expect(h.deadlines()).toEqual([NOTICE_TTL_MS]);
+  });
+
+  it("never fires a notice that was dismissed first", () => {
+    const h = makeHarness();
+    h.stack.enqueue("timeout corrected");
+    const renders = h.renders.length;
+
+    h.stack.dismiss(h.stack.items()[0].id);
+    h.advance(NOTICE_ERROR_TTL_MS);
+
+    expect(h.renders.length).toBe(renders + 1);
+    expect(h.texts()).toEqual([]);
+  });
+});
+
+describe("notice stack actions", () => {
+  it("carries the action it was enqueued with", () => {
+    const h = makeHarness();
+    const run = (): void => {};
+
+    h.stack.enqueue("Update 1.2.3 is available.", false, { label: "Open Updates", run });
+
+    expect(h.stack.items()[0].action?.label).toBe("Open Updates");
+    expect(h.stack.items()[0].action?.run).toBe(run);
+  });
+
+  it("leaves a plain notice without one", () => {
+    const h = makeHarness();
+    h.stack.enqueue("timeout corrected");
+
+    expect(h.stack.items()[0].action).toBeUndefined();
+  });
+
+  it("does not stack a second row when the same update is reported twice", () => {
+    const h = makeHarness();
+    const action = { label: "Open Updates", run: (): void => {} };
+
+    h.stack.enqueue("Update 1.2.3 is available.", false, action);
+    h.stack.enqueue("Update 1.2.3 is available.", false, action);
+
+    expect(h.texts()).toEqual(["Update 1.2.3 is available."]);
+  });
+
+  it("survives a later status line, action intact", () => {
+    const h = makeHarness();
+    const action = { label: "Open Updates", run: (): void => {} };
+
+    h.stack.enqueue("Update 1.2.3 is available.", false, action);
+    h.stack.present("Recording started");
+
+    expect(h.texts()).toEqual(["Update 1.2.3 is available.", "Recording started"]);
+    expect(h.stack.items()[0].action).toBe(action);
+  });
+});
+
+describe("notice stack status line", () => {
+  it("replaces itself in place rather than stacking every update", () => {
+    const h = makeHarness();
+    h.stack.present("Recording started");
+    h.stack.present("Processing");
+    h.stack.present("Ready to paste");
+
+    expect(h.texts()).toEqual(["Ready to paste"]);
+  });
+
+  it("keeps its id and position when replaced", () => {
+    const h = makeHarness();
+    h.stack.present("Recording started");
+    const id = h.stack.items()[0].id;
+
+    h.stack.present("Processing");
+    expect(h.stack.items()[0].id).toBe(id);
+  });
+
+  it("sits alongside notices without displacing them", () => {
+    const h = makeHarness();
+    h.stack.present("Recording started");
+    h.stack.enqueue("timeout corrected");
+    h.stack.present("Processing");
+
+    expect(h.texts()).toEqual(["Processing", "timeout corrected"]);
+    expect(h.stack.items()[1].transient).toBe(false);
+  });
+
+  it("appends after a dismiss, rather than reusing the removed id", () => {
+    const h = makeHarness();
+    h.stack.present("Recording started");
+    const first = h.stack.items()[0].id;
+    h.stack.dismiss(first);
+
+    h.stack.present("Processing");
+    expect(h.stack.items()).toHaveLength(1);
+    expect(h.stack.items()[0].id).not.toBe(first);
+  });
+
+  it("leaves notices alone when the status line is dismissed", () => {
+    const h = makeHarness();
+    h.stack.present("Recording started");
+    h.stack.enqueue("timeout corrected");
+    const status = h.stack.items()[0].id;
+
+    h.stack.dismiss(status);
+    expect(h.texts()).toEqual(["timeout corrected"]);
+  });
+});

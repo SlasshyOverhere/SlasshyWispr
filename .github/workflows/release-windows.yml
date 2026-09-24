@@ -43,6 +43,58 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "1.4.357.0"
+          $expectedSha256 = "81f474711e9042f4cd22b31b2f7a8870db2e428b21586fb43dd80150be97310d"
+          $sdk = Join-Path $env:RUNNER_TEMP "VulkanSDK\$version"
+          $installer = Join-Path $env:RUNNER_TEMP "vulkan_sdk-$version.exe"
+          $url = "https://sdk.lunarg.com/sdk/download/$version/windows/vulkansdk-windows-X64-$version.exe"
+
+          & "$env:SystemRoot\System32\curl.exe" -fsSL --retry 3 --output $installer $url
+          if ($LASTEXITCODE -ne 0) {
+            throw "Vulkan SDK download failed with exit code $LASTEXITCODE."
+          }
+          $actualSha256 = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            throw "Vulkan SDK checksum mismatch: got $actualSha256, expected $expectedSha256."
+          }
+
+          $arguments = @(
+            "--root", $sdk,
+            "--accept-licenses",
+            "--accept-messages",
+            "--confirm-command", "install",
+            "copy_only=1"
+          )
+          $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) {
+            throw "Vulkan SDK installer exited with code $($process.ExitCode)."
+          }
+          Remove-Item $installer -Force
+
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "VULKAN_SDK_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Verify Vulkan build tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $library = Join-Path $env:VULKAN_SDK "Lib/vulkan-1.lib"
+          if (-not (Test-Path $library)) {
+            throw "Vulkan import library not found at $library."
+          }
+          $spirvConfig = Join-Path $env:VULKAN_SDK "Lib/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"
+          if (-not (Test-Path $spirvConfig)) {
+            throw "SPIRV-Headers package config not found at $spirvConfig."
+          }
+          if (-not (Get-Command glslc -ErrorAction SilentlyContinue)) {
+            throw "glslc is not on PATH."
+          }
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
@@ -111,6 +163,56 @@ jobs:
             generatedAt = (Get-Date).ToUniversalTime().ToString("o")
           } | ConvertTo-Json -Depth 5
           Set-Content -Path "release-assets/updater-manifest.json" -Value $manifest -Encoding UTF8
+
+      - name: Sign installer with minisign
+        shell: pwsh
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if ([string]::IsNullOrWhiteSpace($env:MINISIGN_SECRET_KEY)) {
+            throw "MINISIGN_SECRET_KEY is not set; refusing to publish an unverifiable release."
+          }
+
+          # The updater only accepts prehashed ("ED") signatures, which is what
+          # current minisign emits by default. Chocolatey's minisign package is
+          # still 0.8 and cannot read the current key format.
+          winget install --id jedisct1.minisign --exact --version 0.12 --source winget `
+            --accept-package-agreements --accept-source-agreements --silent
+          $minisign = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\jedisct1.minisign_*\minisign-win64\x86_64\minisign.exe" |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $minisign) {
+            throw "minisign 0.12 executable was not found after installation."
+          }
+          $minisignVersion = & $minisign.FullName -v
+          if ($LASTEXITCODE -ne 0 -or $minisignVersion -notmatch '\b0\.12\b') {
+            throw "Expected minisign 0.12, found: $minisignVersion"
+          }
+
+          $keyPath = Join-Path $env:RUNNER_TEMP "minisign.key"
+          Set-Content -Path $keyPath -Value $env:MINISIGN_SECRET_KEY -NoNewline -Encoding ascii
+
+          $installer = Get-ChildItem "release-assets/*.exe" |
+            Sort-Object Length -Descending |
+            Select-Object -First 1
+          if (-not $installer) {
+            throw "No installer found in release-assets to sign."
+          }
+
+          $signaturePath = "$($installer.FullName).minisig"
+          & $minisign.FullName -S -s $keyPath -m $installer.FullName -x $signaturePath
+          if ($LASTEXITCODE -ne 0) {
+            throw "minisign failed to sign $($installer.Name)."
+          }
+          if (-not (Test-Path $signaturePath)) {
+            throw "minisign did not create $signaturePath."
+          }
+
+          Remove-Item $keyPath -Force
+
+          Write-Host "Signed $($installer.Name)"
 
       - name: Generate release notes
         uses: actions/github-script@v7
@@ -282,5 +384,6 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             release-assets/*.exe
+            release-assets/*.minisig
             release-assets/checksums.txt
             release-assets/updater-manifest.json

@@ -1,7 +1,7 @@
 [package]
 name = "app"
-version = "1.0.10"
-description = "Desktop voice dictation and AI assistant with online, offline, and hybrid model routing."
+version = "1.0.11"
+description = "Desktop voice dictation with online, offline, and hybrid model routing."
 authors = ["you"]
 license = ""
 repository = ""
@@ -23,11 +23,14 @@ tempfile = "3"
 [dependencies]
 arboard = "3"
 base64 = "0.22"
+bzip2 = "0.4"
+cpal = "0.15"
 flate2 = "1"
 hound = "3.5"
 hmac = "0.12"
 keyring = "3"
 log = "0.4"
+minisign-verify = "0.2"
 ndarray = "0.16"
 nnnoiseless = "0.5"
 ort = "=2.0.0-rc.10"
@@ -37,9 +40,10 @@ serde_json = "1.0"
 sha2 = "0.10"
 tar = "0.4"
 tauri = { version = "2.10.0", features = ["tray-icon"] }
+unicode-normalization = "0.1"
 tauri-plugin-log = "2"
 tauri-plugin-window-state = "2"
-transcribe-rs = { version = "0.2.5", features = ["parakeet"] }
+transcribe-rs = { version = "0.2.5", features = ["parakeet", "moonshine", "sense_voice"] }
 uuid = { version = "1", features = ["v4"] }
 winreg = "0.55"
 zip = { version = "2", default-features = false, features = ["deflate"] }
@@ -48,14 +52,30 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 
+# Whisper runs through whisper.cpp via transcribe-cpp, which vendors its own MAX_PATH
+# workaround. Windows x86_64 only, matching the one platform we ship.
+[target."cfg(all(windows, target_arch = \"x86_64\"))".dependencies]
+transcribe-cpp = { version = "0.2.3", default-features = false, features = ["vulkan"] }
+# Voice cloning runs in-process through sherpa-onnx (ZipVoice). Shared linking is
+# mandatory, not a preference: the static archive is built /MT while Rust MSVC and our
+# ORT objects are /MD, so the static form fails to link with LNK2038/LNK1169.
+sherpa-onnx = { version = "1.13.8", default-features = false, features = ["shared"] }
+
 [target."cfg(target_os = \"windows\")".dependencies]
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
     "Win32_Media_Audio",
+    "Win32_Security",
     "Win32_Security_Cryptography",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
     "Win32_System_Registry",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

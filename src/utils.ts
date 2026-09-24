@@ -1,13 +1,6 @@
-import type { DictionaryTerm, SnippetEntry } from "./types";
-
 export type CaptureMode = "single-tap" | "push-to-talk";
 
 export const MAX_ASSISTANT_NAME_LENGTH = 80;
-export const MAX_DICTIONARY_SOURCE_LENGTH = 100;
-export const MAX_DICTIONARY_TARGET_LENGTH = 200;
-export const MAX_SNIPPET_TRIGGER_LENGTH = 50;
-export const MAX_SNIPPET_EXPANSION_LENGTH = 1000;
-export const MAX_QUICK_NOTE_LENGTH = 5000;
 
 export function captureModeLabel(mode: CaptureMode): string {
   return mode === "push-to-talk" ? "Push-To-Talk" : "Single Tap";
@@ -62,111 +55,101 @@ export function validateAssistantName(value: string): string | null {
   return null;
 }
 
-export function validateDictionaryEntry(source: string, target: string): string | null {
-  const trimmedSource = source.trim();
-  const trimmedTarget = target.trim();
-  if (!trimmedSource || !trimmedTarget) {
-    return "Dictionary requires both spoken and corrected term.";
-  }
-  if (trimmedSource.length > MAX_DICTIONARY_SOURCE_LENGTH) {
-    return `Spoken term must be ${MAX_DICTIONARY_SOURCE_LENGTH} characters or less.`;
-  }
-  if (trimmedTarget.length > MAX_DICTIONARY_TARGET_LENGTH) {
-    return `Corrected term must be ${MAX_DICTIONARY_TARGET_LENGTH} characters or less.`;
-  }
-  return null;
+export function boolFlag(value: boolean): "1" | "0" {
+  return value ? "1" : "0";
 }
 
-export function validateSnippetEntry(trigger: string, expansion: string): string | null {
-  const trimmedTrigger = trigger.trim();
-  const trimmedExpansion = expansion.trim();
-  if (!trimmedTrigger || !trimmedExpansion) {
-    return "Snippet requires both trigger and expansion text.";
-  }
-  if (trimmedTrigger.length > MAX_SNIPPET_TRIGGER_LENGTH) {
-    return `Trigger must be ${MAX_SNIPPET_TRIGGER_LENGTH} characters or less.`;
-  }
-  if (trimmedExpansion.length > MAX_SNIPPET_EXPANSION_LENGTH) {
-    return `Expansion must be ${MAX_SNIPPET_EXPANSION_LENGTH} characters or less.`;
-  }
-  return null;
+export function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
-export function validateQuickNote(text: string): string | null {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return "Note text is required.";
+export function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
   }
-  if (trimmed.length > MAX_QUICK_NOTE_LENGTH) {
-    return `Note must be ${MAX_QUICK_NOTE_LENGTH} characters or less.`;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
   }
-  return null;
+  const precision = unitIndex <= 1 ? 0 : 1;
+  return `${size.toFixed(precision)} ${units[unitIndex]}`;
 }
 
-export function normalizeDictionaryEntries(entries: DictionaryTerm[]): DictionaryTerm[] {
-  const seen = new Set<string>();
-  const normalized: DictionaryTerm[] = [];
-  for (const entry of entries) {
-    const source = entry?.source?.trim();
-    const target = entry?.target?.trim();
-    if (!source || !target || validateDictionaryEntry(source, target)) {
-      continue;
-    }
-    const key = source.toLocaleLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    normalized.push({
-      ...entry,
-      source,
-      target,
+export function formatLatency(value: number): string {
+  return `${Math.round(value)} ms`;
+}
+
+export function asErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+export function createId(): string {
+  if ("crypto" in window && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function confirmDestructiveAction(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+      <div class="confirm-modal">
+        <div class="confirm-body">
+          <p class="confirm-message">${escapeHtml(message)}</p>
+        </div>
+        <div class="confirm-actions">
+          <button type="button" class="confirm-btn confirm-btn-cancel">Cancel</button>
+          <button type="button" class="confirm-btn confirm-btn-confirm">Delete</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const cancelBtn = overlay.querySelector(".confirm-btn-cancel") as HTMLButtonElement;
+    const confirmBtn = overlay.querySelector(".confirm-btn-confirm") as HTMLButtonElement;
+
+    const cleanup = (result: boolean) => {
+      overlay.classList.add("modal-exit");
+      setTimeout(() => {
+        overlay.remove();
+        resolve(result);
+      }, 150);
+    };
+
+    cancelBtn.addEventListener("click", () => cleanup(false));
+    confirmBtn.addEventListener("click", () => cleanup(true));
+
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        document.removeEventListener("keydown", handleEsc);
+        cleanup(false);
+      }
+    };
+    document.addEventListener("keydown", handleEsc);
+
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        document.removeEventListener("keydown", handleEsc);
+        cleanup(false);
+      }
     });
-  }
-  return normalized;
-}
-
-export function normalizeSnippetEntries(entries: SnippetEntry[]): SnippetEntry[] {
-  const seen = new Set<string>();
-  const normalized: SnippetEntry[] = [];
-  for (const entry of entries) {
-    const trigger = entry?.trigger?.trim();
-    const expansion = entry?.expansion?.trim();
-    if (!trigger || !expansion || validateSnippetEntry(trigger, expansion)) {
-      continue;
-    }
-    const key = trigger.toLocaleLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    normalized.push({
-      ...entry,
-      trigger,
-      expansion,
-    });
-  }
-  return normalized;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-export function expandSnippetsInText(text: string, entries: SnippetEntry[]): string {
-  if (!text.trim() || entries.length === 0) {
-    return text;
-  }
-
-  const sortedEntries = [...entries].sort((left, right) => right.trigger.length - left.trigger.length);
-  let expanded = text;
-  for (const entry of sortedEntries) {
-    const trigger = entry.trigger.trim();
-    const expansion = entry.expansion.trim();
-    if (!trigger || !expansion) {
-      continue;
-    }
-    expanded = expanded.replace(new RegExp(escapeRegExp(trigger), "g"), expansion);
-  }
-  return expanded;
+  });
 }

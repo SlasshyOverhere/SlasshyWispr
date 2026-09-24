@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SlasshyWispr Home — five more directions</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0c0b09; color: #e9e4d6; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .switcher { position: sticky; top: 0; z-index: 50; background: #0c0b09; padding: 18px 32px; display: flex; gap: 26px; align-items: baseline; }
+  .switcher strong { font-size: 13px; }
+  .switcher a { color: #a89e88; font-size: 13px; text-decoration: none; }
+  .switcher a:hover { color: #ece4d4; }
+  .concept { padding: 40px 32px 72px; }
+  .concept > h2 { font-size: 18px; font-weight: 650; margin-bottom: 4px; }
+  .concept > p { font-size: 13px; color: #a89e88; margin-bottom: 24px; max-width: 70ch; }
+  .screen { width: 1280px; max-width: 100%; overflow-x: auto; border-radius: 14px; }
+  button { cursor: pointer; }
+
+  /* ============ C6 MORNING SHEET (light broadsheet) ============ */
+  .c6 { background: #ece7d8; color: #221b14; min-height: 760px; padding-bottom: 40px; }
+  .c6-mast { border-top: 3px solid #221b14; border-bottom: 1px solid #221b14; margin: 26px 44px 0; padding: 12px 2px; display: flex; gap: 18px; align-items: baseline; font-size: 12.5px; }
+  .c6-mast b { font-size: 15px; font-weight: 750; }
+  .c6-mast .mid { margin: 0 auto; color: #5c5346; }
+  .c6-mast .r { color: #5c5346; }
+  .c6-nav { display: flex; justify-content: center; padding: 20px 0 6px; }
+  .c6-nav div { background: #221b14; border-radius: 999px; padding: 8px; display: flex; gap: 2px; }
+  .c6-nav button { border: 0; background: none; color: #cfc6b2; font: inherit; font-size: 13px; padding: 8px 18px; border-radius: 999px; }
+  .c6-nav button.on { background: #ece7d8; color: #221b14; font-weight: 650; }
+  .c6-body { display: grid; grid-template-columns: 300px 1fr; gap: 48px; padding: 26px 48px 0; }
+  .c6-date { font-family: Georgia, serif; font-size: 190px; line-height: .9; letter-spacing: -.03em; }
+  .c6-date small { display: block; font-family: system-ui; font-size: 13px; letter-spacing: .02em; margin-top: 10px; color: #5c5346; }
+  .c6-counts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 26px; }
+  .c6-counts b { font-size: 30px; display: block; line-height: 1; font-variant-numeric: tabular-nums; }
+  .c6-counts span { font-size: 12px; color: #5c5346; }
+  .c6-keys { margin-top: 22px; font-size: 12.5px; color: #5c5346; }
+  .c6-keys kbd { font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: #221b14; color: #ece7d8; border-radius: 6px; padding: 8px 12px; }
+  .c6-col h3 { font-family: Georgia, serif; font-size: 26px; font-weight: 500; margin: 4px 0 6px; }
+  .c6-col h3 i { color: #8e4426; }
+  .c6-entry { padding: 14px 2px; }
+  .c6-entry + .c6-entry { border-top: 1px solid rgba(34,27,20,.18); }
+  .c6-entry time { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #6b6152; }
+  .c6-entry p { font-family: Georgia, serif; font-size: 17px; margin-top: 3px; }
+  .c6-entry button { background: none; border: 0; font: inherit; font-size: 12px; color: #8e4426; padding: 0; margin-top: 4px; }
+  .c6-entry button:hover { color: #5f2d14; }
+  .c6-sep { font-size: 12px; color: #6b6152; margin: 20px 0 2px; }
+
+  /* ============ C7 REEL DECK (recorder artifact) ============ */
+  .c7 { background: #171310; background-image: linear-gradient(115deg, rgba(232,201,143,.10) 0%, rgba(232,201,143,.10) 22%, transparent 46%); color: #efe6dc; min-height: 760px; display: flex; flex-direction: column; align-items: center; padding: 26px 40px 40px; position: relative; }
+  .c7::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .06;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .c7-top { display: flex; gap: 26px; font-size: 13px; color: #b7a98f; }
+  .c7-top b { color: #efe6dc; }
+  .c7-top .on { color: #efe6dc; font-weight: 650; }
+  .c7-deck { margin-top: 30px; background: #211a14; border-radius: 18px; padding: 30px 44px 28px; display: flex; gap: 40px; align-items: center; box-shadow: inset 0 1px 0 rgba(239,230,220,.08); position: relative; z-index: 1; }
+  .reel { width: 120px; height: 120px; }
+  .c7-counter { text-align: center; }
+  .c7-counter b { font-family: ui-monospace, Consolas, monospace; font-size: 44px; letter-spacing: .06em; display: block; font-variant-numeric: tabular-nums; }
+  .c7-counter span { font-size: 12px; color: #b7a98f; }
+  .c7-vu { display: flex; align-items: flex-end; gap: 5px; height: 64px; margin-top: 12px; justify-content: center; }
+  .c7-vu i { width: 12px; background: #d9b06a; border-radius: 2px; display: block; }
+  .c7-go { margin-top: 26px; background: #e8c98f; color: #241a10; border: 0; border-radius: 10px; padding: 14px 34px; font-size: 14px; font-weight: 700; font-family: inherit; position: relative; z-index: 1; }
+  .c7-go:hover { background: #f2d9a8; }
+  .c7-hint { margin-top: 10px; font-size: 12px; color: #b7a98f; font-family: ui-monospace, Consolas, monospace; }
+  .c7-log { margin-top: 30px; width: 640px; max-width: 100%; position: relative; z-index: 1; }
+  .c7-row { display: grid; grid-template-columns: 70px 1fr auto; gap: 12px; padding: 12px 4px; font-size: 13.5px; align-items: baseline; }
+  .c7-row + .c7-row { border-top: 1px solid rgba(239,230,220,.12); }
+  .c7-row time { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #b7a98f; }
+  .c7-row span { font-size: 12px; color: #b7a98f; }
+
+  /* ============ C8 WAVEFORM FIELD ============ */
+  .c8 { background: #12140f; color: #e8e6da; min-height: 760px; padding: 28px 48px 40px; }
+  .c8-top { display: flex; align-items: baseline; gap: 26px; font-size: 13px; }
+  .c8-top b { font-size: 14px; }
+  .c8-top nav { margin-left: auto; display: flex; gap: 20px; color: #a3a38e; }
+  .c8-top nav .on { color: #e8e6da; font-weight: 650; }
+  .c8 h1 { font-family: Georgia, serif; font-size: 44px; font-weight: 500; margin: 34px 0 4px; max-width: 20ch; line-height: 1.12; }
+  .c8 h1 i { color: #d9b06a; }
+  .c8-sub { font-size: 13.5px; color: #a3a38e; margin-bottom: 10px; }
+  .c8-wave { margin: 18px 0 6px; }
+  .c8-stats { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; align-items: baseline; padding: 16px 0 6px; }
+  .c8-stats b { font-size: 34px; font-variant-numeric: tabular-nums; line-height: 1; }
+  .c8-stats span { display: block; font-size: 12px; color: #a3a38e; margin-top: 4px; }
+  .c8-keys kbd { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #12140f; background: #d9b06a; border-radius: 6px; padding: 8px 12px; }
+  .c8-list { margin-top: 14px; }
+  .c8-line { display: grid; grid-template-columns: 70px 1fr auto; gap: 12px; padding: 11px 2px; font-size: 13.5px; align-items: baseline; }
+  .c8-line + .c8-line { border-top: 1px solid rgba(232,230,218,.12); }
+  .c8-line time { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #a3a38e; }
+  .c8-line button { background: none; border: 0; color: #a3a38e; font: inherit; font-size: 12px; }
+  .c8-line button:hover { color: #d9b06a; }
+
+  /* ============ C9 DAY STACK ============ */
+  .c9 { background: #1e1b17; color: #ece7d8; min-height: 780px; padding: 28px 48px 60px; }
+  .c9-top { display: flex; align-items: baseline; gap: 24px; font-size: 13px; margin-bottom: 30px; }
+  .c9-top b { font-size: 14px; }
+  .c9-top nav { margin-left: auto; display: flex; gap: 20px; color: #a89e88; }
+  .c9-top nav .on { color: #ece7d8; font-weight: 650; }
+  .c9-stack { position: relative; width: 760px; max-width: 100%; }
+  .c9-sheet { background: #ebe5d6; color: #241d15; border-radius: 14px; padding: 26px 30px 24px; position: relative; box-shadow: 0 18px 40px rgba(0,0,0,.35); }
+  .c9-sheet.back { position: absolute; inset: 46px -22px -52px 22px; background: #d9d2bd; transform: rotate(.6deg); box-shadow: 0 12px 28px rgba(0,0,0,.3); }
+  .c9-tab { position: absolute; top: -14px; right: 28px; background: #241d15; color: #ebe5d6; font-size: 12px; font-weight: 650; padding: 8px 16px 10px; clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 100%, 0 100%); }
+  .c9-sheet h3 { font-family: Georgia, serif; font-size: 24px; font-weight: 500; margin-bottom: 8px; }
+  .c9-entry { display: grid; grid-template-columns: 66px 1fr auto; gap: 12px; padding: 12px 0; font-size: 14px; align-items: baseline; }
+  .c9-entry + .c9-entry { border-top: 1px solid rgba(36,29,21,.16); }
+  .c9-entry time { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #6b6152; }
+  .c9-entry button { background: none; border: 0; font: inherit; font-size: 12px; color: #8e4426; }
+  .c9-entry button:hover { color: #5f2d14; }
+  .c9-totals { margin-top: 76px; font-size: 13px; color: #b7a98f; display: flex; gap: 22px; }
+  .c9-totals b { color: #ece7d8; font-variant-numeric: tabular-nums; }
+
+  /* ============ C10 BIG NUMBER ROOM ============ */
+  .c10 { background: #100e0c; color: #ece4d4; min-height: 760px; position: relative; overflow: hidden; padding: 24px 48px 0; }
+  .c10::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .07;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.85'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .c10-nav { display: flex; justify-content: center; position: relative; z-index: 2; }
+  .c10-nav div { background: #221c15; border-radius: 999px; padding: 8px; display: flex; gap: 2px; }
+  .c10-nav button { border: 0; background: none; color: #a89e88; font: inherit; font-size: 13px; padding: 8px 18px; border-radius: 999px; }
+  .c10-nav button.on { background: #ece4d4; color: #221c15; font-weight: 650; }
+  .c10-body { display: grid; grid-template-columns: 1fr 220px; gap: 60px; padding: 70px 20px 0; position: relative; z-index: 2; }
+  .c10-body h1 { font-family: Georgia, serif; font-size: 52px; font-weight: 500; line-height: 1.08; max-width: 14ch; }
+  .c10-body h1 i { color: #d9b06a; }
+  .c10-body .sub { margin-top: 12px; font-size: 13.5px; color: #a89e88; max-width: 52ch; line-height: 1.6; }
+  .c10-go { display: inline-block; margin-top: 22px; background: none; border: 0; font: inherit; font-size: 14px; font-weight: 650; color: #e8c98f; padding: 0; }
+  .c10-go:hover { color: #f2d9a8; }
+  .c10-lines { margin-top: 34px; max-width: 560px; }
+  .c10-line { display: grid; grid-template-columns: 70px 1fr; gap: 12px; padding: 11px 0; font-size: 13.5px; }
+  .c10-line + .c10-line { border-top: 1px solid rgba(236,228,212,.14); }
+  .c10-line time { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #a89e88; }
+  .c10-side { font-size: 12.5px; color: #a89e88; display: flex; flex-direction: column; gap: 18px; padding-top: 8px; }
+  .c10-side b { display: block; font-size: 34px; color: #ece4d4; font-variant-numeric: tabular-nums; line-height: 1; }
+  .c10-num { position: absolute; right: -30px; bottom: -110px; font-size: 430px; font-weight: 800; line-height: 1; letter-spacing: -.04em; color: #77694f; opacity: .5; z-index: 1; user-select: none; pointer-events: none; }
+</style>
+</head>
+<body>
+<nav class="switcher"><strong>SlasshyWispr Home — round two</strong><a href="#c6">6 Sheet</a><a href="#c7">7 Reel</a><a href="#c8">8 Wave</a><a href="#c9">9 Stack</a><a href="#c10">10 Room</a></nav>
+
+<!-- 6 -->
+<section class="concept" id="c6">
+  <h2>6. Morning Sheet</h2>
+  <p>Light broadsheet. Masthead with the real date, centered pill nav, one giant date numeral, transcript as a quiet column. Stats share one baseline row.</p>
+  <div class="screen c6">
+    <div class="c6-mast"><b>SlasshyWispr</b><span class="mid">Friday, September 18, 2026</span><span class="r">voice · ready</span></div>
+    <div class="c6-nav"><div><button class="on">Home</button><button>History</button><button>Dictionary</button><button>Snippets</button><button>Notes</button><button>Analytics</button></div></div>
+    <div class="c6-body">
+      <div>
+        <div class="c6-date">18<small>today · 2 entries</small></div>
+        <div class="c6-counts"><div><b>21</b><span>lifetime words</span></div><div><b>47</b><span>wpm</span></div><div><b>5</b><span>sessions</span></div></div>
+        <div class="c6-keys">Capture combo <kbd>Ctrl</kbd> <kbd>Space</kbd></div>
+      </div>
+      <div class="c6-col">
+        <h3>Where you <i>left off</i></h3>
+        <div class="c6-sep">TODAY</div>
+        <div class="c6-entry"><time>12:27 PM</time><p>Who are you?</p><button>Copy</button></div>
+        <div class="c6-entry"><time>12:27 PM</time><p>Hello, this is a test.</p><button>Copy</button></div>
+        <div class="c6-sep">SEPTEMBER 16 · 3 ENTRIES</div>
+        <div class="c6-entry"><time>7:40 PM</time><p>Tell me about yourself.</p><button>Copy</button></div>
+        <div class="c6-entry"><time>7:40 PM</time><p>Hello, who are you?</p><button>Copy</button></div>
+        <div class="c6-entry"><time>7:40 PM</time><p>Hello, this is a test.</p><button>Copy</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="concept" id="c7">
+  <h2>7. Reel Deck</h2>
+  <p>A real recorder artifact under one amber beam: two reels, a 00021 counter, VU bars, one capture action. Transcript runs as the tape log.</p>
+  <div class="screen c7">
+    <div class="c7-top"><b>SlasshyWispr</b><span class="on">Home</span><span>History</span><span>Dictionary</span><span>Snippets</span><span>Notes</span><span>Analytics</span></div>
+    <div class="c7-deck">
+      <svg class="reel" viewBox="0 0 120 120" role="img" aria-label="supply reel"><circle cx="60" cy="60" r="56" fill="none" stroke="#d9b06a" stroke-width="3"/><circle cx="60" cy="60" r="10" fill="#d9b06a"/><g stroke="#d9b06a" stroke-width="6"><line x1="60" y1="60" x2="60" y2="18"/><line x1="60" y1="60" x2="96" y2="81"/><line x1="60" y1="60" x2="24" y2="81"/></g></svg>
+      <div class="c7-counter"><b>00021</b><span>lifetime words · 47 wpm · 5 sessions</span><div class="c7-vu"><i style="height:18px"></i><i style="height:34px"></i><i style="height:52px"></i><i style="height:40px"></i><i style="height:26px"></i><i style="height:46px"></i><i style="height:30px"></i></div></div>
+      <svg class="reel" viewBox="0 0 120 120" role="img" aria-label="takeup reel"><circle cx="60" cy="60" r="56" fill="none" stroke="#d9b06a" stroke-width="3"/><circle cx="60" cy="60" r="10" fill="#d9b06a"/><g stroke="#d9b06a" stroke-width="6"><line x1="60" y1="60" x2="60" y2="18"/><line x1="60" y1="60" x2="96" y2="81"/><line x1="60" y1="60" x2="24" y2="81"/></g></svg>
+    </div>
+    <button class="c7-go">Start capturing</button>
+    <div class="c7-hint">toggles with Ctrl + Space</div>
+    <div class="c7-log">
+      <div class="c7-row"><time>12:27 PM</time><p>Who are you?</p><span>today</span></div>
+      <div class="c7-row"><time>12:27 PM</time><p>Hello, this is a test.</p><span>today</span></div>
+      <div class="c7-row"><time>7:40 PM</time><p>Tell me about yourself.</p><span>sept 16</span></div>
+      <div class="c7-row"><time>7:40 PM</time><p>Hello, who are you?</p><span>sept 16</span></div>
+      <div class="c7-row"><time>7:40 PM</time><p>Hello, this is a test.</p><span>sept 16</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="concept" id="c8">
+  <h2>8. Waveform Field</h2>
+  <p>Moss-black, one giant waveform as the signature. Transcript under it, stats on a single baseline, hotkey as a solid brass stamp.</p>
+  <div class="screen c8">
+    <div class="c8-top"><b>SlasshyWispr</b><nav><span class="on">Home</span><span>History</span><span>Dictionary</span><span>Snippets</span><span>Notes</span><span>Analytics</span></nav></div>
+    <h1>Your voice, <i>drawn out.</i></h1>
+    <div class="c8-sub">Every line below is a peak in the wave. 21 words at 47 wpm across 5 sessions.</div>
+    <svg class="c8-wave" width="100%" height="150" viewBox="0 0 1184 150" preserveAspectRatio="none" role="img" aria-label="waveform of recent dictation"><path d="M0,75 L40,75 L60,30 L80,120 L100,75 L160,75 L180,50 L200,100 L220,75 L300,75 L320,20 L340,130 L360,75 L440,75 L460,55 L480,95 L500,75 L580,75 L600,25 L620,125 L640,75 L720,75 L740,48 L760,102 L780,75 L860,75 L880,35 L900,115 L920,75 L1000,75 L1020,55 L1040,95 L1060,75 L1184,75" fill="none" stroke="#d9b06a" stroke-width="2.5"/><path d="M0,75 L1184,75" stroke="#e8e6da" stroke-width="1" opacity=".25"/></svg>
+    <div class="c8-stats"><div><b>21</b><span>lifetime words</span></div><div><b>47</b><span>wpm</span></div><div><b>5</b><span>sessions</span></div><div class="c8-keys"><kbd>Ctrl</kbd> <kbd>Space</kbd><span>capture combo</span></div></div>
+    <div class="c8-list">
+      <div class="c8-line"><time>12:27 PM</time><p>Hello, this is a test.</p><button>Copy</button></div>
+      <div class="c8-line"><time>12:27 PM</time><p>Who are you?</p><button>Copy</button></div>
+      <div class="c8-line"><time>7:40 PM</time><p>Tell me about yourself.</p><button>Copy</button></div>
+      <div class="c8-line"><time>7:40 PM</time><p>Hello, who are you?</p><button>Copy</button></div>
+      <div class="c8-line"><time>7:40 PM</time><p>Hello, this is a test.</p><button>Copy</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="concept" id="c9">
+  <h2>9. Day Stack</h2>
+  <p>Days as overlapping paper sheets with real depth. Today on top with its tab, Sept 16 peeking beneath. Totals sit on the desk, not in a card.</p>
+  <div class="screen c9">
+    <div class="c9-top"><b>SlasshyWispr</b><nav><span class="on">Home</span><span>History</span><span>Dictionary</span><span>Snippets</span><span>Notes</span><span>Analytics</span></nav></div>
+    <div class="c9-stack">
+      <div class="c9-sheet back"></div>
+      <div class="c9-sheet">
+        <div class="c9-tab">TODAY · 2 ENTRIES</div>
+        <h3>Today</h3>
+        <div class="c9-entry"><time>12:27 PM</time><p>Who are you?</p><button>Copy</button></div>
+        <div class="c9-entry"><time>12:27 PM</time><p>Hello, this is a test.</p><button>Copy</button></div>
+        <h3 style="margin-top:18px">September 16</h3>
+        <div class="c9-entry"><time>7:40 PM</time><p>Tell me about yourself.</p><button>Copy</button></div>
+        <div class="c9-entry"><time>7:40 PM</time><p>Hello, who are you?</p><button>Copy</button></div>
+        <div class="c9-entry"><time>7:40 PM</time><p>Hello, this is a test.</p><button>Copy</button></div>
+      </div>
+    </div>
+    <div class="c9-totals"><span><b>21</b> words</span><span><b>47</b> wpm</span><span><b>5</b> sessions</span><span>capture with Ctrl Space</span></div>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="concept" id="c10">
+  <h2>10. Big Number Room</h2>
+  <p>Ink-black room, one giant 21 bled flush off the bottom edge. Quiet column of type over it, one diagonal-arrow action, pill nav floating on top.</p>
+  <div class="screen c10">
+    <div class="c10-nav"><div><button class="on">Home</button><button>History</button><button>Dictionary</button><button>Snippets</button><button>Notes</button><button>Analytics</button></div></div>
+    <div class="c10-body">
+      <div>
+        <h1>Speak, and the page <i>keeps up.</i></h1>
+        <div class="sub">Your words land here grouped by day. 47 wpm across 5 sessions. Nothing to file, nothing to format.</div>
+        <button class="c10-go">Start capturing ↗</button>
+        <div class="c10-lines">
+          <div class="c10-line"><time>12:27 PM</time><p>Hello, this is a test.</p></div>
+          <div class="c10-line"><time>12:27 PM</time><p>Who are you?</p></div>
+          <div class="c10-line"><time>7:40 PM</time><p>Tell me about yourself.</p></div>
+          <div class="c10-line"><time>7:40 PM</time><p>Hello, who are you?</p></div>
+          <div class="c10-line"><time>7:40 PM</time><p>Hello, this is a test.</p></div>
+        </div>
+      </div>
+      <div class="c10-side"><div><b>21</b>words today</div><div><b>47</b>wpm</div><div><b>5</b>sessions</div><div>Ctrl Space<br>to capture</div></div>
+    </div>
+    <div class="c10-num" aria-hidden="true">21</div>
+  </div>
+</section>
+
+</body>
+</html>
