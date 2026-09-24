@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { ACTIVE_PAGE_STORAGE_KEY } from "../constants";
 import {
   ACTIVE_SETTINGS_PANE_STORAGE_KEY,
+  ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY,
   asMainPage,
   asSettingsPane,
   getActivePage,
@@ -83,12 +84,13 @@ function fakeSectionGroup(owner: string, sections: string[]) {
 
 function fakeDiv(hidden = false): HTMLDivElement {
   const classes = new Set<string>();
+  const listeners = new Map<string, Set<(event: Event) => void>>();
   return {
     dataset: {},
     hidden,
     offsetTop: 0,
     scrollTop: 0,
-    getBoundingClientRect: () => ({ top: 0 }),
+    getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
     classList: {
       toggle(name: string, force?: boolean) {
         const active = force ?? !classes.has(name);
@@ -101,7 +103,19 @@ function fakeDiv(hidden = false): HTMLDivElement {
     },
     offsetWidth: 0,
     contains: () => false,
-    addEventListener() {},
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      const callbacks = listeners.get(type) ?? new Set<(event: Event) => void>();
+      callbacks.add(
+        typeof listener === "function"
+          ? (event) => listener(event)
+          : (event) => listener.handleEvent(event),
+      );
+      listeners.set(type, callbacks);
+    },
+    dispatchEvent(event: Event) {
+      for (const listener of listeners.get(event.type) ?? []) listener(event);
+      return true;
+    },
     setAttribute() {},
   } as unknown as HTMLDivElement;
 }
@@ -293,6 +307,37 @@ describe("setActiveSettingsPane", () => {
     privacyButton.click();
 
     expect(harness.elements.settingsScrollContainer.scrollTop).toBe(742);
+  });
+
+  it("tracks the active section while the content scrolls", () => {
+    const harness = wireHarness();
+    harness.elements.settingsScrollContainer.getBoundingClientRect = () => ({ top: 100 }) as DOMRect;
+
+    const audioSection = harness.elements.settingsSections.find(
+      (section) => section.dataset.settingsSection === "audio",
+    );
+    const dictationSection = harness.elements.settingsSections.find(
+      (section) => section.dataset.settingsSection === "dictation",
+    );
+    if (!audioSection || !dictationSection) throw new Error("General section fixtures missing");
+    audioSection.getBoundingClientRect = () => ({ top: -50, bottom: 20 }) as DOMRect;
+    dictationSection.getBoundingClientRect = () => ({ top: 30, bottom: 220 }) as DOMRect;
+
+    harness.elements.settingsScrollContainer.dispatchEvent(new Event("scroll"));
+
+    expect(harness.elements.settingsPaneTitle.textContent).toBe("Dictation");
+    expect(harness.elements.settingsSectionButtons.find(
+      (button) => button.dataset.settingsSectionNav === "dictation",
+    )?.classList.contains("is-active")).toBe(true);
+    expect(JSON.parse(localStorage.getItem(ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY) ?? "{}")).toMatchObject({
+      general: "dictation",
+    });
+
+    audioSection.getBoundingClientRect = () => ({ top: 30, bottom: 220 }) as DOMRect;
+    dictationSection.getBoundingClientRect = () => ({ top: 230, bottom: 420 }) as DOMRect;
+    harness.elements.settingsScrollContainer.dispatchEvent(new Event("scroll"));
+
+    expect(harness.elements.settingsPaneTitle.textContent).toBe("Audio & shortcuts");
   });
 
   it("remembers the last explicit section within each top-level pane", () => {

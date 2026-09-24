@@ -52,6 +52,7 @@ let navDeps!: NavigationDeps;
 let activePage: MainPage = "home";
 let activeSettingsPane: SettingsPane = "general";
 let activeSettingsSectionMemory: SettingsSectionMemory = {};
+let activeSettingsSection: SettingsSection | null = null;
 let settingsReturnPage: MainPage = "home";
 
 export function initNavigation(
@@ -63,6 +64,7 @@ export function initNavigation(
   navDeps = deps;
   activePage = initial.page;
   activeSettingsPane = initial.pane;
+  activeSettingsSection = null;
   activeSettingsSectionMemory = parseSettingsSectionMemory(
     localStorage.getItem(ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY),
   );
@@ -95,6 +97,10 @@ export function initNavigation(
       setActiveSettingsPane(pane, "settings-section-navigation", section.id as SettingsSection);
     });
   }
+
+  elements.settingsScrollContainer.addEventListener("scroll", syncActiveSettingsSection, {
+    passive: true,
+  });
 
   setActiveSettingsPane(initial.pane, "initial-navigation");
 }
@@ -131,6 +137,60 @@ function scrollSettingsSectionIntoView(section: HTMLElement, container: HTMLElem
   const sectionTop = section.getBoundingClientRect().top;
   const containerTop = container.getBoundingClientRect().top;
   container.scrollTop = Math.max(0, container.scrollTop + sectionTop - containerTop - 8);
+}
+
+function updateActiveSettingsSectionUi(
+  pane: SettingsPane,
+  section: SettingsSection,
+): void {
+  const definition = findSettingsSection(pane, section);
+
+  navElements.settingsPaneTitle.textContent = definition?.title ?? section;
+  navElements.settingsSectionDescription.textContent = definition?.description ?? "";
+
+  for (const navButton of navElements.settingsSectionButtons) {
+    const owner = settingsSectionOwner(navButton);
+    const current = owner === pane && navButton.dataset.settingsSectionNav === section;
+    navButton.hidden = owner !== pane;
+    navButton.classList.toggle("is-active", current);
+    navButton.setAttribute("aria-current", current ? "page" : "false");
+    const group = navButton.parentElement;
+    if (group?.dataset.settingsSectionOwner) {
+      group.hidden = group.dataset.settingsSectionOwner !== pane;
+    }
+  }
+
+  for (const settingsSection of navElements.settingsSections) {
+    const current =
+      settingsSection.dataset.settingsSectionOwner === pane
+      && settingsSection.dataset.settingsSection === section;
+    settingsSection.classList.toggle("is-active", current);
+  }
+
+  activeSettingsSection = section;
+  activeSettingsSectionMemory = { ...activeSettingsSectionMemory, [pane]: section };
+  localStorage.setItem(ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY, JSON.stringify(activeSettingsSectionMemory));
+}
+
+function syncActiveSettingsSection(): void {
+  const sections = navElements.settingsSections.filter(
+    (section) => section.dataset.settingsSectionOwner === activeSettingsPane,
+  );
+  if (sections.length === 0) return;
+
+  const activationLine = navElements.settingsScrollContainer.getBoundingClientRect().top + 32;
+  const nextSectionElement = sections.find(
+    (section) => section.getBoundingClientRect().bottom > activationLine,
+  ) ?? sections[sections.length - 1];
+  const nextSection = nextSectionElement.dataset.settingsSection;
+  if (!nextSection || nextSection === activeSettingsSection) return;
+
+  const definition = findSettingsSection(activeSettingsPane, nextSection);
+  if (!definition) return;
+  updateActiveSettingsSectionUi(
+    activeSettingsPane,
+    definition.id as SettingsSection,
+  );
 }
 
 export function getActivePage(): MainPage {
@@ -182,29 +242,12 @@ export function setActiveSettingsPane(
   navDeps.log(`[ui.settings.pane] next=${next} section=${nextSection} reason=${reason}`);
 
   activeSettingsPane = next;
-  activeSettingsSectionMemory = { ...activeSettingsSectionMemory, [next]: nextSection };
   localStorage.setItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY, next);
-  localStorage.setItem(ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY, JSON.stringify(activeSettingsSectionMemory));
-
-  navElements.settingsPaneTitle.textContent = definition?.title ?? nextSection;
-  navElements.settingsSectionDescription.textContent = definition?.description ?? "";
 
   for (const navButton of navElements.settingsNavButtons) {
     const current = navButton.dataset.settingsPaneNav === next;
     navButton.classList.toggle("is-active", current);
     navButton.setAttribute("aria-current", current ? "page" : "false");
-  }
-
-  for (const navButton of navElements.settingsSectionButtons) {
-    const owner = settingsSectionOwner(navButton);
-    const current = owner === next && navButton.dataset.settingsSectionNav === nextSection;
-    navButton.hidden = owner !== next;
-    navButton.classList.toggle("is-active", current);
-    navButton.setAttribute("aria-current", current ? "page" : "false");
-    const group = navButton.parentElement;
-    if (group?.dataset.settingsSectionOwner) {
-      group.hidden = group.dataset.settingsSectionOwner !== next;
-    }
   }
 
   for (const panel of navElements.settingsPanels) {
@@ -214,14 +257,18 @@ export function setActiveSettingsPane(
   }
 
   for (const settingsSection of navElements.settingsSections) {
-    const current =
-      settingsSection.dataset.settingsSectionOwner === next
-      && settingsSection.dataset.settingsSection === nextSection;
     settingsSection.hidden = false;
-    settingsSection.classList.toggle("is-active", current);
-    if (current) {
-      scrollSettingsSectionIntoView(settingsSection, navElements.settingsScrollContainer);
-    }
+  }
+
+  updateActiveSettingsSectionUi(next, nextSection);
+
+  const selectedSection = navElements.settingsSections.find(
+    (settingsSection) =>
+      settingsSection.dataset.settingsSectionOwner === next
+      && settingsSection.dataset.settingsSection === nextSection,
+  );
+  if (selectedSection) {
+    scrollSettingsSectionIntoView(selectedSection, navElements.settingsScrollContainer);
   }
 }
 
