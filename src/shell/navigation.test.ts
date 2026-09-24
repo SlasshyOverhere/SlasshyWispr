@@ -195,6 +195,14 @@ describe("setActiveSettingsPane", () => {
     expect(harness.logs.some((line) => line.includes("next=models"))).toBe(true);
   });
 
+  it("keeps every settings section visible instead of filtering the pane", () => {
+    const harness = wireHarness();
+
+    setActiveSettingsPane("models", "test");
+
+    expect(harness.elements.settingsSections.every((section) => !section.hidden)).toBe(true);
+  });
+
   it("remembers the last explicit section within each top-level pane", () => {
     const harness = wireHarness();
     const voiceButton = harness.elements.settingsSectionButtons[2];
@@ -203,7 +211,7 @@ describe("setActiveSettingsPane", () => {
     expect(harness.elements.settingsPaneTitle.textContent).toBe("Voice");
     expect(harness.elements.settingsSectionDescription.textContent).toBe("Set up Piper or a voice cloned from your recording.");
     expect(voiceButton.classList.contains("is-active")).toBe(true);
-    expect(harness.elements.settingsSections[1].hidden).toBe(true);
+    expect(harness.elements.settingsSections[1].hidden).toBe(false);
     expect(harness.elements.settingsSections[2].hidden).toBe(false);
 
     setActiveSettingsPane("general", "test");

@@ -236,10 +236,13 @@ export function setActiveSettingsPane(
     const current =
       settingsSection.dataset.settingsSectionOwner === next
       && settingsSection.dataset.settingsSection === nextSection;
-    settingsSection.hidden = !current;
+    settingsSection.hidden = false;
     settingsSection.classList.toggle("is-active", current);
-    if (current && shouldAnimateSection) {
+    if (current && (shouldAnimateSection || shouldAnimatePane)) {
       settingsSection.classList.add("is-section-entering");
+      if (typeof settingsSection.scrollIntoView === "function") {
+        settingsSection.scrollIntoView({ block: "start" });
+      }
     }
   }
 

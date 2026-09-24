@@ -86,7 +86,6 @@ export function PipelineSettingsPane() {
         className="settings-category"
         data-settings-section-owner="pipeline"
         data-settings-section="status"
-        hidden
       >
         <SettingsGroup title="Current run">
           <div className="s-row" title="What the pipeline is doing right now.">

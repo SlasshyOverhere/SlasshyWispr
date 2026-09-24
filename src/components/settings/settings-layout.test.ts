@@ -29,6 +29,7 @@ describe("settings layout", () => {
       expect(html).toContain(`data-settings-section-nav="${section}"`);
       expect(html).toContain(`data-settings-section="${section}"`);
     }
+    expect(html).not.toMatch(/class="settings-category"[^>]* hidden/);
   });
 
   it("keeps the capture-mode DOM contract used by settings hydration", () => {

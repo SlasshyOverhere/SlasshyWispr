@@ -116,7 +116,6 @@ export function GeneralSettingsPane() {
         className="settings-category"
         data-settings-section-owner="general"
         data-settings-section="dictation"
-        hidden
       >
         <SettingsGroup title="Language">
           <div className="settings-choice-row">
@@ -204,7 +203,6 @@ export function GeneralSettingsPane() {
         className="settings-category"
         data-settings-section-owner="general"
         data-settings-section="assistant"
-        hidden
       >
         <SettingsGroup title="Wake and context">
           <label className="s-row" htmlFor="commandModeToggle" title="Speak edits for the text you have selected instead of dictating.">
@@ -246,7 +244,6 @@ export function GeneralSettingsPane() {
         className="settings-category"
         data-settings-section-owner="general"
         data-settings-section="appearance"
-        hidden
       >
         <SettingsGroup title="Theme">
           <select
@@ -291,7 +288,6 @@ export function GeneralSettingsPane() {
         className="settings-category"
         data-settings-section-owner="general"
         data-settings-section="app-privacy"
-        hidden
       >
         <SettingsGroup title="App behavior">
           <label className="s-row" htmlFor="launchAtLoginToggle" title="Start SlasshyWispr when Windows signs in.">
@@ -339,7 +335,6 @@ export function GeneralSettingsPane() {
         className="settings-category"
         data-settings-section-owner="general"
         data-settings-section="recordings"
-        hidden
       >
         <SettingsGroup title="Saved audio">
           <label className="s-row" htmlFor="saveRecordingsToggle" title="Keep the audio of each dictation on this machine.">
@@ -359,7 +354,6 @@ export function GeneralSettingsPane() {
         className="settings-category"
         data-settings-section-owner="general"
         data-settings-section="sound"
-        hidden
       >
         <SettingsGroup title="Dictation cues">
           <label className="s-row" htmlFor="dictationSoundEffectsToggle" title="Play a short cue when recording starts and stops.">

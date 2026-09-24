@@ -117,7 +117,6 @@ export function ModelsSettingsPane() {
         className="settings-category"
         data-settings-section-owner="models"
         data-settings-section="online-provider"
-        hidden
       >
         <SettingsGroup title="Provider connection">
           <p className="field-hint">These controls are used when speech-to-text or AI rewriting is set to Online.</p>
@@ -197,7 +196,6 @@ export function ModelsSettingsPane() {
         className="settings-category"
         data-settings-section-owner="models"
         data-settings-section="local-ai"
-        hidden
       >
         <SettingsGroup title="Ollama connection">
           <p className="field-hint">These controls are used when AI rewriting is set to Offline.</p>
@@ -235,7 +233,6 @@ export function ModelsSettingsPane() {
         className="settings-category"
         data-settings-section-owner="models"
         data-settings-section="local-stt"
-        hidden
       >
         <SettingsGroup title="Parakeet model">
           <p className="field-hint">These controls are used when speech-to-text is set to Offline.</p>
@@ -280,7 +277,6 @@ export function ModelsSettingsPane() {
         className="settings-category"
         data-settings-section-owner="models"
         data-settings-section="voice"
-        hidden
       >
         <SettingsGroup title="Voice engine">
           <div id="ttsBootstrapCard">
