@@ -201,13 +201,15 @@ jobs:
             throw "No installer found in release-assets to sign."
           }
 
-          & $minisign.FullName -S -s $keyPath -m $installer.FullName
+          $signaturePath = "$($installer.FullName).minisig"
+          & $minisign.FullName -S -s $keyPath -m $installer.FullName -x $signaturePath
           if ($LASTEXITCODE -ne 0) {
             throw "minisign failed to sign $($installer.Name)."
           }
+          if (-not (Test-Path $signaturePath)) {
+            throw "minisign did not create $signaturePath."
+          }
 
-          $signature = Get-ChildItem "$($installer.FullName).minisig"
-          Copy-Item $signature.FullName "release-assets/$($installer.Name).minisig" -Force
           Remove-Item $keyPath -Force
 
           Write-Host "Signed $($installer.Name)"
