@@ -1,8 +1,5 @@
 # SlasshyWispr
 
-> [!NOTE]
-> **Development is temporarily paused.** The project is on hold while the author focuses on other work. The app remains usable as-is, and existing Issues and Releases are still available, but new development may be slow or sporadic for now.
->
 > Piper-only TTS. Windows-only releases. Offline models download on demand.
 
 SlasshyWispr is a Windows desktop voice dictation app.
