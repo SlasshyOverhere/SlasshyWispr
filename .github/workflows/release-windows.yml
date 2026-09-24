@@ -176,8 +176,20 @@ jobs:
           }
 
           # The updater only accepts prehashed ("ED") signatures, which is what
-          # current minisign emits by default.
-          choco install minisign -y --no-progress
+          # current minisign emits by default. Chocolatey's minisign package is
+          # still 0.8 and cannot read the current key format.
+          winget install --id jedisct1.minisign --exact --version 0.12 --source winget `
+            --accept-package-agreements --accept-source-agreements --silent
+          $minisign = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\jedisct1.minisign_*\minisign-win64\x86_64\minisign.exe" |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $minisign) {
+            throw "minisign 0.12 executable was not found after installation."
+          }
+          $minisignVersion = & $minisign.FullName -v
+          if ($LASTEXITCODE -ne 0 -or $minisignVersion -notmatch '\b0\.12\b') {
+            throw "Expected minisign 0.12, found: $minisignVersion"
+          }
 
           $keyPath = Join-Path $env:RUNNER_TEMP "minisign.key"
           Set-Content -Path $keyPath -Value $env:MINISIGN_SECRET_KEY -NoNewline -Encoding ascii
@@ -189,7 +201,7 @@ jobs:
             throw "No installer found in release-assets to sign."
           }
 
-          minisign -S -s $keyPath -m $installer.FullName
+          & $minisign.FullName -S -s $keyPath -m $installer.FullName
           if ($LASTEXITCODE -ne 0) {
             throw "minisign failed to sign $($installer.Name)."
           }
