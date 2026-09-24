@@ -7,7 +7,7 @@ SlasshyWispr is a Windows desktop voice dictation app.
 Speak naturally, get clean transcription, generate AI responses, and hear replies with built-in Piper TTS.
 
 ![Windows only](https://img.shields.io/badge/platform-Windows%20only-blue)
-[![SlasshyWispr screenshot](./assets/slasshywispr_screenshot.png?v=3)](./assets/slasshywispr_screenshot.png?v=3)
+[![SlasshyWispr screenshot](./assets/slasshywispr_screenshot.png?v=4)](./assets/slasshywispr_screenshot.png?v=4)
 
 ## Key Features
 
