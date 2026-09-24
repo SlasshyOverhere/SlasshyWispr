@@ -12,6 +12,7 @@ import {
   unloadVoiceCloneModel,
 } from '../../ipc/client';
 import type { VoiceCloneStatusResponse } from '../../types';
+import { AdvancedSettings, SettingsGroup } from './SettingsPrimitives';
 
 /**
  * ZipVoice conditions on the exact words spoken in the reference clip, so enrolment reads a
@@ -80,33 +81,47 @@ export function ModelsSettingsPane() {
   return (
     <section id="settingsPaneModels" className="settings-pane" data-settings-pane="models" hidden>
 
-      <h3 className="settings-section-title">Runtime</h3>
-
-      <div className="runtime-card">
-        <div className="runtime-card-header">
-          <span className="runtime-card-title">Speech-to-Text</span>
-          <div className="pills" title="Online transcribes with your provider; Offline runs a local model on this machine.">
-            <label className="pill"><input id="sttRuntimeModeOnline" name="sttRuntimeModeProfile" type="radio" value="online" checked={settings.sttRuntimeMode !== "local"} onChange={() => dispatchSettingsPatch({ sttRuntimeMode: "online" })} />Online</label>
-            <label className="pill"><input id="sttRuntimeModeOffline" name="sttRuntimeModeProfile" type="radio" value="offline" checked={settings.sttRuntimeMode === "local"} onChange={() => dispatchSettingsPatch({ sttRuntimeMode: "local" })} />Offline</label>
+      <div
+        id="settingsSection-models-runtime"
+        className="settings-category"
+        data-settings-section-owner="models"
+        data-settings-section="runtime"
+      >
+        <SettingsGroup title="Execution mode">
+          <div className="settings-runtime-row">
+            <div className="settings-row-copy">
+              <span className="settings-row-title">Speech-to-text</span>
+              <span className="settings-row-hint">Use the provider or a local model.</span>
+            </div>
+            <div className="settings-segmented" role="radiogroup" aria-label="Speech-to-text runtime">
+              <label className="settings-segment"><input id="sttRuntimeModeOnline" name="sttRuntimeModeProfile" type="radio" value="online" checked={settings.sttRuntimeMode !== "local"} onChange={() => dispatchSettingsPatch({ sttRuntimeMode: "online" })} />Online</label>
+              <label className="settings-segment"><input id="sttRuntimeModeOffline" name="sttRuntimeModeProfile" type="radio" value="offline" checked={settings.sttRuntimeMode === "local"} onChange={() => dispatchSettingsPatch({ sttRuntimeMode: "local" })} />Offline</label>
+            </div>
           </div>
-        </div>
+          <div className="settings-runtime-row">
+            <div className="settings-row-copy">
+              <span className="settings-row-title">AI rewriting</span>
+              <span className="settings-row-hint">Use the provider or Ollama.</span>
+            </div>
+            <div className="settings-segmented" role="radiogroup" aria-label="AI runtime">
+              <label className="settings-segment"><input id="aiRuntimeModeOnline" name="aiRuntimeModeProfile" type="radio" value="online" checked={settings.aiRuntimeMode !== "local"} onChange={() => dispatchSettingsPatch({ aiRuntimeMode: "online" })} />Online</label>
+              <label className="settings-segment"><input id="aiRuntimeModeOffline" name="aiRuntimeModeProfile" type="radio" value="offline" checked={settings.aiRuntimeMode === "local"} onChange={() => dispatchSettingsPatch({ aiRuntimeMode: "local" })} />Offline</label>
+            </div>
+          </div>
+          <p id="runtimeModeNotice" className="field-hint"></p>
+        </SettingsGroup>
       </div>
 
-      <div className="runtime-card">
-        <div className="runtime-card-header">
-          <span className="runtime-card-title">AI Model</span>
-          <div className="pills" title="Online rewrites with your provider; Offline rewrites with Ollama on this machine.">
-            <label className="pill"><input id="aiRuntimeModeOnline" name="aiRuntimeModeProfile" type="radio" value="online" checked={settings.aiRuntimeMode !== "local"} onChange={() => dispatchSettingsPatch({ aiRuntimeMode: "online" })} />Online</label>
-            <label className="pill"><input id="aiRuntimeModeOffline" name="aiRuntimeModeProfile" type="radio" value="offline" checked={settings.aiRuntimeMode === "local"} onChange={() => dispatchSettingsPatch({ aiRuntimeMode: "local" })} />Offline</label>
-          </div>
-        </div>
-      </div>
-
-      <p id="runtimeModeNotice" className="field-hint"></p>
-
-      <h3 className="settings-section-title">Online Provider</h3>
-
-      <div id="onlineProviderSection">
+      <div
+        id="settingsSection-models-online-provider"
+        className="settings-category"
+        data-settings-section-owner="models"
+        data-settings-section="online-provider"
+        hidden
+      >
+        <SettingsGroup title="Provider connection">
+          <p className="field-hint">These controls are used when speech-to-text or AI rewriting is set to Online.</p>
+          <div id="onlineProviderSection">
         <div className="compact-grid">
           <label className="field" data-online-field="base-url" title="Provider endpoint. Leave empty to use the app's default.">
             <span className="field-label">API Base URL</span>
@@ -157,25 +172,36 @@ export function ModelsSettingsPane() {
         </div>
         <p id="onlineProviderModeNotice" className="field-hint"></p>
 
-        <div className="status-detail-grid" title="What the last run actually used.">
-          <div className="status-detail-row">
-            <span className="status-detail-label">Base URL</span>
-            <code id="baseUrlValue" className="status-detail-value">loading...</code>
+        <AdvancedSettings title="Active connection details">
+          <div className="status-detail-grid" title="What the last run actually used.">
+            <div className="status-detail-row">
+              <span className="status-detail-label">Base URL</span>
+              <code id="baseUrlValue" className="status-detail-value">loading...</code>
+            </div>
+            <div className="status-detail-row">
+              <span className="status-detail-label">STT Model</span>
+              <code id="sttModelValue" className="status-detail-value">loading...</code>
+            </div>
+            <div className="status-detail-row">
+              <span className="status-detail-label">AI Model</span>
+              <code id="aiModelValue" className="status-detail-value">loading...</code>
+            </div>
           </div>
-          <div className="status-detail-row">
-            <span className="status-detail-label">STT Model</span>
-            <code id="sttModelValue" className="status-detail-value">loading...</code>
+        </AdvancedSettings>
           </div>
-          <div className="status-detail-row">
-            <span className="status-detail-label">AI Model</span>
-            <code id="aiModelValue" className="status-detail-value">loading...</code>
-          </div>
-        </div>
+        </SettingsGroup>
       </div>
 
-      <h3 className="settings-section-title">Local AI (Ollama)</h3>
-
-      <div id="offlineOllamaSection">
+      <div
+        id="settingsSection-models-local-ai"
+        className="settings-category"
+        data-settings-section-owner="models"
+        data-settings-section="local-ai"
+        hidden
+      >
+        <SettingsGroup title="Ollama connection">
+          <p className="field-hint">These controls are used when AI rewriting is set to Offline.</p>
+          <div id="offlineOllamaSection">
         <div className="compact-grid">
           <label className="field" title="Address of your local Ollama server.">
             <span className="field-label">Base URL</span>
@@ -200,11 +226,20 @@ export function ModelsSettingsPane() {
           <button id="useOllamaModelBtn" className="btn" type="button" title="Make the chosen model the active one.">Use selected</button>
           <button id="pullOllamaModelBtn" className="btn" type="button" title="Download the chosen model through Ollama.">Pull model</button>
         </div>
+          </div>
+        </SettingsGroup>
       </div>
 
-      <h3 className="settings-section-title">Local STT (Parakeet)</h3>
-
-      <div id="offlineSttSection">
+      <div
+        id="settingsSection-models-local-stt"
+        className="settings-category"
+        data-settings-section-owner="models"
+        data-settings-section="local-stt"
+        hidden
+      >
+        <SettingsGroup title="Parakeet model">
+          <p className="field-hint">These controls are used when speech-to-text is set to Offline.</p>
+          <div id="offlineSttSection">
         <label className="field" title="The local STT model in use.">
           <span className="field-label">Selected Model</span>
           <input id="localSttModelInput" type="text" placeholder="Select a model from catalog below" autoComplete="off" readOnly />
@@ -235,13 +270,20 @@ export function ModelsSettingsPane() {
         </div>
         <p id="localSttDownloadProgressText" className="field-hint">No download in progress.</p>
         <p id="localSttDownloadNotice" className="field-hint"></p>
+          </div>
+          <p id="offlineRuntimeModeNotice" className="field-hint">In local mode, pipeline uses Ollama for AI and your selected local STT model for transcription.</p>
+        </SettingsGroup>
       </div>
 
-      <p id="offlineRuntimeModeNotice" className="field-hint">In local mode, pipeline uses Ollama for AI and your selected local STT model for transcription.</p>
-
-      <h3 className="settings-section-title">TTS Setup</h3>
-
-      <div id="ttsBootstrapCard">
+      <div
+        id="settingsSection-models-voice"
+        className="settings-category"
+        data-settings-section-owner="models"
+        data-settings-section="voice"
+        hidden
+      >
+        <SettingsGroup title="Voice engine">
+          <div id="ttsBootstrapCard">
         <div className="s-row" title="One-time install of the Piper speech engine and its voice.">
           <span className="s-row-label">
             Piper Runtime
@@ -256,8 +298,6 @@ export function ModelsSettingsPane() {
       </div>
 
       <div id="ttsProfilesArea" hidden>
-        <h3 className="settings-section-title">TTS Profiles</h3>
-
         <label className="field" title="Piper uses a fixed voice; cloned voice uses a recording of you.">
           <span className="field-label">Active Engine</span>
           <select id="ttsEngineSelect">
@@ -521,6 +561,8 @@ export function ModelsSettingsPane() {
           <audio id="voiceClonePreview" controls preload="none" src={previewUrl || undefined}></audio>
           <p className="field-hint">ZipVoice clones from the clip plus its exact wording, so a clean 3-30 second WAV of the sentence above gives the best result.</p>
         </div>
+      </div>
+        </SettingsGroup>
       </div>
     </section>
   );

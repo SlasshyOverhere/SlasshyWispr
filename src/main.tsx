@@ -479,6 +479,7 @@ const sttHardwareAdvisorContinueBtn = requiredElement<HTMLButtonElement>(
 const sttHardwareAdvisorCancelBtn = requiredElement<HTMLButtonElement>("#sttHardwareAdvisorCancelBtn");
 const closeSettingsBtn = requiredElement<HTMLButtonElement>("#closeSettingsBtn");
 const settingsPaneTitle = requiredElement<HTMLElement>("#settingsPaneTitle");
+const settingsSectionDescription = requiredElement<HTMLElement>("#settingsSectionDescription");
 const settingsMain = requiredElement<HTMLElement>(".settings-modal");
 const ttsBootstrapCard = requiredElement<HTMLDivElement>("#ttsBootstrapCard");
 const ttsProfilesArea = requiredElement<HTMLDivElement>("#ttsProfilesArea");
@@ -494,7 +495,11 @@ const pageNavButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("
 const settingsNavButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>("[data-settings-pane-nav]"),
 );
+const settingsSectionButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>("[data-settings-section-nav]"),
+);
 const settingsPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-settings-pane]"));
+const settingsSections = Array.from(document.querySelectorAll<HTMLElement>("[data-settings-section]"));
 const statusPill = requiredElement<HTMLDivElement>("#statusPill");
 const statusDetail = requiredElement<HTMLParagraphElement>("#statusDetail");
 const noticeStack = requiredElement<HTMLElement>("#noticeStack");
@@ -1077,8 +1082,11 @@ initNavigation(
   {
     pageNavButtons,
     settingsNavButtons,
+    settingsSectionButtons,
     settingsPanels,
+    settingsSections,
     settingsPaneTitle,
+    settingsSectionDescription,
     settingsMain,
     settingsOverlay,
     openSettingsBtn,

@@ -27,11 +27,27 @@ import {
 } from "./navigation";
 
 function fakeButton(): HTMLButtonElement {
+  const classes = new Set<string>();
+  const listeners = new Map<string, () => void>();
   return {
     dataset: {},
-    addEventListener() {},
+    addEventListener(type: string, listener: () => void) {
+      listeners.set(type, listener);
+    },
+    click() {
+      for (const listener of listeners.values()) listener();
+    },
     setAttribute() {},
-    classList: { toggle() {}, add() {}, remove() {} },
+    classList: {
+      toggle(name: string, force?: boolean) {
+        const active = force ?? !classes.has(name);
+        if (active) classes.add(name);
+        else classes.delete(name);
+      },
+      add: (name: string) => classes.add(name),
+      remove: (name: string) => classes.delete(name),
+      contains: (name: string) => classes.has(name),
+    },
   } as unknown as HTMLButtonElement;
 }
 
@@ -44,12 +60,32 @@ function fakePanel(pane = "general"): HTMLDivElement {
   return div;
 }
 
+function fakeSection(owner: string, section: string): HTMLDivElement {
+  const div = fakeDiv(true);
+  (div as unknown as { dataset: Record<string, string> }).dataset = {
+    settingsSectionOwner: owner,
+    settingsSection: section,
+  };
+  return div;
+}
+
+function fakeSectionButton(owner: string, section: string): HTMLButtonElement {
+  const button = fakeButton();
+  button.dataset.settingsSectionOwner = owner;
+  button.dataset.settingsSectionNav = section;
+  return button;
+}
+
 function fakeDiv(hidden = false): HTMLDivElement {
   const classes = new Set<string>();
   return {
     hidden,
     classList: {
-      toggle() {},
+      toggle(name: string, force?: boolean) {
+        const active = force ?? !classes.has(name);
+        if (active) classes.add(name);
+        else classes.delete(name);
+      },
       add: (c: string) => classes.add(c),
       remove: (c: string) => classes.delete(c),
       contains: (c: string) => classes.has(c),
@@ -69,8 +105,21 @@ function wireHarness(options: { piperReady?: boolean; ttsRunning?: boolean } = {
   const elements = {
     pageNavButtons: [fakeButton()],
     settingsNavButtons: [fakeButton()],
+    settingsSectionButtons: [
+      fakeSectionButton("general", "audio"),
+      fakeSectionButton("models", "runtime"),
+      fakeSectionButton("models", "voice"),
+      fakeSectionButton("update-security", "updates"),
+    ],
     settingsPanels: [fakePanel("general"), fakePanel("models")],
+    settingsSections: [
+      fakeSection("general", "audio"),
+      fakeSection("models", "runtime"),
+      fakeSection("models", "voice"),
+      fakeSection("update-security", "updates"),
+    ],
     settingsPaneTitle: { textContent: "" } as unknown as HTMLElement,
+    settingsSectionDescription: { textContent: "" } as unknown as HTMLElement,
     settingsMain: fakeDiv(),
     settingsOverlay,
     openSettingsBtn: fakeButton(),
@@ -137,13 +186,44 @@ describe("setActivePage", () => {
 });
 
 describe("setActiveSettingsPane", () => {
-  it("persists, titles, and toggles panels", () => {
+  it("persists, opens the default section, and toggles panels", () => {
     const harness = wireHarness();
     setActiveSettingsPane("models", "test");
     expect(getActiveSettingsPane()).toBe("models");
     expect(localStorage.getItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY)).toBe("models");
-    expect(harness.elements.settingsPaneTitle.textContent).toBe("Models");
-    expect(harness.logs[0]).toContain("next=models");
+    expect(harness.elements.settingsPaneTitle.textContent).toBe("Runtime");
+    expect(harness.logs.some((line) => line.includes("next=models"))).toBe(true);
+  });
+
+  it("remembers the last explicit section within each top-level pane", () => {
+    const harness = wireHarness();
+    const voiceButton = harness.elements.settingsSectionButtons[2];
+
+    voiceButton.click();
+    expect(harness.elements.settingsPaneTitle.textContent).toBe("Voice");
+    expect(harness.elements.settingsSectionDescription.textContent).toBe("Set up Piper or a voice cloned from your recording.");
+    expect(voiceButton.classList.contains("is-active")).toBe(true);
+    expect(harness.elements.settingsSections[1].hidden).toBe(true);
+    expect(harness.elements.settingsSections[2].hidden).toBe(false);
+
+    setActiveSettingsPane("general", "test");
+    expect(harness.elements.settingsPaneTitle.textContent).toBe("Audio & shortcuts");
+
+    setActiveSettingsPane("models", "test");
+    expect(harness.elements.settingsPaneTitle.textContent).toBe("Voice");
+  });
+
+  it("restores a persisted section during initialization", () => {
+    localStorage.setItem(
+      "slasshywispr-settings-sections-v1",
+      JSON.stringify({ general: "audio", models: "voice" }),
+    );
+
+    const harness = wireHarness();
+
+    expect(harness.elements.settingsPaneTitle.textContent).toBe("Audio & shortcuts");
+    setActiveSettingsPane("models", "test");
+    expect(harness.elements.settingsPaneTitle.textContent).toBe("Voice");
   });
 });
 

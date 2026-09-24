@@ -10,15 +10,26 @@
  * via initNavigation so this module never touches main.tsx globals.
  */
 import { ACTIVE_PAGE_STORAGE_KEY } from "../constants";
+import {
+  defaultSettingsSection,
+  findSettingsSection,
+  parseSettingsSectionMemory,
+  type SettingsSection,
+  type SettingsSectionMemory,
+} from "../settings/settings-directory";
 import type { MainPage, SettingsPane, TtsProfilePane } from "../types";
 
 export const ACTIVE_SETTINGS_PANE_STORAGE_KEY = "slasshywispr-active-settings-pane-v1";
+export const ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY = "slasshywispr-settings-sections-v1";
 
 export interface NavigationElements {
   pageNavButtons: HTMLButtonElement[];
   settingsNavButtons: HTMLButtonElement[];
+  settingsSectionButtons: HTMLButtonElement[];
   settingsPanels: HTMLElement[];
+  settingsSections: HTMLElement[];
   settingsPaneTitle: HTMLElement;
+  settingsSectionDescription: HTMLElement;
   settingsMain: HTMLElement;
   settingsOverlay: HTMLDivElement;
   openSettingsBtn: HTMLButtonElement;
@@ -42,6 +53,8 @@ let navDeps!: NavigationDeps;
 
 let activePage: MainPage = "home";
 let activeSettingsPane: SettingsPane = "general";
+let activeSettingsSection: SettingsSection | null = null;
+let activeSettingsSectionMemory: SettingsSectionMemory = {};
 let settingsCloseTimer: number | null = null;
 let settingsPaneTransitionTimer: number | null = null;
 
@@ -54,6 +67,10 @@ export function initNavigation(
   navDeps = deps;
   activePage = initial.page;
   activeSettingsPane = initial.pane;
+  activeSettingsSection = null;
+  activeSettingsSectionMemory = parseSettingsSectionMemory(
+    localStorage.getItem(ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY),
+  );
 
   for (const navButton of elements.pageNavButtons) {
     navButton.addEventListener("click", () => {
@@ -71,6 +88,15 @@ export function initNavigation(
     });
   }
 
+  for (const navButton of elements.settingsSectionButtons) {
+    navButton.addEventListener("click", () => {
+      const pane = asSettingsPane(navButton.dataset.settingsSectionOwner);
+      const section = pane ? findSettingsSection(pane, navButton.dataset.settingsSectionNav) : null;
+      if (!pane || !section) return;
+      setActiveSettingsPane(pane, "settings-section-navigation", section.id as SettingsSection);
+    });
+  }
+
   elements.openSettingsBtn.addEventListener("click", () => {
     openSettings("user-click-settings-button");
   });
@@ -84,6 +110,8 @@ export function initNavigation(
       closeSettings();
     }
   });
+
+  setActiveSettingsPane(initial.pane, "initial-navigation");
 }
 
 export function asMainPage(value: string | undefined): MainPage | null {
@@ -136,27 +164,44 @@ export function setActivePage(next: MainPage): void {
   window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
 }
 
-export function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void {
-  navDeps.log(
-    `[ui.settings.pane] next=${next} reason=${reason}`,
-  );
+export function setActiveSettingsPane(
+  next: SettingsPane,
+  reason = "unspecified",
+  section?: SettingsSection,
+): void {
   const previousPane = activeSettingsPane;
+  const previousSection = activeSettingsSection;
+  const requestedSection = section ?? activeSettingsSectionMemory[next] ?? defaultSettingsSection(next);
+  const definition = findSettingsSection(next, requestedSection);
+  const nextSection = (definition?.id ?? defaultSettingsSection(next)) as SettingsSection;
+
+  navDeps.log(`[ui.settings.pane] next=${next} section=${nextSection} reason=${reason}`);
+
   activeSettingsPane = next;
+  activeSettingsSection = nextSection;
+  activeSettingsSectionMemory = { ...activeSettingsSectionMemory, [next]: nextSection };
   localStorage.setItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY, next);
+  localStorage.setItem(ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY, JSON.stringify(activeSettingsSectionMemory));
 
-  const titleMap: Record<SettingsPane, string> = {
-    general: "General",
-    models: "Models",
-    "update-security": "Update and Security",
-    pipeline: "Pipeline",
-  };
-
-  navElements.settingsPaneTitle.textContent = titleMap[next];
+  navElements.settingsPaneTitle.textContent = definition?.title ?? nextSection;
+  navElements.settingsSectionDescription.textContent = definition?.description ?? "";
 
   for (const navButton of navElements.settingsNavButtons) {
     const current = navButton.dataset.settingsPaneNav === next;
     navButton.classList.toggle("is-active", current);
     navButton.setAttribute("aria-current", current ? "page" : "false");
+  }
+
+  for (const navButton of navElements.settingsSectionButtons) {
+    const owner = asSettingsPane(navButton.dataset.settingsSectionOwner);
+    const current = owner === next && navButton.dataset.settingsSectionNav === nextSection;
+    navButton.hidden = owner !== next;
+    navButton.classList.toggle("is-active", current);
+    navButton.setAttribute("aria-current", current ? "page" : "false");
+    const group = navButton.parentElement;
+    if (group?.dataset.settingsSectionOwner) {
+      group.hidden = group.dataset.settingsSectionOwner !== next;
+    }
   }
 
   if (settingsPaneTransitionTimer !== null) {
@@ -168,28 +213,48 @@ export function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"
   for (const panel of navElements.settingsPanels) {
     panel.classList.remove("is-transitioning-in", "is-transitioning-forward", "is-transitioning-backward");
   }
+  for (const settingsSection of navElements.settingsSections) {
+    settingsSection.classList.remove("is-section-entering");
+  }
 
   const previousIndex = navElements.settingsPanels.findIndex((panel) => panel.dataset.settingsPane === previousPane);
   const nextIndex = navElements.settingsPanels.findIndex((panel) => panel.dataset.settingsPane === next);
-  const shouldAnimate = previousPane !== next && previousIndex >= 0 && nextIndex >= 0;
+  const shouldAnimatePane = previousPane !== next && previousIndex >= 0 && nextIndex >= 0;
+  const shouldAnimateSection = previousSection !== null && previousSection !== nextSection;
 
   for (const panel of navElements.settingsPanels) {
     const current = panel.dataset.settingsPane === next;
     panel.classList.toggle("is-active", current);
     panel.hidden = !current;
-    if (current && shouldAnimate) {
+    if (current && shouldAnimatePane) {
       const directionClass = nextIndex > previousIndex ? "is-transitioning-forward" : "is-transitioning-backward";
       panel.classList.add("is-transitioning-in", directionClass);
     }
   }
 
-  if (shouldAnimate) {
-    const switchDirectionClass = nextIndex > previousIndex ? "is-switching-forward" : "is-switching-backward";
-    navElements.settingsMain.classList.add("is-pane-switching", switchDirectionClass);
+  for (const settingsSection of navElements.settingsSections) {
+    const current =
+      settingsSection.dataset.settingsSectionOwner === next
+      && settingsSection.dataset.settingsSection === nextSection;
+    settingsSection.hidden = !current;
+    settingsSection.classList.toggle("is-active", current);
+    if (current && shouldAnimateSection) {
+      settingsSection.classList.add("is-section-entering");
+    }
+  }
+
+  if (shouldAnimatePane || shouldAnimateSection) {
+    if (shouldAnimatePane) {
+      const switchDirectionClass = nextIndex > previousIndex ? "is-switching-forward" : "is-switching-backward";
+      navElements.settingsMain.classList.add("is-pane-switching", switchDirectionClass);
+    }
     settingsPaneTransitionTimer = window.setTimeout(() => {
       navElements.settingsMain.classList.remove("is-pane-switching", "is-switching-forward", "is-switching-backward");
       for (const panel of navElements.settingsPanels) {
         panel.classList.remove("is-transitioning-in", "is-transitioning-forward", "is-transitioning-backward");
+      }
+      for (const settingsSection of navElements.settingsSections) {
+        settingsSection.classList.remove("is-section-entering");
       }
       settingsPaneTransitionTimer = null;
     }, 180);
