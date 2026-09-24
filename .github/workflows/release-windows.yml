@@ -44,9 +44,40 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install Vulkan SDK
-        uses: humbletim/install-vulkan-sdk@v1.2
-        with:
-          version: 1.4.357.0
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "1.4.357.0"
+          $expectedSha256 = "81f474711e9042f4cd22b31b2f7a8870db2e428b21586fb43dd80150be97310d"
+          $sdk = Join-Path $env:RUNNER_TEMP "VulkanSDK\$version"
+          $installer = Join-Path $env:RUNNER_TEMP "vulkan_sdk-$version.exe"
+          $url = "https://sdk.lunarg.com/sdk/download/$version/windows/vulkansdk-windows-X64-$version.exe"
+
+          & "$env:SystemRoot\System32\curl.exe" -fsSL --retry 3 --output $installer $url
+          if ($LASTEXITCODE -ne 0) {
+            throw "Vulkan SDK download failed with exit code $LASTEXITCODE."
+          }
+          $actualSha256 = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            throw "Vulkan SDK checksum mismatch: got $actualSha256, expected $expectedSha256."
+          }
+
+          $arguments = @(
+            "--root", $sdk,
+            "--accept-licenses",
+            "--accept-messages",
+            "--confirm-command", "install",
+            "copy_only=1"
+          )
+          $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) {
+            throw "Vulkan SDK installer exited with code $($process.ExitCode)."
+          }
+          Remove-Item $installer -Force
+
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "VULKAN_SDK_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Verify Vulkan build tools
         shell: pwsh
