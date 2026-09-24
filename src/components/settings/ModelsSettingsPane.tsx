@@ -294,20 +294,53 @@ export function ModelsSettingsPane() {
       </div>
 
       <div id="ttsProfilesArea" hidden>
-        <label className="field" title="Piper uses a fixed voice; cloned voice uses a recording of you.">
-          <span className="field-label">Active Engine</span>
-          <select id="ttsEngineSelect">
-            <option value="piper">Piper (fixed voice)</option>
-            <option value="zipvoice">Cloned voice (ZipVoice)</option>
-          </select>
-        </label>
+        <div className="tts-profile-switcher">
+          <label className="field" title="Piper uses a fixed voice; cloned voice uses a recording of you.">
+            <span className="field-label">Active engine</span>
+            <select id="ttsEngineSelect">
+              <option value="piper">Piper (fixed voice)</option>
+              <option value="zipvoice">Cloned voice (ZipVoice)</option>
+            </select>
+          </label>
 
-        <div className="profile-tabs" role="tablist" aria-label="TTS profiles">
-          <button id="ttsProfilePiperTab" className={cloneTab === 'piper' ? 'profile-tab is-active' : 'profile-tab'} type="button" title="Settings for the fixed Piper voice." onClick={() => setCloneTab('piper')}>Piper</button>
-          <button id="ttsProfileCloneTab" className={cloneTab === 'clone' ? 'profile-tab is-active' : 'profile-tab'} type="button" title="Train and manage voices cloned from your own recording." onClick={() => setCloneTab('clone')}>Cloned voice</button>
+          <div className="profile-tabs-shell">
+            <span id="ttsProfileTabsLabel" className="profile-tabs-label">Configure</span>
+            <div className="profile-tabs" role="tablist" aria-labelledby="ttsProfileTabsLabel">
+              <button
+                id="ttsProfilePiperTab"
+                className={cloneTab === 'piper' ? 'profile-tab is-active' : 'profile-tab'}
+                type="button"
+                role="tab"
+                aria-selected={cloneTab === 'piper'}
+                aria-controls="ttsProfilePiperPanel"
+                title="Settings for the fixed Piper voice."
+                onClick={() => setCloneTab('piper')}
+              >
+                Piper
+              </button>
+              <button
+                id="ttsProfileCloneTab"
+                className={cloneTab === 'clone' ? 'profile-tab is-active' : 'profile-tab'}
+                type="button"
+                role="tab"
+                aria-selected={cloneTab === 'clone'}
+                aria-controls="ttsProfileClonePanel"
+                title="Train and manage voices cloned from your own recording."
+                onClick={() => setCloneTab('clone')}
+              >
+                Cloned voice
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div id="ttsProfilePiperPanel" hidden={cloneTab !== 'piper'}>
+        <div
+          id="ttsProfilePiperPanel"
+          className="profile-panel"
+          role="tabpanel"
+          aria-labelledby="ttsProfilePiperTab"
+          hidden={cloneTab !== 'piper'}
+        >
           <label className="field" title="Point at your own piper.exe if you keep one elsewhere.">
             <span className="field-label">Executable Path <span className="switch-desc">(optional override)</span></span>
             <input id="piperPathInput" type="text" placeholder="Auto-filled after runtime setup" autoComplete="off" value={settings.piperPath} onChange={(event) => dispatchSettingsPatch({ piperPath: event.target.value })} />
@@ -363,7 +396,13 @@ export function ModelsSettingsPane() {
           </div>
         </div>
 
-        <div id="ttsProfileClonePanel" hidden={cloneTab !== 'clone'}>
+        <div
+          id="ttsProfileClonePanel"
+          className="profile-panel"
+          role="tabpanel"
+          aria-labelledby="ttsProfileCloneTab"
+          hidden={cloneTab !== 'clone'}
+        >
           <div className="status-detail-grid">
             <div className="status-detail-row">
               <span className="status-detail-label">Clone Model</span>

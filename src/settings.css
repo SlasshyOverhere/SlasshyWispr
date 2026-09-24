@@ -125,7 +125,6 @@
 }
 
 .settings-panes {
-  position: relative;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
@@ -256,27 +255,65 @@ label.s-row { cursor: pointer; }
   white-space: pre-wrap;
   user-select: text;
 }
+.tts-profile-switcher {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+.profile-tabs-shell {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+.profile-tabs-label {
+  color: var(--ink-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
 .profile-tabs {
-  align-self: flex-start;
   display: inline-flex;
-  gap: 2px;
-  padding: 2px;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-button);
-  background: var(--bg-active);
+  background: var(--bg-recess);
 }
 .profile-tab {
-  min-height: 25px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 12px;
   border-radius: var(--radius-sm);
   color: var(--ink-muted);
-  font-size: 11px;
+  font-size: 11.5px;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
 }
-.profile-tab:hover { color: var(--ink-primary); }
+.profile-tab:hover {
+  background: var(--bg-hover);
+  color: var(--ink-primary);
+}
 .profile-tab.is-active {
   background: var(--bg-card);
   color: var(--ink-primary);
   font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.24);
 }
+.profile-tab:focus-visible {
+  outline: 1.5px solid var(--accent-live);
+  outline-offset: 1px;
+}
+.profile-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+.profile-panel[hidden] { display: none; }
+.profile-panel > .field,
+.profile-panel > .compact-grid,
+.profile-panel > .s-row-block,
+.profile-panel > .status-detail-grid,
+.profile-panel > .field-hint,
+.profile-panel > .btn-row,
+.profile-panel > audio { margin: 0; }
 
 .settings-row-copy,
 .s-row-label {
@@ -315,8 +352,9 @@ label.s-row { cursor: pointer; }
   grid-auto-columns: minmax(68px, 1fr);
   gap: 2px;
   padding: 2px;
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-button);
-  background: var(--bg-active);
+  background: var(--bg-recess);
 }
 .settings-segment {
   min-height: 26px;
@@ -583,5 +621,6 @@ label.s-row { cursor: pointer; }
   .settings-tab,
   .settings-section-tab,
   .settings-segment,
+  .profile-tab,
   .settings-advanced summary::after { transition: none; }
 }

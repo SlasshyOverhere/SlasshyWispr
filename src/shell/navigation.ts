@@ -127,6 +127,12 @@ function settingsSectionOwner(navButton: HTMLButtonElement): SettingsPane | null
   return asSettingsPane(navButton.parentElement?.dataset.settingsSectionOwner);
 }
 
+function scrollSettingsSectionIntoView(section: HTMLElement, container: HTMLElement): void {
+  const sectionTop = section.getBoundingClientRect().top;
+  const containerTop = container.getBoundingClientRect().top;
+  container.scrollTop = Math.max(0, container.scrollTop + sectionTop - containerTop - 8);
+}
+
 export function getActivePage(): MainPage {
   return activePage;
 }
@@ -214,7 +220,7 @@ export function setActiveSettingsPane(
     settingsSection.hidden = false;
     settingsSection.classList.toggle("is-active", current);
     if (current) {
-      navElements.settingsScrollContainer.scrollTop = Math.max(0, settingsSection.offsetTop - 8);
+      scrollSettingsSectionIntoView(settingsSection, navElements.settingsScrollContainer);
     }
   }
 }

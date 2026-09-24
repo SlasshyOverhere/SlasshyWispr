@@ -88,6 +88,7 @@ function fakeDiv(hidden = false): HTMLDivElement {
     hidden,
     offsetTop: 0,
     scrollTop: 0,
+    getBoundingClientRect: () => ({ top: 0 }),
     classList: {
       toggle(name: string, force?: boolean) {
         const active = force ?? !classes.has(name);
@@ -282,13 +283,16 @@ describe("setActiveSettingsPane", () => {
     );
     if (!privacyButton || !privacySection) throw new Error("Privacy fixtures missing");
     privacySection.offsetTop = 500;
+    privacySection.getBoundingClientRect = () => ({ top: 650 }) as DOMRect;
+    harness.elements.settingsScrollContainer.scrollTop = 200;
+    harness.elements.settingsScrollContainer.getBoundingClientRect = () => ({ top: 100 }) as DOMRect;
     privacySection.scrollIntoView = () => {
       throw new Error("scrollIntoView must not move the settings shell");
     };
 
     privacyButton.click();
 
-    expect(harness.elements.settingsScrollContainer.scrollTop).toBe(492);
+    expect(harness.elements.settingsScrollContainer.scrollTop).toBe(742);
   });
 
   it("remembers the last explicit section within each top-level pane", () => {

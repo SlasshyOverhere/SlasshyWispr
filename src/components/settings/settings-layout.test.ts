@@ -41,6 +41,15 @@ describe("settings layout", () => {
     expect(html).not.toContain('id="closeSettingsBtn"');
   });
 
+  it("separates engine selection, engine tabs, and engine settings", () => {
+    const html = renderToStaticMarkup(createElement(SettingsModal));
+
+    expect(html).toContain('class="tts-profile-switcher"');
+    expect(html).toContain('class="profile-tabs-label"');
+    expect(html).toContain('id="ttsProfilePiperPanel" class="profile-panel"');
+    expect(html).toContain('id="ttsProfileClonePanel" class="profile-panel"');
+  });
+
   it("keeps the capture-mode DOM contract used by settings hydration", () => {
     const html = renderToStaticMarkup(createElement(SettingsModal));
 
