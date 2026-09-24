@@ -43,6 +43,24 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Vulkan SDK
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: 1.4.309.0
+          cache: true
+
+      - name: Verify Vulkan build tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $library = Join-Path $env:VULKAN_SDK "Lib/vulkan-1.lib"
+          if (-not (Test-Path $library)) {
+            throw "Vulkan import library not found at $library."
+          }
+          if (-not (Get-Command glslc -ErrorAction SilentlyContinue)) {
+            throw "glslc is not on PATH."
+          }
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
