@@ -107,7 +107,7 @@ export function PipelineSettingsPane() {
         <SettingsGroup title="Voice preview">
           <label className="field" htmlFor="assistantAudio" title="Play the last generated reply.">
             <span className="field-label">Last assistant response</span>
-            <audio id="assistantAudio" controls preload="none"></audio>
+            <audio id="assistantAudio" className="settings-audio" controls preload="none"></audio>
           </label>
         </SettingsGroup>
       </div>

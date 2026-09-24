@@ -120,7 +120,7 @@ export function ModelsSettingsPane() {
       >
         <SettingsGroup title="Provider connection">
           <p className="field-hint">These controls are used when speech-to-text or AI rewriting is set to Online.</p>
-          <div id="onlineProviderSection">
+          <div id="onlineProviderSection" className="settings-control-stack">
         <div className="compact-grid">
           <label className="field" data-online-field="base-url" title="Provider endpoint. Leave empty to use the app's default.">
             <span className="field-label">API Base URL</span>
@@ -199,7 +199,7 @@ export function ModelsSettingsPane() {
       >
         <SettingsGroup title="Ollama connection">
           <p className="field-hint">These controls are used when AI rewriting is set to Offline.</p>
-          <div id="offlineOllamaSection">
+          <div id="offlineOllamaSection" className="settings-control-stack">
         <div className="compact-grid">
           <label className="field" title="Address of your local Ollama server.">
             <span className="field-label">Base URL</span>
@@ -236,7 +236,7 @@ export function ModelsSettingsPane() {
       >
         <SettingsGroup title="Parakeet model">
           <p className="field-hint">These controls are used when speech-to-text is set to Offline.</p>
-          <div id="offlineSttSection">
+          <div id="offlineSttSection" className="settings-control-stack">
         <label className="field" title="The local STT model in use.">
           <span className="field-label">Selected Model</span>
           <input id="localSttModelInput" type="text" placeholder="Select a model from catalog below" autoComplete="off" readOnly />
@@ -279,7 +279,7 @@ export function ModelsSettingsPane() {
         data-settings-section="voice"
       >
         <SettingsGroup title="Voice engine">
-          <div id="ttsBootstrapCard">
+          <div id="ttsBootstrapCard" className="settings-control-stack">
         <div className="s-row" title="One-time install of the Piper speech engine and its voice.">
           <span className="s-row-label">
             Piper Runtime
@@ -593,7 +593,7 @@ export function ModelsSettingsPane() {
             />
           </label>
           <p id="voiceCloneStatusText" className="field-hint">{cloneMessage}</p>
-          <audio id="voiceClonePreview" controls preload="none" src={previewUrl || undefined}></audio>
+          <audio id="voiceClonePreview" className="settings-audio" controls preload="none" src={previewUrl || undefined}></audio>
           <p className="field-hint">ZipVoice clones from the clip plus its exact wording, so a clean 3-30 second WAV of the sentence above gives the best result.</p>
         </div>
       </div>

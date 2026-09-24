@@ -50,6 +50,16 @@ describe("settings layout", () => {
     expect(html).toContain('id="ttsProfileClonePanel" class="profile-panel"');
   });
 
+  it("uses shared spacing for nested model controls and audio previews", () => {
+    const html = renderToStaticMarkup(createElement(SettingsModal));
+
+    for (const id of ["ttsBootstrapCard", "onlineProviderSection", "offlineOllamaSection", "offlineSttSection"]) {
+      expect(html).toContain(`id="${id}" class="settings-control-stack"`);
+    }
+    expect(html).toContain('id="assistantAudio" class="settings-audio"');
+    expect(html).toContain('id="voiceClonePreview" class="settings-audio"');
+  });
+
   it("keeps the capture-mode DOM contract used by settings hydration", () => {
     const html = renderToStaticMarkup(createElement(SettingsModal));
 
