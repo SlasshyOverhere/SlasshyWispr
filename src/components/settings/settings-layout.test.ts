@@ -35,7 +35,7 @@ describe("settings layout", () => {
   it("renders as a direct page rather than a modal dialog", () => {
     const html = renderToStaticMarkup(createElement(SettingsModal));
 
-    expect(html).toContain('class="settings-page"');
+    expect(html).toContain('class="settings-page flow-page-inner"');
     expect(html).not.toContain("settings-overlay");
     expect(html).not.toContain('role="dialog"');
     expect(html).not.toContain('id="closeSettingsBtn"');

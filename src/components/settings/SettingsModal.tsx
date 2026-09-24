@@ -10,7 +10,7 @@ const PANES: SettingsPane[] = ["general", "models", "pipeline", "update-security
 
 export function SettingsModal() {
   return (
-    <section id="settingsPage" className="settings-page" aria-labelledby="settingsPaneTitle">
+    <section id="settingsPage" className="settings-page flow-page-inner" aria-labelledby="settingsPaneTitle">
       <div className="settings-layout">
         <nav className="settings-navigation" aria-label="Settings sections">
           <div className="settings-primary-nav">

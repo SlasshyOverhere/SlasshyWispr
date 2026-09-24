@@ -86,6 +86,8 @@ function fakeDiv(hidden = false): HTMLDivElement {
   return {
     dataset: {},
     hidden,
+    offsetTop: 0,
+    scrollTop: 0,
     classList: {
       toggle(name: string, force?: boolean) {
         const active = force ?? !classes.has(name);
@@ -109,7 +111,15 @@ function wireHarness(options: { piperReady?: boolean; ttsRunning?: boolean } = {
   (globalThis as unknown as { HTMLElement?: unknown }).HTMLElement ??= class {};
   const settingsPageButton = fakeButton();
   settingsPageButton.dataset.pageNav = "settings";
-  const generalNav = fakeSectionGroup("general", ["audio"]);
+  const generalNav = fakeSectionGroup("general", [
+    "audio",
+    "dictation",
+    "assistant",
+    "appearance",
+    "app-privacy",
+    "recordings",
+    "sound",
+  ]);
   const modelsNav = fakeSectionGroup("models", ["runtime", "voice"]);
   const updatesNav = fakeSectionGroup("update-security", ["updates"]);
   const elements = {
@@ -123,6 +133,12 @@ function wireHarness(options: { piperReady?: boolean; ttsRunning?: boolean } = {
     settingsPanels: [fakePanel("general"), fakePanel("models")],
     settingsSections: [
       fakeSection("general", "audio"),
+      fakeSection("general", "dictation"),
+      fakeSection("general", "assistant"),
+      fakeSection("general", "appearance"),
+      fakeSection("general", "app-privacy"),
+      fakeSection("general", "recordings"),
+      fakeSection("general", "sound"),
       fakeSection("models", "runtime"),
       fakeSection("models", "voice"),
       fakeSection("update-security", "updates"),
@@ -130,6 +146,7 @@ function wireHarness(options: { piperReady?: boolean; ttsRunning?: boolean } = {
     settingsPaneTitle: { textContent: "" } as unknown as HTMLElement,
     settingsSectionDescription: { textContent: "" } as unknown as HTMLElement,
     settingsMain: fakeDiv(),
+    settingsScrollContainer: fakeDiv(),
     ttsBootstrapCard: fakeDiv(),
     ttsProfilesArea: fakeDiv(),
     ttsSetupStatus: { textContent: "" } as unknown as HTMLParagraphElement,
@@ -215,20 +232,80 @@ describe("setActiveSettingsPane", () => {
 
     setActiveSettingsPane("general", "test");
 
-    expect(harness.elements.settingsSectionButtons[0].hidden).toBe(false);
-    expect(harness.elements.settingsSectionButtons[1].hidden).toBe(true);
+    const generalButton = harness.elements.settingsSectionButtons.find(
+      (button) => button.dataset.settingsSectionNav === "audio",
+    );
+    const modelsButton = harness.elements.settingsSectionButtons.find(
+      (button) => button.dataset.settingsSectionNav === "runtime",
+    );
+    if (!generalButton || !modelsButton) throw new Error("Section fixtures missing");
+
+    expect(generalButton.hidden).toBe(false);
+    expect(modelsButton.hidden).toBe(true);
+  });
+
+  it("keeps rapid section switches fully visible without transition state", () => {
+    const harness = wireHarness();
+    const buttonFor = (section: string) => {
+      const button = harness.elements.settingsSectionButtons.find(
+        (candidate) => candidate.dataset.settingsSectionNav === section,
+      );
+      if (!button) throw new Error(`Missing ${section} fixture`);
+      return button;
+    };
+
+    for (const section of ["assistant", "appearance", "app-privacy"]) {
+      buttonFor(section).click();
+    }
+
+    expect(harness.elements.settingsPaneTitle.textContent).toBe("App & privacy");
+    expect(
+      ["assistant", "appearance", "app-privacy"].every(
+        (section) => !buttonFor(section).hidden,
+      ),
+    ).toBe(true);
+    expect(
+      harness.elements.settingsSectionButtons.filter((button) => button.classList.contains("is-active")),
+    ).toHaveLength(1);
+    expect(
+      harness.elements.settingsSections.some((section) => section.classList.contains("is-section-entering")),
+    ).toBe(false);
+  });
+
+  it("scrolls only the settings content when using a quick jump", () => {
+    const harness = wireHarness();
+    const privacyButton = harness.elements.settingsSectionButtons.find(
+      (button) => button.dataset.settingsSectionNav === "app-privacy",
+    );
+    const privacySection = harness.elements.settingsSections.find(
+      (section) => section.dataset.settingsSection === "app-privacy",
+    );
+    if (!privacyButton || !privacySection) throw new Error("Privacy fixtures missing");
+    privacySection.offsetTop = 500;
+    privacySection.scrollIntoView = () => {
+      throw new Error("scrollIntoView must not move the settings shell");
+    };
+
+    privacyButton.click();
+
+    expect(harness.elements.settingsScrollContainer.scrollTop).toBe(492);
   });
 
   it("remembers the last explicit section within each top-level pane", () => {
     const harness = wireHarness();
-    const voiceButton = harness.elements.settingsSectionButtons[2];
+    const voiceButton = harness.elements.settingsSectionButtons.find(
+      (button) => button.dataset.settingsSectionNav === "voice",
+    );
+    const voiceSection = harness.elements.settingsSections.find(
+      (section) => section.dataset.settingsSection === "voice",
+    );
+    if (!voiceButton || !voiceSection) throw new Error("Voice fixtures missing");
 
     voiceButton.click();
     expect(harness.elements.settingsPaneTitle.textContent).toBe("Voice");
     expect(harness.elements.settingsSectionDescription.textContent).toBe("Set up Piper or a voice cloned from your recording.");
     expect(voiceButton.classList.contains("is-active")).toBe(true);
-    expect(harness.elements.settingsSections[1].hidden).toBe(false);
-    expect(harness.elements.settingsSections[2].hidden).toBe(false);
+    expect(voiceSection.hidden).toBe(false);
 
     setActiveSettingsPane("general", "test");
     expect(harness.elements.settingsPaneTitle.textContent).toBe("Audio & shortcuts");

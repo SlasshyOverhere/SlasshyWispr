@@ -479,6 +479,7 @@ const sttHardwareAdvisorCancelBtn = requiredElement<HTMLButtonElement>("#sttHard
 const settingsPaneTitle = requiredElement<HTMLElement>("#settingsPaneTitle");
 const settingsSectionDescription = requiredElement<HTMLElement>("#settingsSectionDescription");
 const settingsMain = requiredElement<HTMLElement>(".settings-page");
+const settingsScrollContainer = requiredElement<HTMLElement>(".settings-panes");
 const ttsBootstrapCard = requiredElement<HTMLDivElement>("#ttsBootstrapCard");
 const ttsProfilesArea = requiredElement<HTMLDivElement>("#ttsProfilesArea");
 const ttsSetupStatus = requiredElement<HTMLParagraphElement>("#ttsSetupStatus");
@@ -1086,6 +1087,7 @@ initNavigation(
     settingsPaneTitle,
     settingsSectionDescription,
     settingsMain,
+    settingsScrollContainer,
     ttsBootstrapCard,
     ttsProfilesArea,
     ttsSetupStatus,

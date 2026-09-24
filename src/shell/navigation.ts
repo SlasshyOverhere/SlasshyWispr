@@ -31,6 +31,7 @@ export interface NavigationElements {
   settingsPaneTitle: HTMLElement;
   settingsSectionDescription: HTMLElement;
   settingsMain: HTMLElement;
+  settingsScrollContainer: HTMLElement;
   ttsBootstrapCard: HTMLDivElement;
   ttsProfilesArea: HTMLDivElement;
   ttsSetupStatus: HTMLParagraphElement;
@@ -50,10 +51,8 @@ let navDeps!: NavigationDeps;
 
 let activePage: MainPage = "home";
 let activeSettingsPane: SettingsPane = "general";
-let activeSettingsSection: SettingsSection | null = null;
 let activeSettingsSectionMemory: SettingsSectionMemory = {};
 let settingsReturnPage: MainPage = "home";
-let settingsPaneTransitionTimer: number | null = null;
 
 export function initNavigation(
   elements: NavigationElements,
@@ -64,7 +63,6 @@ export function initNavigation(
   navDeps = deps;
   activePage = initial.page;
   activeSettingsPane = initial.pane;
-  activeSettingsSection = null;
   activeSettingsSectionMemory = parseSettingsSectionMemory(
     localStorage.getItem(ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY),
   );
@@ -171,8 +169,6 @@ export function setActiveSettingsPane(
   reason = "unspecified",
   section?: SettingsSection,
 ): void {
-  const previousPane = activeSettingsPane;
-  const previousSection = activeSettingsSection;
   const requestedSection = section ?? activeSettingsSectionMemory[next] ?? defaultSettingsSection(next);
   const definition = findSettingsSection(next, requestedSection);
   const nextSection = (definition?.id ?? defaultSettingsSection(next)) as SettingsSection;
@@ -180,7 +176,6 @@ export function setActiveSettingsPane(
   navDeps.log(`[ui.settings.pane] next=${next} section=${nextSection} reason=${reason}`);
 
   activeSettingsPane = next;
-  activeSettingsSection = nextSection;
   activeSettingsSectionMemory = { ...activeSettingsSectionMemory, [next]: nextSection };
   localStorage.setItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY, next);
   localStorage.setItem(ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY, JSON.stringify(activeSettingsSectionMemory));
@@ -206,32 +201,10 @@ export function setActiveSettingsPane(
     }
   }
 
-  if (settingsPaneTransitionTimer !== null) {
-    window.clearTimeout(settingsPaneTransitionTimer);
-    settingsPaneTransitionTimer = null;
-  }
-
-  navElements.settingsMain.classList.remove("is-pane-switching", "is-switching-forward", "is-switching-backward");
-  for (const panel of navElements.settingsPanels) {
-    panel.classList.remove("is-transitioning-in", "is-transitioning-forward", "is-transitioning-backward");
-  }
-  for (const settingsSection of navElements.settingsSections) {
-    settingsSection.classList.remove("is-section-entering");
-  }
-
-  const previousIndex = navElements.settingsPanels.findIndex((panel) => panel.dataset.settingsPane === previousPane);
-  const nextIndex = navElements.settingsPanels.findIndex((panel) => panel.dataset.settingsPane === next);
-  const shouldAnimatePane = previousPane !== next && previousIndex >= 0 && nextIndex >= 0;
-  const shouldAnimateSection = previousSection !== null && previousSection !== nextSection;
-
   for (const panel of navElements.settingsPanels) {
     const current = panel.dataset.settingsPane === next;
     panel.classList.toggle("is-active", current);
     panel.hidden = !current;
-    if (current && shouldAnimatePane) {
-      const directionClass = nextIndex > previousIndex ? "is-transitioning-forward" : "is-transitioning-backward";
-      panel.classList.add("is-transitioning-in", directionClass);
-    }
   }
 
   for (const settingsSection of navElements.settingsSections) {
@@ -240,29 +213,9 @@ export function setActiveSettingsPane(
       && settingsSection.dataset.settingsSection === nextSection;
     settingsSection.hidden = false;
     settingsSection.classList.toggle("is-active", current);
-    if (current && (shouldAnimateSection || shouldAnimatePane)) {
-      settingsSection.classList.add("is-section-entering");
-      if (typeof settingsSection.scrollIntoView === "function") {
-        settingsSection.scrollIntoView({ block: "start" });
-      }
+    if (current) {
+      navElements.settingsScrollContainer.scrollTop = Math.max(0, settingsSection.offsetTop - 8);
     }
-  }
-
-  if (shouldAnimatePane || shouldAnimateSection) {
-    if (shouldAnimatePane) {
-      const switchDirectionClass = nextIndex > previousIndex ? "is-switching-forward" : "is-switching-backward";
-      navElements.settingsMain.classList.add("is-pane-switching", switchDirectionClass);
-    }
-    settingsPaneTransitionTimer = window.setTimeout(() => {
-      navElements.settingsMain.classList.remove("is-pane-switching", "is-switching-forward", "is-switching-backward");
-      for (const panel of navElements.settingsPanels) {
-        panel.classList.remove("is-transitioning-in", "is-transitioning-forward", "is-transitioning-backward");
-      }
-      for (const settingsSection of navElements.settingsSections) {
-        settingsSection.classList.remove("is-section-entering");
-      }
-      settingsPaneTransitionTimer = null;
-    }, 180);
   }
 }
 
