@@ -203,7 +203,7 @@ function syncLocalSttDownloadOverlayVisibility(): void {
   localSttDownloadOverlay.hidden = !shouldShow;
 }
 
-export function notifySettingsOverlayVisibilityChanged(): void {
+export function notifySettingsVisibilityChanged(): void {
   syncLocalSttDownloadOverlayVisibility();
 }
 

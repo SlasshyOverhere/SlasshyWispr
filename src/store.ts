@@ -18,7 +18,7 @@ import type {
 
 function loadActivePage(): MainPage {
   const raw = localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY);
-  if (raw === 'home' || raw === 'history' || raw === 'analytics') {
+  if (raw === 'home' || raw === 'history' || raw === 'analytics' || raw === 'settings') {
     return raw;
   }
   return 'home';

@@ -32,6 +32,15 @@ describe("settings layout", () => {
     expect(html).not.toMatch(/class="settings-category"[^>]* hidden/);
   });
 
+  it("renders as a direct page rather than a modal dialog", () => {
+    const html = renderToStaticMarkup(createElement(SettingsModal));
+
+    expect(html).toContain('class="settings-page"');
+    expect(html).not.toContain("settings-overlay");
+    expect(html).not.toContain('role="dialog"');
+    expect(html).not.toContain('id="closeSettingsBtn"');
+  });
+
   it("keeps the capture-mode DOM contract used by settings hydration", () => {
     const html = renderToStaticMarkup(createElement(SettingsModal));
 

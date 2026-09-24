@@ -1,7 +1,7 @@
 /**
  * Local-shortcuts move-boundary test — Phase 5 shell decomposition.
  *
- * Pins handleLocalKeydown branches (capture-active guard, settings-overlay
+ * Pins handleLocalKeydown branches (capture-active guard, settings-page
  * Escape, typing-element guard, Alt+digit page nav, Alt+letter side
  * buttons, PTT keydown dispatch, repeat guards) and handleLocalKeyup
  * (no-hold early return, release dispatch) plus handleLocalBlur
@@ -81,7 +81,7 @@ function wireHarness(options: {
   stage?: string;
   hold?: boolean;
   holdCount?: number;
-  overlayOpen?: boolean;
+  settingsOpen?: boolean;
   bypass?: boolean;
   ignoreRecent?: boolean;
 } = {}) {
@@ -107,7 +107,7 @@ function wireHarness(options: {
       pushToTalkHotkey: "Ctrl+Space",
     }),
     getStage: () => options.stage ?? "idle",
-    isSettingsOverlayOpen: () => options.overlayOpen ?? false,
+    isSettingsOpen: () => options.settingsOpen ?? false,
     closeSettings: () => {
       closed += 1;
     },
@@ -164,8 +164,8 @@ describe("handleLocalKeydown", () => {
     expect(harness.buttons.openSettingsBtn.clicks).toBe(1);
   });
 
-  it("closes the settings overlay on Escape", () => {
-    const harness = wireHarness({ overlayOpen: true });
+  it("leaves the settings page on Escape", () => {
+    const harness = wireHarness({ settingsOpen: true });
     handleLocalKeydown(fakeKeyEvent({ key: "Escape", target: null }));
     expect(harness.closed()).toBe(1);
   });

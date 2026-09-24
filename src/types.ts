@@ -52,7 +52,7 @@ export type Stage = "idle" | "recording" | "processing" | "speaking" | "error";
 export type CaptureMode = "single-tap" | "push-to-talk";
 export type ThemeMode = "system" | "dark" | "light" | "mono";
 export type StyleProfile = "adaptive" | "professional" | "casual" | "concise" | "developer";
-export type MainPage = "home" | "history" | "analytics";
+export type MainPage = "home" | "history" | "analytics" | "settings";
 export type SettingsPane =
   | "general"
   | "models"

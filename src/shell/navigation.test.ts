@@ -4,8 +4,9 @@
  * Pins asMainPage/asSettingsPane parsing (including legacy online /
  * offline / hybrid aliases), setActivePage persistence + aria + store
  * event, setActiveSettingsPane title/panel switching + persistence, the
- * TTS gate visibility matrix, and open/close/isSettingsOpen overlay
- * transitions. Runs against stub elements with the real localStorage
+ * TTS gate visibility matrix, and opening Settings as a main tab while
+ * preserving the previous page for Escape. Runs against stub elements
+ * with the real localStorage
  * via test-setup preload.
  */
 import { describe, it, expect, beforeEach } from "bun:test";
@@ -18,7 +19,6 @@ import {
   getActiveSettingsPane,
   initNavigation,
   isSettingsOpen,
-  openSettings,
   closeSettings,
   setActivePage,
   setActiveSettingsPane,
@@ -69,16 +69,22 @@ function fakeSection(owner: string, section: string): HTMLDivElement {
   return div;
 }
 
-function fakeSectionButton(owner: string, section: string): HTMLButtonElement {
-  const button = fakeButton();
-  button.dataset.settingsSectionOwner = owner;
-  button.dataset.settingsSectionNav = section;
-  return button;
+function fakeSectionGroup(owner: string, sections: string[]) {
+  const group = fakeDiv();
+  group.dataset.settingsSectionOwner = owner;
+  const buttons = sections.map((section) => {
+    const button = fakeButton();
+    button.dataset.settingsSectionNav = section;
+    Object.defineProperty(button, "parentElement", { value: group });
+    return button;
+  });
+  return { group, buttons };
 }
 
 function fakeDiv(hidden = false): HTMLDivElement {
   const classes = new Set<string>();
   return {
+    dataset: {},
     hidden,
     classList: {
       toggle(name: string, force?: boolean) {
@@ -99,17 +105,20 @@ function fakeDiv(hidden = false): HTMLDivElement {
 
 function wireHarness(options: { piperReady?: boolean; ttsRunning?: boolean } = {}) {
   const logs: string[] = [];
-  let overlays = 0;
-  const settingsOverlay = fakeDiv(true);
+  let visibilityChanges = 0;
   (globalThis as unknown as { HTMLElement?: unknown }).HTMLElement ??= class {};
+  const settingsPageButton = fakeButton();
+  settingsPageButton.dataset.pageNav = "settings";
+  const generalNav = fakeSectionGroup("general", ["audio"]);
+  const modelsNav = fakeSectionGroup("models", ["runtime", "voice"]);
+  const updatesNav = fakeSectionGroup("update-security", ["updates"]);
   const elements = {
-    pageNavButtons: [fakeButton()],
+    pageNavButtons: [fakeButton(), settingsPageButton],
     settingsNavButtons: [fakeButton()],
     settingsSectionButtons: [
-      fakeSectionButton("general", "audio"),
-      fakeSectionButton("models", "runtime"),
-      fakeSectionButton("models", "voice"),
-      fakeSectionButton("update-security", "updates"),
+      ...generalNav.buttons,
+      ...modelsNav.buttons,
+      ...updatesNav.buttons,
     ],
     settingsPanels: [fakePanel("general"), fakePanel("models")],
     settingsSections: [
@@ -121,9 +130,6 @@ function wireHarness(options: { piperReady?: boolean; ttsRunning?: boolean } = {
     settingsPaneTitle: { textContent: "" } as unknown as HTMLElement,
     settingsSectionDescription: { textContent: "" } as unknown as HTMLElement,
     settingsMain: fakeDiv(),
-    settingsOverlay,
-    openSettingsBtn: fakeButton(),
-    closeSettingsBtn: fakeButton(),
     ttsBootstrapCard: fakeDiv(),
     ttsProfilesArea: fakeDiv(),
     ttsSetupStatus: { textContent: "" } as unknown as HTMLParagraphElement,
@@ -138,13 +144,13 @@ function wireHarness(options: { piperReady?: boolean; ttsRunning?: boolean } = {
       },
       isPiperRuntimeReady: () => options.piperReady ?? true,
       isTtsSetupRunning: () => options.ttsRunning ?? false,
-      notifyOverlayVisibilityChanged: () => {
-        overlays += 1;
+      notifySettingsVisibilityChanged: () => {
+        visibilityChanges += 1;
       },
     },
     { page: "home", pane: "general" },
   );
-  return { elements, logs, overlays: () => overlays, settingsOverlay };
+  return { elements, logs, visibilityChanges: () => visibilityChanges };
 }
 
 beforeEach(() => {
@@ -155,6 +161,7 @@ beforeEach(() => {
 describe("parsers", () => {
   it("accepts known pages and panes plus legacy aliases", () => {
     expect(asMainPage("analytics")).toBe("analytics");
+    expect(asMainPage("settings")).toBe("settings");
     expect(asMainPage("dictionary")).toBeNull();
     expect(asMainPage("nope")).toBeNull();
     expect(asSettingsPane("pipeline")).toBe("pipeline");
@@ -201,6 +208,15 @@ describe("setActiveSettingsPane", () => {
     setActiveSettingsPane("models", "test");
 
     expect(harness.elements.settingsSections.every((section) => !section.hidden)).toBe(true);
+  });
+
+  it("shows quick jumps for the active pane using their group owner", () => {
+    const harness = wireHarness();
+
+    setActiveSettingsPane("general", "test");
+
+    expect(harness.elements.settingsSectionButtons[0].hidden).toBe(false);
+    expect(harness.elements.settingsSectionButtons[1].hidden).toBe(true);
   });
 
   it("remembers the last explicit section within each top-level pane", () => {
@@ -250,15 +266,21 @@ describe("TTS gate", () => {
   });
 });
 
-describe("settings overlay", () => {
-  it("opens, reports open, and closes", () => {
+describe("settings page", () => {
+  it("opens as a main tab and returns to the previous page", () => {
     const harness = wireHarness();
+    setActivePage("history");
+
     expect(isSettingsOpen()).toBe(false);
-    openSettings("test");
+    harness.elements.pageNavButtons[1].click();
+    expect(getActivePage()).toBe("settings");
     expect(isSettingsOpen()).toBe(true);
-    expect(harness.overlays()).toBe(1);
-    expect(harness.settingsOverlay.hidden).toBe(false);
+    expect(localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY)).toBe("settings");
+    expect(harness.visibilityChanges()).toBe(1);
+
     closeSettings();
-    expect(harness.overlays()).toBe(2);
+    expect(getActivePage()).toBe("history");
+    expect(isSettingsOpen()).toBe(false);
+    expect(harness.visibilityChanges()).toBe(2);
   });
 });

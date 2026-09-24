@@ -56,7 +56,7 @@ export interface LocalShortcutDeps {
     pushToTalkHotkey: string;
   };
   getStage: () => string;
-  isSettingsOverlayOpen: () => boolean;
+  isSettingsOpen: () => boolean;
   closeSettings: () => void;
   setActivePage: (page: MainPage) => void;
   handleLocalSttAdvisorEscape: () => boolean;
@@ -104,7 +104,7 @@ export function handleLocalKeydown(event: KeyboardEvent): void {
     return;
   }
 
-  if (event.key === "Escape" && shortcutDeps.isSettingsOverlayOpen()) {
+  if (event.key === "Escape" && shortcutDeps.isSettingsOpen()) {
     shortcutDeps.closeSettings();
     return;
   }
