@@ -5,6 +5,7 @@ import {
   uiStore,
 } from "./store";
 import {
+  ACTIVE_PAGE_STORAGE_KEY,
   HOME_HISTORY_STORAGE_KEY,
   SETTINGS_STORAGE_KEY,
   USAGE_STORAGE_KEY,
@@ -176,6 +177,7 @@ describe("removeHistoryEntry", () => {
 
 describe("uiStore integration", () => {
   beforeEach(() => {
+    localStorage.removeItem(ACTIVE_PAGE_STORAGE_KEY);
     localStorage.removeItem(HOME_HISTORY_STORAGE_KEY);
     localStorage.removeItem(SETTINGS_STORAGE_KEY);
     localStorage.removeItem(USAGE_STORAGE_KEY);
@@ -187,6 +189,14 @@ describe("uiStore integration", () => {
     expect(state.history).toEqual([]);
     expect(state.usage.sessions).toBe(0);
     expect(state.usage.words).toBe(0);
+  });
+
+  it("restores Settings as the active main tab", () => {
+    localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, "settings");
+
+    uiStore.reNotify();
+
+    expect(uiStore.getState().activePage).toBe("settings");
   });
 
   it("loads history from localStorage", () => {

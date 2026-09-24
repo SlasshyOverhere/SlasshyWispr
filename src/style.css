@@ -321,12 +321,15 @@ p { line-height: 1.55; }
   width: 20px;
   height: 20px;
   border-radius: 6px;
-  display: grid;
-  place-items: center;
+  overflow: hidden;
   flex-shrink: 0;
-  color: var(--ink-inverse);
-  background: var(--accent-live);
   position: relative;
+}
+.brand-glyph img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 .app-frame.is-recording .brand-glyph::after {
   content: "";
@@ -359,14 +362,16 @@ p { line-height: 1.55; }
   align-items: center;
   gap: 2px;
 }
-/* Floating tab group — the active page is a filled pill, not a rail row. */
+/* Floating tab group — the active page is a filled pill, not a rail row, and
+   the buttons sit straight on the strip with no container around them.
+   Absolutely centered in the strip so it sits in the top middle no matter
+   how wide the brand and action clusters are. */
 .nav-main {
   flex: 0 0 auto;
-  padding: 3px;
-  border: 1px solid var(--border-line);
-  border-radius: 999px;
-  background: var(--bg-recess);
-  box-shadow: 0 12px 26px -18px rgb(0 0 0 / 0.95);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }
 .nav-secondary { margin-left: auto; flex: 0 0 auto; }
 
@@ -744,18 +749,23 @@ input[type="checkbox"]:checked::after,
 
 /* The stream is the primary surface, so it leads in column 1; the numbers
    and weekly pace sit in a fixed instrument panel to its right. Placement
-   is explicit because the panel is declared first in the DOM. */
+   is explicit because the panel is declared first in the DOM. The grid fills
+   the page height so the transcript column can scroll on its own while the
+   panel stays pinned. */
 .home-main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 296px;
   align-items: start;
   gap: 12px;
+  flex: 1;
   min-height: 0;
 }
 .home-stream {
   grid-column: 1;
   grid-row: 1;
+  align-self: stretch;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -763,6 +773,10 @@ input[type="checkbox"]:checked::after,
 .home-side {
   grid-column: 2;
   grid-row: 1;
+  align-self: start;
+  max-height: 100%;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -896,7 +910,7 @@ input[type="checkbox"]:checked::after,
 .home-list-head-r { display: flex; align-items: center; gap: 6px; }
 .home-list-head-icon { display: grid; place-items: center; color: var(--ink-faint); }
 
-.home-log { flex: 1; min-height: 0; }
+.home-log { flex: 1; min-height: 0; overflow-y: auto; }
 .conversation-log { display: flex; flex-direction: column; gap: 2px; }
 
 .home-list { list-style: none; display: flex; flex-direction: column; gap: 2px; }
@@ -1000,6 +1014,10 @@ input[type="checkbox"]:checked::after,
 .home-empty-sub { font-size: 11.5px; color: var(--ink-faint); max-width: 340px; line-height: 1.55; }
 .empty-hint { font-size: 12px; }
 .home-page { gap: 12px; }
+/* Home never scrolls as a page: the transcript log owns the one scrollbar
+   and the instrument panel stays pinned beside it. */
+.flow-page[data-page="home"] { overflow: hidden; }
+.flow-page-inner.home-page { height: 100%; min-height: 0; overflow: hidden; }
 .home-pace { gap: 9px; }
 .hist-count {
   padding: 1px 6px;

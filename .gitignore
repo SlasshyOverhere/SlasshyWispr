@@ -57,6 +57,13 @@ Desktop.ini
 .impeccable/
 docs/superpowers/
 jules/
+.jules/
+.guimux-pastes/
+
+# Temporary local artifacts
+Online
+sidebar.patch
+sidebar-only.patch
 
 # Staged sherpa-onnx runtime DLLs (script-generated, bundled as resources).
 # The directory itself is tracked via .gitkeep: `bundle.resources` names it, and

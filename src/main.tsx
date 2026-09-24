@@ -280,7 +280,7 @@ import {
   markCatalogSelectionCleared,
   isLocalSttBusy as isLocalSttBusyService,
   isLocalSttHardwareAdvisorOpen,
-  notifySettingsOverlayVisibilityChanged,
+  notifySettingsVisibilityChanged,
   pollLocalSttDownloadStatusOnce as pollLocalSttDownloadStatusOnceService,
   refreshLocalSttRuntimeState as refreshLocalSttRuntimeStateService,
   refreshSelectedLocalSttModelAvailability as refreshSelectedLocalSttModelAvailabilityService,
@@ -461,7 +461,6 @@ function requiredElement<T extends Element>(selector: string): T {
 }
 
 
-const settingsOverlay = requiredElement<HTMLDivElement>("#settingsOverlay");
 const openSettingsBtn = requiredElement<HTMLButtonElement>("#openSettingsBtn");
 const sidebarToggleLocalSttBtn = requiredElement<HTMLButtonElement>("#sidebarToggleLocalSttBtn");
 const sidebarToggleLocalSttGlyph = requiredElement<HTMLSpanElement>("#sidebarToggleLocalSttGlyph");
@@ -477,9 +476,10 @@ const sttHardwareAdvisorContinueBtn = requiredElement<HTMLButtonElement>(
   "#sttHardwareAdvisorContinueBtn",
 );
 const sttHardwareAdvisorCancelBtn = requiredElement<HTMLButtonElement>("#sttHardwareAdvisorCancelBtn");
-const closeSettingsBtn = requiredElement<HTMLButtonElement>("#closeSettingsBtn");
 const settingsPaneTitle = requiredElement<HTMLElement>("#settingsPaneTitle");
-const settingsMain = requiredElement<HTMLElement>(".settings-modal");
+const settingsSectionDescription = requiredElement<HTMLElement>("#settingsSectionDescription");
+const settingsMain = requiredElement<HTMLElement>(".settings-page");
+const settingsScrollContainer = requiredElement<HTMLElement>(".settings-panes");
 const ttsBootstrapCard = requiredElement<HTMLDivElement>("#ttsBootstrapCard");
 const ttsProfilesArea = requiredElement<HTMLDivElement>("#ttsProfilesArea");
 const ttsSetupStatus = requiredElement<HTMLParagraphElement>("#ttsSetupStatus");
@@ -494,7 +494,11 @@ const pageNavButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("
 const settingsNavButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>("[data-settings-pane-nav]"),
 );
+const settingsSectionButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>("[data-settings-section-nav]"),
+);
 const settingsPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-settings-pane]"));
+const settingsSections = Array.from(document.querySelectorAll<HTMLElement>("[data-settings-section]"));
 const statusPill = requiredElement<HTMLDivElement>("#statusPill");
 const statusDetail = requiredElement<HTMLParagraphElement>("#statusDetail");
 const noticeStack = requiredElement<HTMLElement>("#noticeStack");
@@ -1077,12 +1081,13 @@ initNavigation(
   {
     pageNavButtons,
     settingsNavButtons,
+    settingsSectionButtons,
     settingsPanels,
+    settingsSections,
     settingsPaneTitle,
+    settingsSectionDescription,
     settingsMain,
-    settingsOverlay,
-    openSettingsBtn,
-    closeSettingsBtn,
+    settingsScrollContainer,
     ttsBootstrapCard,
     ttsProfilesArea,
     ttsSetupStatus,
@@ -1093,7 +1098,7 @@ initNavigation(
     log: (message) => logClientEventService(message),
     isPiperRuntimeReady: () => piperRuntimeReady,
     isTtsSetupRunning: () => ttsSetupRunning,
-    notifyOverlayVisibilityChanged: () => notifySettingsOverlayVisibilityChanged(),
+    notifySettingsVisibilityChanged: () => notifySettingsVisibilityChanged(),
   },
   { page: loadPersistedMainPageService(), pane: loadPersistedSettingsPaneService() },
 );
@@ -1745,7 +1750,7 @@ initLocalShortcuts(
   {
     getSettings: () => settings,
     getStage: () => stage,
-    isSettingsOverlayOpen: () => !settingsOverlay.hidden,
+    isSettingsOpen: () => isSettingsOpenService(),
     closeSettings: () => closeSettingsService(),
     setActivePage: (page) => setActivePageService(page),
     handleLocalSttAdvisorEscape: () => handleLocalSttAdvisorEscape(),
@@ -1885,9 +1890,8 @@ window.addEventListener("slasshywispr:focus-analytics", () => {
   setActivePageService("analytics");
 });
 
-/* Home rail — Edit (Settings) card-link. The settings modal is
-   mounted at all times; we open it via the global openSettings
-   button that already exists in the sidebar. */
+/* Home rail - Edit (Settings) card-link. Settings is a main tab, so
+   clicking its existing top-navigation button is the single entry path. */
 window.addEventListener("slasshywispr:focus-settings", () => {
   const btn = document.getElementById("openSettingsBtn");
   if (btn instanceof HTMLButtonElement) {
@@ -2174,25 +2178,5 @@ function transitionRecordingState(event: MachineEvent): TransitionResult {
 
   return result;
 }
-
-// ============================================================================
-// OFFLINE MODE DIAGNOSTICS - User-Friendly Error Handling
-// ============================================================================
-
-/**
- * Checks if a model file exists on disk
- */
-/**
- * Checks if Python dependencies are installed
- */
-/**
- * Checks available system memory
- */
-/**
- * Shows a detailed diagnostic dialog when offline mode setup fails
- */
-/**
- * Returns diagnostic data for specific offline mode issues
- */
 
 void bootstrap();

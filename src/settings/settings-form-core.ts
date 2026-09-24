@@ -95,7 +95,10 @@ export function readSettingsFromForm(
     // Owned by the voice-clone panel, not this form; carried through unchanged.
     voiceCloneSpeakerId: deps.currentSettings().voiceCloneSpeakerId,
     voiceCloneSpeed: deps.currentSettings().voiceCloneSpeed,
-    microphoneDeviceId: refs.microphoneSelect.value,
+    microphoneDeviceId:
+      refs.microphoneSelect.options.length > 0
+        ? refs.microphoneSelect.value
+        : deps.currentSettings().microphoneDeviceId,
     pushToTalkHotkey: deps.isCapturingHotkey()
       ? deps.currentSettings().pushToTalkHotkey
       : refs.hotkeyInput.value.trim() || DEFAULT_HOTKEY,
@@ -190,9 +193,13 @@ export function applySettingsToForm(
   refs.localOllamaModelInput.value = next.localOllamaModel;
   refs.localSttModelInput.value = next.localSttModel;
   refs.rememberApiKeyInput.checked = next.rememberApiKey;
-  // Only set microphone selection when the dropdown already has options populated
-  // (refreshMicrophones runs later during bootstrap and handles the initial selection).
-  if (next.microphoneDeviceId && refs.microphoneSelect.options.length > 0) {
+  // Only set microphone selection when the matching option is already populated.
+  // An explicit device may be temporarily absent; do not turn it into auto-detect.
+  if (
+    Array.from(refs.microphoneSelect.options).some(
+      (option) => option.value === next.microphoneDeviceId,
+    )
+  ) {
     refs.microphoneSelect.value = next.microphoneDeviceId;
   }
   refs.piperPathInput.value = next.piperPath;

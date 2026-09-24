@@ -90,6 +90,14 @@ pub(crate) struct InstallAppUpdateRequest {
     /// would install an older build is rejected (downgrade guard).
     pub expected_version: Option<String>,
 }
+/// Backoff between rate-limited update checks. Sleeps off the async worker
+/// (F-014's rule) so a 15s wait does not park a runtime thread.
+async fn update_retry_delay(seconds: u64) {
+    tauri::async_runtime::spawn_blocking(move || thread::sleep(Duration::from_secs(seconds)))
+        .await
+        .ok();
+}
+
 #[tauri::command]
 pub(crate) async fn log_client_event(message: String) -> Result<(), String> {
     let line = single_line(message.trim());
@@ -136,7 +144,7 @@ pub(crate) async fn check_for_app_update(
                 "[updater] rate-limited (status={}) retry {attempt}/{max_retries}",
                 status,
             );
-            std::thread::sleep(Duration::from_secs(delay));
+            update_retry_delay(delay).await;
             continue;
         }
         break resp;

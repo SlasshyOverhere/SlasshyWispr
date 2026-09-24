@@ -1,24 +1,27 @@
 import { useEffect, useState } from 'react';
 import { SETTINGS_STORAGE_KEY } from '../constants';
+import { parseJson } from '../state/storage';
+import type { PersistedSettings } from '../types';
 
 const ONBOARDING_DISMISSED_KEY = 'slasshywispr-onboarding-dismissed-v1';
+
+/** Quarantines a corrupt settings blob instead of throwing mid-render. */
+function readStoredSettings(): Partial<PersistedSettings> {
+  return parseJson<Partial<PersistedSettings>>(SETTINGS_STORAGE_KEY, {});
+}
 
 type Step = 'welcome' | 'hotkey' | 'tts' | 'done';
 
 export function OnboardingWizard() {
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState<Step>('welcome');
+  const [assistantName, setAssistantName] = useState('Lily');
 
   useEffect(() => {
     if (localStorage.getItem(ONBOARDING_DISMISSED_KEY)) return;
-    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) setVisible(true);
-    else {
-      try {
-        const s = JSON.parse(raw);
-        if (!s.apiKey && !s.localSttModel) setVisible(true);
-      } catch { setVisible(true); }
-    }
+    const stored = readStoredSettings();
+    setAssistantName(stored.assistantName?.trim() || 'Lily');
+    if (!stored.apiKey && !stored.localSttModel) setVisible(true);
   }, []);
 
   const dismiss = () => {
@@ -78,7 +81,7 @@ export function OnboardingWizard() {
         {step === 'done' && (
           <>
             <h2 id="onboardingTitle">You're all set!</h2>
-            <p>Press your hotkey to start dictating, or say <strong>"Hey {localStorage.getItem(SETTINGS_STORAGE_KEY) ? JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}').assistantName || 'Lily' : 'Lily'}"</strong> for assistant mode.</p>
+            <p>Press your hotkey to start dictating, or say <strong>"Hey {assistantName}"</strong> for assistant mode.</p>
             <p className="onboarding-hint">Need help? Check Settings or hit <kbd>Alt+S</kbd>.</p>
             <div className="onboarding-actions">
               <button className="dark-action" type="button" onClick={dismiss}>Start dictating</button>

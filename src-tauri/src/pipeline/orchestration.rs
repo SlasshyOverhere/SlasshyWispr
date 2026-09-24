@@ -7,7 +7,7 @@
 //! (`run_assistant_pipeline`) handles runtime concerns and delegates
 //! decision logic here.
 
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::pipeline::response::{
     looks_like_direct_question, looks_like_question_echo, normalize_assistant_response_text,
@@ -60,33 +60,35 @@ impl PipelineState {
     }
 
     pub fn set_pending_rewrite(&self, text: &str) {
-        *self.pending_selection_rewrite.lock().unwrap() = Some(text.to_string());
+        *lock_recover(&self.pending_selection_rewrite) = Some(text.to_string());
     }
 
     pub fn clear_pending_rewrite(&self) -> bool {
-        self.pending_selection_rewrite
-            .lock()
-            .unwrap()
-            .take()
-            .is_some()
+        lock_recover(&self.pending_selection_rewrite).take().is_some()
     }
 
     pub fn peek_pending_rewrite(&self) -> Option<String> {
-        self.pending_selection_rewrite.lock().unwrap().clone()
+        lock_recover(&self.pending_selection_rewrite).clone()
     }
 
     pub fn take_pending_rewrite(&self) -> Option<String> {
-        self.pending_selection_rewrite.lock().unwrap().take()
+        lock_recover(&self.pending_selection_rewrite).take()
     }
 
     pub fn set_recent_context(&self, text: &str) {
-        *self.recent_selection_context.lock().unwrap() = Some(text.to_string());
+        *lock_recover(&self.recent_selection_context) = Some(text.to_string());
     }
 
     #[cfg(test)]
     pub fn peek_recent_context(&self) -> Option<String> {
-        self.recent_selection_context.lock().unwrap().clone()
+        lock_recover(&self.recent_selection_context).clone()
     }
+}
+
+/// These slots hold a `String` and nothing else, so a poisoned lock carries no
+/// invariant worth panicking the pipeline command over — take the data back.
+fn lock_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Resolved pipeline configuration for the orchestrator.
@@ -181,6 +183,40 @@ pub struct SelectionEditResult {
     pub skip_tts: bool,
 }
 
+// ===== Shared decision rules =====
+//
+// The command adapter needs these same answers before it may run its side
+// effects (clipboard capture, selection sync, the dictation short-circuit), so
+// they live here rather than being restated at the call site.
+
+/// A turn is dictation when wake detection is on and the transcript carried no
+/// wake phrase. The adapter short-circuits on this, and the orchestrator decides
+/// on this, so there is one definition of "not addressed".
+#[must_use]
+pub fn is_dictation_turn(wake_word_enabled: bool, wake_command: Option<&str>) -> bool {
+    wake_word_enabled && wake_command.is_none()
+}
+
+/// What a command asks of the selection context, and whether it asks anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelectionIntents {
+    pub edit: bool,
+    pub context_query: bool,
+    /// Either intent is present, so the turn is selection-aware.
+    pub active: bool,
+}
+
+#[must_use]
+pub fn selection_intents(command: &str) -> SelectionIntents {
+    let edit = seems_like_selection_edit_instruction(command);
+    let context_query = seems_like_selection_context_query(command);
+    SelectionIntents {
+        edit,
+        context_query,
+        active: edit || context_query,
+    }
+}
+
 // ===== Orchestrator =====
 
 /// Pure orchestrator: determines the pipeline path and what actions to take.
@@ -200,7 +236,7 @@ pub fn orchestrate_post_stt(input: OrchestratorInput) -> OrchestratorResult {
     };
 
     // Dictation mode: wake enabled but no wake phrase detected
-    if input.wake_word_enabled && wake_command.is_none() {
+    if is_dictation_turn(input.wake_word_enabled, wake_command.as_deref()) {
         let selection_context_cleared = input.state.clear_pending_rewrite();
         return OrchestratorResult {
             decision: OrchestratorDecision {
@@ -221,9 +257,10 @@ pub fn orchestrate_post_stt(input: OrchestratorInput) -> OrchestratorResult {
     let wake_only = input.wake_word_enabled && command_for_ai.is_empty();
 
     // --- Selection context evaluation ---
-    let selection_edit_intent = seems_like_selection_edit_instruction(&command_for_ai);
-    let selection_context_query_intent = seems_like_selection_context_query(&command_for_ai);
-    let selection_intent_active = selection_edit_intent || selection_context_query_intent;
+    let intents = selection_intents(&command_for_ai);
+    let selection_edit_intent = intents.edit;
+    let selection_context_query_intent = intents.context_query;
+    let selection_intent_active = intents.active;
     let pending_rewrite_present = input.state.peek_pending_rewrite().is_some();
     let selected_text = input.selected_text.map(|s| s.to_string());
 

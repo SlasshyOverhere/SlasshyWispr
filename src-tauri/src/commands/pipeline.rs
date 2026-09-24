@@ -25,8 +25,7 @@ use crate::pipeline::process::elapsed_ms;
 use crate::pipeline::refinement::{self, RefinementConfig};
 use crate::pipeline::routing::{infer_local_stt_provider_from_model, AiModeConfig, SttModeConfig};
 use crate::pipeline::selection::{
-    build_selected_context_answer_prompt, seems_like_selection_context_query,
-    seems_like_selection_edit_instruction, selection_action_label,
+    build_selected_context_answer_prompt, selection_action_label,
 };
 use crate::pipeline::stt::{
     is_known_stt_hallucination, looks_like_repetitive_transcript_noise,
@@ -380,7 +379,12 @@ pub(crate) async fn run_assistant_pipeline(
     } else {
         Some(transcript.clone())
     };
-    if wake_word_enabled && wake_command.is_none() {
+    // The orchestrator owns what a dictation is; this only asks it, because the
+    // short-circuit has to land before the selection capture below.
+    if crate::pipeline::orchestration::is_dictation_turn(
+        wake_word_enabled,
+        wake_command.as_deref(),
+    ) {
         let selection_context_cleared = state.clear_pending_selection_rewrite()?;
         info!(
             "[pipeline] dictation mode wake_phrase_missing name={} transcript_chars={} pending_context_cleared={}",
@@ -390,7 +394,9 @@ pub(crate) async fn run_assistant_pipeline(
         );
         let total_latency_ms = elapsed_ms(overall_start);
         let assistant_response = transcript.clone();
-        state.set_last_transcript(&transcript)?;
+        // Both slots: leaving the response slot alone would hand the tray's
+        // "copy last response" the answer from some earlier turn.
+        state.set_last_pipeline_output(&transcript, &assistant_response)?;
         return Ok(AssistantPipelineResponse {
             mode: "dictation".to_string(),
             selection_rewrite: false,
@@ -413,9 +419,10 @@ pub(crate) async fn run_assistant_pipeline(
     let command_for_ai = wake_command.trim().to_string();
     let wake_only = wake_word_enabled && command_for_ai.is_empty();
     let command_mode = request.command_mode.unwrap_or(false);
-    let selection_edit_intent = seems_like_selection_edit_instruction(&command_for_ai);
-    let selection_context_query_intent = seems_like_selection_context_query(&command_for_ai);
-    let selection_intent_active = selection_edit_intent || selection_context_query_intent;
+    let intents = crate::pipeline::orchestration::selection_intents(&command_for_ai);
+    let selection_edit_intent = intents.edit;
+    let selection_context_query_intent = intents.context_query;
+    let selection_intent_active = intents.active;
     let frontend_selected_text = request
         .selected_text
         .as_deref()

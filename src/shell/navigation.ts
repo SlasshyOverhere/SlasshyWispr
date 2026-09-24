@@ -3,26 +3,35 @@
  *
  * Owns asMainPage + asSettingsPane + setActivePage +
  * setActiveSettingsPane + setActiveTtsProfile + updateTtsSetupGate +
- * openSettings + closeSettings + isSettingsOpen, plus the nav button /
- * settings overlay / Escape-adjacent wiring owned by these controls.
- * Moved verbatim from main.tsx; active page/pane and timer state live
- * here, and shell seams (TTS readiness, overlay visibility, log) arrive
- * via initNavigation so this module never touches main.tsx globals.
+ * openSettings + closeSettings + isSettingsOpen, plus the main and
+ * settings-directory navigation wiring owned by these controls. Active
+ * page/pane and transition state live here, while shell seams (TTS
+ * readiness, settings visibility, log) arrive via initNavigation so this
+ * module never touches main.tsx globals.
  */
 import { ACTIVE_PAGE_STORAGE_KEY } from "../constants";
+import {
+  defaultSettingsSection,
+  findSettingsSection,
+  parseSettingsSectionMemory,
+  type SettingsSection,
+  type SettingsSectionMemory,
+} from "../settings/settings-directory";
 import type { MainPage, SettingsPane, TtsProfilePane } from "../types";
 
 export const ACTIVE_SETTINGS_PANE_STORAGE_KEY = "slasshywispr-active-settings-pane-v1";
+export const ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY = "slasshywispr-settings-sections-v1";
 
 export interface NavigationElements {
   pageNavButtons: HTMLButtonElement[];
   settingsNavButtons: HTMLButtonElement[];
+  settingsSectionButtons: HTMLButtonElement[];
   settingsPanels: HTMLElement[];
+  settingsSections: HTMLElement[];
   settingsPaneTitle: HTMLElement;
+  settingsSectionDescription: HTMLElement;
   settingsMain: HTMLElement;
-  settingsOverlay: HTMLDivElement;
-  openSettingsBtn: HTMLButtonElement;
-  closeSettingsBtn: HTMLButtonElement;
+  settingsScrollContainer: HTMLElement;
   ttsBootstrapCard: HTMLDivElement;
   ttsProfilesArea: HTMLDivElement;
   ttsSetupStatus: HTMLParagraphElement;
@@ -34,7 +43,7 @@ export interface NavigationDeps {
   log: (message: string) => void;
   isPiperRuntimeReady: () => boolean;
   isTtsSetupRunning: () => boolean;
-  notifyOverlayVisibilityChanged: () => void;
+  notifySettingsVisibilityChanged: () => void;
 }
 
 let navElements!: NavigationElements;
@@ -42,8 +51,9 @@ let navDeps!: NavigationDeps;
 
 let activePage: MainPage = "home";
 let activeSettingsPane: SettingsPane = "general";
-let settingsCloseTimer: number | null = null;
-let settingsPaneTransitionTimer: number | null = null;
+let activeSettingsSectionMemory: SettingsSectionMemory = {};
+let activeSettingsSection: SettingsSection | null = null;
+let settingsReturnPage: MainPage = "home";
 
 export function initNavigation(
   elements: NavigationElements,
@@ -54,12 +64,20 @@ export function initNavigation(
   navDeps = deps;
   activePage = initial.page;
   activeSettingsPane = initial.pane;
+  activeSettingsSection = null;
+  activeSettingsSectionMemory = parseSettingsSectionMemory(
+    localStorage.getItem(ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY),
+  );
 
   for (const navButton of elements.pageNavButtons) {
     navButton.addEventListener("click", () => {
       const page = asMainPage(navButton.dataset.pageNav);
       if (!page) return;
-      setActivePage(page);
+      if (page === "settings") {
+        openSettings("main-navigation");
+      } else {
+        setActivePage(page);
+      }
     });
   }
 
@@ -71,23 +89,24 @@ export function initNavigation(
     });
   }
 
-  elements.openSettingsBtn.addEventListener("click", () => {
-    openSettings("user-click-settings-button");
+  for (const navButton of elements.settingsSectionButtons) {
+    navButton.addEventListener("click", () => {
+      const pane = settingsSectionOwner(navButton);
+      const section = pane ? findSettingsSection(pane, navButton.dataset.settingsSectionNav) : null;
+      if (!pane || !section) return;
+      setActiveSettingsPane(pane, "settings-section-navigation", section.id as SettingsSection);
+    });
+  }
+
+  elements.settingsScrollContainer.addEventListener("scroll", syncActiveSettingsSection, {
+    passive: true,
   });
 
-  elements.closeSettingsBtn.addEventListener("click", () => {
-    closeSettings();
-  });
-
-  elements.settingsOverlay.addEventListener("click", (event) => {
-    if (event.target === elements.settingsOverlay) {
-      closeSettings();
-    }
-  });
+  setActiveSettingsPane(initial.pane, "initial-navigation");
 }
 
 export function asMainPage(value: string | undefined): MainPage | null {
-  if (value === "home" || value === "history" || value === "analytics") {
+  if (value === "home" || value === "history" || value === "analytics" || value === "settings") {
     return value;
   }
 
@@ -110,6 +129,70 @@ export function asSettingsPane(value: string | undefined): SettingsPane | null {
   return null;
 }
 
+function settingsSectionOwner(navButton: HTMLButtonElement): SettingsPane | null {
+  return asSettingsPane(navButton.parentElement?.dataset.settingsSectionOwner);
+}
+
+function scrollSettingsSectionIntoView(section: HTMLElement, container: HTMLElement): void {
+  const sectionTop = section.getBoundingClientRect().top;
+  const containerTop = container.getBoundingClientRect().top;
+  container.scrollTop = Math.max(0, container.scrollTop + sectionTop - containerTop - 8);
+}
+
+function updateActiveSettingsSectionUi(
+  pane: SettingsPane,
+  section: SettingsSection,
+): void {
+  const definition = findSettingsSection(pane, section);
+
+  navElements.settingsPaneTitle.textContent = definition?.title ?? section;
+  navElements.settingsSectionDescription.textContent = definition?.description ?? "";
+
+  for (const navButton of navElements.settingsSectionButtons) {
+    const owner = settingsSectionOwner(navButton);
+    const current = owner === pane && navButton.dataset.settingsSectionNav === section;
+    navButton.hidden = owner !== pane;
+    navButton.classList.toggle("is-active", current);
+    navButton.setAttribute("aria-current", current ? "page" : "false");
+    const group = navButton.parentElement;
+    if (group?.dataset.settingsSectionOwner) {
+      group.hidden = group.dataset.settingsSectionOwner !== pane;
+    }
+  }
+
+  for (const settingsSection of navElements.settingsSections) {
+    const current =
+      settingsSection.dataset.settingsSectionOwner === pane
+      && settingsSection.dataset.settingsSection === section;
+    settingsSection.classList.toggle("is-active", current);
+  }
+
+  activeSettingsSection = section;
+  activeSettingsSectionMemory = { ...activeSettingsSectionMemory, [pane]: section };
+  localStorage.setItem(ACTIVE_SETTINGS_SECTIONS_STORAGE_KEY, JSON.stringify(activeSettingsSectionMemory));
+}
+
+function syncActiveSettingsSection(): void {
+  const sections = navElements.settingsSections.filter(
+    (section) => section.dataset.settingsSectionOwner === activeSettingsPane,
+  );
+  if (sections.length === 0) return;
+
+  const activationLine = navElements.settingsScrollContainer.getBoundingClientRect().top + 32;
+  const nextSectionElement = sections.find(
+    (section) => section.getBoundingClientRect().bottom > activationLine,
+  ) ?? sections[sections.length - 1];
+  const nextSection = nextSectionElement.dataset.settingsSection;
+  if (!nextSection || nextSection === activeSettingsSection) return;
+
+  const definition = findSettingsSection(activeSettingsPane, nextSection);
+  if (!definition) return;
+  updateActiveSettingsSectionUi(
+    activeSettingsPane,
+    definition.id as SettingsSection,
+  );
+}
+
 export function getActivePage(): MainPage {
   return activePage;
 }
@@ -119,6 +202,13 @@ export function getActiveSettingsPane(): SettingsPane {
 }
 
 export function setActivePage(next: MainPage): void {
+  const wasSettings = activePage === "settings";
+  const willBeSettings = next === "settings";
+
+  if (willBeSettings && !wasSettings) {
+    settingsReturnPage = activePage;
+  }
+
   activePage = next;
   localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, next);
 
@@ -134,24 +224,25 @@ export function setActivePage(next: MainPage): void {
   // Do NOT call renderHomeHistory()/renderFullHistory() here — that causes
   // innerHTML writes on React-controlled DOM nodes, leading to blank screens.
   window.dispatchEvent(new CustomEvent("slasshywispr:store-updated"));
+
+  if (wasSettings !== willBeSettings) {
+    navDeps.notifySettingsVisibilityChanged();
+  }
 }
 
-export function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"): void {
-  navDeps.log(
-    `[ui.settings.pane] next=${next} reason=${reason}`,
-  );
-  const previousPane = activeSettingsPane;
+export function setActiveSettingsPane(
+  next: SettingsPane,
+  reason = "unspecified",
+  section?: SettingsSection,
+): void {
+  const requestedSection = section ?? activeSettingsSectionMemory[next] ?? defaultSettingsSection(next);
+  const definition = findSettingsSection(next, requestedSection);
+  const nextSection = (definition?.id ?? defaultSettingsSection(next)) as SettingsSection;
+
+  navDeps.log(`[ui.settings.pane] next=${next} section=${nextSection} reason=${reason}`);
+
   activeSettingsPane = next;
   localStorage.setItem(ACTIVE_SETTINGS_PANE_STORAGE_KEY, next);
-
-  const titleMap: Record<SettingsPane, string> = {
-    general: "General",
-    models: "Models",
-    "update-security": "Update and Security",
-    pipeline: "Pipeline",
-  };
-
-  navElements.settingsPaneTitle.textContent = titleMap[next];
 
   for (const navButton of navElements.settingsNavButtons) {
     const current = navButton.dataset.settingsPaneNav === next;
@@ -159,40 +250,25 @@ export function setActiveSettingsPane(next: SettingsPane, reason = "unspecified"
     navButton.setAttribute("aria-current", current ? "page" : "false");
   }
 
-  if (settingsPaneTransitionTimer !== null) {
-    window.clearTimeout(settingsPaneTransitionTimer);
-    settingsPaneTransitionTimer = null;
-  }
-
-  navElements.settingsMain.classList.remove("is-pane-switching", "is-switching-forward", "is-switching-backward");
-  for (const panel of navElements.settingsPanels) {
-    panel.classList.remove("is-transitioning-in", "is-transitioning-forward", "is-transitioning-backward");
-  }
-
-  const previousIndex = navElements.settingsPanels.findIndex((panel) => panel.dataset.settingsPane === previousPane);
-  const nextIndex = navElements.settingsPanels.findIndex((panel) => panel.dataset.settingsPane === next);
-  const shouldAnimate = previousPane !== next && previousIndex >= 0 && nextIndex >= 0;
-
   for (const panel of navElements.settingsPanels) {
     const current = panel.dataset.settingsPane === next;
     panel.classList.toggle("is-active", current);
     panel.hidden = !current;
-    if (current && shouldAnimate) {
-      const directionClass = nextIndex > previousIndex ? "is-transitioning-forward" : "is-transitioning-backward";
-      panel.classList.add("is-transitioning-in", directionClass);
-    }
   }
 
-  if (shouldAnimate) {
-    const switchDirectionClass = nextIndex > previousIndex ? "is-switching-forward" : "is-switching-backward";
-    navElements.settingsMain.classList.add("is-pane-switching", switchDirectionClass);
-    settingsPaneTransitionTimer = window.setTimeout(() => {
-      navElements.settingsMain.classList.remove("is-pane-switching", "is-switching-forward", "is-switching-backward");
-      for (const panel of navElements.settingsPanels) {
-        panel.classList.remove("is-transitioning-in", "is-transitioning-forward", "is-transitioning-backward");
-      }
-      settingsPaneTransitionTimer = null;
-    }, 180);
+  for (const settingsSection of navElements.settingsSections) {
+    settingsSection.hidden = false;
+  }
+
+  updateActiveSettingsSectionUi(next, nextSection);
+
+  const selectedSection = navElements.settingsSections.find(
+    (settingsSection) =>
+      settingsSection.dataset.settingsSectionOwner === next
+      && settingsSection.dataset.settingsSection === nextSection,
+  );
+  if (selectedSection) {
+    scrollSettingsSectionIntoView(selectedSection, navElements.settingsScrollContainer);
   }
 }
 
@@ -215,35 +291,22 @@ export function updateTtsSetupGate(): void {
 
 export function openSettings(reason = "unspecified"): void {
   navDeps.log(`[ui.settings.open] reason=${reason}`);
-  if (settingsCloseTimer !== null) {
-    window.clearTimeout(settingsCloseTimer);
-    settingsCloseTimer = null;
-  }
-  navElements.settingsOverlay.hidden = false;
-  navElements.settingsOverlay.classList.remove("is-closing");
-  void navElements.settingsOverlay.offsetWidth;
-  navElements.settingsOverlay.classList.add("is-open");
-  navDeps.notifyOverlayVisibilityChanged();
+  setActivePage("settings");
 }
 
 export function closeSettings(): void {
+  if (activePage !== "settings") {
+    return;
+  }
+
   const activeElement = document.activeElement;
-  if (activeElement instanceof HTMLElement && navElements.settingsOverlay.contains(activeElement)) {
+  if (activeElement instanceof HTMLElement && navElements.settingsMain.contains(activeElement)) {
     activeElement.blur();
   }
-  navElements.settingsOverlay.classList.remove("is-open");
-  navElements.settingsOverlay.classList.add("is-closing");
-  if (settingsCloseTimer !== null) {
-    window.clearTimeout(settingsCloseTimer);
-  }
-  settingsCloseTimer = window.setTimeout(() => {
-    navElements.settingsOverlay.hidden = true;
-    navElements.settingsOverlay.classList.remove("is-closing");
-    settingsCloseTimer = null;
-  }, 180);
-  navDeps.notifyOverlayVisibilityChanged();
+
+  setActivePage(settingsReturnPage === "settings" ? "home" : settingsReturnPage);
 }
 
 export function isSettingsOpen(): boolean {
-  return !navElements.settingsOverlay.hidden && navElements.settingsOverlay.classList.contains("is-open");
+  return activePage === "settings";
 }

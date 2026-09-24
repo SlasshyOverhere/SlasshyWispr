@@ -38,7 +38,7 @@ import type {
   ThemeMode,
   TtsEngine,
 } from "../types";
-import { parseJson } from "./storage";
+import { parseJson, parseJsonText } from "./storage";
 
 /**
  * Canonical settings store — Phase 4a (service behind existing IDs).
@@ -329,7 +329,7 @@ export function loadSettings(): PersistedSettings {
   }
 
   try {
-    const parsed = JSON.parse(raw) as Partial<PersistedSettings> & { localMode?: boolean };
+    const parsed = parseJsonText<Partial<PersistedSettings> & { localMode?: boolean }>(raw, {});
     const rememberApiKey = parsed.rememberApiKey === true;
     const dictationLanguage = normalizeDictationLanguageCode(
       String(parsed.dictationLanguage ?? defaults.dictationLanguage),

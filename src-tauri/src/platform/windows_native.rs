@@ -528,7 +528,12 @@ pub(crate) fn set_system_mute(mute: bool) {
         }
         info!("[client] system audio muted");
     } else {
-        let vol = SAVED_SYSTEM_AUDIO_VOLUME.lock().unwrap().take();
+        // The mute path tolerates a poisoned lock; this one must too, or a
+        // panic elsewhere would leave the system volume stuck at zero.
+        let vol = SAVED_SYSTEM_AUDIO_VOLUME
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
         if let Some(vol) = vol {
             unsafe {
                 waveOutSetVolume(std::ptr::null_mut(), vol);

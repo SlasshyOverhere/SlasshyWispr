@@ -18,7 +18,7 @@
  * test` and `tauri dev` all fail on any tree where nothing has been staged yet. The directory
  * is tracked with a `.gitkeep` for the same reason.
  */
-import { copyFileSync, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -74,6 +74,9 @@ if (required.length === 0) {
 // bundled as dead weight at best, and as a stale version of a live dependency at worst.
 rmSync(STAGING_DIR, { recursive: true, force: true });
 mkdirSync(STAGING_DIR, { recursive: true });
+// rmSync takes .gitkeep with it, and that file is what keeps the directory tracked: drop it and
+// the next clean checkout has no sherpa-runtime/, which Tauri's build script rejects.
+writeFileSync(join(STAGING_DIR, ".gitkeep"), "");
 
 let stagedBytes = 0;
 for (const dll of required) {

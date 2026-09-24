@@ -148,7 +148,7 @@ describe("requestLaunchAtLoginSync", () => {
 describe("reconcileLaunchAtLoginWithOs", () => {
   it("reapplies when the registry is stale", async () => {
     const harness = wireHarness({ tauri: true, launchAtLogin: true });
-    invokeImpl = async () => ({ enabled: false, path_matches: false, stored_value: null });
+    invokeImpl = async () => ({ enabled: false, pathMatches: false, storedValue: null });
     await shell.reconcileLaunchAtLoginWithOs();
     expect(harness.logs.some((line) => line.includes("stale"))).toBe(true);
     expect(invokeCalls.some((call) => JSON.stringify(call.args) === '{"enabled":true}')).toBe(true);
@@ -156,7 +156,7 @@ describe("reconcileLaunchAtLoginWithOs", () => {
 
   it("cleans up when the registry is enabled but unwanted", async () => {
     const harness = wireHarness({ tauri: true, launchAtLogin: false });
-    invokeImpl = async () => ({ enabled: true, path_matches: true, stored_value: "x" });
+    invokeImpl = async () => ({ enabled: true, pathMatches: true, storedValue: "x" });
     await shell.reconcileLaunchAtLoginWithOs();
     expect(harness.logs.some((line) => line.includes("cleaning up"))).toBe(true);
     expect(invokeCalls.some((call) => JSON.stringify(call.args) === '{"enabled":false}')).toBe(true);
@@ -166,8 +166,8 @@ describe("reconcileLaunchAtLoginWithOs", () => {
     wireHarness({ tauri: true, launchAtLogin: true });
     invokeImpl = async () => ({
       enabled: true,
-      path_matches: false,
-      stored_value: "C:\\old\\app.exe",
+      pathMatches: false,
+      storedValue: "C:\\old\\app.exe",
     });
     expect(await shell.reconcileLaunchAtLoginWithOs()).toEqual({
       action: "reapplied",
@@ -177,7 +177,7 @@ describe("reconcileLaunchAtLoginWithOs", () => {
 
   it("reports nothing when the registry already matches", async () => {
     wireHarness({ tauri: true, launchAtLogin: true });
-    invokeImpl = async () => ({ enabled: true, path_matches: true, stored_value: "ok" });
+    invokeImpl = async () => ({ enabled: true, pathMatches: true, storedValue: "ok" });
     expect(await shell.reconcileLaunchAtLoginWithOs()).toBeNull();
   });
 

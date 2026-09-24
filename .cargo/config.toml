@@ -1,0 +1,7 @@
+# tauri-build copies bundle.resources into the profile dir on every build-script run, so with the
+# dev app running it dies overwriting the sherpa DLLs that app has loaded — and a build script
+# that never succeeds never goes fresh, so `cargo check` and `cargo test` stay broken for as long
+# as dev mode is up. Those DLLs come from sherpa-onnx-sys anyway, and a TAURI_CONFIG from the
+# Tauri CLI takes precedence here, so only plain cargo sees this.
+[env]
+TAURI_CONFIG = { value = '{"bundle":{"resources":null}}', force = false }

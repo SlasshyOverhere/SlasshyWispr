@@ -1,6 +1,8 @@
-// NOTE: This module is currently test-only. The public functions below are not wired into
-// production code (lib.rs) but are exercised by the integration test suite.
-// Retain until the security helpers are integrated or the tests are migrated.
+// Input, path and artifact validation helpers. `validate_text_input`,
+// `validate_base64_input` and `verify_file_sha256` run in the command and model
+// download paths; `validate_path_within_directory`, `validate_executable_path`,
+// `create_secure_temp_file`, `cleanup_old_temp_files` and
+// `create_api_key_fingerprint` are reached only by the test suite today.
 
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};

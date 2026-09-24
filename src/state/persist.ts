@@ -31,7 +31,7 @@ import type {
   UsageStats,
 } from "../types";
 import { coerceInteger, coerceNumber } from "./settings-store";
-import { parseJson } from "./storage";
+import { parseJson, parseJsonText } from "./storage";
 
 export interface ShellPersistDeps {
   getUsageStats: () => UsageStats;
@@ -57,7 +57,7 @@ export function loadUsageStats(): UsageStats {
   }
 
   try {
-    const parsed = JSON.parse(raw) as Partial<UsageStats>;
+    const parsed = parseJsonText<Partial<UsageStats>>(raw, {});
     const now = Date.now();
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
     const lastReset = parsed.lastPeriodReset || 0;
@@ -211,7 +211,7 @@ export function loadDockLayout(): DockLayout | null {
   }
 
   try {
-    const parsed = JSON.parse(raw) as Partial<DockLayout>;
+    const parsed = parseJsonText<Partial<DockLayout>>(raw, {});
     if (!Number.isFinite(parsed.x) || !Number.isFinite(parsed.y)) {
       return null;
     }

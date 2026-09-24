@@ -24,6 +24,22 @@ function quarantineCorruptValue(key: string, raw: string): void {
   }
 }
 
+/**
+ * Parse an already-read payload. For the native settings document, which is not
+ * a localStorage key and so has nothing to quarantine.
+ */
+export function parseJsonText<T>(raw: string | null | undefined, fallback: T): T {
+  if (!raw) {
+    return fallback;
+  }
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export function parseJson<T>(key: string, fallback: T): T {
   const raw = localStorage.getItem(key);
   if (!raw) {

@@ -27,6 +27,9 @@ let microphonePermissionGranted = false;
 let micElements!: MicrophoneElements;
 let micDeps!: MicrophoneDeps;
 
+const AUTO_DETECT_LABEL = "Auto-detect";
+const UNAVAILABLE_MIC_LABEL = "Selected microphone unavailable";
+
 export function initMicrophones(elements: MicrophoneElements, deps: MicrophoneDeps): void {
   micElements = elements;
   micDeps = deps;
@@ -42,19 +45,49 @@ export function setMicrophonePermissionGranted(granted: boolean): void {
 
 export function updateMicrophoneSummary(): void {
   const selected = micElements.select.selectedOptions.item(0);
-  micElements.summary.textContent = selected?.textContent?.trim() || "Auto-detect";
+  micElements.summary.textContent = selected?.value
+    ? selected.textContent?.trim() || UNAVAILABLE_MIC_LABEL
+    : AUTO_DETECT_LABEL;
+}
+
+function renderMicrophoneOptions(microphones: MediaDeviceInfo[], currentId: string): boolean {
+  const hasCurrent = microphones.some((device) => device.deviceId === currentId);
+  const options = [
+    `<option value=""${currentId ? "" : " selected"}>${AUTO_DETECT_LABEL}</option>`,
+    ...microphones.map((device, index) => {
+      const label = device.label?.trim() || `Microphone ${index + 1}`;
+      const selected = device.deviceId === currentId ? " selected" : "";
+      return `<option value="${escapeHtml(device.deviceId)}"${selected}>${escapeHtml(label)}</option>`;
+    }),
+  ];
+
+  if (currentId && !hasCurrent) {
+    options.push(
+      `<option value="${escapeHtml(currentId)}" selected>${UNAVAILABLE_MIC_LABEL}</option>`,
+    );
+  }
+
+  micElements.select.innerHTML = options.join("");
+  return hasCurrent;
 }
 
 /// Label of the selected microphone, as the device list shows it. The native
 /// backend matches real device names, so it is handed this and not the
 /// webview's opaque device id, which no audio API can resolve.
 export function selectedMicrophoneLabel(): string {
-  return micElements?.select?.selectedOptions.item(0)?.textContent?.trim() ?? "";
+  const selected = micElements?.select?.selectedOptions.item(0);
+  const currentId = micDeps?.getMicrophoneDeviceId() ?? "";
+  if (currentId && selected?.value !== currentId) {
+    return UNAVAILABLE_MIC_LABEL;
+  }
+  return selected?.value ? selected.textContent?.trim() || UNAVAILABLE_MIC_LABEL : "";
 }
 
 export async function refreshMicrophones(requestPermission: boolean): Promise<void> {
+  const currentId = micDeps.getMicrophoneDeviceId();
+
   if (!navigator.mediaDevices?.enumerateDevices) {
-    micElements.select.innerHTML = "<option value=''>Microphone listing not supported</option>";
+    renderMicrophoneOptions([], currentId);
     updateMicrophoneSummary();
     return;
   }
@@ -70,36 +103,12 @@ export async function refreshMicrophones(requestPermission: boolean): Promise<vo
 
     const devices = await navigator.mediaDevices.enumerateDevices();
     const microphones = devices.filter((device) => device.kind === "audioinput");
+    const hasCurrent = renderMicrophoneOptions(microphones, currentId);
 
-    if (microphones.length === 0) {
-      micElements.select.innerHTML = "<option value=''>No microphones found</option>";
-      micDeps.setMicrophoneDeviceId("");
-      micDeps.persist();
-      updateMicrophoneSummary();
-      return;
-    }
-
-    const currentId = micDeps.getMicrophoneDeviceId();
-    const hasCurrent = microphones.some((device) => device.deviceId === currentId);
-    // When the saved device isn't in the current list, select the first device in
-    // the dropdown for display but keep the saved ID so it persists across sessions
-    // (the device may reconnect or be a transient enumeration gap).
-    const displayId = hasCurrent ? currentId : microphones[0]?.deviceId ?? "";
-
-    micElements.select.innerHTML = microphones
-      .map((device, index) => {
-        const label = device.label?.trim() || `Microphone ${index + 1}`;
-        const selected = device.deviceId === displayId ? " selected" : "";
-        return `<option value="${escapeHtml(device.deviceId)}"${selected}>${escapeHtml(label)}</option>`;
-      })
-      .join("");
-
-    if (hasCurrent) {
-      // Device found — update in-memory settings to stay in sync with dropdown.
+    if (hasCurrent && currentId) {
+      // Keep the saved ID in memory in sync with the populated dropdown.
       micDeps.setMicrophoneDeviceId(currentId);
     }
-    // Always persist: if device was found, we updated the id; if not, we preserve
-    // the saved id so the user's choice survives restarts.
     micDeps.persist();
     updateMicrophoneSummary();
 

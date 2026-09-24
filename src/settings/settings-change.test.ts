@@ -70,7 +70,7 @@ function fakeInput(value = ""): HTMLInputElement {
 }
 
 function fakeSelect(value = ""): HTMLSelectElement {
-  return { value, disabled: false } as unknown as HTMLSelectElement;
+  return { value, disabled: false, options: [] } as unknown as HTMLSelectElement;
 }
 
 function fakePanel(): HTMLElement {

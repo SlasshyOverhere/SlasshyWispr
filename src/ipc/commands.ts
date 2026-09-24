@@ -2,8 +2,10 @@
  * Canonical Tauri command-name constants.
  *
  * Single owner for IPC command strings — call sites use these instead of
- * raw string literals so renames drift in one place. Wire-compatible:
- * values must match the `#[tauri::command]` names in src-tauri/src/lib.rs.
+ * raw string literals so renames drift in one place. Wire-compatible: values
+ * must match the `#[tauri::command]` names, which live under
+ * src-tauri/src/commands/ and are checked against `generate_handler!` by
+ * command-contract.test.ts.
  */
 export const IPC_COMMANDS = {
   // Updater

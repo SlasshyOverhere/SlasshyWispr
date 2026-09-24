@@ -98,6 +98,13 @@ export interface InstallAppUpdateRequest {
   expectedVersion?: string;
 }
 
+// src-tauri/src/commands/input.rs
+export interface LaunchAtLoginStatus {
+  enabled: boolean;
+  pathMatches: boolean;
+  storedValue?: string;
+}
+
 // src-tauri/src/commands/local_stt.rs
 export interface LocalSttDeactivateResponse {
   model: string;

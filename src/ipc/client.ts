@@ -7,6 +7,7 @@ import type {
   AssistantPipelineResponse,
   ForegroundInputBlockStatus,
   InstallAppUpdateRequest,
+  LaunchAtLoginStatus,
   LocalSttDeactivateResponse,
   LocalSttDeleteResponse,
   LocalSttDownloadResponse,
@@ -194,12 +195,8 @@ export function configureLaunchAtLogin(enabled: boolean): Promise<void> {
   return invoke(IPC_COMMANDS.configureLaunchAtLogin, { enabled });
 }
 
-export function launchAtLoginStatus(): Promise<{
-  enabled: boolean;
-  path_matches: boolean;
-  stored_value: string | null;
-}> {
-  return invoke(IPC_COMMANDS.launchAtLoginStatus);
+export function launchAtLoginStatus(): Promise<LaunchAtLoginStatus> {
+  return invoke<LaunchAtLoginStatus>(IPC_COMMANDS.launchAtLoginStatus);
 }
 
 export function logClientEvent(message: string): Promise<void> {

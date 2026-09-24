@@ -4,10 +4,12 @@
 //! controlled inputs, verifying state transitions and pipeline path selection.
 
 use super::{
-    apply_selection_edit_result, normalize_and_validate_response, orchestrate_post_stt,
-    post_ai_processing, AiAction, OrchestratorInput, PipelineConfig, PipelineState, PostAiAction,
+    apply_selection_edit_result, is_dictation_turn, normalize_and_validate_response,
+    orchestrate_post_stt, post_ai_processing, selection_intents, AiAction, OrchestratorInput,
+    PipelineConfig, PipelineState, PostAiAction,
 };
 use crate::pipeline::selection::SelectionEditAction;
+use crate::pipeline::wake::extract_wake_command;
 
 // ===== Helpers =====
 
@@ -24,6 +26,71 @@ fn config_with_name(name: &str) -> PipelineConfig {
     PipelineConfig {
         assistant_name: name.to_string(),
         ..default_config()
+    }
+}
+
+// ===== Shared decision rules =====
+
+/// The command adapter gates its short-circuit on `is_dictation_turn` while the
+/// orchestrator decides with it, so the two must agree for every wake shape —
+/// including the wake-off case, where the transcript is the command.
+#[test]
+fn the_shared_dictation_gate_matches_the_orchestrator() {
+    let assistant_name = config_with_name("Lily").assistant_name;
+    let transcripts = [
+        "plain dictation text",
+        "Hey Lily, rewrite this",
+        "Hey Lily,",
+        "hey lily",
+    ];
+
+    for wake_word_enabled in [true, false] {
+        for transcript in transcripts {
+            let command = if wake_word_enabled {
+                extract_wake_command(transcript, &assistant_name)
+            } else {
+                Some(transcript.to_string())
+            };
+
+            let state = PipelineState::new();
+            let result = orchestrate_post_stt(OrchestratorInput {
+                transcript,
+                wake_word_enabled,
+                command_mode: false,
+                selected_text: None,
+                config: default_config(),
+                state: &state,
+            });
+
+            assert_eq!(
+                result.decision.mode == "dictation",
+                is_dictation_turn(wake_word_enabled, command.as_deref()),
+                "transcript={transcript:?} wake={wake_word_enabled}"
+            );
+        }
+    }
+}
+
+#[test]
+fn selection_intents_agree_with_the_detectors_they_wrap() {
+    for command in [
+        "rewrite this more formally",
+        "what did I select",
+        "what time is it",
+        "",
+    ] {
+        let intents = selection_intents(command);
+        assert_eq!(
+            intents.edit,
+            crate::pipeline::selection::seems_like_selection_edit_instruction(command),
+            "edit flag for {command:?}"
+        );
+        assert_eq!(
+            intents.context_query,
+            crate::pipeline::selection::seems_like_selection_context_query(command),
+            "context-query flag for {command:?}"
+        );
+        assert_eq!(intents.active, intents.edit || intents.context_query);
     }
 }
 

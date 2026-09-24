@@ -33,6 +33,7 @@ const WIRE_TYPES = [
   "CapturedAudio",
   "ForegroundInputBlockStatus",
   "InstallAppUpdateRequest",
+  "LaunchAtLoginStatus",
   "LocalSttDeactivateResponse",
   "LocalSttDeleteResponse",
   "LocalSttDownloadResponse",

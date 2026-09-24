@@ -6,7 +6,7 @@
  * being silently dropped.
  */
 import { describe, it, expect, beforeEach, afterAll } from "bun:test";
-import { parseJson } from "./storage";
+import { parseJson, parseJsonText } from "./storage";
 
 const KEY = "slasshywispr-test-key";
 
@@ -64,5 +64,24 @@ describe("parseJson", () => {
     const quarantined = [...store.keys()].filter((key) => key.startsWith(`${KEY}.corrupt-`));
     expect(quarantined.length).toBe(1);
     expect(store.get(quarantined[0])).toBe("{not json");
+  });
+});
+
+describe("parseJsonText", () => {
+  it("returns parsed JSON for a valid payload", () => {
+    expect(parseJsonText<{ a: number }>('{"a":1}', { a: 0 })).toEqual({ a: 1 });
+  });
+
+  it("returns the fallback for an absent or unparseable payload", () => {
+    expect(parseJsonText<number[]>(null, [])).toEqual([]);
+    expect(parseJsonText<number[]>("", [])).toEqual([]);
+    expect(parseJsonText<number[]>("{not json", [])).toEqual([]);
+  });
+
+  it("leaves storage alone — the caller owns the key", () => {
+    store.set(KEY, "{not json");
+    expect(parseJsonText<number[]>(store.get(KEY), [])).toEqual([]);
+    expect(store.has(KEY)).toBe(true);
+    expect([...store.keys()].some((key) => key.startsWith(`${KEY}.corrupt-`))).toBe(false);
   });
 });
