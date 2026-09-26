@@ -50,6 +50,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-shell = "2"
 tauri-plugin-single-instance = "2"
 
 # Whisper runs through whisper.cpp via transcribe-cpp, which vendors its own MAX_PATH

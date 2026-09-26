@@ -114,6 +114,7 @@ pub fn run() {
             {
                 app.handle()
                     .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
+                app.handle().plugin(tauri_plugin_shell::init())?;
             }
 
             app.handle().plugin(
