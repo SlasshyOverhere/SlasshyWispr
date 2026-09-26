@@ -274,13 +274,6 @@ pub(crate) async fn download_huggingface_stt_model(
                 ));
             }
 
-            // ponytail: ceiling is hash-table lookup only when Agent 1 lands MODEL_SHA256S in constants.rs; unverified files still download (TOFU) so offline setup never blocks.
-            if let Some(expected) = verify::expected_sha256_for_repo(repo_id.as_str()) {
-                if let Err(error) = verify::verify_file_sha256(&temp_path, expected) {
-                    let _ = fs::remove_file(&temp_path);
-                    return Err(error);
-                }
-            }
             if output_path.exists() {
                 fs::remove_file(&output_path).map_err(|error| {
                     format!(

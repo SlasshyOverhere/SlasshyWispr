@@ -412,6 +412,14 @@ pub(crate) async fn download_prepacked_parakeet_model(
         return Err(format!("Downloaded archive for '{repo_id}' was empty."));
     }
 
+    let expected_sha256 = super::verify::expected_archive_sha256(repo_id).ok_or_else(|| {
+        format!("No expected SHA256 configured for prepacked archive '{repo_id}'.")
+    })?;
+    if let Err(error) = super::verify::verify_file_sha256(&temp_archive_path, expected_sha256) {
+        let _ = fs::remove_file(&temp_archive_path);
+        return Err(error);
+    }
+
     if archive_path.exists() {
         fs::remove_file(&archive_path).map_err(|error| {
             format!(

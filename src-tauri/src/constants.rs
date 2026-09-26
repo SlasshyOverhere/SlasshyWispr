@@ -121,14 +121,23 @@ pub const INSECURE_HTTP_HOSTS_ENV: &str = "SLASSHYWISPR_ALLOW_INSECURE_HTTP_HOST
 pub const API_KEY_FINGERPRINT_HMAC_SECRET_ENV: &str = "SLASSHYWISPR_FINGERPRINT_HMAC_SECRET";
 pub const API_KEY_FINGERPRINT_HMAC_SECRET_DEFAULT: &str = "SlasshyWispr-local-fingerprint-v1";
 
-pub const LOCAL_STT_MODEL_EXPECTED_SHA256: &[(&str, &str)] = &[
-    ("nvidia/parakeet-tdt-0.6b-v3", ""),
-    ("nvidia/parakeet-tdt_ctc-110m", ""),
+/// SHA-256 of each mirrored Parakeet int8 archive, keyed by model id. The
+/// downloader rejects an archive whose hash is unset or mismatched.
+/// Source: the mirror release's own asset digests plus `checksums.json`.
+pub const LOCAL_STT_ARCHIVE_EXPECTED_SHA256: &[(&str, &str)] = &[
+    (
+        "nvidia/parakeet-tdt_ctc-110m",
+        "15d522402e9c25e645b681972bc8987b027564a55b69de4eb1c570f6cd9e9fda",
+    ),
+    (
+        "nvidia/parakeet-tdt-0.6b-v3",
+        "43ada556be83c74dda3ba669f0dccf02696460d5e576a6201667108d2d6f7407",
+    ),
 ];
 
-pub fn local_stt_model_expected_sha256(model: &str) -> Option<&'static str> {
+pub fn local_stt_archive_expected_sha256(model: &str) -> Option<&'static str> {
     let canonical = model.trim();
-    LOCAL_STT_MODEL_EXPECTED_SHA256
+    LOCAL_STT_ARCHIVE_EXPECTED_SHA256
         .iter()
         .find(|(known, _)| *known == canonical)
         .map(|(_, hash)| *hash)
