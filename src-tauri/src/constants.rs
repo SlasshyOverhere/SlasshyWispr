@@ -109,7 +109,7 @@ pub const OLLAMA_WINDOWS_INSTALLER_URL: &str = "https://ollama.com/download/Olla
 pub const OLLAMA_WINDOWS_INSTALLER_FILE: &str = "OllamaSetup.exe";
 
 pub const SILERO_VAD_MODEL_URL: &str =
-    "https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx";
+    "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx";
 pub const SILERO_VAD_MODEL_FILE: &str = "silero_vad.onnx";
 pub const SILERO_VAD_FRAME_SIZE: usize = 512;
 pub const SILERO_VAD_SAMPLE_RATE: u32 = 16_000;
@@ -135,15 +135,18 @@ pub fn local_stt_model_expected_sha256(model: &str) -> Option<&'static str> {
         .filter(|hash| !hash.is_empty())
 }
 
-pub const SILERO_VAD_MODEL_EXPECTED_SHA256: &str = "";
-pub const SILERO_VAD_PINNED_COMMIT: &str = "";
+/// Upstream `files/silero_vad.onnx` was removed; the model now lives under
+/// `src/silero_vad/data/`. Pinned to a commit so the asset is immutable.
+pub const SILERO_VAD_PINNED_COMMIT: &str = "5cd7945676eb32225748052e2e6a0580e4686a08";
+pub const SILERO_VAD_MODEL_EXPECTED_SHA256: &str =
+    "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3";
 
 pub fn silero_vad_model_url() -> String {
     if SILERO_VAD_PINNED_COMMIT.trim().is_empty() {
         SILERO_VAD_MODEL_URL.to_string()
     } else {
         format!(
-            "https://github.com/snakers4/silero-vad/raw/{}/files/silero_vad.onnx",
+            "https://github.com/snakers4/silero-vad/raw/{}/src/silero_vad/data/silero_vad.onnx",
             SILERO_VAD_PINNED_COMMIT.trim()
         )
     }

@@ -25,13 +25,14 @@ pub async fn ensure_vad_model(app_data_dir: &Path, client: &Client) -> Result<Pa
         return Ok(path);
     }
 
-    info!("[vad] downloading model from {}", SILERO_VAD_MODEL_URL);
+    let url = silero_vad_model_url();
+    info!("[vad] downloading model from {}", url);
     let dir = path.parent().ok_or("Invalid VAD model directory.")?;
     std::fs::create_dir_all(dir).map_err(|e| format!("Failed to create VAD dir: {e}"))?;
 
     let temp_path = dir.join(format!("{}.downloading", SILERO_VAD_MODEL_FILE));
     let response = client
-        .get(SILERO_VAD_MODEL_URL)
+        .get(&url)
         .send()
         .await
         .map_err(|e| format!("Failed to download VAD model: {e}"))?;
@@ -41,6 +42,12 @@ pub async fn ensure_vad_model(app_data_dir: &Path, client: &Client) -> Result<Pa
         .map_err(|e| format!("Failed to read VAD model: {e}"))?;
 
     std::fs::write(&temp_path, &bytes).map_err(|e| format!("Failed to write VAD model: {e}"))?;
+    if let Err(error) =
+        crate::security::verify_file_sha256(&temp_path, SILERO_VAD_MODEL_EXPECTED_SHA256)
+    {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(format!("VAD model failed integrity check: {error}"));
+    }
     std::fs::rename(&temp_path, &path).map_err(|e| format!("Failed to finalize VAD model: {e}"))?;
 
     info!("[vad] model downloaded to {}", path.display());
@@ -79,11 +86,9 @@ fn vad_frame_probability(
     concat_state.extend_from_slice(state_h);
     concat_state.extend_from_slice(state_c);
 
-    let input_arr = ndarray::Array::from_shape_vec(
-        ndarray::IxDyn(&[1usize, 1usize, frame_size]),
-        frame.to_vec(),
-    )
-    .map_err(|e| format!("VAD input shape: {e}"))?;
+    let input_arr =
+        ndarray::Array::from_shape_vec(ndarray::IxDyn(&[1usize, frame_size]), frame.to_vec())
+            .map_err(|e| format!("VAD input shape: {e}"))?;
 
     let state_arr =
         ndarray::Array::from_shape_vec(ndarray::IxDyn(&[2usize, 1usize, 128usize]), concat_state)
@@ -91,7 +96,7 @@ fn vad_frame_probability(
 
     let sr_arr = ndarray::Array::from_shape_vec(
         ndarray::IxDyn(&[1usize]),
-        vec![SILERO_VAD_SAMPLE_RATE as f32],
+        vec![SILERO_VAD_SAMPLE_RATE as i64],
     )
     .map_err(|e| format!("VAD sr shape: {e}"))?;
 

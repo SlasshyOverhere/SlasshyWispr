@@ -12,9 +12,13 @@ describe("manualChunks vendor split", () => {
     expect(source).toContain('"analytics"');
   });
 
-  it("pins the VAD commit SHA in the verify helper (no raw master)", async () => {
-    const source = await Bun.file("src-tauri/src/pipeline/stt_download/verify.rs").text();
-    expect(source).toContain("60b7ffa243625ebdc1070275a29f18c87843786a");
-    expect(source).not.toContain("raw/master");
+  it("pins the VAD model to a commit SHA with a verified hash", async () => {
+    const source = await Bun.file("src-tauri/src/constants.rs").text();
+    expect(source).toMatch(/SILERO_VAD_PINNED_COMMIT: &str = "[0-9a-f]{40}"/);
+    expect(source).toMatch(/SILERO_VAD_MODEL_EXPECTED_SHA256: &str =\s*"[0-9a-f]{64}"/);
+    // The pinned builder must target the current upstream path, not the removed files/ one.
+    const builder = source.match(/pub fn silero_vad_model_url\(\) -> String \{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(builder).toContain("/src/silero_vad/data/silero_vad.onnx");
+    expect(builder).not.toContain("/files/silero_vad.onnx");
   });
 });
