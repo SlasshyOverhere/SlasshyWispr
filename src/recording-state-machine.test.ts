@@ -99,11 +99,12 @@ describe("Recording state machine: recording → processing", () => {
     expect(result.detail).toContain("Canceled");
   });
 
-  it("recording-stopped without cancel triggers pipeline", () => {
+  it("recording-stopped without cancel moves to processing", () => {
     const state = idleState({ stage: "processing" });
     const result = processEvent(state, { type: "recording-stopped", cancelPipeline: false }, pttConfig());
     assertStage(result, "processing");
-    expect(hasAction(result, "run-pipeline")).toBe(true);
+    // finalizeRecording calls the pipeline itself; the machine has no blob.
+    expect(result.actions.every((action) => action.type !== "run-pipeline")).toBe(true);
   });
 });
 

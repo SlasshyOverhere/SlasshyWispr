@@ -2112,17 +2112,16 @@ function getRecordingMachineConfig(): MachineConfig {
 }
 
 function transitionRecordingState(event: MachineEvent): TransitionResult {
-  const previousStage = recordingMachineState.stage;
   const result = processEvent(recordingMachineState, event, getRecordingMachineConfig());
 
   // Sync the state machine's state with the result
   recordingMachineState.stage = result.stage;
 
-  // Execute the primary side effect: update stage via the existing setStage()
-  // which handles DOM updates, sound effects, media control, and mic pre-warming.
-  if (result.stage !== previousStage) {
-    setStageService(result.stage, result.detail);
-  }
+  // Primary side effect: update stage via the existing setStage(), which handles
+  // DOM updates, sound effects, media control, and mic pre-warming. Applied
+  // unconditionally: setStage is a no-op for sounds when the stage is unchanged,
+  // and skipping it dropped the detail on same-stage transitions.
+  setStageService(result.stage, result.detail);
 
   // Execute additional actions that setStage() does not handle
   for (const action of result.actions) {

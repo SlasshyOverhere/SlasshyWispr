@@ -16,10 +16,9 @@ import {
   HOME_HISTORY_STORAGE_KEY,
   USAGE_STORAGE_KEY,
 } from "../constants";
-
-// ponytail: key lives in main.tsx today; move to constants.ts when the
-// settings-pane owner consolidates (Phase 4 follow-up), then import it.
-const ACTIVE_SETTINGS_PANE_STORAGE_KEY = "slasshywispr-active-settings-pane-v1";
+// Owned by navigation.ts, which writes it. A second copy here meant a rename
+// would silently orphan the reader.
+import { ACTIVE_SETTINGS_PANE_STORAGE_KEY } from "../shell/navigation";
 import type { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type {
   AchievementState,
