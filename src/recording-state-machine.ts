@@ -130,6 +130,10 @@ export function processEvent(
       return handleInterruptPlayback(state);
     case "reset-to-idle":
       return handleResetToIdle(state);
+    default:
+      // The union is exhaustive to the compiler, not at runtime. Callers
+      // dereference the result, so returning undefined here would throw.
+      return { stage: state.stage, detail: `unhandled: ${event.type}`, actions: [] };
   }
 }
 
@@ -217,6 +221,8 @@ function handleRecordingFailed(
       { type: "set-stage", stage: "error", detail: reason },
       { type: "set-notice", message: reason, isError: true },
       { type: "clear-ptt-holds" },
+      // A failure can land mid-recording, and the ticker is a plain interval.
+      { type: "stop-recording-ticker" },
       { type: "stop-amplitude-monitoring" },
       { type: "release-recorder" },
       { type: "publish-dock-state" },

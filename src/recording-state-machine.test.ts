@@ -224,6 +224,28 @@ describe("Recording state machine: failures", () => {
     expect(hasAction(result, "clear-ptt-holds")).toBe(true);
   });
 
+  it("recording-failed stops the recording ticker", () => {
+    // A MediaRecorder error fires this mid-recording, and the ticker is a plain
+    // interval that nothing else clears on this path.
+    const result = processEvent(
+      idleState({ stage: "recording" }),
+      { type: "recording-failed", reason: "Media recorder error." },
+      pttConfig(),
+    );
+    expect(hasAction(result, "stop-recording-ticker")).toBe(true);
+  });
+
+  it("an unrecognised event returns a no-op rather than undefined", () => {
+    // Callers dereference the result, so falling off the switch would throw.
+    const result = processEvent(
+      idleState({ stage: "idle" }),
+      { type: "not-a-real-event" } as never,
+      pttConfig(),
+    );
+    expect(result.stage).toBe("idle");
+    expect(result.actions).toEqual([]);
+  });
+
   it("audio-empty transitions to error", () => {
     const result = processEvent(
       idleState({ stage: "processing" }),
