@@ -577,8 +577,18 @@ pub(crate) async fn run_assistant_pipeline(
     let mut skip_tts = orch_result.decision.skip_tts;
     let selection_context_used = orch_result.decision.selection_context_used;
 
-    // Sync pending rewrite state
-    sync_orchestrator_pending_rewrite_to_app_state(&state, &orch_state)?;
+    // Sync the pending rewrite, but not on the selection-edit path: that arm
+    // awaits the model and syncs again afterwards, and writing the shared slot
+    // here as well left a window where a concurrent turn could set a rewrite
+    // that this turn's later sync then destroyed (or the reverse, resurrecting
+    // a cancel). One write per turn, after the last await.
+    let defers_pending_sync = matches!(
+        orch_result.ai_action,
+        crate::pipeline::orchestration::AiAction::GenerateSelectionEditDecision { .. }
+    );
+    if !defers_pending_sync {
+        sync_orchestrator_pending_rewrite_to_app_state(&state, &orch_state)?;
+    }
 
     let mut ai_latency_ms = 0_u64;
     let mut assistant_response;
