@@ -118,6 +118,11 @@ let controllerState!: RecordingControllerState;
 // a finalize whose generation was superseded never reaches the pipeline.
 let activePipelineGen = 0;
 
+// Set synchronously by startRecording, before its first await. Two triggers
+// racing (global shortcut plus dock button) otherwise both clear every guard,
+// and the second setMediaStream orphans the first stream's mic tracks.
+let startInFlight = false;
+
 /// True while the in-flight capture is owned by the Rust backend.
 let activeCaptureNative = false;
 
@@ -164,6 +169,19 @@ export function initRecordingController(
 }
 
 export async function startRecording(): Promise<void> {
+  if (startInFlight || isCaptureActive()) {
+    controllerDeps?.log("[record.start] ignored: a capture is already live or starting");
+    return;
+  }
+  startInFlight = true;
+  try {
+    await runStartRecording();
+  } finally {
+    startInFlight = false;
+  }
+}
+
+async function runStartRecording(): Promise<void> {
   const startRequestedAt = controllerDeps.performanceNow();
   activePipelineGen += 1;
   // Capture the paste target now, while focus is still where the user was
@@ -293,6 +311,11 @@ export async function startRecording(): Promise<void> {
   try {
     const micOpenStartedAt = controllerDeps.performanceNow();
     const stream = await openMicrophoneStream(activeSettings.microphoneDeviceId);
+    // Never overwrite a live stream: releaseMicrophone only ever stops the one
+    // it is handed, so a survivor here would keep the mic light on forever.
+    if (controllerState.getMediaStream()) {
+      releaseMicrophone();
+    }
     controllerState.setMediaStream(stream);
     activeCaptureDevice = stream.getAudioTracks()[0]?.label ?? "";
     controllerDeps.setMicrophonePermissionGranted(true);
