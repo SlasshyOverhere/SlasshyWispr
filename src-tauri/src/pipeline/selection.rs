@@ -192,7 +192,9 @@ pub fn instruction_allows_short_rewrite(instruction: &str) -> bool {
         "tldr",
     ]
     .iter()
-    .any(|phrase| normalized.contains(phrase))
+    // Word-boundary, like every other detector here: "brief" must not match
+    // inside "briefing", which silently disabled this guard.
+    .any(|phrase| contains_phrase(&normalized, phrase))
 }
 
 /// Detect if a rewrite is suspicious (overshortening, placeholders, etc.).
@@ -492,7 +494,9 @@ pub fn looks_like_missing_selection_prompt(message: &str) -> bool {
         "send the text",
     ]
     .iter()
-    .any(|phrase| normalized.contains(phrase))
+    // Word-boundary, like every other detector here, so a phrase cannot match
+    // inside a longer word.
+    .any(|phrase| contains_phrase(&normalized, phrase))
 }
 
 // ===== Prompt building =====
@@ -784,6 +788,25 @@ mod tests {
             classify_confirmation("don't replace it"),
             ConfirmationResult::Negative
         );
+    }
+
+    #[test]
+    fn a_short_rewrite_detector_uses_word_boundaries() {
+        // "brief" inside "briefing" used to count, silently switching off the
+        // overshortening guard.
+        assert!(!instruction_allows_short_rewrite("add a briefing note"));
+        assert!(instruction_allows_short_rewrite("keep it brief"));
+    }
+
+    #[test]
+    fn the_missing_selection_prompt_detector_uses_word_boundaries() {
+        // Mid-word matches are no longer possible, e.g. "textual" for "text".
+        assert!(!looks_like_missing_selection_prompt(
+            "The textual context here is the billing address."
+        ));
+        assert!(looks_like_missing_selection_prompt(
+            "Could you paste the text you want me to edit?"
+        ));
     }
 
     #[test]

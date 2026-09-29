@@ -28,8 +28,8 @@ use crate::pipeline::selection::{
     build_selected_context_answer_prompt, selection_action_label,
 };
 use crate::pipeline::stt::{
-    is_known_stt_hallucination, looks_like_repetitive_transcript_noise,
-    normalize_stt_allowed_languages, normalize_stt_language_hint,
+    effective_language_hint, is_known_stt_hallucination,
+    looks_like_repetitive_transcript_noise,
 };
 use crate::pipeline::tts::{
     load_clone_assets, synthesize_cloned, synthesize_with_piper, voice_clone_models_dir,
@@ -317,12 +317,10 @@ pub(crate) async fn run_assistant_pipeline(
     let overall_start = Instant::now();
 
     let stt_start = Instant::now();
-    let effective_language_hint =
-        normalize_stt_language_hint(request.language.as_deref()).or_else(|| {
-            normalize_stt_allowed_languages(request.allowed_languages.as_deref())
-                .first()
-                .cloned()
-        });
+    let effective_language_hint = effective_language_hint(
+        request.language.as_deref(),
+        request.allowed_languages.as_deref(),
+    );
     let transcript_raw = match &pipeline_mode.stt {
         SttModeConfig::Online {
             api_key,
