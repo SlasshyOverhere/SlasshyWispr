@@ -199,6 +199,17 @@ pub(crate) async fn run_assistant_pipeline(
         pipeline_run_id: run_id.clone(),
         tts_status: tts_status.to_string(),
     };
+    // F-003: incognito was only ever enforced in the webview, so a turn the
+    // frontend mis-classified still left its text in the tray's copy-last
+    // slots. The flag is on the wire; honour it here.
+    let incognito = request.run.incognito;
+    let remember_output = |state: &AppState, transcript: &str, response: &str| -> Result<(), String> {
+        if incognito {
+            info!("[pipeline] incognito turn; not recording the output for the tray");
+            return Ok(());
+        }
+        state.set_last_pipeline_output(transcript, response)
+    };
     let pipeline_mode = resolve_pipeline_mode(&request)?;
 
     let requested_engine = request
@@ -396,7 +407,7 @@ pub(crate) async fn run_assistant_pipeline(
         let assistant_response = transcript.clone();
         // Both slots: leaving the response slot alone would hand the tray's
         // "copy last response" the answer from some earlier turn.
-        state.set_last_pipeline_output(&transcript, &assistant_response)?;
+        remember_output(&state, &transcript, &assistant_response)?;
         return Ok(AssistantPipelineResponse {
             mode: "dictation".to_string(),
             selection_rewrite: false,
@@ -733,7 +744,7 @@ pub(crate) async fn run_assistant_pipeline(
             "[pipeline] wake acknowledgement complete total_latency_ms={}",
             total_latency_ms
         );
-        state.set_last_pipeline_output(&transcript, &assistant_response)?;
+        remember_output(&state, &transcript, &assistant_response)?;
         return Ok(AssistantPipelineResponse {
             mode: "assistant".to_string(),
             selection_rewrite: false,
@@ -758,7 +769,7 @@ pub(crate) async fn run_assistant_pipeline(
             "[pipeline] complete (tts skipped) total_latency_ms={}",
             total_latency_ms
         );
-        state.set_last_pipeline_output(&transcript, &assistant_response)?;
+        remember_output(&state, &transcript, &assistant_response)?;
         return Ok(AssistantPipelineResponse {
             mode: "assistant".to_string(),
             selection_rewrite,
@@ -824,7 +835,7 @@ pub(crate) async fn run_assistant_pipeline(
 
     let total_latency_ms = elapsed_ms(overall_start);
     info!("[pipeline] complete total_latency_ms={}", total_latency_ms);
-    state.set_last_pipeline_output(&transcript, &assistant_response)?;
+    remember_output(&state, &transcript, &assistant_response)?;
 
     Ok(AssistantPipelineResponse {
         mode: "assistant".to_string(),

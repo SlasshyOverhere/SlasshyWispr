@@ -16,12 +16,22 @@ use crate::pipeline::stt_download::progress::{
 };
 use reqwest::Client;
 
+/// The two slots the tray's "copy last transcript" / "copy last assistant
+/// response" read. Written and read together, so they belong in one lock.
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LastPipelineOutput {
+    pub(crate) transcript: String,
+    pub(crate) assistant_response: String,
+}
+
 pub(crate) struct AppState {
     pub(crate) http: Client,
     pending_selection_rewrite: Mutex<Option<PendingSelectionRewrite>>,
     recent_selection_context: Mutex<Option<RecentSelectionContext>>,
-    last_transcript: Mutex<String>,
-    last_assistant_response: Mutex<String>,
+    /// One lock for both slots: they are written as a pair and read as a pair,
+    /// so two turns interleaving between two mutexes could leave the tray
+    /// reporting a transcript and a response from different runs.
+    last_pipeline_output: Mutex<LastPipelineOutput>,
     local_stt_download_status: Mutex<LocalSttDownloadStatusResponse>,
     local_stt_runtime_loaded: Mutex<bool>,
     /// File handed over by Explorer's "Transcribe with SlasshyWispr" verb.
@@ -49,8 +59,7 @@ impl AppState {
             http,
             pending_selection_rewrite: Mutex::new(None),
             recent_selection_context: Mutex::new(None),
-            last_transcript: Mutex::new(String::new()),
-            last_assistant_response: Mutex::new(String::new()),
+            last_pipeline_output: Mutex::new(LastPipelineOutput::default()),
             local_stt_download_status: Mutex::new(LocalSttDownloadStatusResponse::default()),
             local_stt_runtime_loaded: Mutex::new(false),
             pending_transcribe_file: Mutex::new(None),
@@ -205,46 +214,27 @@ impl AppState {
         transcript: impl Into<String>,
         assistant_response: impl Into<String>,
     ) -> Result<(), String> {
-        self.set_last_transcript(transcript)?;
-        self.set_last_assistant_response(assistant_response)?;
-        Ok(())
-    }
-
-    pub(crate) fn set_last_transcript(&self, transcript: impl Into<String>) -> Result<(), String> {
-        let transcript = transcript.into();
-        let mut transcript_slot = self
-            .last_transcript
+        let mut slot = self
+            .last_pipeline_output
             .lock()
-            .map_err(|_| "Last transcript state lock poisoned.".to_string())?;
-        *transcript_slot = transcript;
-        Ok(())
-    }
-
-    pub(crate) fn set_last_assistant_response(
-        &self,
-        assistant_response: impl Into<String>,
-    ) -> Result<(), String> {
-        let assistant_response = assistant_response.into();
-        let mut response_slot = self
-            .last_assistant_response
-            .lock()
-            .map_err(|_| "Last assistant response state lock poisoned.".to_string())?;
-        *response_slot = assistant_response;
+            .map_err(|_| "Last pipeline output lock poisoned.".to_string())?;
+        slot.transcript = transcript.into();
+        slot.assistant_response = assistant_response.into();
         Ok(())
     }
 
     pub(crate) fn last_transcript_snapshot(&self) -> Result<String, String> {
-        self.last_transcript
+        self.last_pipeline_output
             .lock()
-            .map(|value| value.clone())
-            .map_err(|_| "Last transcript state lock poisoned.".to_string())
+            .map(|slot| slot.transcript.clone())
+            .map_err(|_| "Last pipeline output lock poisoned.".to_string())
     }
 
     pub(crate) fn last_assistant_response_snapshot(&self) -> Result<String, String> {
-        self.last_assistant_response
+        self.last_pipeline_output
             .lock()
-            .map(|value| value.clone())
-            .map_err(|_| "Last assistant response state lock poisoned.".to_string())
+            .map(|slot| slot.assistant_response.clone())
+            .map_err(|_| "Last pipeline output lock poisoned.".to_string())
     }
 
     pub(crate) fn lock_local_stt_download_status(
@@ -298,6 +288,17 @@ mod tests {
 
     fn state() -> AppState {
         AppState::new().expect("app state")
+    }
+
+    #[test]
+    fn the_two_output_slots_always_come_from_the_same_turn() {
+        let state = state();
+        state.set_last_pipeline_output("t1", "r1").expect("first");
+        state.set_last_pipeline_output("t2", "r2").expect("second");
+        // Written as a pair under one lock, so the tray can never report a
+        // transcript from one turn and a response from another.
+        assert_eq!(state.last_transcript_snapshot().expect("t"), "t2");
+        assert_eq!(state.last_assistant_response_snapshot().expect("r"), "r2");
     }
 
     #[test]
