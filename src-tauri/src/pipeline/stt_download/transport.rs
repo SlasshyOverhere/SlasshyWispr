@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use log::warn;
+use log::{info, warn};
 use reqwest::{
     header::{ACCEPT_RANGES, RANGE},
     Client, StatusCode,
@@ -426,6 +426,26 @@ pub(crate) async fn download_prepacked_parakeet_model(
             archive_path.display()
         )
     })?;
+
+    // Before extraction: these bytes become ONNX graphs parsed by the runtime, so
+    // a tampered or truncated archive must not reach the filesystem at all.
+    if let Some(expected) = parakeet_archive_expected_sha256(source.archive_url) {
+        if let Err(error) = crate::pipeline::stt_download::verify::verify_file_sha256(
+            &archive_path,
+            expected,
+        ) {
+            let _ = fs::remove_file(&archive_path);
+            return Err(format!(
+                "Refusing to install the archive for '{repo_id}': {error}"
+            ));
+        }
+        info!("[stt.download] archive digest verified for '{repo_id}'");
+    } else {
+        warn!(
+            "[stt.download] no pinned digest for archive '{}'; installing unverified",
+            source.archive_url
+        );
+    }
 
     let expected_root = target_dir.join(source.expected_root_dir);
     if expected_root.exists() {

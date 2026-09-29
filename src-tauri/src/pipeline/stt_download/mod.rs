@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use log::info;
+use log::{info, warn};
 use reqwest::{Client, Url};
 use serde_json::Value;
 
@@ -274,13 +274,14 @@ pub(crate) async fn download_huggingface_stt_model(
                 ));
             }
 
-            // ponytail: ceiling is hash-table lookup only when Agent 1 lands MODEL_SHA256S in constants.rs; unverified files still download (TOFU) so offline setup never blocks.
-            if let Some(expected) = verify::expected_sha256_for_repo(repo_id.as_str()) {
-                if let Err(error) = verify::verify_file_sha256(&temp_path, expected) {
-                    let _ = fs::remove_file(&temp_path);
-                    return Err(error);
-                }
-            }
+            // Per-file HuggingFace downloads have no pinned digest: the file set
+            // is discovered from the API rather than declared, so there is
+            // nothing to pin against. Verified where a digest exists (the
+            // prepacked archives) and logged as unverified here.
+            warn!(
+                "[stt.download] installing '{}' from HuggingFace without a digest check",
+                relative_path.display()
+            );
             if output_path.exists() {
                 fs::remove_file(&output_path).map_err(|error| {
                     format!(

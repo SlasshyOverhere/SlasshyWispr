@@ -1,18 +1,13 @@
 //! Post-download SHA256 verification for STT model artifacts.
 //!
-//! Pure helpers: hash a file, compare against an expected hex digest, and
-//! look up the expected digest for a repo. The hash table itself is owned by
-//! Agent 1 (`constants.rs`); this module consumes it verbatim once landed.
+//! Pure helpers: hash a file and compare against an expected hex digest. The
+//! pinned digests live in `constants.rs`, keyed by the archive URL the
+//! downloader actually fetches.
 
 use std::fs;
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
-
-// Consumes Agent 1's hash table verbatim (`constants.rs` READ-ONLY).
-pub(crate) fn expected_sha256_for_repo(repo_id: &str) -> Option<&'static str> {
-    crate::constants::local_stt_model_expected_sha256(repo_id)
-}
 
 /// Lowercase hex SHA256 of in-memory bytes.
 pub(crate) fn sha256_hex_of_bytes(bytes: &[u8]) -> String {
@@ -76,6 +71,35 @@ mod tests {
         tampered[0] ^= 0x01;
         fs::write(&path, tampered).unwrap();
         let error = verify_file_sha256(&path, &expected).unwrap_err();
+        assert!(error.contains("SHA256 mismatch"), "{error}");
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn every_prepacked_archive_url_has_a_pinned_digest() {
+        // An unpinned archive is installed unverified, so the table must cover
+        // every source the downloader can actually pick.
+        for source in crate::pipeline::stt_download::archive::prepacked_archive_sources() {
+            assert!(
+                crate::constants::parakeet_archive_expected_sha256(source.archive_url).is_some(),
+                "no pinned digest for {}",
+                source.archive_url
+            );
+        }
+    }
+
+    #[test]
+    fn a_digest_mismatch_blocks_the_file() {
+        // The whole point of pinning: a tampered archive is refused, not kept.
+        let dir = std::env::temp_dir().join("slasshywispr-pin-test");
+        fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("archive.tar.gz");
+        fs::write(&path, b"original bytes").expect("write");
+        let expected = sha256_hex_of_file(&path).expect("hash");
+
+        assert!(verify_file_sha256(&path, &expected).is_ok());
+        fs::write(&path, b"tampered bytes!").expect("rewrite");
+        let error = verify_file_sha256(&path, &expected).expect_err("tamper must fail");
         assert!(error.contains("SHA256 mismatch"), "{error}");
         let _ = fs::remove_file(&path);
     }

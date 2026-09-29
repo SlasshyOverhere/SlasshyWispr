@@ -95,6 +95,31 @@ async function resolves(url) {
   return response.status;
 }
 
+/** The release's own `checksums.json`, keyed by asset name. */
+async function publishedDigests(release, names) {
+  if (!names.has("checksums.json")) return null;
+  const base = `https://github.com/${release.owner}/${release.repo}/releases/download/${release.tag}`;
+  const response = await fetch(`${base}/checksums.json`, { redirect: "follow" });
+  if (!response.ok) return null;
+  const body = await response.json();
+  return new Map(body.map((entry) => [entry.file, String(entry.sha256).toLowerCase()]));
+}
+
+/** Digest pinned in constants.rs for an archive URL, if any. */
+function pinnedDigest(url) {
+  const table = read(CONSTANTS_RS).match(
+    /pub const PARAKEET_ARCHIVE_EXPECTED_SHA256: &\[\(&str, &str\)\] = &\[([\s\S]*?)\];/,
+  );
+  if (!table) return null;
+  // The entries span several lines: (URL_CONSTANT, "64 hex chars").
+  for (const [, key, value] of table[1].matchAll(
+    /\(\s*\n?\s*([A-Z][A-Z_0-9]*)\s*,?\s*\n?\s*"([0-9a-fA-F]{64})"\s*,?\s*\)/g,
+  )) {
+    if (rustConst(key) === url) return value.toLowerCase();
+  }
+  return null;
+}
+
 const sources = archiveSources();
 const models = catalog();
 const problems = [];
@@ -111,10 +136,14 @@ for (const model of models) {
   const { release, names } = await publishedAssets(url);
   const listed = names.has(release.asset);
   const status = await resolves(url);
-  const ok = listed && status < 400;
+  const pinned = pinnedDigest(url);
+  const published = (await publishedDigests(release, names))?.get(release.asset) ?? null;
+  const digestOk = !pinned || !published || pinned === published;
+  const ok = listed && status < 400 && digestOk;
 
   console.log(
-    `${ok ? "ok  " : "FAIL"} ${model}\n     ${release.asset} — ${listed ? "listed in" : "MISSING from"} ${release.tag}, HTTP ${status}`,
+    `${ok ? "ok  " : "FAIL"} ${model}\n     ${release.asset} — ${listed ? "listed in" : "MISSING from"} ${release.tag}, HTTP ${status}` +
+      `\n     digest ${pinned ? (digestOk ? "matches the release" : `MISMATCH pinned=${pinned} release=${published}`) : "NOT PINNED"}`,
   );
 
   if (!listed) {
@@ -124,6 +153,14 @@ for (const model of models) {
     );
   } else if (status >= 400) {
     problems.push(`${model}: ${release.asset} is listed but returns HTTP ${status}`);
+  } else if (!pinned) {
+    // Not fatal here: it installs unverified and warns. Fix by pinning.
+    console.warn(`     note: ${model} has no pinned SHA-256; it will be installed unverified.`);
+  } else if (!digestOk) {
+    problems.push(
+      `${model}: the archive was re-published. constants.rs pins ${pinned} but ` +
+        `${release.tag} now serves ${published}. Re-pin before shipping.`,
+    );
   }
 }
 

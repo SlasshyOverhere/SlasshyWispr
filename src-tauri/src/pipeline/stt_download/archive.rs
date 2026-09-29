@@ -31,6 +31,16 @@ pub(crate) fn local_parakeet_archive_source(repo_id: &str) -> Option<LocalParake
     }
 }
 
+/// Every prepacked source the downloader can pick, so a digest table can be
+/// checked for coverage against the real set rather than a hand-kept list.
+#[cfg(test)]
+pub(crate) fn prepacked_archive_sources() -> Vec<LocalParakeetArchiveSource> {
+    ["nvidia/parakeet-tdt_ctc-110m", "nvidia/parakeet-tdt-0.6b-v3"]
+        .iter()
+        .filter_map(|repo_id| local_parakeet_archive_source(repo_id))
+        .collect()
+}
+
 /// Whether a directory looks like a compiled Parakeet int8 model root.
 fn is_parakeet_model_directory(path: &std::path::Path) -> bool {
     let encoder_fp32 = path.join("encoder-model.onnx");
