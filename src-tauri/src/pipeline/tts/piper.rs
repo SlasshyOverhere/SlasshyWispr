@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 #[cfg(target_os = "windows")]
 use zip::ZipArchive;
 
@@ -135,12 +135,11 @@ pub async fn synthesize_with_piper(
             return Err(format!("Piper executable was not found at: {piper_path}"));
         }
 
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| format!("Failed to compute timestamp: {error}"))?
-            .as_millis();
-
-        let output_path = std::env::temp_dir().join(format!("slasshywispr-tts-{stamp}.wav"));
+        // A UUID name created exclusively, not a millisecond timestamp: this is
+        // the path Piper writes its WAV to and we then read back, so anything
+        // running as the same user must not be able to pre-create it.
+        let output_path =
+            crate::security::reserve_secure_temp_path(&std::env::temp_dir(), "slasshywispr-tts", "wav")?;
 
         let run_once = |with_tuning: bool| -> Result<std::process::Output, String> {
             let mut command = Command::new(&piper_path);
