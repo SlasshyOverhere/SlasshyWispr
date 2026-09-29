@@ -52,6 +52,19 @@ impl AppState {
             .timeout(Duration::from_secs(150))
             .pool_idle_timeout(Duration::from_secs(90))
             .pool_max_idle_per_host(8)
+            // reqwest's default follows up to 10 redirects to any host, including
+            // plain http, which would silently undo the caller's scheme and host
+            // checks on the URLs it was given. The updater is safe either way
+            // because minisign verifies the final bytes; the model and runtime
+            // downloads are not, so the redirect itself must stay in bounds.
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                let url = attempt.url();
+                if url.scheme() == "https" {
+                    attempt.follow()
+                } else {
+                    attempt.error("redirect to a non-https URL refused")
+                }
+            }))
             .build()
             .map_err(|error| format!("Failed to create HTTP client: {error}"))?;
 
