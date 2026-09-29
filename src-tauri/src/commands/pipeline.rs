@@ -132,6 +132,12 @@ pub(crate) struct AssistantPipelineResponse {
     #[serde(flatten, default)]
     pub(crate) outcome: PipelineRunOutcome,
 }
+/// A retry after the echo/incomplete-draft check also failed. Returning the
+/// checked response would paste the user's own words back and speak them, so the
+/// turn reports the failure instead.
+const FALLBACK_EXHAUSTED: &str =
+    "The assistant's reply was rejected as unusable and the retry failed. Try again.";
+
 /// Bounds for the assistant's sampling temperature. The frontend renders these
 /// and the backend enforces them, so they are stated once, here.
 pub(crate) const TEMPERATURE_DEFAULT: f64 = 0.35;
@@ -661,12 +667,16 @@ pub(crate) async fn run_assistant_pipeline(
                         }
                         Ok(_) => {
                             warn!("[pipeline] fallback answer returned empty response");
+                            return Err(FALLBACK_EXHAUSTED.to_string());
                         }
                         Err(error) => {
+                            // Returning the echo would paste the user's own
+                            // question back and speak it; say the retry failed.
                             warn!(
                                 "[pipeline] fallback answer failed: {}",
                                 clip_text(&single_line(&error), 320)
                             );
+                            return Err(FALLBACK_EXHAUSTED.to_string());
                         }
                     }
                 }
@@ -699,12 +709,14 @@ pub(crate) async fn run_assistant_pipeline(
                         }
                         Ok(_) => {
                             warn!("[pipeline] compose fallback returned empty response");
+                            return Err(FALLBACK_EXHAUSTED.to_string());
                         }
                         Err(error) => {
                             warn!(
                                 "[pipeline] compose fallback failed: {}",
                                 clip_text(&single_line(&error), 320)
                             );
+                            return Err(FALLBACK_EXHAUSTED.to_string());
                         }
                     }
                 }
