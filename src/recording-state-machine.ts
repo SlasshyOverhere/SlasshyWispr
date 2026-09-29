@@ -133,7 +133,11 @@ export function processEvent(
     default:
       // The union is exhaustive to the compiler, not at runtime. Callers
       // dereference the result, so returning undefined here would throw.
-      return { stage: state.stage, detail: `unhandled: ${event.type}`, actions: [] };
+      return {
+        stage: state.stage,
+        detail: `unhandled: ${(event as { type: string }).type}`,
+        actions: [],
+      };
   }
 }
 
