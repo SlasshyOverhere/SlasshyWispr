@@ -326,6 +326,10 @@ async function runStartRecording(): Promise<void> {
     );
 
     const recorderInitStartedAt = controllerDeps.performanceNow();
+    // The generation this capture belongs to, bound at creation. finalizeRecording
+    // reads it from here rather than the live counter, so a superseded finalize
+    // can tell it lost the race before it drains the chunks it no longer owns.
+    const captureGen = activePipelineGen;
     const mediaRecorder = new MediaRecorder(stream, recorderOptions);
     controllerState.setMediaRecorder(mediaRecorder);
     controllerState.setRecorderMimeType(mediaRecorder.mimeType || preferredMimeType || "audio/webm");
@@ -345,7 +349,7 @@ async function runStartRecording(): Promise<void> {
 
     mediaRecorder.addEventListener("stop", () => {
       controllerDeps.log("[record.start] media recorder stop event received");
-      void finalizeRecording();
+      void finalizeRecording(captureGen);
     });
 
     mediaRecorder.start(180);
@@ -423,10 +427,28 @@ export function stopRecording(options: StopRecordingOptions = {}): void {
   controllerDeps.syncAvailability();
 }
 
-export async function finalizeRecording(): Promise<void> {
+/**
+ * `captureGen` is the generation the capture was started under, passed by the
+ * recorder's own stop listener. Omitted only where there is no recorder to
+ * carry it, in which case the live counter is the best answer available.
+ */
+export async function finalizeRecording(captureGen?: number): Promise<void> {
+  const finalizeGen = captureGen ?? activePipelineGen;
+  // Before anything else: a superseded finalize must not touch shared state.
+  // Checking later left it free to drain the live recording's chunks first.
+  if (finalizeGen !== activePipelineGen) {
+    controllerDeps.log(
+      `[record.finalize] dropping superseded generation=${finalizeGen} active=${activePipelineGen}`,
+    );
+    controllerState.setSkipPipeline(false);
+    controllerState.setSkipNotice("");
+    controllerDeps.transition({ type: "recording-stopped", cancelPipeline: true });
+    controllerDeps.syncAvailability();
+    return;
+  }
+
   const skipPipeline = controllerState.getSkipPipeline();
   const skipNotice = controllerState.getSkipNotice();
-  const finalizeGen = activePipelineGen;
   controllerState.setSkipPipeline(false);
   controllerState.setSkipNotice("");
 
@@ -474,8 +496,9 @@ export async function finalizeRecording(): Promise<void> {
     return;
   }
 
-  // F-007: a newer capture started while this one was finalizing; do not feed
-  // the pipeline from a superseded generation (it would paste stale audio).
+  // F-007, second pass: the silence check above awaits, so a newer capture can
+  // have started since the entry check. The chunks are already ours by now, so
+  // this one only guards the pipeline, not shared state.
   if (finalizeGen !== activePipelineGen) {
     controllerDeps.log(
       `[record.finalize] dropping superseded generation=${finalizeGen} active=${activePipelineGen}`,

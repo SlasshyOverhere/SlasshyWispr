@@ -32,11 +32,20 @@ mock.module("./mic-stream", () => ({
 
 const { defaultSettings } = await import("../state/settings-store");
 const { initCaptureMonitors } = await import("./capture-monitors");
-const { initRecordingController, startRecording } = await import("./recording-controller");
+const {
+  finalizeRecording,
+  getActivePipelineGen,
+  initRecordingController,
+  startRecording,
+} = await import("./recording-controller");
 
 let liveStream: MediaStream | null = null;
 const stoppedStreams: MediaStream[] = [];
 const logLines: string[] = [];
+let recordedChunks: Blob[] = [];
+let skipFlag = false;
+let skipNoticeText = "";
+const transitions: { type: string; cancelPipeline?: boolean }[] = [];
 
 function wireDeps(stage: () => string): RecordingControllerDeps {
   return {
@@ -65,7 +74,9 @@ function wireDeps(stage: () => string): RecordingControllerDeps {
     log: (line: string) => {
       logLines.push(line);
     },
-    transition: () => {},
+    transition: (event: { type: string; cancelPipeline?: boolean }) => {
+      transitions.push(event);
+    },
     syncAvailability: () => {},
     getRecordingStartedAt: () => 0,
     clearCaptureIntent: () => {},
@@ -86,6 +97,10 @@ beforeEach(() => {
   liveStream = null;
   stoppedStreams.length = 0;
   logLines.length = 0;
+  recordedChunks = [];
+  skipFlag = false;
+  skipNoticeText = "";
+  transitions.length = 0;
 
   // startRecording bails early unless the media APIs exist, and bun's DOM shim
   // has neither.
@@ -131,14 +146,43 @@ beforeEach(() => {
     },
     getRecorderMimeType: () => "audio/webm",
     setRecorderMimeType: () => {},
-    getRecordedChunks: () => [],
-    setRecordedChunks: () => {},
-    pushRecordedChunk: () => {},
-    getSkipPipeline: () => false,
-    setSkipPipeline: () => {},
-    getSkipNotice: () => "",
-    setSkipNotice: () => {},
+    getRecordedChunks: () => recordedChunks,
+    setRecordedChunks: (next: Blob[]) => {
+      recordedChunks = next;
+    },
+    pushRecordedChunk: (chunk: Blob) => {
+      recordedChunks.push(chunk);
+    },
+    getSkipPipeline: () => skipFlag,
+    setSkipPipeline: (next: boolean) => {
+      skipFlag = next;
+    },
+    getSkipNotice: () => skipNoticeText,
+    setSkipNotice: (next: string) => {
+      skipNoticeText = next;
+    },
     setLastSavedRecordingId: () => {},
+  });
+});
+
+describe("a superseded finalize", () => {
+  it("does not drain the live recording's chunks", async () => {
+    // The live recording has already buffered audio.
+    recordedChunks = [new Blob(["second-take"], { type: "audio/webm" })];
+
+    // The first capture's stop event now fires, late. It is superseded.
+    await finalizeRecording(getActivePipelineGen() - 1);
+
+    // The chunks the live capture owns must survive untouched.
+    expect(recordedChunks.length).toBe(1);
+    expect(recordedChunks[0].size).toBeGreaterThan(0);
+  });
+
+  it("reports the drop instead of feeding the pipeline", async () => {
+    recordedChunks = [new Blob(["first-take"], { type: "audio/webm" })];
+    await finalizeRecording(getActivePipelineGen() - 1);
+
+    expect(transitions).toEqual([{ type: "recording-stopped", cancelPipeline: true }]);
   });
 });
 
