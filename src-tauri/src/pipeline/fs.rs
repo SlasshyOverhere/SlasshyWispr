@@ -68,10 +68,12 @@ pub(crate) fn find_file_by_name(root: &Path, target_name: &str) -> Result<Option
     Ok(None)
 }
 
-/// Ceiling for a single artifact fetched by [`download_file`]. Generous enough
-/// for the largest one shipped (the ZipVoice archive), but a hostile or hijacked
-/// response cannot exhaust memory: this streams to disk rather than buffering.
-const MAX_DOWNLOAD_BYTES: u64 = 512 * 1024 * 1024;
+/// Ceiling for a single artifact fetched by [`download_file`].
+///
+/// Above the largest artifact we ship: the Ollama Windows installer is ~1.5 GiB.
+/// The real protection against a hostile response is that this streams to disk
+/// rather than buffering, so the ceiling is a sanity bound, not a memory guard.
+const MAX_DOWNLOAD_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 pub(crate) async fn download_file(
     client: &Client,
@@ -201,4 +203,28 @@ fn unpack_tar<R: Read>(reader: R, archive_path: &Path, destination: &Path) -> Re
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Measured sizes of every artifact `download_file` is asked to fetch.
+    /// The ceiling has to clear the largest, or a legitimate download is
+    /// refused as if it were a hostile response.
+    const LARGEST_SHIPPED_ARTIFACT_BYTES: u64 = 1_571_115_536; // OllamaSetup.exe, ~1.5 GiB
+
+    #[test]
+    fn the_download_ceiling_clears_the_largest_shipped_artifact() {
+        assert!(
+            MAX_DOWNLOAD_BYTES > LARGEST_SHIPPED_ARTIFACT_BYTES,
+            "ceiling {MAX_DOWNLOAD_BYTES} would refuse OllamaSetup.exe \
+             ({LARGEST_SHIPPED_ARTIFACT_BYTES} bytes)"
+        );
+    }
+
+    #[test]
+    fn the_ceiling_is_still_a_bound_rather_than_unlimited() {
+        assert!(MAX_DOWNLOAD_BYTES < 8 * 1024 * 1024 * 1024);
+    }
 }
