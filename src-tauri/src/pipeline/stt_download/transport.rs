@@ -430,10 +430,9 @@ pub(crate) async fn download_prepacked_parakeet_model(
     // Before extraction: these bytes become ONNX graphs parsed by the runtime, so
     // a tampered or truncated archive must not reach the filesystem at all.
     if let Some(expected) = parakeet_archive_expected_sha256(source.archive_url) {
-        if let Err(error) = crate::pipeline::stt_download::verify::verify_file_sha256(
-            &archive_path,
-            expected,
-        ) {
+        if let Err(error) =
+            crate::pipeline::stt_download::verify::verify_file_sha256(&archive_path, expected)
+        {
             let _ = fs::remove_file(&archive_path);
             return Err(format!(
                 "Refusing to install the archive for '{repo_id}': {error}"

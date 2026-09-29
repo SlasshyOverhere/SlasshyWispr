@@ -35,10 +35,13 @@ pub(crate) fn local_parakeet_archive_source(repo_id: &str) -> Option<LocalParake
 /// checked for coverage against the real set rather than a hand-kept list.
 #[cfg(test)]
 pub(crate) fn prepacked_archive_sources() -> Vec<LocalParakeetArchiveSource> {
-    ["nvidia/parakeet-tdt_ctc-110m", "nvidia/parakeet-tdt-0.6b-v3"]
-        .iter()
-        .filter_map(|repo_id| local_parakeet_archive_source(repo_id))
-        .collect()
+    [
+        "nvidia/parakeet-tdt_ctc-110m",
+        "nvidia/parakeet-tdt-0.6b-v3",
+    ]
+    .iter()
+    .filter_map(|repo_id| local_parakeet_archive_source(repo_id))
+    .collect()
 }
 
 /// Whether a directory looks like a compiled Parakeet int8 model root.

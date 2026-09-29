@@ -381,7 +381,9 @@ mod tests {
             assert_ne!(name, "..", "{traversal} escaped");
             assert_ne!(name, ".", "{traversal} escaped");
             assert!(
-                !Path::new(&name).components().any(|c| c == std::path::Component::ParentDir),
+                !Path::new(&name)
+                    .components()
+                    .any(|c| c == std::path::Component::ParentDir),
                 "{traversal} produced {name}"
             );
         }

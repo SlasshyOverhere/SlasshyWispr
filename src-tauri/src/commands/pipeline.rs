@@ -24,12 +24,9 @@ use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::process::elapsed_ms;
 use crate::pipeline::refinement::{self, RefinementConfig};
 use crate::pipeline::routing::{infer_local_stt_provider_from_model, AiModeConfig, SttModeConfig};
-use crate::pipeline::selection::{
-    build_selected_context_answer_prompt, selection_action_label,
-};
+use crate::pipeline::selection::{build_selected_context_answer_prompt, selection_action_label};
 use crate::pipeline::stt::{
-    effective_language_hint, is_known_stt_hallucination,
-    looks_like_repetitive_transcript_noise,
+    effective_language_hint, is_known_stt_hallucination, looks_like_repetitive_transcript_noise,
 };
 use crate::pipeline::tts::{
     load_clone_assets, synthesize_cloned, synthesize_with_piper, voice_clone_models_dir,
@@ -236,13 +233,14 @@ pub(crate) async fn run_assistant_pipeline(
     // frontend mis-classified still left its text in the tray's copy-last
     // slots. The flag is on the wire; honour it here.
     let incognito = request.run.incognito;
-    let remember_output = |state: &AppState, transcript: &str, response: &str| -> Result<(), String> {
-        if incognito {
-            info!("[pipeline] incognito turn; not recording the output for the tray");
-            return Ok(());
-        }
-        state.set_last_pipeline_output(transcript, response)
-    };
+    let remember_output =
+        |state: &AppState, transcript: &str, response: &str| -> Result<(), String> {
+            if incognito {
+                info!("[pipeline] incognito turn; not recording the output for the tray");
+                return Ok(());
+            }
+            state.set_last_pipeline_output(transcript, response)
+        };
     let pipeline_mode = resolve_pipeline_mode(&request)?;
 
     let requested_engine = request
@@ -423,10 +421,8 @@ pub(crate) async fn run_assistant_pipeline(
     };
     // The orchestrator owns what a dictation is; this only asks it, because the
     // short-circuit has to land before the selection capture below.
-    if crate::pipeline::orchestration::is_dictation_turn(
-        wake_word_enabled,
-        wake_command.as_deref(),
-    ) {
+    if crate::pipeline::orchestration::is_dictation_turn(wake_word_enabled, wake_command.as_deref())
+    {
         let selection_context_cleared = state.clear_pending_selection_rewrite()?;
         info!(
             "[pipeline] dictation mode wake_phrase_missing name={} transcript_chars={} pending_context_cleared={}",

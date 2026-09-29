@@ -128,15 +128,15 @@ impl AppState {
         let normalized = Self::normalize_transcribe_path(path);
         self.armed_transcribe_paths
             .lock()
-            .map(|mut armed| {
-                match armed.iter().position(|entry| entry == &normalized) {
+            .map(
+                |mut armed| match armed.iter().position(|entry| entry == &normalized) {
                     Some(index) => {
                         armed.remove(index);
                         true
                     }
                     None => false,
-                }
-            })
+                },
+            )
             .unwrap_or(false)
     }
 
