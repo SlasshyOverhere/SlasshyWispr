@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/check-backend-bounds-fallbacks.mjs && node scripts/check-debug-redaction.mjs && node scripts/generate-wire-types.mjs --check",
+    "prebuild": "node scripts/check-backend-bounds-fallbacks.mjs && node scripts/check-debug-redaction.mjs && node scripts/check-prod-csp.mjs && node scripts/generate-wire-types.mjs --check",
     "generate:wire-types": "node scripts/generate-wire-types.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",

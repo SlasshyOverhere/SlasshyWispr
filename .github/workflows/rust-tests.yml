@@ -107,19 +107,7 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: production CSP gate (F-032)
-        shell: bash
-        working-directory: src-tauri
-        run: |
-          set -euo pipefail
-          csp=$(python3 -c "import json;print(json.load(open('tauri.conf.json'))['app']['security']['csp'])")
-          echo "CSP: $csp"
-          case "$csp" in
-            *'unsafe-eval'*|*blob:*|*https:*connect-src*|*script-src*http*) echo 'prod CSP regression: overly broad script/connect source' >&2; exit 1;;
-          esac
-          case "$csp" in
-            *default-src'self'*|*default-src*'self'*) ;;
-            *) echo 'prod CSP regression: default-src missing self lockdown' >&2; exit 1;;
-          esac
+        run: node scripts/check-prod-csp.mjs
 
       - name: Debug redaction gate (F-033)
         run: node scripts/check-debug-redaction.mjs
