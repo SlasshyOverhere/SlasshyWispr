@@ -203,7 +203,7 @@ export function formatDictationLanguageLabel(languageCode: string): string {
 }
 
 export function asPiperQuality(value: unknown): PiperQuality {
-  if (value === "fast" || value === "high") {
+  if (value === "fast" || value === "balanced" || value === "high") {
     return value;
   }
   return DEFAULT_PIPER_QUALITY;
@@ -211,6 +211,7 @@ export function asPiperQuality(value: unknown): PiperQuality {
 
 export function asPiperEmotion(value: unknown): PiperEmotion {
   if (
+    value === "neutral" ||
     value === "calm" ||
     value === "happy" ||
     value === "excited" ||
