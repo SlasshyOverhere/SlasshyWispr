@@ -107,7 +107,8 @@ pub const PIPER_BINARY_NAME: &str = "piper";
 ///
 /// A rolling URL changes whenever Ollama ships, so it cannot carry a digest: the
 /// bytes we verified would not be the bytes a user gets tomorrow. Bumping this
-/// is a deliberate act — update OLLAMA_WINDOWS_INSTALLER_SHA256 with it.
+/// is a deliberate act, and the digest in `PINNED_ARTIFACT_SHA256` moves with
+/// it, so the two cannot drift apart.
 #[cfg(target_os = "windows")]
 pub const OLLAMA_WINDOWS_INSTALLER_URL: &str =
     "https://github.com/ollama/ollama/releases/download/v0.34.4/OllamaSetup.exe";
