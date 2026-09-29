@@ -24,6 +24,11 @@ let preWarmedStream: MediaStream | null = null;
 let preWarmedStreamDeviceId: string | null = null;
 let preWarmedStreamCreateTime = 0;
 let preWarmExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+// A pre-warm in progress. Both the stage change to idle and the pipeline's own
+// pre-warm action fire on the same dictation completion, and the guard above
+// reads preWarmedStream before the getUserMedia below assigns it — so without
+// this the second call opened a second stream and orphaned the first.
+let preWarmInFlight = false;
 
 let lifecycleListenersAttached = false;
 
@@ -133,37 +138,47 @@ function clearPrewarmExpiryTimer(): void {
 export async function preWarmMicrophoneStream(deviceId: string): Promise<void> {
   if (!navigator.mediaDevices?.getUserMedia) return;
 
+  if (preWarmInFlight) {
+    micDeps.log("[record.prewarm] ignored: a pre-warm is already opening");
+    return;
+  }
+
   if (preWarmedStream && preWarmedStreamDeviceId === deviceId && preWarmedStream.active) {
     return;
   }
 
-  await releasePreWarmedStream();
-
-  const baseConstraints: MediaTrackConstraints = {
-    channelCount: 1,
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
-  };
-
+  preWarmInFlight = true;
   try {
-    const constraints: MediaStreamConstraints = {
-      audio: deviceId
-        ? { ...baseConstraints, deviceId: { exact: deviceId } }
-        : baseConstraints,
+    await releasePreWarmedStream();
+
+    const baseConstraints: MediaTrackConstraints = {
+      channelCount: 1,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
     };
-    preWarmedStream = await navigator.mediaDevices.getUserMedia(constraints);
-    preWarmedStreamDeviceId = deviceId;
-    preWarmedStreamCreateTime = Date.now();
-    clearPrewarmExpiryTimer();
-    preWarmExpiryTimer = setTimeout(() => {
-      micDeps.log(`[record.prewarm] TTL ${PREWARM_TTL_MS}ms reached; releasing idle stream`);
-      void releasePreWarmedStream();
-    }, PREWARM_TTL_MS);
-    micDeps.log(`[record.prewarm] stream opened deviceId=${deviceId || "default"}`);
-  } catch (error) {
-    micDeps.log(`[record.prewarm] failed: ${asErrorMessage(error)}`);
-    preWarmedStream = null;
-    preWarmedStreamDeviceId = null;
+
+    try {
+      const constraints: MediaStreamConstraints = {
+        audio: deviceId
+          ? { ...baseConstraints, deviceId: { exact: deviceId } }
+          : baseConstraints,
+      };
+      preWarmedStream = await navigator.mediaDevices.getUserMedia(constraints);
+      preWarmedStreamDeviceId = deviceId;
+      preWarmedStreamCreateTime = Date.now();
+      clearPrewarmExpiryTimer();
+      preWarmExpiryTimer = setTimeout(() => {
+        micDeps.log(`[record.prewarm] TTL ${PREWARM_TTL_MS}ms reached; releasing idle stream`);
+        void releasePreWarmedStream();
+      }, PREWARM_TTL_MS);
+      micDeps.log(`[record.prewarm] stream opened deviceId=${deviceId || "default"}`);
+    } catch (error) {
+      micDeps.log(`[record.prewarm] failed: ${asErrorMessage(error)}`);
+      preWarmedStream = null;
+      preWarmedStreamDeviceId = null;
+    }
+  } finally {
+    preWarmInFlight = false;
   }
 }
