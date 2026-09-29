@@ -27,7 +27,11 @@ pub(crate) fn sanitize_model_cache_dir_name(input: &str) -> String {
     }
 
     let normalized = output.trim_matches('_').to_string();
-    if normalized.is_empty() {
+    // "." and ".." survive the character filter and would resolve to the models
+    // directory itself or its parent, so delete_local_stt_model's remove_dir_all
+    // would escape the model tree. Not reachable today only because every caller
+    // validates against the catalog first.
+    if normalized.is_empty() || normalized.chars().all(|c| c == '.') {
         "model".to_string()
     } else {
         normalized
@@ -366,6 +370,21 @@ mod tests {
         assert_eq!(sanitize_model_cache_dir_name("a b:c"), "a_b_c");
         assert_eq!(sanitize_model_cache_dir_name("   "), "model");
         assert_eq!(sanitize_model_cache_dir_name(""), "model");
+    }
+
+    #[test]
+    fn sanitize_cache_dir_refuses_to_escape_the_model_tree() {
+        // These would resolve to the models dir or its parent, and
+        // delete_local_stt_model calls remove_dir_all on the result.
+        for traversal in ["..", ".", "...", "../..", "./."] {
+            let name = sanitize_model_cache_dir_name(traversal);
+            assert_ne!(name, "..", "{traversal} escaped");
+            assert_ne!(name, ".", "{traversal} escaped");
+            assert!(
+                !Path::new(&name).components().any(|c| c == std::path::Component::ParentDir),
+                "{traversal} produced {name}"
+            );
+        }
     }
 
     #[test]

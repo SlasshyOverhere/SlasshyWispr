@@ -1,8 +1,13 @@
-// Input, path and artifact validation helpers. `validate_text_input`,
-// `validate_base64_input` and `verify_file_sha256` run in the command and model
-// download paths; `validate_path_within_directory`, `validate_executable_path`,
-// `create_secure_temp_file`, `cleanup_old_temp_files` and
-// `create_api_key_fingerprint` are reached only by the test suite today.
+// Input, path and artifact validation helpers.
+//
+// Wired into the command paths: `validate_text_input`, `validate_base64_input`
+// and `create_api_key_fingerprint`.
+//
+// Reached only by the test suite today, so do not rely on them protecting a
+// download: `verify_file_sha256`, `validate_path_within_directory`,
+// `validate_executable_path`, `create_secure_temp_file` and
+// `cleanup_old_temp_files`. A test that proves a helper works is not evidence
+// it is called.
 
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
@@ -212,9 +217,13 @@ pub fn create_secure_temp_file(
     // Create temp file with unique name
     let temp_path = dir.join(format!("{}_{}.{}", prefix, uuid::Uuid::new_v4(), suffix));
 
-    // Write data
-    let mut file =
-        fs::File::create(&temp_path).map_err(|e| format!("Failed to create temp file: {}", e))?;
+    // Exclusive create, so a name collision (or a planted symlink) fails rather
+    // than writing through it.
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
 
     file.write_all(data)
         .map_err(|e| format!("Failed to write temp file: {}", e))?;

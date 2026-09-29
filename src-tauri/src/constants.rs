@@ -136,7 +136,9 @@ pub fn local_stt_model_expected_sha256(model: &str) -> Option<&'static str> {
 }
 
 pub const SILERO_VAD_MODEL_EXPECTED_SHA256: &str = "";
-pub const SILERO_VAD_PINNED_COMMIT: &str = "";
+/// Pinned so a moved branch cannot change the model under us. The file is
+/// parsed by ONNX Runtime, so an unpinned mutable ref is a code-execution path.
+pub const SILERO_VAD_PINNED_COMMIT: &str = "60b7ffa243625ebdc1070275a29f18c87843786a";
 
 pub fn silero_vad_model_url() -> String {
     if SILERO_VAD_PINNED_COMMIT.trim().is_empty() {

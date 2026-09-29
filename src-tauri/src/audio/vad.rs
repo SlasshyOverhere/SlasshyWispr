@@ -25,20 +25,32 @@ pub async fn ensure_vad_model(app_data_dir: &Path, client: &Client) -> Result<Pa
         return Ok(path);
     }
 
-    info!("[vad] downloading model from {}", SILERO_VAD_MODEL_URL);
+    // Pinned to a commit, not the mutable `master` branch: this file is handed
+    // to ONNX Runtime, so whatever the URL returns becomes parsed model bytes.
+    let url = silero_vad_model_url();
+    info!("[vad] downloading model from {}", url);
     let dir = path.parent().ok_or("Invalid VAD model directory.")?;
     std::fs::create_dir_all(dir).map_err(|e| format!("Failed to create VAD dir: {e}"))?;
 
     let temp_path = dir.join(format!("{}.downloading", SILERO_VAD_MODEL_FILE));
     let response = client
-        .get(SILERO_VAD_MODEL_URL)
+        .get(&url)
         .send()
         .await
         .map_err(|e| format!("Failed to download VAD model: {e}"))?;
+    // Without this, a 404 or a redirect-to-HTML page is written out and then
+    // fails much later inside ONNX Runtime with an opaque parser error.
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("VAD model download failed with HTTP {status}"));
+    }
     let bytes = response
         .bytes()
         .await
         .map_err(|e| format!("Failed to read VAD model: {e}"))?;
+    if bytes.is_empty() {
+        return Err("VAD model download returned an empty body.".to_string());
+    }
 
     std::fs::write(&temp_path, &bytes).map_err(|e| format!("Failed to write VAD model: {e}"))?;
     std::fs::rename(&temp_path, &path).map_err(|e| format!("Failed to finalize VAD model: {e}"))?;

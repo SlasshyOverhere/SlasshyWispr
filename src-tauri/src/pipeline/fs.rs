@@ -11,6 +11,7 @@
 //! belongs.
 
 use std::fs;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use bzip2::read::BzDecoder;
@@ -67,6 +68,11 @@ pub(crate) fn find_file_by_name(root: &Path, target_name: &str) -> Result<Option
     Ok(None)
 }
 
+/// Ceiling for a single artifact fetched by [`download_file`]. Generous enough
+/// for the largest one shipped (the ZipVoice archive), but a hostile or hijacked
+/// response cannot exhaust memory: this streams to disk rather than buffering.
+const MAX_DOWNLOAD_BYTES: u64 = 512 * 1024 * 1024;
+
 pub(crate) async fn download_file(
     client: &Client,
     url: &str,
@@ -77,7 +83,7 @@ pub(crate) async fn download_file(
             .map_err(|error| format!("Failed to prepare destination folder: {error}"))?;
     }
 
-    let response = client
+    let mut response = client
         .get(url)
         .send()
         .await
@@ -96,14 +102,38 @@ pub(crate) async fn download_file(
         ));
     }
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| format!("Failed reading downloaded bytes from {url}: {error}"))?;
+    if let Some(length) = response.content_length() {
+        if length > MAX_DOWNLOAD_BYTES {
+            return Err(format!(
+                "Refusing {url}: advertised size {length} exceeds the {MAX_DOWNLOAD_BYTES}-byte limit."
+            ));
+        }
+    }
 
     let temp_path = destination.with_extension("downloading");
-    fs::write(&temp_path, &bytes)
+    let mut file = File::create(&temp_path)
         .map_err(|error| format!("Failed writing temporary file: {error}"))?;
+    let mut written: u64 = 0;
+
+    // Streamed rather than buffered, so a multi-hundred-MB artifact never sits
+    // in memory, and a lying Content-Length cannot get past the check above.
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| format!("Failed reading downloaded bytes from {url}: {error}"))?
+    {
+        written = written.saturating_add(u64::try_from(chunk.len()).unwrap_or(0));
+        if written > MAX_DOWNLOAD_BYTES {
+            drop(file);
+            let _ = fs::remove_file(&temp_path);
+            return Err(format!(
+                "Refusing {url}: body exceeded the {MAX_DOWNLOAD_BYTES}-byte limit."
+            ));
+        }
+        std::io::Write::write_all(&mut file, &chunk)
+            .map_err(|error| format!("Failed writing temporary file: {error}"))?;
+    }
+    drop(file);
 
     fs::rename(&temp_path, destination)
         .map_err(|error| format!("Failed finalizing downloaded file: {error}"))?;
