@@ -233,6 +233,9 @@ pub fn is_rewrite_suspicious(instruction: &str, selected_text: &str, rewrite_tex
 
 /// Detect if a command is an affirmative confirmation for a pending selection rewrite.
 pub fn is_affirmative_selection_confirmation(command: &str) -> bool {
+    if rough_word_count(command) > CONFIRMATION_MAX_WORDS {
+        return false;
+    }
     if is_negative_selection_confirmation(command) {
         return false;
     }
@@ -261,8 +264,16 @@ pub fn is_affirmative_selection_confirmation(command: &str) -> bool {
     .any(|phrase| contains_phrase(&normalized, phrase))
 }
 
+/// Longest command still treated as a bare confirmation. Past this the user is
+/// dictating, not answering, and matching a token inside their sentence would
+/// discard a rewrite they never meant to cancel.
+const CONFIRMATION_MAX_WORDS: usize = 4;
+
 /// Detect if a command is a negative rejection for a pending selection rewrite.
 pub fn is_negative_selection_confirmation(command: &str) -> bool {
+    if rough_word_count(command) > CONFIRMATION_MAX_WORDS {
+        return false;
+    }
     let normalized = normalize_ascii_words(command);
     if normalized.is_empty() {
         return false;
@@ -772,6 +783,32 @@ mod tests {
         assert_eq!(
             classify_confirmation("don't replace it"),
             ConfirmationResult::Negative
+        );
+    }
+
+    #[test]
+    fn a_negative_word_inside_a_sentence_is_not_a_cancellation() {
+        // Dictating any of these with a rewrite pending used to destroy it and
+        // answer "Pending rewrite canceled."
+        for sentence in [
+            "there is no way to phrase this",
+            "i cannot stop thinking about it",
+            "skip to the next section",
+            "do not forget the meeting",
+            "the report has no errors",
+        ] {
+            assert!(
+                !is_negative_selection_confirmation(sentence),
+                "{sentence:?} is dictation, not a cancellation"
+            );
+        }
+    }
+
+    #[test]
+    fn a_long_sentence_does_not_even_reach_the_affirmative_check() {
+        assert_eq!(
+            classify_confirmation("yes please go ahead and apply that change"),
+            ConfirmationResult::Unrecognized
         );
     }
 
