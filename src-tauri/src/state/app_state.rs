@@ -265,6 +265,28 @@ impl AppState {
         Ok(())
     }
 
+    /// Claim the download slot, or report who holds it.
+    ///
+    /// The check and the claim must be one critical section: read-then-write let
+    /// two callers both see `active == false` and both start writing the same
+    /// target directory.
+    pub(crate) fn try_begin_local_stt_download(
+        &self,
+        starting: LocalSttDownloadStatusResponse,
+    ) -> Result<(), String> {
+        let mut status = self.lock_local_stt_download_status()?;
+        if status.active {
+            return Err(format!(
+                "Local STT download already running for '{}'.",
+                status.model
+            ));
+        }
+        *status = starting;
+        status.progress_percent = calculate_local_stt_progress_percent(&status);
+        status.updated_at_ms = now_unix_ms();
+        Ok(())
+    }
+
     pub(crate) fn local_stt_runtime_loaded_snapshot(&self) -> Result<bool, String> {
         self.local_stt_runtime_loaded
             .lock()
@@ -288,6 +310,74 @@ mod tests {
 
     fn state() -> AppState {
         AppState::new().expect("app state")
+    }
+
+    #[test]
+    fn only_one_download_can_claim_the_slot() {
+        let state = state();
+        let claim = |model: &str| {
+            state.try_begin_local_stt_download(LocalSttDownloadStatusResponse {
+                active: true,
+                completed: false,
+                success: false,
+                model: model.to_string(),
+                repo_id: String::new(),
+                stage: String::new(),
+                message: String::new(),
+                current_file: String::new(),
+                downloaded_bytes: 0,
+                total_bytes: 0,
+                files_completed: 0,
+                files_total: 0,
+                progress_percent: 0.0,
+                updated_at_ms: 0,
+            })
+        };
+
+        assert!(claim("first").is_ok());
+        // The second must be refused, or both would write the same target dir.
+        assert!(claim("second").is_err());
+        assert_eq!(
+            state
+                .snapshot_local_stt_download_status()
+                .expect("status")
+                .model,
+            "first"
+        );
+    }
+
+    #[test]
+    fn the_slot_is_claimable_again_once_the_download_finishes() {
+        let state = state();
+        let claim = |model: &str| {
+            state.try_begin_local_stt_download(LocalSttDownloadStatusResponse {
+                active: true,
+                completed: false,
+                success: false,
+                model: model.to_string(),
+                repo_id: String::new(),
+                stage: String::new(),
+                message: String::new(),
+                current_file: String::new(),
+                downloaded_bytes: 0,
+                total_bytes: 0,
+                files_completed: 0,
+                files_total: 0,
+                progress_percent: 0.0,
+                updated_at_ms: 0,
+            })
+        };
+
+        assert!(claim("first").is_ok());
+        // A completed download reports active = false, which frees the slot.
+        state
+            .update_local_stt_download_status(|status| {
+                status.active = false;
+                status.completed = true;
+                status.success = true;
+            })
+            .expect("mark the download finished");
+        assert!(claim("second").is_ok());
     }
 
     #[test]

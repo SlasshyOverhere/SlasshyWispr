@@ -167,34 +167,25 @@ pub(crate) async fn download_local_stt_model(
             "Unsupported local STT model. Select one from the built-in catalog.".to_string(),
         );
     }
-    let status_snapshot = state.snapshot_local_stt_download_status()?;
-    if status_snapshot.active {
-        return Err(format!(
-            "Local STT download already running for '{}'.",
-            status_snapshot.model
-        ));
-    }
-
     let provider = infer_local_stt_provider_from_model(&model);
     let repo_id = resolve_huggingface_repo_id(&provider, &model);
-    let repo_id_for_status = repo_id.clone();
-    state.update_local_stt_download_status(|status| {
-        *status = LocalSttDownloadStatusResponse {
-            active: true,
-            completed: false,
-            success: false,
-            model: model.clone(),
-            repo_id: repo_id_for_status,
-            stage: "Preparing download...".to_string(),
-            message: "Starting local STT model download.".to_string(),
-            current_file: String::new(),
-            downloaded_bytes: 0,
-            total_bytes: 0,
-            files_completed: 0,
-            files_total: 0,
-            progress_percent: 0.0,
-            updated_at_ms: now_unix_ms(),
-        };
+    // Check and claim in one critical section, so two callers cannot both see
+    // the slot free and both write the same target directory.
+    state.try_begin_local_stt_download(LocalSttDownloadStatusResponse {
+        active: true,
+        completed: false,
+        success: false,
+        model: model.clone(),
+        repo_id: repo_id.clone(),
+        stage: "Preparing download...".to_string(),
+        message: "Starting local STT model download.".to_string(),
+        current_file: String::new(),
+        downloaded_bytes: 0,
+        total_bytes: 0,
+        files_completed: 0,
+        files_total: 0,
+        progress_percent: 0.0,
+        updated_at_ms: now_unix_ms(),
     })?;
 
     let target_dir = stt_models_dir(&app)?.join(sanitize_model_cache_dir_name(&repo_id));
