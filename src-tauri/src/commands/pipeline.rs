@@ -438,17 +438,30 @@ pub(crate) async fn run_assistant_pipeline(
     if should_try_backend_selection_capture {
         #[cfg(target_os = "windows")]
         {
-            match crate::platform::windows_native::capture_selected_text_windows() {
-                Ok(captured) => {
+            // This sleeps and injects synthetic key events for up to ~1s, so it
+            // must not run on an async worker: it would stall the pool and any
+            // other turn parked on a network await with it.
+            match tauri::async_runtime::spawn_blocking(
+                crate::platform::windows_native::capture_selected_text_windows,
+            )
+            .await
+            {
+                Ok(Ok(captured)) => {
                     let trimmed = captured.trim();
                     if !trimmed.is_empty() {
                         backend_selected_text = Some(trimmed.to_string());
                     }
                 }
-                Err(error) => {
+                Ok(Err(error)) => {
                     warn!(
                         "[pipeline] selection fallback capture failed: {}",
                         clip_text(&single_line(&error), 240)
+                    );
+                }
+                Err(error) => {
+                    warn!(
+                        "[pipeline] selection fallback worker failed: {}",
+                        clip_text(&error.to_string(), 240)
                     );
                 }
             }
