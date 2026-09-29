@@ -122,9 +122,4 @@ jobs:
           esac
 
       - name: Debug redaction gate (F-033)
-        shell: bash
-        working-directory: src-tauri
-        run: |
-          set -euo pipefail
-          if grep -rn 'derive.*Debug' src/commands/pipeline.rs | grep -qi 'api_key\|apiKey'; then echo 'Debug on key struct?' >&2; exit 1; fi
-          grep -rn 'REDACTED' src/commands/ipc_types.rs src/pipeline/routing.rs >/dev/null || { echo 'redacting Debug impls missing' >&2; exit 1; }
+        run: node scripts/check-debug-redaction.mjs

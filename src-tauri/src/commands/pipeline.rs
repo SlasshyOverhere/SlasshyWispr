@@ -43,7 +43,9 @@ use crate::services::{
 };
 use crate::state::AppState;
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+// No derived Debug: api_key is a plaintext secret, and the rest of the crate
+// hand-writes a redacting impl for every struct that holds one.
+#[derive(Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AssistantPipelineRequest {
     pub(crate) api_key: String,
@@ -83,6 +85,31 @@ pub(crate) struct AssistantPipelineRequest {
     #[serde(flatten, default)]
     pub(crate) run: PipelineRunIdentity,
 }
+
+impl std::fmt::Debug for AssistantPipelineRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The audio payloads are megabytes of base64; the key is a secret.
+        f.debug_struct("AssistantPipelineRequest")
+            .field("api_key", &"[REDACTED]")
+            .field("api_base_url", &self.api_base_url)
+            .field("stt_model", &self.stt_model)
+            .field("ai_model", &self.ai_model)
+            .field("stt_local_mode", &self.stt_local_mode)
+            .field("ai_local_mode", &self.ai_local_mode)
+            .field("local_ollama_base_url", &self.local_ollama_base_url)
+            .field("local_ollama_model", &self.local_ollama_model)
+            .field("local_stt_model", &self.local_stt_model)
+            .field("language", &self.language)
+            .field("allowed_languages", &self.allowed_languages)
+            .field("wake_word_enabled", &self.wake_word_enabled)
+            .field("assistant_name", &self.assistant_name)
+            .field("selected_text", &self.selected_text)
+            .field("tts_engine", &self.tts_engine)
+            .field("run", &self.run)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AssistantPipelineResponse {
@@ -886,6 +913,21 @@ mod tests {
             api_base_url: "https://api.example.com".to_string(),
             stt_model: "whisper-1".to_string(),
         }));
+    }
+
+    #[test]
+    fn pipeline_request_debug_redacts_the_api_key() {
+        let request = AssistantPipelineRequest {
+            api_key: "sk-live-SECRET".to_string(),
+            audio_base64: "c29tZSBhdWRpbyBieXRlcw==".to_string(),
+            raw_pcm_base64: Some("cGNt".to_string()),
+            ..Default::default()
+        };
+
+        let shown = format!("{request:?}");
+        assert!(!shown.contains("sk-live-SECRET"), "api key leaked in Debug");
+        assert!(!shown.contains("c29tZS"), "audio leaked in Debug");
+        assert!(shown.contains("[REDACTED]"));
     }
 
     #[test]
