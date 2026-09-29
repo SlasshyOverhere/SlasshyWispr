@@ -140,7 +140,6 @@ import {
   handleRecordToggle as handleRecordToggleService,
   hasPushToTalkHold,
   initCaptureTriggers,
-  initPushToTalkBindings,
   releasePushToTalk as releasePushToTalkService,
 } from "./recording/capture-triggers";
 import {
@@ -754,9 +753,6 @@ initCaptureTriggers({
   isHotkeyCaptureActive: () => isAnyHotkeyCaptureActive(),
   performanceNow: () => performance.now(),
   now: () => Date.now(),
-});
-initPushToTalkBindings({
-  isPushToTalkMode: () => settings.captureMode === "push-to-talk",
 });
 initRecordingController(
   {
