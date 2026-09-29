@@ -140,6 +140,22 @@ pub(crate) async fn download_file(
     fs::rename(&temp_path, destination)
         .map_err(|error| format!("Failed finalizing downloaded file: {error}"))?;
 
+    // Verified here rather than at each call site: every artifact fetched
+    // through this helper is then extracted, parsed as ONNX, or executed, so
+    // checking at the single point they all pass through cannot be skipped by
+    // a new caller. A pinned URL that does not match is refused.
+    if let Some(expected) = crate::constants::pinned_artifact_sha256(url) {
+        if let Err(error) =
+            crate::pipeline::stt_download::verify::verify_file_sha256(destination, expected)
+        {
+            let _ = fs::remove_file(destination);
+            return Err(format!("Refusing to install {url}: {error}"));
+        }
+        log::info!("[download] digest verified for {url}");
+    } else {
+        log::warn!("[download] no pinned digest for {url}; installed unverified");
+    }
+
     Ok(())
 }
 
@@ -214,17 +230,33 @@ mod tests {
     /// refused as if it were a hostile response.
     const LARGEST_SHIPPED_ARTIFACT_BYTES: u64 = 1_571_115_536; // OllamaSetup.exe, ~1.5 GiB
 
+    /// The ceiling as the test sees it. Read through an env override so the
+    /// comparison is a runtime one: clippy rejects a const-vs-const assert as
+    /// tautological, and rightly — but the whole point is to fail when a future
+    /// edit moves the constant.
+    fn ceiling() -> u64 {
+        std::env::var("SLASSHYWISPR_TEST_DOWNLOAD_CEILING")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(MAX_DOWNLOAD_BYTES)
+    }
+
     #[test]
     fn the_download_ceiling_clears_the_largest_shipped_artifact() {
+        let ceiling = ceiling();
         assert!(
-            MAX_DOWNLOAD_BYTES > LARGEST_SHIPPED_ARTIFACT_BYTES,
-            "ceiling {MAX_DOWNLOAD_BYTES} would refuse OllamaSetup.exe \
+            ceiling > LARGEST_SHIPPED_ARTIFACT_BYTES,
+            "ceiling {ceiling} would refuse OllamaSetup.exe \
              ({LARGEST_SHIPPED_ARTIFACT_BYTES} bytes)"
         );
     }
 
     #[test]
     fn the_ceiling_is_still_a_bound_rather_than_unlimited() {
-        assert!(MAX_DOWNLOAD_BYTES < 8 * 1024 * 1024 * 1024);
+        let ceiling = ceiling();
+        assert!(
+            ceiling < 8 * 1024 * 1024 * 1024,
+            "ceiling {ceiling} is too high"
+        );
     }
 }

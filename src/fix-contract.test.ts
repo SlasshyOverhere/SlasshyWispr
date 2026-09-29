@@ -50,14 +50,30 @@ describe("a pinned archive is verified before extraction", () => {
 
   it("both catalog archives carry a 64-hex digest", () => {
     const digests = [...CONSTANTS_RS.matchAll(/"([0-9a-f]{64})"/g)].map((m) => m[1]);
-    // Two Parakeet archives are pinned.
-    expect(digests.length).toBeGreaterThanOrEqual(2);
+    expect(digests.length).toBeGreaterThanOrEqual(8);
     expect(digests.every((d) => d.length === 64)).toBe(true);
   });
 
-  it("no archive entry is left with an empty digest", () => {
-    const table = /PARAKEET_ARCHIVE_EXPECTED_SHA256[\s\S]*?\];/.exec(CONSTANTS_RS);
+  it("no pinned entry is left with an empty digest", () => {
+    const table = /PINNED_ARTIFACT_SHA256[\s\S]*?\n\];/.exec(CONSTANTS_RS);
     expect(table).not.toBeNull();
     expect(table?.[0]).not.toMatch(/""/);
+  });
+
+  it("the shared download helper verifies rather than trusting the caller", () => {
+    // Every artifact is extracted, parsed as ONNX or executed, so the check
+    // sits at the one point they all pass through.
+    const fs = readFileSync("src-tauri/src/pipeline/fs.rs", "utf8");
+    expect(fs).toMatch(/pinned_artifact_sha256\(url\)/);
+    expect(fs).toMatch(/verify_file_sha256\(destination, expected\)/);
+  });
+
+  it("the ollama installer is pinned to a version, not a rolling url", () => {
+    // A rolling url cannot carry a digest: the verified bytes would not be the
+    // bytes a user gets tomorrow.
+    expect(CONSTANTS_RS).toMatch(
+      /OLLAMA_WINDOWS_INSTALLER_URL: &str =\s*"https:\/\/github\.com\/ollama\/ollama\/releases\/download\/v[\d.]+\/OllamaSetup\.exe"/,
+    );
+    expect(CONSTANTS_RS).not.toMatch(/OLLAMA_WINDOWS_INSTALLER_URL: &str =\s*"https:\/\/ollama\.com/);
   });
 });

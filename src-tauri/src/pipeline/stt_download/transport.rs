@@ -427,9 +427,11 @@ pub(crate) async fn download_prepacked_parakeet_model(
         )
     })?;
 
-    // Before extraction: these bytes become ONNX graphs parsed by the runtime, so
-    // a tampered or truncated archive must not reach the filesystem at all.
-    if let Some(expected) = parakeet_archive_expected_sha256(source.archive_url) {
+    // This path writes the archive itself rather than going through
+    // pipeline::fs::download_file, so the check that helper does for every other
+    // artifact has to be repeated here. Before extraction: these bytes become
+    // ONNX graphs parsed by the runtime.
+    if let Some(expected) = pinned_artifact_sha256(source.archive_url) {
         if let Err(error) =
             crate::pipeline::stt_download::verify::verify_file_sha256(&archive_path, expected)
         {

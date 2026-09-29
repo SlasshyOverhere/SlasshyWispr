@@ -81,10 +81,29 @@ mod tests {
         // every source the downloader can actually pick.
         for source in crate::pipeline::stt_download::archive::prepacked_archive_sources() {
             assert!(
-                crate::constants::parakeet_archive_expected_sha256(source.archive_url).is_some(),
+                crate::constants::pinned_artifact_sha256(source.archive_url).is_some(),
                 "no pinned digest for {}",
                 source.archive_url
             );
+        }
+    }
+
+    #[test]
+    fn every_pinned_digest_is_a_real_sha256() {
+        for (url, digest) in crate::constants::PINNED_ARTIFACT_SHA256 {
+            assert_eq!(digest.len(), 64, "{url} has a malformed digest");
+            assert!(
+                digest.chars().all(|c| c.is_ascii_hexdigit()),
+                "{url} digest is not hex"
+            );
+        }
+    }
+
+    #[test]
+    fn the_table_has_no_duplicate_urls() {
+        let mut seen = std::collections::HashSet::new();
+        for (url, _) in crate::constants::PINNED_ARTIFACT_SHA256 {
+            assert!(seen.insert(*url), "{url} is pinned twice");
         }
     }
 

@@ -33,7 +33,7 @@ function read(path) {
 /** `pub const NAME: &str = "…";` → value, so the URL lives in one place. */
 function rustConst(name) {
   const match = read(CONSTANTS_RS).match(
-    new RegExp(`pub const ${name}: &str = "([^"]+)";`),
+    new RegExp(`pub const ${name}: &str =\\s*"([^"]+)"`),
   );
   if (!match) throw new Error(`${CONSTANTS_RS} has no string constant ${name}`);
   return match[1];
@@ -108,7 +108,7 @@ async function publishedDigests(release, names) {
 /** Digest pinned in constants.rs for an archive URL, if any. */
 function pinnedDigest(url) {
   const table = read(CONSTANTS_RS).match(
-    /pub const PARAKEET_ARCHIVE_EXPECTED_SHA256: &\[\(&str, &str\)\] = &\[([\s\S]*?)\];/,
+    /pub const PINNED_ARTIFACT_SHA256: &\[\(&str, &str\)\] = &\[([\s\S]*?)\n\];/,
   );
   if (!table) return null;
   // The entries span several lines: (URL_CONSTANT, "64 hex chars").

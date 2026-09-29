@@ -103,8 +103,14 @@ pub const PIPER_ARCHIVE_FILE: &str = "piper_windows_amd64.zip";
 pub const PIPER_BINARY_NAME: &str = "piper.exe";
 #[cfg(not(target_os = "windows"))]
 pub const PIPER_BINARY_NAME: &str = "piper";
+/// Pinned to a release tag, not the rolling `ollama.com/download/OllamaSetup.exe`.
+///
+/// A rolling URL changes whenever Ollama ships, so it cannot carry a digest: the
+/// bytes we verified would not be the bytes a user gets tomorrow. Bumping this
+/// is a deliberate act — update OLLAMA_WINDOWS_INSTALLER_SHA256 with it.
 #[cfg(target_os = "windows")]
-pub const OLLAMA_WINDOWS_INSTALLER_URL: &str = "https://ollama.com/download/OllamaSetup.exe";
+pub const OLLAMA_WINDOWS_INSTALLER_URL: &str =
+    "https://github.com/ollama/ollama/releases/download/v0.34.4/OllamaSetup.exe";
 #[cfg(target_os = "windows")]
 pub const OLLAMA_WINDOWS_INSTALLER_FILE: &str = "OllamaSetup.exe";
 
@@ -121,11 +127,16 @@ pub const INSECURE_HTTP_HOSTS_ENV: &str = "SLASSHYWISPR_ALLOW_INSECURE_HTTP_HOST
 pub const API_KEY_FINGERPRINT_HMAC_SECRET_ENV: &str = "SLASSHYWISPR_FINGERPRINT_HMAC_SECRET";
 pub const API_KEY_FINGERPRINT_HMAC_SECRET_DEFAULT: &str = "SlasshyWispr-local-fingerprint-v1";
 
-/// SHA-256 of each prepacked Parakeet archive, keyed by the mirror URL the
-/// downloader actually fetches. Digests come from the mirror release's own
-/// `checksums.json` and agree with the release asset digests.
-/// A pinned archive that fails its digest must not be installed.
-pub const PARAKEET_ARCHIVE_EXPECTED_SHA256: &[(&str, &str)] = &[
+/// SHA-256 of every third-party artifact we download and then load or execute.
+///
+/// Keyed by the URL the downloader actually fetches, so a URL change without a
+/// matching digest is a lookup miss rather than a silent downgrade. Computed
+/// from the artifacts themselves by `scripts/compute-pinned-digests.mjs`; the
+/// GitHub-hosted ones also match the release API's own digest field.
+/// `scripts/verify-pinned-digests.mjs` re-checks them against the releases.
+pub const PINNED_ARTIFACT_SHA256: &[(&str, &str)] = &[
+    // Parakeet mirror — its own checksums.json, cross-checked against the
+    // release asset digests.
     (
         PARAKEET_V2_INT8_ARCHIVE_URL,
         "15d522402e9c25e645b681972bc8987b027564a55b69de4eb1c570f6cd9e9fda",
@@ -134,12 +145,40 @@ pub const PARAKEET_ARCHIVE_EXPECTED_SHA256: &[(&str, &str)] = &[
         PARAKEET_V3_INT8_ARCHIVE_URL,
         "43ada556be83c74dda3ba669f0dccf02696460d5e576a6201667108d2d6f7407",
     ),
+    // Piper engine zip; the extracted piper.exe is spawned as a subprocess.
+    (
+        PIPER_ARCHIVE_URL,
+        "f3c58906402b24f3a96d92145f58acba6d86c9b5db896d207f78dc80811efcea",
+    ),
+    // Ollama Windows installer; run with /S after verification.
+    (
+        OLLAMA_WINDOWS_INSTALLER_URL,
+        "4a6514323eb8c131f6c8bb651b4fe2edf5f1525f4fd8b84315ba20f1af3e210f",
+    ),
+    // ZipVoice model archive and vocoder; both loaded by sherpa-onnx.
+    (
+        VOICE_CLONE_ARCHIVE_URL,
+        "77219c8b40f4ee8d73a7f902305ff6c1128ef9b54461c41b4ca6ed890b6c2803",
+    ),
+    (
+        VOICE_CLONE_VOCODER_URL,
+        "bcb3b970e384161c4d634f0bb9e999ff1c471b34c9bc0b1049a5014065ed3cc0",
+    ),
+    // Piper voice files.
+    (
+        VOICE_MODEL_URL,
+        "914c473788fc1fa8b63ace1cdcdb44588f4ae523d3ab37df1536616835a140b7",
+    ),
+    (
+        VOICE_CONFIG_URL,
+        "03f1fa0622b80463283592d97aca9f6e89aec345a5c56b7257723e0093c58b6c",
+    ),
 ];
 
-/// Digest for a prepacked archive URL, if one is pinned.
-pub fn parakeet_archive_expected_sha256(url: &str) -> Option<&'static str> {
+/// Digest for a download URL, if one is pinned.
+pub fn pinned_artifact_sha256(url: &str) -> Option<&'static str> {
     let canonical = url.trim();
-    PARAKEET_ARCHIVE_EXPECTED_SHA256
+    PINNED_ARTIFACT_SHA256
         .iter()
         .find(|(known, _)| *known == canonical)
         .map(|(_, hash)| *hash)
