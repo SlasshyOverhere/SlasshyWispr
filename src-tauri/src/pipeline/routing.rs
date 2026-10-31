@@ -173,6 +173,11 @@ fn is_blocked_url_host(host: &str) -> bool {
 /// the online provider. Loopback never leaves the machine; LAN/non-loopback
 /// http still needs the explicit opt-in.
 fn insecure_http_opt_in_hosts() -> Vec<String> {
+    // Debug-only, matching the updater: a planted env var must not be able to
+    // downgrade the API key to cleartext on the wire in a shipped build.
+    if !cfg!(debug_assertions) {
+        return Vec::new();
+    }
     non_empty_env_var(INSECURE_HTTP_HOSTS_ENV)
         .unwrap_or_default()
         .split(',')

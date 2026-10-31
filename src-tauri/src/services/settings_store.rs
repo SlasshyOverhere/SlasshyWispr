@@ -58,6 +58,12 @@ const KEYRING_USER_ALIASES: [&str; 3] = ["apiKey", "apikey", "default"];
 const SETTINGS_API_KEY_ENCRYPTED_FIELD: &str = "apiKeyEncrypted";
 const SETTINGS_API_KEY_FINGERPRINT_FIELD: &str = "apiKeyFingerprint";
 
+/// Staleness marker for a stored key, not a trust check.
+///
+/// The default secret ships in the binary, so anyone who can read the settings
+/// file can compute a matching fingerprint for a key of their choosing. It
+/// exists to tell "these two sources hold the same key" from "one is stale", and
+/// should not be read as authenticating either.
 pub(crate) fn api_key_fingerprint(api_key: &str) -> String {
     let normalized = normalize_api_key_secret(api_key);
     if normalized.is_empty() {

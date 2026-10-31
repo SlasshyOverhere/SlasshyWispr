@@ -143,6 +143,18 @@ pub fn run() {
             let app_handle = app.handle().clone();
             commands::windows::build_tray_icon(&app_handle)?;
             audio::runtimes::ensure_idle_sweeper();
+            // TTS runs Piper into a temp WAV. Normally removed after the read,
+            // but a crash or a kill between the write and the read leaves one
+            // behind, so sweep them at startup.
+            match crate::security::cleanup_old_temp_files(
+                &std::env::temp_dir(),
+                "slasshywispr-tts",
+                24,
+            ) {
+                Ok(0) => {}
+                Ok(removed) => info!("[startup] removed {removed} stale temp file(s)"),
+                Err(error) => warn!("[startup] temp sweep failed: {}", error),
+            }
             services::startup::start_local_stt_boot_warmup(app_handle.clone());
 
             if let Some(main_window) = app.get_webview_window(crate::constants::MAIN_WINDOW_LABEL) {

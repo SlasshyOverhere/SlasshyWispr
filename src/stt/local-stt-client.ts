@@ -679,7 +679,7 @@ export function showLocalSttDownloadOverlay(status: LocalSttDownloadStatusRespon
     <div style="font-size:11px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Offline STT Download</div>
     <div style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:4px;">${escapeHtml(modelLabel)}</div>
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.4;">${escapeHtml(stage)}</div>
-    <div style="height:6px;border-radius:999px;background:rgba(255, 255, 255, 0.08);overflow:hidden;margin-bottom:10px;">
+    <div style="position:relative;height:6px;border-radius:999px;background:rgba(255, 255, 255, 0.08);overflow:hidden;margin-bottom:10px;">
       <div style="position:absolute;left:0;top:0;height:100%;width:100%;background:var(--text-secondary);transform:scaleX(${boundedPercent/100});transform-origin:left center;transition:transform 0.3s ease-out;"></div>
     </div>
     <div style="font-size:12px;color:var(--text-muted);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(detail)}</div>

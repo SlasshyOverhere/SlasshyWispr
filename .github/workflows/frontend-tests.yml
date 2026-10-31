@@ -66,6 +66,16 @@ jobs:
       - name: Backend bounds fallback gate
         run: node scripts/check-backend-bounds-fallbacks.mjs
 
+      # The old inline version grepped one line for both "derive Debug" and
+      # "api_key", so it could never fire. It reads the whole declaration now.
+      - name: Debug redaction gate
+        run: node scripts/check-debug-redaction.mjs
+
+      # The old version matched three shell globs against the committed CSP, so
+      # it was red on main. Now directive-scoped.
+      - name: Production CSP gate
+        run: node scripts/check-prod-csp.mjs
+
       # Also a prebuild step: a payload type that only exists in Rust would
       # otherwise go unnoticed until the next release build.
       - name: Generated wire types are current

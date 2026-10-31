@@ -8,6 +8,7 @@
  * clear, blur-style stop via release).
  */
 import { describe, it, expect, beforeEach } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
   clearPushToTalkHolds,
   engagePushToTalk,
@@ -21,6 +22,27 @@ import {
 } from "./capture-triggers";
 import { initRecordingController } from "./recording-controller";
 import { defaultSettings } from "../state/settings-store";
+
+describe("push-to-talk entry points", () => {
+  it("the holds the app actually receives are the hotkey ones", () => {
+    // Two button-bind helpers used to live here for #recordBtn, which is a
+    // hidden placeholder inside .hidden-runtime-state rather than a control
+    // anyone can press. Push-to-talk arrives from the global shortcut and the
+    // local keydown instead.
+    for (const file of ["../hotkeys/global-shortcut-dispatch.ts", "../hotkeys/local-shortcuts.ts"]) {
+      const source = readFileSync(new URL(file, import.meta.url), "utf8");
+      expect(source).toContain("engagePushToTalk");
+      expect(source).toContain("releasePushToTalk");
+    }
+  });
+
+  it("no dead button bindings are left behind", () => {
+    const source = readFileSync(new URL("./capture-triggers.ts", import.meta.url), "utf8");
+    expect(source).not.toContain("bindPushToTalkPointerHold");
+    expect(source).not.toContain("bindPushToTalkKeyboardHold");
+    expect(source).not.toContain("initPushToTalkBindings");
+  });
+});
 
 function wireHarness(overrides: Partial<CaptureTriggerDeps> = {}) {
   const notices: Array<{ message: string; isError?: boolean }> = [];

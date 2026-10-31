@@ -344,9 +344,15 @@ pub(crate) async fn get_voice_clone_status(
     let voices = voice_list(&app)?;
     let model_ready = assets_present(&models_dir)?;
 
+    // Takes the engine mutex, which is held across a whole generation, so it
+    // belongs off the async worker.
+    let engine_loaded = tauri::async_runtime::spawn_blocking(engine_loaded)
+        .await
+        .map_err(|error| format!("Voice-clone status worker failed: {error}"))?;
+
     Ok(VoiceCloneStatusResponse {
         model_ready,
-        engine_loaded: engine_loaded(),
+        engine_loaded,
         voices,
         max_reference_seconds: VOICE_CLONE_MAX_REFERENCE_SECONDS,
         num_steps: VOICE_CLONE_NUM_STEPS,
@@ -518,11 +524,18 @@ pub(crate) async fn delete_voice_clone(
 pub(crate) async fn unload_voice_clone_model(
     _app: AppHandle,
 ) -> Result<VoiceCloneEngineResponse, String> {
-    unload_engine();
+    // The engine mutex is held across a whole ONNX generation, so unloading
+    // blocks until any in-flight synthesis finishes. Same reasoning as the
+    // synthesis call sites, which already use spawn_blocking.
+    tauri::async_runtime::spawn_blocking(unload_engine)
+        .await
+        .map_err(|error| format!("Voice-clone unload worker failed: {error}"))?;
 
-    Ok(VoiceCloneEngineResponse {
-        engine_loaded: engine_loaded(),
-    })
+    let engine_loaded = tauri::async_runtime::spawn_blocking(engine_loaded)
+        .await
+        .map_err(|error| format!("Voice-clone status worker failed: {error}"))?;
+
+    Ok(VoiceCloneEngineResponse { engine_loaded })
 }
 
 /// Piper only. The clone model is ~156 MB and downloads on demand from the voice-clone

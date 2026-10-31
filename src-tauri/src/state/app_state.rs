@@ -16,12 +16,22 @@ use crate::pipeline::stt_download::progress::{
 };
 use reqwest::Client;
 
+/// The two slots the tray's "copy last transcript" / "copy last assistant
+/// response" read. Written and read together, so they belong in one lock.
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LastPipelineOutput {
+    pub(crate) transcript: String,
+    pub(crate) assistant_response: String,
+}
+
 pub(crate) struct AppState {
     pub(crate) http: Client,
     pending_selection_rewrite: Mutex<Option<PendingSelectionRewrite>>,
     recent_selection_context: Mutex<Option<RecentSelectionContext>>,
-    last_transcript: Mutex<String>,
-    last_assistant_response: Mutex<String>,
+    /// One lock for both slots: they are written as a pair and read as a pair,
+    /// so two turns interleaving between two mutexes could leave the tray
+    /// reporting a transcript and a response from different runs.
+    last_pipeline_output: Mutex<LastPipelineOutput>,
     local_stt_download_status: Mutex<LocalSttDownloadStatusResponse>,
     local_stt_runtime_loaded: Mutex<bool>,
     /// File handed over by Explorer's "Transcribe with SlasshyWispr" verb.
@@ -42,6 +52,19 @@ impl AppState {
             .timeout(Duration::from_secs(150))
             .pool_idle_timeout(Duration::from_secs(90))
             .pool_max_idle_per_host(8)
+            // reqwest's default follows up to 10 redirects to any host, including
+            // plain http, which would silently undo the caller's scheme and host
+            // checks on the URLs it was given. The updater is safe either way
+            // because minisign verifies the final bytes; the model and runtime
+            // downloads are not, so the redirect itself must stay in bounds.
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                let url = attempt.url();
+                if url.scheme() == "https" {
+                    attempt.follow()
+                } else {
+                    attempt.error("redirect to a non-https URL refused")
+                }
+            }))
             .build()
             .map_err(|error| format!("Failed to create HTTP client: {error}"))?;
 
@@ -49,8 +72,7 @@ impl AppState {
             http,
             pending_selection_rewrite: Mutex::new(None),
             recent_selection_context: Mutex::new(None),
-            last_transcript: Mutex::new(String::new()),
-            last_assistant_response: Mutex::new(String::new()),
+            last_pipeline_output: Mutex::new(LastPipelineOutput::default()),
             local_stt_download_status: Mutex::new(LocalSttDownloadStatusResponse::default()),
             local_stt_runtime_loaded: Mutex::new(false),
             pending_transcribe_file: Mutex::new(None),
@@ -106,15 +128,15 @@ impl AppState {
         let normalized = Self::normalize_transcribe_path(path);
         self.armed_transcribe_paths
             .lock()
-            .map(|mut armed| {
-                match armed.iter().position(|entry| entry == &normalized) {
+            .map(
+                |mut armed| match armed.iter().position(|entry| entry == &normalized) {
                     Some(index) => {
                         armed.remove(index);
                         true
                     }
                     None => false,
-                }
-            })
+                },
+            )
             .unwrap_or(false)
     }
 
@@ -205,46 +227,27 @@ impl AppState {
         transcript: impl Into<String>,
         assistant_response: impl Into<String>,
     ) -> Result<(), String> {
-        self.set_last_transcript(transcript)?;
-        self.set_last_assistant_response(assistant_response)?;
-        Ok(())
-    }
-
-    pub(crate) fn set_last_transcript(&self, transcript: impl Into<String>) -> Result<(), String> {
-        let transcript = transcript.into();
-        let mut transcript_slot = self
-            .last_transcript
+        let mut slot = self
+            .last_pipeline_output
             .lock()
-            .map_err(|_| "Last transcript state lock poisoned.".to_string())?;
-        *transcript_slot = transcript;
-        Ok(())
-    }
-
-    pub(crate) fn set_last_assistant_response(
-        &self,
-        assistant_response: impl Into<String>,
-    ) -> Result<(), String> {
-        let assistant_response = assistant_response.into();
-        let mut response_slot = self
-            .last_assistant_response
-            .lock()
-            .map_err(|_| "Last assistant response state lock poisoned.".to_string())?;
-        *response_slot = assistant_response;
+            .map_err(|_| "Last pipeline output lock poisoned.".to_string())?;
+        slot.transcript = transcript.into();
+        slot.assistant_response = assistant_response.into();
         Ok(())
     }
 
     pub(crate) fn last_transcript_snapshot(&self) -> Result<String, String> {
-        self.last_transcript
+        self.last_pipeline_output
             .lock()
-            .map(|value| value.clone())
-            .map_err(|_| "Last transcript state lock poisoned.".to_string())
+            .map(|slot| slot.transcript.clone())
+            .map_err(|_| "Last pipeline output lock poisoned.".to_string())
     }
 
     pub(crate) fn last_assistant_response_snapshot(&self) -> Result<String, String> {
-        self.last_assistant_response
+        self.last_pipeline_output
             .lock()
-            .map(|value| value.clone())
-            .map_err(|_| "Last assistant response state lock poisoned.".to_string())
+            .map(|slot| slot.assistant_response.clone())
+            .map_err(|_| "Last pipeline output lock poisoned.".to_string())
     }
 
     pub(crate) fn lock_local_stt_download_status(
@@ -275,6 +278,28 @@ impl AppState {
         Ok(())
     }
 
+    /// Claim the download slot, or report who holds it.
+    ///
+    /// The check and the claim must be one critical section: read-then-write let
+    /// two callers both see `active == false` and both start writing the same
+    /// target directory.
+    pub(crate) fn try_begin_local_stt_download(
+        &self,
+        starting: LocalSttDownloadStatusResponse,
+    ) -> Result<(), String> {
+        let mut status = self.lock_local_stt_download_status()?;
+        if status.active {
+            return Err(format!(
+                "Local STT download already running for '{}'.",
+                status.model
+            ));
+        }
+        *status = starting;
+        status.progress_percent = calculate_local_stt_progress_percent(&status);
+        status.updated_at_ms = now_unix_ms();
+        Ok(())
+    }
+
     pub(crate) fn local_stt_runtime_loaded_snapshot(&self) -> Result<bool, String> {
         self.local_stt_runtime_loaded
             .lock()
@@ -298,6 +323,85 @@ mod tests {
 
     fn state() -> AppState {
         AppState::new().expect("app state")
+    }
+
+    #[test]
+    fn only_one_download_can_claim_the_slot() {
+        let state = state();
+        let claim = |model: &str| {
+            state.try_begin_local_stt_download(LocalSttDownloadStatusResponse {
+                active: true,
+                completed: false,
+                success: false,
+                model: model.to_string(),
+                repo_id: String::new(),
+                stage: String::new(),
+                message: String::new(),
+                current_file: String::new(),
+                downloaded_bytes: 0,
+                total_bytes: 0,
+                files_completed: 0,
+                files_total: 0,
+                progress_percent: 0.0,
+                updated_at_ms: 0,
+            })
+        };
+
+        assert!(claim("first").is_ok());
+        // The second must be refused, or both would write the same target dir.
+        assert!(claim("second").is_err());
+        assert_eq!(
+            state
+                .snapshot_local_stt_download_status()
+                .expect("status")
+                .model,
+            "first"
+        );
+    }
+
+    #[test]
+    fn the_slot_is_claimable_again_once_the_download_finishes() {
+        let state = state();
+        let claim = |model: &str| {
+            state.try_begin_local_stt_download(LocalSttDownloadStatusResponse {
+                active: true,
+                completed: false,
+                success: false,
+                model: model.to_string(),
+                repo_id: String::new(),
+                stage: String::new(),
+                message: String::new(),
+                current_file: String::new(),
+                downloaded_bytes: 0,
+                total_bytes: 0,
+                files_completed: 0,
+                files_total: 0,
+                progress_percent: 0.0,
+                updated_at_ms: 0,
+            })
+        };
+
+        assert!(claim("first").is_ok());
+        // A completed download reports active = false, which frees the slot.
+        state
+            .update_local_stt_download_status(|status| {
+                status.active = false;
+                status.completed = true;
+                status.success = true;
+            })
+            .expect("mark the download finished");
+        assert!(claim("second").is_ok());
+    }
+
+    #[test]
+    fn the_two_output_slots_always_come_from_the_same_turn() {
+        let state = state();
+        state.set_last_pipeline_output("t1", "r1").expect("first");
+        state.set_last_pipeline_output("t2", "r2").expect("second");
+        // Written as a pair under one lock, so the tray can never report a
+        // transcript from one turn and a response from another.
+        assert_eq!(state.last_transcript_snapshot().expect("t"), "t2");
+        assert_eq!(state.last_assistant_response_snapshot().expect("r"), "r2");
     }
 
     #[test]

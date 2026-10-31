@@ -209,3 +209,39 @@ describe("releasePreWarmedStream", () => {
     expect(cannedStream.tracks[0].stopped).toBe(true);
   });
 });
+
+describe("concurrent pre-warm", () => {
+  it("two callers opening at once produce one stream, not two", async () => {
+    // Both the stage-to-idle transition and the pipeline's own pre-warm action
+    // fire on the same dictation completion.
+    const opened: FakeStream[] = [];
+    let unblock = () => {};
+    const gate = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    getUserMediaImpl = async () => {
+      const stream = fakeStream(true);
+      opened.push(stream);
+      await gate;
+      return stream;
+    };
+
+    const first = preWarmMicrophoneStream("mic-a");
+    const second = preWarmMicrophoneStream("mic-a");
+    unblock();
+    await Promise.all([first, second]);
+
+    expect(getUserMediaCalls).toBe(1);
+    // A second stream would leave the first unreferenced and its mic light on.
+    expect(opened.length).toBe(1);
+  });
+
+  it("a pre-warm is allowed again after the in-flight one settles", async () => {
+    await preWarmMicrophoneStream("mic-a");
+    await releasePreWarmedStream();
+    getUserMediaCalls = 0;
+
+    await preWarmMicrophoneStream("mic-b");
+    expect(getUserMediaCalls).toBe(1);
+  });
+});

@@ -64,7 +64,9 @@ impl PipelineState {
     }
 
     pub fn clear_pending_rewrite(&self) -> bool {
-        lock_recover(&self.pending_selection_rewrite).take().is_some()
+        lock_recover(&self.pending_selection_rewrite)
+            .take()
+            .is_some()
     }
 
     pub fn peek_pending_rewrite(&self) -> Option<String> {
@@ -88,7 +90,9 @@ impl PipelineState {
 /// These slots hold a `String` and nothing else, so a poisoned lock carries no
 /// invariant worth panicking the pipeline command over — take the data back.
 fn lock_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Resolved pipeline configuration for the orchestrator.

@@ -3,51 +3,6 @@ use std::fs;
 use tempfile::TempDir;
 
 #[test]
-fn test_validate_executable_path_with_valid_exe() {
-    let temp_dir = TempDir::new().unwrap();
-    let exe_path = temp_dir.path().join("installer.exe");
-    fs::write(&exe_path, b"fake exe").unwrap();
-
-    let allowed_dirs = vec![temp_dir.path().to_str().unwrap()];
-    let result = validate_executable_path(&exe_path, &allowed_dirs);
-
-    assert!(
-        result.is_ok(),
-        "Should accept valid executable in allowed directory"
-    );
-}
-
-#[test]
-fn test_validate_executable_path_rejects_invalid_extension() {
-    let temp_dir = TempDir::new().unwrap();
-    let bad_path = temp_dir.path().join("malicious.txt");
-    fs::write(&bad_path, b"not an exe").unwrap();
-
-    let allowed_dirs = vec![temp_dir.path().to_str().unwrap()];
-    let result = validate_executable_path(&bad_path, &allowed_dirs);
-
-    assert!(result.is_err(), "Should reject non-executable files");
-    assert!(result.unwrap_err().contains("Invalid executable extension"));
-}
-
-#[test]
-fn test_validate_executable_path_rejects_outside_allowed_dir() {
-    let temp_dir1 = TempDir::new().unwrap();
-    let temp_dir2 = TempDir::new().unwrap();
-
-    let exe_path = temp_dir1.path().join("installer.exe");
-    fs::write(&exe_path, b"fake exe").unwrap();
-
-    let allowed_dirs = vec![temp_dir2.path().to_str().unwrap()];
-    let result = validate_executable_path(&exe_path, &allowed_dirs);
-
-    assert!(
-        result.is_err(),
-        "Should reject executables outside allowed directories"
-    );
-}
-
-#[test]
 fn test_create_secure_temp_file_with_proper_permissions() {
     let temp_dir = TempDir::new().unwrap();
     let data = b"secure temporary data";
@@ -76,11 +31,16 @@ fn test_cleanup_old_temp_files() {
         fs::write(&file_path, format!("data {}", i)).unwrap();
     }
 
-    let result = cleanup_old_temp_files(temp_dir.path(), 0);
+    // Another program's leftovers in the same directory.
+    fs::write(temp_dir.path().join("other.dat"), b"not ours").unwrap();
+
+    let result = cleanup_old_temp_files(temp_dir.path(), "test_", 0);
     assert!(result.is_ok());
 
-    // All files should be cleaned up (max_age_hours = 0 means all are old)
+    // max_age_hours = 0 means all of ours are old. The foreign file must
+    // survive: the app sweeps the shared system temp directory.
     assert_eq!(result.unwrap(), 3);
+    assert!(temp_dir.path().join("other.dat").exists());
 }
 
 #[test]
@@ -183,31 +143,6 @@ fn test_hmac_fingerprint_rejects_empty_key() {
 fn test_sha256_hash_produces_correct_length() {
     let hash = sha256_hash("any data here");
     assert_eq!(hash.len(), 64, "SHA-256 should produce 64 hex characters");
-}
-
-#[test]
-fn test_path_validation_prevents_traversal() {
-    let temp_dir = TempDir::new().unwrap();
-
-    // Try to access a file outside the allowed directory
-    let traversal_path = temp_dir.path().join("../outside.txt");
-    fs::write(&traversal_path, "test").unwrap_or_default();
-
-    let result = validate_path_within_directory(&traversal_path, temp_dir.path());
-    assert!(result.is_err(), "Should prevent path traversal");
-}
-
-#[cfg(target_os = "windows")]
-#[test]
-fn test_windows_installer_validation() {
-    let temp_dir = TempDir::new().unwrap();
-    let exe_path = temp_dir.path().join("setup.exe");
-    fs::write(&exe_path, b"fake installer").unwrap();
-
-    let allowed_dirs = vec![temp_dir.path().to_str().unwrap()];
-    let result = validate_executable_path(&exe_path, &allowed_dirs);
-
-    assert!(result.is_ok());
 }
 
 #[test]

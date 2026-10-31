@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 #[cfg(target_os = "windows")]
 use zip::ZipArchive;
 
@@ -135,12 +135,11 @@ pub async fn synthesize_with_piper(
             return Err(format!("Piper executable was not found at: {piper_path}"));
         }
 
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| format!("Failed to compute timestamp: {error}"))?
-            .as_millis();
-
-        let output_path = std::env::temp_dir().join(format!("slasshywispr-tts-{stamp}.wav"));
+        // A UUID name created exclusively, not a millisecond timestamp: this is
+        // the path Piper writes its WAV to and we then read back, so anything
+        // running as the same user must not be able to pre-create it.
+        let output_path =
+            crate::security::reserve_secure_temp_path(&std::env::temp_dir(), "slasshywispr-tts", "wav")?;
 
         let run_once = |with_tuning: bool| -> Result<std::process::Output, String> {
             let mut command = Command::new(&piper_path);
@@ -199,54 +198,58 @@ pub async fn synthesize_with_piper(
             );
         }
 
-        let output = if should_try_tuning {
-            let first_output = run_once(true)?;
-            if first_output.status.success() {
-                let mut guard = piper_tuning_support()
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                if *guard != Some(true) {
-                    *guard = Some(true);
-                }
-                first_output
-            } else {
-                let merged = merge_process_output(&first_output.stdout, &first_output.stderr);
-                let lower = merged.to_ascii_lowercase();
-                let unsupported_flag = lower.contains("unrecognized arguments")
-                    || lower.contains("unknown option")
-                    || lower.contains("unexpected argument")
-                    || lower.contains("invalid choice");
-                if unsupported_flag {
-                    warn!(
-                        "[piper.synthesize] piper runtime does not support tuning args; retrying with defaults"
-                    );
+        let synthesized = (|| -> Result<Vec<u8>, String> {
+            let output = if should_try_tuning {
+                let first_output = run_once(true)?;
+                if first_output.status.success() {
                     let mut guard = piper_tuning_support()
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    *guard = Some(false);
-                    run_once(false)?
-                } else {
+                    if *guard != Some(true) {
+                        *guard = Some(true);
+                    }
                     first_output
+                } else {
+                    let merged = merge_process_output(&first_output.stdout, &first_output.stderr);
+                    let lower = merged.to_ascii_lowercase();
+                    let unsupported_flag = lower.contains("unrecognized arguments")
+                        || lower.contains("unknown option")
+                        || lower.contains("unexpected argument")
+                        || lower.contains("invalid choice");
+                    if unsupported_flag {
+                        warn!(
+                            "[piper.synthesize] piper runtime does not support tuning args; retrying with defaults"
+                        );
+                        let mut guard = piper_tuning_support()
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        *guard = Some(false);
+                        run_once(false)?
+                    } else {
+                        first_output
+                    }
                 }
+            } else {
+                run_once(false)?
+            };
+
+            if !output.status.success() {
+                let merged = merge_process_output(&output.stdout, &output.stderr);
+                return Err(format!(
+                    "Piper synthesis failed: {}",
+                    clip_text(merged.trim(), 420)
+                ));
             }
-        } else {
-            run_once(false)?
-        };
 
-        if !output.status.success() {
-            let merged = merge_process_output(&output.stdout, &output.stderr);
-            return Err(format!(
-                "Piper synthesis failed: {}",
-                clip_text(merged.trim(), 420)
-            ));
-        }
+            fs::read(&output_path)
+                .map_err(|error| format!("Failed to read generated WAV file: {error}"))
+        })();
 
-        let wav_bytes = fs::read(&output_path)
-            .map_err(|error| format!("Failed to read generated WAV file: {error}"))?;
-
+        // The path is ours and we chose it, so it must not outlive the call.
+        // The `?`s above return without reaching a removal.
         let _ = fs::remove_file(&output_path);
 
-        Ok(wav_bytes)
+        synthesized
     })
     .await
     .map_err(|error| format!("Piper synthesis worker failed: {error}"))

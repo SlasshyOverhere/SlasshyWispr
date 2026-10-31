@@ -1,8 +1,11 @@
-// Input, path and artifact validation helpers. `validate_text_input`,
-// `validate_base64_input` and `verify_file_sha256` run in the command and model
-// download paths; `validate_path_within_directory`, `validate_executable_path`,
-// `create_secure_temp_file`, `cleanup_old_temp_files` and
-// `create_api_key_fingerprint` are reached only by the test suite today.
+// Input, path and artifact validation helpers.
+//
+// Wired into the command paths: `validate_text_input`, `validate_base64_input`,
+// `create_api_key_fingerprint`, `verify_file_sha256` (via pipeline::fs and the
+// STT download), and the temp-file helpers (Piper's WAV, swept at startup).
+//
+// A test that proves a helper works is not evidence it is called, so this list
+// is the thing to check before relying on anything here.
 
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
@@ -10,69 +13,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 type HmacSha256 = Hmac<Sha256>;
-
-/// Validates that a path is within an allowed directory and canonicalizes it
-pub fn validate_path_within_directory(path: &Path, allowed_root: &Path) -> Result<PathBuf, String> {
-    let canonical_root = allowed_root
-        .canonicalize()
-        .map_err(|e| format!("Invalid allowed root {}: {}", allowed_root.display(), e))?;
-    let canonical = path
-        .canonicalize()
-        .map_err(|e| format!("Invalid path {}: {}", path.display(), e))?;
-
-    if !canonical.starts_with(&canonical_root) {
-        return Err(format!(
-            "Path traversal detected: {} is not within {}",
-            canonical.display(),
-            canonical_root.display()
-        ));
-    }
-
-    Ok(canonical)
-}
-
-/// Validates executable paths against an allowlist
-pub fn validate_executable_path(path: &Path, allowed_dirs: &[&str]) -> Result<PathBuf, String> {
-    // Ensure path exists
-    if !path.exists() {
-        return Err(format!("Path does not exist: {}", path.display()));
-    }
-
-    // Check extension
-    if let Some(ext) = path.extension() {
-        let ext_str = ext.to_string_lossy().to_lowercase();
-        if !["exe", "msi", "bat", "cmd"].contains(&ext_str.as_str()) {
-            return Err(format!("Invalid executable extension: {}", ext_str));
-        }
-    } else {
-        return Err("Executable must have a valid extension (.exe, .msi, etc.)".to_string());
-    }
-
-    // Canonicalize and validate
-    let canonical = path
-        .canonicalize()
-        .map_err(|e| format!("Cannot resolve path: {}", e))?;
-
-    // Check against allowed directories
-    for allowed_dir in allowed_dirs {
-        let allowed_path = Path::new(allowed_dir);
-        let canonical_allowed = allowed_path.canonicalize().map_err(|e| {
-            format!(
-                "Cannot resolve allowed directory {}: {}",
-                allowed_path.display(),
-                e
-            )
-        })?;
-        if canonical.starts_with(&canonical_allowed) {
-            return Ok(canonical);
-        }
-    }
-
-    Err(format!(
-        "Executable {} is not in an allowed directory",
-        canonical.display()
-    ))
-}
 
 /// Securely creates HMAC-SHA256 fingerprint for API keys
 pub fn create_api_key_fingerprint(api_key: &str, secret_key: &str) -> Result<String, String> {
@@ -187,6 +127,10 @@ pub fn validate_base64_input(base64_str: &str, max_size_bytes: usize) -> Result<
 }
 
 /// Creates a secure temporary file with restricted permissions
+/// A private temp file for a subprocess to write into.
+///
+/// Exclusive create under a UUID name, so nothing else on the machine can
+/// pre-create or symlink the path between choosing it and the child writing.
 pub fn create_secure_temp_file(
     dir: &Path,
     prefix: &str,
@@ -195,7 +139,6 @@ pub fn create_secure_temp_file(
 ) -> Result<PathBuf, String> {
     use std::io::Write;
 
-    // Ensure directory exists with proper permissions
     fs::create_dir_all(dir).map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
     #[cfg(unix)]
@@ -209,12 +152,14 @@ pub fn create_secure_temp_file(
             .map_err(|e| format!("Cannot set directory permissions: {}", e))?;
     }
 
-    // Create temp file with unique name
+    // Exclusive create, so a name collision (or a planted symlink) fails rather
+    // than writing through it.
     let temp_path = dir.join(format!("{}_{}.{}", prefix, uuid::Uuid::new_v4(), suffix));
-
-    // Write data
-    let mut file =
-        fs::File::create(&temp_path).map_err(|e| format!("Failed to create temp file: {}", e))?;
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
 
     file.write_all(data)
         .map_err(|e| format!("Failed to write temp file: {}", e))?;
@@ -234,8 +179,26 @@ pub fn create_secure_temp_file(
     Ok(temp_path)
 }
 
-/// Cleans up old temporary files
-pub fn cleanup_old_temp_files(dir: &Path, max_age_hours: u64) -> Result<usize, String> {
+/// Reserve a private, empty temp path for a child process to write into.
+///
+/// The file is created exclusively and then closed, so the name is taken but
+/// the child still sees an empty file. Piper writes its WAV to this path, which
+/// makes a predictable name in a shared temp directory a real hazard: anything
+/// running as the same user could pre-create it and have its bytes played back.
+pub fn reserve_secure_temp_path(dir: &Path, prefix: &str, suffix: &str) -> Result<PathBuf, String> {
+    create_secure_temp_file(dir, prefix, suffix, b"")
+}
+
+/// Remove temp files this app created that are older than `max_age_hours`.
+///
+/// Scoped to `prefix` on purpose: the app sweeps the shared system temp
+/// directory, and an unfiltered sweep there would delete every other
+/// application's leftovers too.
+pub fn cleanup_old_temp_files(
+    dir: &Path,
+    prefix: &str,
+    max_age_hours: u64,
+) -> Result<usize, String> {
     if !dir.exists() {
         return Ok(0);
     }
@@ -248,6 +211,14 @@ pub fn cleanup_old_temp_files(dir: &Path, max_age_hours: u64) -> Result<usize, S
     for entry in fs::read_dir(dir).map_err(|e| format!("Failed to read temp directory: {}", e))? {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
         let path = entry.path();
+
+        // Only our own leftovers. Everything else in a shared temp directory
+        // belongs to another program.
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with(prefix) {
+            continue;
+        }
 
         if path.is_file() {
             let metadata =
@@ -272,26 +243,50 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_validate_path_within_directory() {
+    fn a_reserved_temp_path_is_exclusive_and_empty() {
         let temp_dir = TempDir::new().unwrap();
-        let allowed = temp_dir.path();
-        let valid_file = allowed.join("test.txt");
-        fs::write(&valid_file, "test").unwrap();
+        let path = reserve_secure_temp_path(temp_dir.path(), "sw-test", "wav").expect("reserve");
 
-        let result = validate_path_within_directory(&valid_file, allowed);
-        assert!(result.is_ok());
+        // Created exclusively, so the name is taken...
+        assert!(path.exists());
+        // ...and empty, which is what a child process writing into it needs.
+        assert_eq!(fs::metadata(&path).expect("metadata").len(), 0);
+        // A second reservation cannot land on the same name.
+        let other = reserve_secure_temp_path(temp_dir.path(), "sw-test", "wav").expect("reserve");
+        assert_ne!(path, other);
     }
 
     #[test]
-    fn test_validate_path_traversal_attempt() {
+    fn the_temp_sweep_only_removes_our_own_stale_files() {
         let temp_dir = TempDir::new().unwrap();
-        let allowed = temp_dir.path();
-        let outside_file = temp_dir.path().parent().unwrap().join("outside.txt");
-        fs::write(&outside_file, "test").unwrap();
+        let ours =
+            reserve_secure_temp_path(temp_dir.path(), "slasshywispr-tts", "wav").expect("reserve");
+        // Somebody else's file in the same directory. The app sweeps the shared
+        // system temp directory, so this one must survive.
+        let foreign = temp_dir.path().join("someone-elses-file.tmp");
+        fs::write(&foreign, b"not ours").expect("write");
 
-        let result = validate_path_within_directory(&outside_file, allowed);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Path traversal"));
+        // Age zero makes every file stale, so this is about scope, not age.
+        let removed =
+            cleanup_old_temp_files(temp_dir.path(), "slasshywispr-tts", 0).expect("sweep");
+        assert_eq!(removed, 1, "only our own file should be swept");
+        assert!(!ours.exists(), "our stale file should be gone");
+        assert!(
+            foreign.exists(),
+            "another program's file must never be touched"
+        );
+    }
+
+    #[test]
+    fn a_sweep_that_is_not_yet_due_removes_nothing() {
+        let temp_dir = TempDir::new().unwrap();
+        let path =
+            reserve_secure_temp_path(temp_dir.path(), "slasshywispr-tts", "wav").expect("reserve");
+
+        let removed =
+            cleanup_old_temp_files(temp_dir.path(), "slasshywispr-tts", 24).expect("sweep");
+        assert_eq!(removed, 0);
+        assert!(path.exists(), "a file inside the window must be kept");
     }
 
     #[test]

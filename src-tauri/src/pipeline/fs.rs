@@ -11,6 +11,7 @@
 //! belongs.
 
 use std::fs;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use bzip2::read::BzDecoder;
@@ -67,6 +68,13 @@ pub(crate) fn find_file_by_name(root: &Path, target_name: &str) -> Result<Option
     Ok(None)
 }
 
+/// Ceiling for a single artifact fetched by [`download_file`].
+///
+/// Above the largest artifact we ship: the Ollama Windows installer is ~1.5 GiB.
+/// The real protection against a hostile response is that this streams to disk
+/// rather than buffering, so the ceiling is a sanity bound, not a memory guard.
+const MAX_DOWNLOAD_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
 pub(crate) async fn download_file(
     client: &Client,
     url: &str,
@@ -77,7 +85,7 @@ pub(crate) async fn download_file(
             .map_err(|error| format!("Failed to prepare destination folder: {error}"))?;
     }
 
-    let response = client
+    let mut response = client
         .get(url)
         .send()
         .await
@@ -96,17 +104,57 @@ pub(crate) async fn download_file(
         ));
     }
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| format!("Failed reading downloaded bytes from {url}: {error}"))?;
+    if let Some(length) = response.content_length() {
+        if length > MAX_DOWNLOAD_BYTES {
+            return Err(format!(
+                "Refusing {url}: advertised size {length} exceeds the {MAX_DOWNLOAD_BYTES}-byte limit."
+            ));
+        }
+    }
 
     let temp_path = destination.with_extension("downloading");
-    fs::write(&temp_path, &bytes)
+    let mut file = File::create(&temp_path)
         .map_err(|error| format!("Failed writing temporary file: {error}"))?;
+    let mut written: u64 = 0;
+
+    // Streamed rather than buffered, so a multi-hundred-MB artifact never sits
+    // in memory, and a lying Content-Length cannot get past the check above.
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| format!("Failed reading downloaded bytes from {url}: {error}"))?
+    {
+        written = written.saturating_add(u64::try_from(chunk.len()).unwrap_or(0));
+        if written > MAX_DOWNLOAD_BYTES {
+            drop(file);
+            let _ = fs::remove_file(&temp_path);
+            return Err(format!(
+                "Refusing {url}: body exceeded the {MAX_DOWNLOAD_BYTES}-byte limit."
+            ));
+        }
+        std::io::Write::write_all(&mut file, &chunk)
+            .map_err(|error| format!("Failed writing temporary file: {error}"))?;
+    }
+    drop(file);
 
     fs::rename(&temp_path, destination)
         .map_err(|error| format!("Failed finalizing downloaded file: {error}"))?;
+
+    // Verified here rather than at each call site: every artifact fetched
+    // through this helper is then extracted, parsed as ONNX, or executed, so
+    // checking at the single point they all pass through cannot be skipped by
+    // a new caller. A pinned URL that does not match is refused.
+    if let Some(expected) = crate::constants::pinned_artifact_sha256(url) {
+        if let Err(error) =
+            crate::pipeline::stt_download::verify::verify_file_sha256(destination, expected)
+        {
+            let _ = fs::remove_file(destination);
+            return Err(format!("Refusing to install {url}: {error}"));
+        }
+        log::info!("[download] digest verified for {url}");
+    } else {
+        log::warn!("[download] no pinned digest for {url}; installed unverified");
+    }
 
     Ok(())
 }
@@ -171,4 +219,44 @@ fn unpack_tar<R: Read>(reader: R, archive_path: &Path, destination: &Path) -> Re
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Measured sizes of every artifact `download_file` is asked to fetch.
+    /// The ceiling has to clear the largest, or a legitimate download is
+    /// refused as if it were a hostile response.
+    const LARGEST_SHIPPED_ARTIFACT_BYTES: u64 = 1_571_115_536; // OllamaSetup.exe, ~1.5 GiB
+
+    /// The ceiling as the test sees it. Read through an env override so the
+    /// comparison is a runtime one: clippy rejects a const-vs-const assert as
+    /// tautological, and rightly — but the whole point is to fail when a future
+    /// edit moves the constant.
+    fn ceiling() -> u64 {
+        std::env::var("SLASSHYWISPR_TEST_DOWNLOAD_CEILING")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(MAX_DOWNLOAD_BYTES)
+    }
+
+    #[test]
+    fn the_download_ceiling_clears_the_largest_shipped_artifact() {
+        let ceiling = ceiling();
+        assert!(
+            ceiling > LARGEST_SHIPPED_ARTIFACT_BYTES,
+            "ceiling {ceiling} would refuse OllamaSetup.exe \
+             ({LARGEST_SHIPPED_ARTIFACT_BYTES} bytes)"
+        );
+    }
+
+    #[test]
+    fn the_ceiling_is_still_a_bound_rather_than_unlimited() {
+        let ceiling = ceiling();
+        assert!(
+            ceiling < 8 * 1024 * 1024 * 1024,
+            "ceiling {ceiling} is too high"
+        );
+    }
 }

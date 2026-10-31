@@ -99,11 +99,12 @@ describe("Recording state machine: recording → processing", () => {
     expect(result.detail).toContain("Canceled");
   });
 
-  it("recording-stopped without cancel triggers pipeline", () => {
+  it("recording-stopped without cancel moves to processing", () => {
     const state = idleState({ stage: "processing" });
     const result = processEvent(state, { type: "recording-stopped", cancelPipeline: false }, pttConfig());
     assertStage(result, "processing");
-    expect(hasAction(result, "run-pipeline")).toBe(true);
+    // finalizeRecording calls the pipeline itself; the machine has no blob.
+    expect(result.actions.every((action) => action.type !== "run-pipeline")).toBe(true);
   });
 });
 
@@ -222,6 +223,28 @@ describe("Recording state machine: failures", () => {
       pttConfig(),
     );
     expect(hasAction(result, "clear-ptt-holds")).toBe(true);
+  });
+
+  it("recording-failed stops the recording ticker", () => {
+    // A MediaRecorder error fires this mid-recording, and the ticker is a plain
+    // interval that nothing else clears on this path.
+    const result = processEvent(
+      idleState({ stage: "recording" }),
+      { type: "recording-failed", reason: "Media recorder error." },
+      pttConfig(),
+    );
+    expect(hasAction(result, "stop-recording-ticker")).toBe(true);
+  });
+
+  it("an unrecognised event returns a no-op rather than undefined", () => {
+    // Callers dereference the result, so falling off the switch would throw.
+    const result = processEvent(
+      idleState({ stage: "idle" }),
+      { type: "not-a-real-event" } as never,
+      pttConfig(),
+    );
+    expect(result.stage).toBe("idle");
+    expect(result.actions).toEqual([]);
   });
 
   it("audio-empty transitions to error", () => {

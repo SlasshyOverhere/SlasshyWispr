@@ -24,12 +24,9 @@ use crate::pipeline::log::{clip_text, single_line};
 use crate::pipeline::process::elapsed_ms;
 use crate::pipeline::refinement::{self, RefinementConfig};
 use crate::pipeline::routing::{infer_local_stt_provider_from_model, AiModeConfig, SttModeConfig};
-use crate::pipeline::selection::{
-    build_selected_context_answer_prompt, selection_action_label,
-};
+use crate::pipeline::selection::{build_selected_context_answer_prompt, selection_action_label};
 use crate::pipeline::stt::{
-    is_known_stt_hallucination, looks_like_repetitive_transcript_noise,
-    normalize_stt_allowed_languages, normalize_stt_language_hint,
+    effective_language_hint, is_known_stt_hallucination, looks_like_repetitive_transcript_noise,
 };
 use crate::pipeline::tts::{
     load_clone_assets, synthesize_cloned, synthesize_with_piper, voice_clone_models_dir,
@@ -43,7 +40,9 @@ use crate::services::{
 };
 use crate::state::AppState;
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+// No derived Debug: api_key is a plaintext secret, and the rest of the crate
+// hand-writes a redacting impl for every struct that holds one.
+#[derive(Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AssistantPipelineRequest {
     pub(crate) api_key: String,
@@ -83,6 +82,31 @@ pub(crate) struct AssistantPipelineRequest {
     #[serde(flatten, default)]
     pub(crate) run: PipelineRunIdentity,
 }
+
+impl std::fmt::Debug for AssistantPipelineRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The audio payloads are megabytes of base64; the key is a secret.
+        f.debug_struct("AssistantPipelineRequest")
+            .field("api_key", &"[REDACTED]")
+            .field("api_base_url", &self.api_base_url)
+            .field("stt_model", &self.stt_model)
+            .field("ai_model", &self.ai_model)
+            .field("stt_local_mode", &self.stt_local_mode)
+            .field("ai_local_mode", &self.ai_local_mode)
+            .field("local_ollama_base_url", &self.local_ollama_base_url)
+            .field("local_ollama_model", &self.local_ollama_model)
+            .field("local_stt_model", &self.local_stt_model)
+            .field("language", &self.language)
+            .field("allowed_languages", &self.allowed_languages)
+            .field("wake_word_enabled", &self.wake_word_enabled)
+            .field("assistant_name", &self.assistant_name)
+            .field("selected_text", &self.selected_text)
+            .field("tts_engine", &self.tts_engine)
+            .field("run", &self.run)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AssistantPipelineResponse {
@@ -105,6 +129,12 @@ pub(crate) struct AssistantPipelineResponse {
     #[serde(flatten, default)]
     pub(crate) outcome: PipelineRunOutcome,
 }
+/// A retry after the echo/incomplete-draft check also failed. Returning the
+/// checked response would paste the user's own words back and speak them, so the
+/// turn reports the failure instead.
+const FALLBACK_EXHAUSTED: &str =
+    "The assistant's reply was rejected as unusable and the retry failed. Try again.";
+
 /// Bounds for the assistant's sampling temperature. The frontend renders these
 /// and the backend enforces them, so they are stated once, here.
 pub(crate) const TEMPERATURE_DEFAULT: f64 = 0.35;
@@ -199,6 +229,18 @@ pub(crate) async fn run_assistant_pipeline(
         pipeline_run_id: run_id.clone(),
         tts_status: tts_status.to_string(),
     };
+    // F-003: incognito was only ever enforced in the webview, so a turn the
+    // frontend mis-classified still left its text in the tray's copy-last
+    // slots. The flag is on the wire; honour it here.
+    let incognito = request.run.incognito;
+    let remember_output =
+        |state: &AppState, transcript: &str, response: &str| -> Result<(), String> {
+            if incognito {
+                info!("[pipeline] incognito turn; not recording the output for the tray");
+                return Ok(());
+            }
+            state.set_last_pipeline_output(transcript, response)
+        };
     let pipeline_mode = resolve_pipeline_mode(&request)?;
 
     let requested_engine = request
@@ -273,12 +315,10 @@ pub(crate) async fn run_assistant_pipeline(
     let overall_start = Instant::now();
 
     let stt_start = Instant::now();
-    let effective_language_hint =
-        normalize_stt_language_hint(request.language.as_deref()).or_else(|| {
-            normalize_stt_allowed_languages(request.allowed_languages.as_deref())
-                .first()
-                .cloned()
-        });
+    let effective_language_hint = effective_language_hint(
+        request.language.as_deref(),
+        request.allowed_languages.as_deref(),
+    );
     let transcript_raw = match &pipeline_mode.stt {
         SttModeConfig::Online {
             api_key,
@@ -381,10 +421,8 @@ pub(crate) async fn run_assistant_pipeline(
     };
     // The orchestrator owns what a dictation is; this only asks it, because the
     // short-circuit has to land before the selection capture below.
-    if crate::pipeline::orchestration::is_dictation_turn(
-        wake_word_enabled,
-        wake_command.as_deref(),
-    ) {
+    if crate::pipeline::orchestration::is_dictation_turn(wake_word_enabled, wake_command.as_deref())
+    {
         let selection_context_cleared = state.clear_pending_selection_rewrite()?;
         info!(
             "[pipeline] dictation mode wake_phrase_missing name={} transcript_chars={} pending_context_cleared={}",
@@ -396,7 +434,7 @@ pub(crate) async fn run_assistant_pipeline(
         let assistant_response = transcript.clone();
         // Both slots: leaving the response slot alone would hand the tray's
         // "copy last response" the answer from some earlier turn.
-        state.set_last_pipeline_output(&transcript, &assistant_response)?;
+        remember_output(&state, &transcript, &assistant_response)?;
         return Ok(AssistantPipelineResponse {
             mode: "dictation".to_string(),
             selection_rewrite: false,
@@ -438,17 +476,30 @@ pub(crate) async fn run_assistant_pipeline(
     if should_try_backend_selection_capture {
         #[cfg(target_os = "windows")]
         {
-            match crate::platform::windows_native::capture_selected_text_windows() {
-                Ok(captured) => {
+            // This sleeps and injects synthetic key events for up to ~1s, so it
+            // must not run on an async worker: it would stall the pool and any
+            // other turn parked on a network await with it.
+            match tauri::async_runtime::spawn_blocking(
+                crate::platform::windows_native::capture_selected_text_windows,
+            )
+            .await
+            {
+                Ok(Ok(captured)) => {
                     let trimmed = captured.trim();
                     if !trimmed.is_empty() {
                         backend_selected_text = Some(trimmed.to_string());
                     }
                 }
-                Err(error) => {
+                Ok(Err(error)) => {
                     warn!(
                         "[pipeline] selection fallback capture failed: {}",
                         clip_text(&single_line(&error), 240)
+                    );
+                }
+                Err(error) => {
+                    warn!(
+                        "[pipeline] selection fallback worker failed: {}",
+                        clip_text(&error.to_string(), 240)
                     );
                 }
             }
@@ -526,8 +577,18 @@ pub(crate) async fn run_assistant_pipeline(
     let mut skip_tts = orch_result.decision.skip_tts;
     let selection_context_used = orch_result.decision.selection_context_used;
 
-    // Sync pending rewrite state
-    sync_orchestrator_pending_rewrite_to_app_state(&state, &orch_state)?;
+    // Sync the pending rewrite, but not on the selection-edit path: that arm
+    // awaits the model and syncs again afterwards, and writing the shared slot
+    // here as well left a window where a concurrent turn could set a rewrite
+    // that this turn's later sync then destroyed (or the reverse, resurrecting
+    // a cancel). One write per turn, after the last await.
+    let defers_pending_sync = matches!(
+        orch_result.ai_action,
+        crate::pipeline::orchestration::AiAction::GenerateSelectionEditDecision { .. }
+    );
+    if !defers_pending_sync {
+        sync_orchestrator_pending_rewrite_to_app_state(&state, &orch_state)?;
+    }
 
     let mut ai_latency_ms = 0_u64;
     let mut assistant_response;
@@ -600,12 +661,16 @@ pub(crate) async fn run_assistant_pipeline(
                         }
                         Ok(_) => {
                             warn!("[pipeline] fallback answer returned empty response");
+                            return Err(FALLBACK_EXHAUSTED.to_string());
                         }
                         Err(error) => {
+                            // Returning the echo would paste the user's own
+                            // question back and speak it; say the retry failed.
                             warn!(
                                 "[pipeline] fallback answer failed: {}",
                                 clip_text(&single_line(&error), 320)
                             );
+                            return Err(FALLBACK_EXHAUSTED.to_string());
                         }
                     }
                 }
@@ -638,12 +703,14 @@ pub(crate) async fn run_assistant_pipeline(
                         }
                         Ok(_) => {
                             warn!("[pipeline] compose fallback returned empty response");
+                            return Err(FALLBACK_EXHAUSTED.to_string());
                         }
                         Err(error) => {
                             warn!(
                                 "[pipeline] compose fallback failed: {}",
                                 clip_text(&single_line(&error), 320)
                             );
+                            return Err(FALLBACK_EXHAUSTED.to_string());
                         }
                     }
                 }
@@ -720,7 +787,7 @@ pub(crate) async fn run_assistant_pipeline(
             "[pipeline] wake acknowledgement complete total_latency_ms={}",
             total_latency_ms
         );
-        state.set_last_pipeline_output(&transcript, &assistant_response)?;
+        remember_output(&state, &transcript, &assistant_response)?;
         return Ok(AssistantPipelineResponse {
             mode: "assistant".to_string(),
             selection_rewrite: false,
@@ -745,7 +812,7 @@ pub(crate) async fn run_assistant_pipeline(
             "[pipeline] complete (tts skipped) total_latency_ms={}",
             total_latency_ms
         );
-        state.set_last_pipeline_output(&transcript, &assistant_response)?;
+        remember_output(&state, &transcript, &assistant_response)?;
         return Ok(AssistantPipelineResponse {
             mode: "assistant".to_string(),
             selection_rewrite,
@@ -811,7 +878,7 @@ pub(crate) async fn run_assistant_pipeline(
 
     let total_latency_ms = elapsed_ms(overall_start);
     info!("[pipeline] complete total_latency_ms={}", total_latency_ms);
-    state.set_last_pipeline_output(&transcript, &assistant_response)?;
+    remember_output(&state, &transcript, &assistant_response)?;
 
     Ok(AssistantPipelineResponse {
         mode: "assistant".to_string(),
@@ -862,6 +929,21 @@ mod tests {
             api_base_url: "https://api.example.com".to_string(),
             stt_model: "whisper-1".to_string(),
         }));
+    }
+
+    #[test]
+    fn pipeline_request_debug_redacts_the_api_key() {
+        let request = AssistantPipelineRequest {
+            api_key: "sk-live-SECRET".to_string(),
+            audio_base64: "c29tZSBhdWRpbyBieXRlcw==".to_string(),
+            raw_pcm_base64: Some("cGNt".to_string()),
+            ..Default::default()
+        };
+
+        let shown = format!("{request:?}");
+        assert!(!shown.contains("sk-live-SECRET"), "api key leaked in Debug");
+        assert!(!shown.contains("c29tZS"), "audio leaked in Debug");
+        assert!(shown.contains("[REDACTED]"));
     }
 
     #[test]

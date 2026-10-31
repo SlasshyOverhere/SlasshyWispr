@@ -58,8 +58,6 @@ export type TransitionAction =
   | { type: "clear-ptt-holds" }
   | { type: "pre-warm-microphone" }
   | { type: "resume-external-media" }
-  | { type: "run-pipeline" }
-  | { type: "skip-pipeline"; notice: string; detail: string }
   | { type: "set-pipeline-running"; running: boolean }
   | { type: "set-recording-started-at"; timestamp: number }
   | { type: "begin-recording-ticker" }
@@ -130,6 +128,14 @@ export function processEvent(
       return handleInterruptPlayback(state);
     case "reset-to-idle":
       return handleResetToIdle(state);
+    default:
+      // The union is exhaustive to the compiler, not at runtime. Callers
+      // dereference the result, so returning undefined here would throw.
+      return {
+        stage: state.stage,
+        detail: `unhandled: ${(event as { type: string }).type}`,
+        actions: [],
+      };
   }
 }
 
@@ -217,6 +223,8 @@ function handleRecordingFailed(
       { type: "set-stage", stage: "error", detail: reason },
       { type: "set-notice", message: reason, isError: true },
       { type: "clear-ptt-holds" },
+      // A failure can land mid-recording, and the ticker is a plain interval.
+      { type: "stop-recording-ticker" },
       { type: "stop-amplitude-monitoring" },
       { type: "release-recorder" },
       { type: "publish-dock-state" },
@@ -285,13 +293,14 @@ function handleRecordingStopped(
     };
   }
 
+  // The pipeline is already running by the time this arrives: finalizeRecording
+  // calls it directly, because the machine has no blob to hand it. This used to
+  // emit a run-pipeline action that nothing handled, so the stage advanced to
+  // "processing" and nothing else ever happened.
   return {
     stage: "processing",
-    detail: "processing-audio",
-    actions: [
-      { type: "clear-chunks" },
-      { type: "run-pipeline" },
-    ],
+    detail: "Transcribing...",
+    actions: [{ type: "clear-chunks" }],
   };
 }
 
